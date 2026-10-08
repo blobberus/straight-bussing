@@ -37,8 +37,10 @@
     const result = { options: [], walkOnly: { m: Math.round(walkOnlyM), min: Math.max(1, Math.round(walkMin(walkOnlyM))) } };
 
     const cache = new Map();
-    function ride(rid, seq, path) { // minutes for stop index path
-      const a = seq.ids[path[0]], b = seq.ids[path[path.length - 1]], key = rid + "|" + a + "|" + b;
+    function ride(rid, seq, path, w) { // minutes for stop index path
+      const a = seq.ids[path[0]], b = seq.ids[path[path.length - 1]];
+      if (w && w.tu && w.t) { const tb = liveTripAt(w.tu, b); if (tb && tb > w.t) return { min: Math.max(1, (tb - w.t) / 60), source: "live", conf: 0.8 }; }
+      const key = rid + "|" + a + "|" + b;
       if (cache.has(key)) return cache.get(key);
       let r = null;
       try { const p = P && P.rideMinutes && P.rideMinutes(rid, a, b); if (p && typeof p.min === "number" && isFinite(p.min)) r = { min: Math.max(1, p.min), source: p.source || "schedule", conf: p.conf ?? 0.5 }; } catch (e) { /* fall through */ }
@@ -48,15 +50,20 @@
     const nBuses = {}; for (const v of buses) { const r = v.trip?.route_id; if (r) nBuses[r] = (nBuses[r] || 0) + 1; }
     function cycleMin(rid, seq) { const n = seq.ids.length; let m = 0; for (let k = 1; k < n; k++) m += hav(stops[seq.ids[k - 1]], stops[seq.ids[k]]); if (seq.loop && n > 1) m += hav(stops[seq.ids[n - 1]], stops[seq.ids[0]]); return Math.max(5, (seq.loop ? m : 2 * m) / SPEED_M_MIN); }
     function liveAt(rid, stopId, after) {
-      let best = null;
+      let best = null, trip = null;
       for (const tu of trips) { if (tu.trip?.route_id !== rid) continue;
-        for (const u of tu.stop_time_update || []) { if (u.stop_id !== stopId) continue; const t = u.arrival?.time || u.departure?.time; if (t && t >= after - 20 && (best === null || t < best)) best = t; } }
-      return best;
+        for (const u of tu.stop_time_update || []) { if (u.stop_id !== stopId) continue; const t = u.arrival?.time || u.departure?.time; if (t && t >= after - 20 && (best === null || t < best)) { best = t; trip = tu; } } }
+      return best === null ? null : { t: best, tu: trip };
+    }
+    // Passio's own predicted arrival of this same trip at another stop (exact bus timing)
+    function liveTripAt(tu, stopId) {
+      for (const u of tu.stop_time_update || []) if (u.stop_id === stopId) return u.arrival?.time || u.departure?.time || null;
+      return null;
     }
     // wait in minutes before boarding at stopId when ready at time readyT, or null if route doesn't look to be running
     function wait(rid, seq, stopId, readyT) {
-      const t = liveAt(rid, stopId, readyT);
-      if (t !== null) return { min: Math.max(0, (t - readyT) / 60), live: true };
+      const L = liveAt(rid, stopId, readyT);
+      if (L !== null) return { min: Math.max(0, (L.t - readyT) / 60), live: true, t: L.t, tu: L.tu };
       const n = nBuses[rid]; if (!n) return null;
       return { min: Math.min(30, Math.max(1, cycleMin(rid, seq) / n / 2)), live: false };
     }
@@ -85,7 +92,7 @@
         const w1 = walkMin(b.d), ready = t0 + w1 * 60, w = wait(rid, seq, seq.ids[b.i], ready); if (!w) continue;
         for (const a of al) {
           const path = pathIdx(seq, b.i, a.i); if (!path) continue;
-          const r = ride(rid, seq, path), total = w1 + w.min + r.min + walkMin(a.d);
+          const r = ride(rid, seq, path, w), total = w1 + w.min + r.min + walkMin(a.d);
           if (!best || total < best.total) best = { total, b, a, path, w, r };
         }
       }
@@ -113,10 +120,10 @@
           const w1 = walkMin(b.d), ready = t0 + w1 * 60, wa = wait(A, sa, sa.ids[b.i], ready); if (!wa) continue;
           for (const L of links) {
             const pa = pathIdx(sa, b.i, L.k); if (!pa) continue;
-            const ra = ride(A, sa, pa), tArr = ready + (wa.min + ra.min) * 60, ready2 = tArr + walkMin(L.d) * 60, wb = wait(B, sb, sb.ids[L.m], ready2); if (!wb) continue;
+            const ra = ride(A, sa, pa, wa), tArr = ready + (wa.min + ra.min) * 60, ready2 = tArr + walkMin(L.d) * 60, wb = wait(B, sb, sb.ids[L.m], ready2); if (!wb) continue;
             for (const a of near[B].al) {
               const pb = pathIdx(sb, L.m, a.i); if (!pb) continue;
-              const rb = ride(B, sb, pb), total = w1 + wa.min + ra.min + walkMin(L.d) + wb.min + rb.min + walkMin(a.d);
+              const rb = ride(B, sb, pb, wb), total = w1 + wa.min + ra.min + walkMin(L.d) + wb.min + rb.min + walkMin(a.d);
               if (!best || total < best.total) best = { total, b, a, L, pa, pb, wa, ra, wb, rb };
             }
           }

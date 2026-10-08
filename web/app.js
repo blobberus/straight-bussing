@@ -422,7 +422,7 @@ function chooseStation(id) {
 
 /* ---------- directions ---------- */
 const NOTE = "Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.";
-const SRC = { learned: "learned from past rides", schedule: "from schedule", estimate: "distance estimate" };
+const SRC = { live: "from live bus prediction", learned: "learned from past rides", schedule: "from schedule", estimate: "distance estimate" };
 const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const D = S.dir; let dirField = "to", sugList = [], photonCtl = null, photonTimer = 0, photonState = "", photonRes = { q: "", items: [] };
 function buildDir() {
@@ -511,10 +511,11 @@ function dirPlan(fresh) {
 const bold = (t) => `<b>${esc(t)}</b>`;
 function stepsHTML(o) {
   const li = (ic, h) => `<li><span class="si">${ic}</span><span>${h}</span></li>`;
+  let tt = now();
   return '<ol class="steps">' + o.legs.map((l) => {
-    if (l.type === "walk") return li("&#128694;", `Walk ${Math.max(1, Math.round(l.min))} min (${l.m} m) to ${bold(l.to.name)}`);
-    const w = Math.round(l.wait), r = Math.max(1, Math.round(l.ride));
-    return li(chip(l.rid), `Board at ${bold(l.board.name)}<br><span class="muted">Wait ~${w < 1 ? "&lt;1" : w} min <span class="est">${l.waitLive ? "live" : "est."}</span></span><br><span class="muted">Ride ~${r} min <span class="est">est.</span> to ${esc(l.alight.name)} · ${l.stopsPassed} stop${l.stopsPassed > 1 ? "s" : ""} · ${esc(SRC[l.source] || l.source)}</span>`);
+    if (l.type === "walk") { tt += l.min * 60; return li("&#128694;", `Walk ${Math.max(1, Math.round(l.min))} min (${l.m} m) to ${bold(l.to.name)}`); }
+    const w = Math.round(l.wait), r = Math.max(1, Math.round(l.ride)), tb = tt + l.wait * 60, ta = tb + l.ride * 60; tt = ta;
+    return li(chip(l.rid), `Bus arrives at ${bold(l.board.name)} <b>${esc(clock(tb))}</b> <span class="est">${l.waitLive ? "live" : "est."}</span><br><span class="muted">Wait ~${w < 1 ? "&lt;1" : w} min · Ride ~${r} min <span class="est">est.</span> to ${esc(l.alight.name)} (${esc(clock(ta))}) · ${l.stopsPassed} stop${l.stopsPassed > 1 ? "s" : ""} · ${esc(SRC[l.source] || l.source)}</span>`);
   }).join("") + "</ol>";
 }
 function renderRes() {
@@ -534,6 +535,23 @@ function renderRes() {
   }
   if (el._h !== h) { el._h = h; el.innerHTML = h; }
 }
+/* Slice the route's road-following shape between two stops (falls back to straight stop-to-stop line) */
+function alongShape(rid, board, alight, fallback) {
+  try {
+    const shp = (S.shapes[rid] || []).slice().sort((a, b) => b.length - a.length)[0]; if (!shp || shp.length < 2) return fallback;
+    let seq = (S.routeStops[rid] || []).slice(); const loop = seq.length > 2 && seq[0] === seq[seq.length - 1]; if (loop) seq.pop();
+    const n = seq.length, ib = seq.indexOf(board.id), ia = seq.indexOf(alight.id); if (ib < 0 || ia < 0) return fallback;
+    const near = (p, expect) => { let bestI = -1, bestD = 1e12; const cand = [];
+      shp.forEach((q, i) => { const d = hav({ lat: p.lat, lon: p.lon }, { lat: q[0], lon: q[1] }); if (d < 1e12 && d < bestD) { bestD = d; } cand.push([d, i]); });
+      const ok = cand.filter((c) => c[0] <= Math.max(60, bestD + 25)); ok.sort((a, b) => Math.abs(a[1] - expect) - Math.abs(b[1] - expect)); return ok[0] ? ok[0][1] : -1; };
+    const len = shp.length - 1, vb = near(board, (ib / n) * len), va = near(alight, (ia / n) * len); if (vb < 0 || va < 0) return fallback;
+    let seg;
+    if (va > vb) seg = shp.slice(vb, va + 1);
+    else if (loop || hav({ lat: shp[0][0], lon: shp[0][1] }, { lat: shp[len][0], lon: shp[len][1] }) < 80) seg = shp.slice(vb).concat(shp.slice(0, va + 1));
+    else return fallback;
+    return seg.length > 1 ? [[board.lat, board.lon], ...seg, [alight.lat, alight.lon]] : fallback;
+  } catch (e) { return fallback; }
+}
 function dirDraw(fit) {
   dirLayer.clearLayers(); if (S.view !== "dir") return;
   const pts = [], acc = dark.matches ? "#409cff" : "#0a84ff";
@@ -542,7 +560,7 @@ function dirDraw(fit) {
   const o = D.opts?.options[D.sel];
   if (o) for (const l of o.legs) {
     if (l.type === "walk") L.polyline([[l.from.lat, l.from.lon], [l.to.lat, l.to.lon]], { color: acc, weight: 4, dashArray: "2 8", lineCap: "round", interactive: false }).addTo(dirLayer);
-    else { const ll = l.path.map((p) => [p.lat, p.lon]); pts.push(...ll);
+    else { const ll = alongShape(l.rid, l.board, l.alight, l.path.map((p) => [p.lat, p.lon])); pts.push(...ll);
       L.polyline(ll, { color: "#fff", weight: 9, opacity: 0.9, lineCap: "round", lineJoin: "round", interactive: false }).addTo(dirLayer);
       L.polyline(ll, { color: color(l.rid), weight: 6, lineCap: "round", lineJoin: "round", interactive: false }).addTo(dirLayer);
       for (const p of [l.board, l.alight]) L.circleMarker([p.lat, p.lon], { radius: 6, color: color(l.rid), weight: 3, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(dirLayer); }
