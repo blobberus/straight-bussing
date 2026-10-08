@@ -1,6 +1,7 @@
 # CLAUDE.md — project memory (read this first, keep it short)
 
-Project: **Straight Bussing**, a free unofficial live UChicago shuttle tracker. Full brief: `UChicago Bus Tracker Project.md` (read only when needed).
+Project: **Straight Bussing**, a free unofficial live UChicago shuttle tracker.
+**FINAL GOAL:** a polished website (feels like Apple Maps / Citymapper, not Passio GO!) that the owner can later prompt me to turn into an App Store-level app. Plan for that: `conversion to appstore.md`. UI rules: `docs/DESIGN.md` + `.claude/skills/taste-skill/` (third-party, MIT, reference only). Full brief: `UChicago Bus Tracker Project.md` (read only when needed).
 Owner: Nathan. Repo: github.com/blobberus/straight-bussing (main). Work on Windows, Python 3.11 available, **no Node/npm**.
 
 ## Key facts (don't re-research)
@@ -23,5 +24,8 @@ Static site, no build step: `web/` (index.html, app.js, style.css, sw.js, manife
 - [x] GitHub Actions + Pages link
 - [x] docs: APPSTORE.md, IOS.md, RUN.md
 
+- [ ] UI redesign per docs/DESIGN.md (Apple Maps / Citymapper feel)
+- [ ] Verify live site (Pages) + mobile layout
+
 ## Next deliverable
-Verify in a real browser, enable Pages (Settings -> Pages -> GitHub Actions), then add: native-feature plan for App Store (location/widget), optional caching proxy, UChicago permission email draft.
+Implement docs/DESIGN.md checklist in web/, verify Pages deploy, then wait for owner's App Store conversion prompt.
