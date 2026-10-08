@@ -1,0 +1,2 @@
+epoch,ts_utc,local_time,dow,hour,minute_of_day,route_id,route_name,trip_id,vehicle_id,stop_id,stop_name,stop_address,stop_lat,stop_lon,stop_index,prev_stop_id,dist_prev_m,prev_arrival_epoch,segment_s,speed_mps,dwell_s,passio_pred_epoch,passio_pred_lead_s,source
+1791453586,2026-10-08T09:59:46Z,2026-10-08 04:59:46,3,4,299,5701,Drexel,501392,4327,8611,Drexel Garage,850 East 61st Street,41.78443,-87.60444,0,,,,,,57,,,proximity
