@@ -309,10 +309,22 @@ def refresh_seed(ctx):
         log(ctx, f"seed refresh failed (keeping the old seed): {e}")
 
 
+def _rmtree(path):
+    """shutil.rmtree that also clears Windows read-only flags (some PCs mark every folder read-only)."""
+    def clear_and_retry(func, p, _exc):
+        os.chmod(p, 0o700)
+        func(p)
+    shutil.rmtree(path, onerror=clear_and_retry)
+
+
 def prepare_worktree(ctx):
     if ctx.wt.exists():
         git(ctx, "worktree", "remove", "--force", str(ctx.wt), check=False)
-        shutil.rmtree(ctx.wt, ignore_errors=True)
+        if ctx.wt.exists():
+            _rmtree(ctx.wt)
+    meta = ctx.root / ".git" / "worktrees" / ctx.wt.name   # git can't prune it when it is read-only
+    if meta.exists():
+        _rmtree(meta)
     git(ctx, "worktree", "prune")
     git(ctx, "branch", "-D", BRANCH, check=False)
     if remote_has_data(ctx):
