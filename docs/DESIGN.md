@@ -1,5 +1,7 @@
 # Straight Bussing: UI Design Spec
 
+> v2 note: file names below (`style.css`, `app.js`, `theme.js`, `mapstyle.js`) are the v1 files this spec was written against (tag `v1-final`). In v2 the same rules live in `web/css/*.css`, `web/js/ui/theme.js` and `web/js/map/style.js`; see `docs/ARCHITECTURE.md`.
+
 ## Taste notes (research summary)
 
 - Sources: taste-skill (third-party, reference only), Apple HIG Maps, Eleken bottom-sheet guide, UXPin map UI, OpenFreeMap docs/styles. Web search returned little Citymapper-specific detail; its patterns below come from general knowledge, unverified.

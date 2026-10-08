@@ -24,6 +24,7 @@
 .v-row { display: flex; align-items: center; gap: var(--s3); width: 100%; min-height: 56px; padding: var(--s2) 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform var(--d-press) var(--ease), opacity var(--d-press) var(--ease); }
 .v-row + .v-row::before { content: ""; position: absolute; top: 0; left: 40px; right: 0; height: 1px; background: var(--hairline); }
 .v-card > .v-row:first-child::before { display: none; }
+.v-row:has(> .chip:first-child)::before { left: 68px; }
 button.v-row:active { transform: scale(.98); opacity: .8; }
 .v-row:focus-visible, .v-tlbtn:focus-visible, .v-optmain:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; }
 .v-cardhead { min-height: 60px; }
@@ -73,6 +74,7 @@ button.v-row:active { transform: scale(.98); opacity: .8; }
 .v-dialog::backdrop { background: var(--scrim); }
 .v-dialog[open] { animation: v-pop var(--d-swap) var(--ease-enter); }
 .v-dlg-title { margin: 0; font-size: var(--fs-title); line-height: var(--lh-title); font-weight: 650; }
+.v-dlg-title:focus { outline: none; }
 .v-dlg-sub { margin: 4px 0 var(--s2); }
 .v-dlg-cancel { display: flex; width: 100%; margin-top: var(--s2); }
 @keyframes v-pop { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
@@ -87,7 +89,7 @@ button.v-row:active { transform: scale(.98); opacity: .8; }
 .v-fchip-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .v-fchip-x { flex: none; width: var(--tap); height: var(--tap); border: 0; border-radius: 50%; background: none; color: inherit; font-size: 24px; line-height: 1; cursor: pointer; }
 .v-routerow { display: flex; align-items: center; gap: var(--s1); position: relative; }
-.v-routerow + .v-routerow::before { content: ""; position: absolute; top: 0; left: 52px; right: 0; height: 1px; background: var(--hairline); }
+.v-routerow + .v-routerow::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--hairline); }
 .v-rowmain { flex: 1 1 auto; min-width: 0; }
 .v-routerow.is-off .v-rowmain { opacity: .55; }
 .v-list.is-dim .v-rowmain { opacity: .7; }

@@ -16,7 +16,8 @@ Rewrite on branch `v2-rewrite` (v1 is tag `v1-final`). Goal: same product, rebui
 ```
 web/index.html            [D1]
 web/sw.js manifest.webmanifest icons/    [B]
-web/css/tokens.css base.css sheet.css components.css map.css   [D1]
+web/css/tokens.css base.css sheet.css components.css   [D1]
+web/css/map.css           [C]   map overlays only
 web/css/views.css         [D2]
 web/js/main.js            [D1]  wiring + boot
 web/js/state.js           [B]   the app store (shape below)
@@ -25,13 +26,13 @@ web/js/data/static.js live.js geocode.js   [B]
 web/js/map/map.js style.js layers.js geometry.js   [C]
 web/js/ui/sheet.js router.js actions.js components.js theme.js   [D1]
 web/js/ui/views/nearby.js stop.js routes.js route.js alerts.js about.js pick.js directions.js   [D2]
-web/tests/*.html + tests/lib.js   [A: core/data tests] [C: map tests] [D1/D2: ui tests]  (each owns own file names)
+web/tests/*.html + tests/lib.js   [A: core/data tests] [C: map tests] [D1/D2: ui tests] [lead: e2e.*]  (each owns own file names)
 tools/run_browser_tests.py   [A]
 tools/* (python), data/, .github/workflows/collect.yml, docs/DATA.md   [E1]
 tools/model_*.py backtest.py estimate_speed.py refresh_model.py docs/ALGORITHMS.md docs/BACKTEST.md   [E2]
 docs/ARCHITECTURE.md      [lead only]
 ```
-Existing v1 files (`web/app.js style.css planner.js predict.js walk.js theme.js mapstyle.js`) are **reference code to port from**. They are deleted by the lead after integration; read them for proven logic (alongShape road-following, pick flow, planner, walk router, mapstyle patching, stale pill logic, sheet drag).
+The v1 files (`web/app.js style.css planner.js predict.js walk.js theme.js mapstyle.js`) were deleted at integration; read them at tag `v1-final` if you need the original logic.
 
 ## Shared primitives (A owns, everyone imports)
 ```js
@@ -83,9 +84,9 @@ View-local state (picker query, directions fields) lives in that view module, no
 ## Data layer (B)
 ```js
 // data/static.js
-export async function loadStatic(store): Promise<void>   // fetch data/routes.json stops.json shapes.json route_stops.json (+ stop_addresses.json optional); derive stopRoutes; set staticLoaded
+export async function loadStatic(store, {base?, fetch?}?): Promise<{failed:string[]}>   // never rejects   // fetch data/routes.json stops.json shapes.json route_stops.json (+ stop_addresses.json optional); derive stopRoutes; set staticLoaded
 // data/live.js
-export function startLive(store, {intervalMs=10000}): {stop(), pollNow()}   // polls the 3 Passio JSON feeds (BASE https://passio3.com/chicago/passioTransit/gtfs/realtime/<name>.json?_=ts, cache:'no-store'), sets live fields; failure keeps last data and sets failed:true; pause when document.hidden, poll on visible
+export function startLive(store, {intervalMs=10000, ...}): {stop(), pollNow(), failures(), delay()}   // polls the 3 Passio JSON feeds (BASE https://passio3.com/chicago/passioTransit/gtfs/realtime/<name>.json?_=ts, cache:'no-store'), sets live fields; failure keeps last data and sets failed:true; pause when document.hidden, poll on visible
 // data/geocode.js
 export function searchPlaces(q, {signal}): Promise<{items:[{label, sub, lat, lon}], error?:string}>   // never throws (error: 'aborted'|'timeout'|'network'|'http <status>'|'bad response'); Photon, limit 5, biased lat 41.79 lon -87.60, min 3 chars enforced by caller (<3 -> {items:[]}); 400 ms debounce helper debounce(fn, ms) exported too (.cancel(), .flush())
 ```
@@ -103,8 +104,8 @@ export const predict: { ready: Promise<void>, rideMinutes(rid, fromStopId, toSto
 // core/walk.js
 export async function walkRoute(from, to): Promise<{m, min, coords:[[lat,lon]], source:'router'|'estimate'}>   // FOSSGIS OSRM foot primary, Valhalla fallback, 3 s timeout each, straight*1.2 estimate fallback, cache by 4dp, <=6 concurrent
 // core/planner.js
-export function plan({from, to, now, data:{stops,routes,routeStops,trips,buses}, predict?}): {options:[Option], walkOnly:{m,min}}
-export async function refineWalking(option, {walkRoute, now, data, from, to}): Promise<Option>   // replaces walk-leg coords/min with router results, recomputes totals/arrive; if the bus would be missed it re-plans or drops the option
+export function plan({from, to, now, data:{stops,routes,routeStops,trips,buses}, predict?, walkMins?}): {options:[Option], walkOnly:{m,min}}   // pass predict explicitly (no implicit fallback)
+export async function refineWalking(option, {walkRoute, now, data, from, to, predict?}): Promise<Option|null>   // replaces walk-leg coords/min with router results, recomputes totals/arrive; if the bus would be missed it re-plans (same route, replanned:true) or resolves null (drop it)
 // Option = {key, total:minFloat, totalMin:int, arrive:unixS, legs:[WalkLeg|BusLeg]}
 // WalkLeg = {type:'walk', from:{lat,lon,name}, to:{lat,lon,name}, m, min, coords?:[[lat,lon]], source?:'router'|'estimate'}
 // BusLeg  = {type:'bus', rid, board:{id,name,lat,lon}, alight:{id,name,lat,lon}, path:[{lat,lon}], stopsPassed, wait, waitLive, ride, source:'live'|'learned'|'schedule'|'estimate', conf, boardT, alightT}
@@ -134,7 +135,7 @@ Layer groups must never be rebuilt when nothing changed (diff by a cheap signatu
 ## UI shell (D1) and views (D2)
 ```js
 // ui/router.js
-export function registerView(id, def)   // def = { title(state)->string, parent?:viewId, detent?:'peek'|'half'|'full', tab?:'nearby'|'routes'|'alerts', render(state)->htmlString, mount?(rootEl, ctx), unmount?() }
+export function registerView(id, def)   // def = { title(state)->string, parent?:viewId, detent?:'peek'|'half'|'full', tab?:'nearby'|'routes'|'alerts', render(state)->htmlString, mount?(rootEl, ctx), unmount?(), refresh?(), meta?(state)->text, onStopTap?(id, ctx)->bool }
 export function navigate(view, params={})   // sets store.view/prevView/stopId/routeId, adjusts detent
 export function back()
 // ui/actions.js
@@ -146,7 +147,7 @@ export const routeChip(rid, routes), etaBlock(unixS, {stale}), arrivalRow(a, sta
 // ui/sheet.js: createSheet({sheetEl, contentEl, headEl}) -> {setDetent(d), getDetent(), onChange(fn)}  3 detents peek/half/full, pointer-event drag with velocity snap + rubber band, keyboard (arrows/Esc), >=768 px = left panel; emits bus 'sheet:inset' {px} on every settle/drag end
 // ui/theme.js: initTheme(store) -> applies data-theme, matchMedia, mount(el) segmented Auto/Light/Dark, onChange(fn(isDark))
 ```
-Rendering loop (D1 `main.js`): on store change -> current view `render(state)` -> set `content.innerHTML` only if string differs from last (preserve scrollTop; never rebuild while a text input inside content has focus: views with inputs use `mount` and update lists in place).
+Rendering loop (D1 `main.js`): on store change -> current view `render(state)` -> set `content.innerHTML` only if string differs from last (preserve scrollTop; never rebuild while a text input inside content has focus). Views with `mount` render once on entry and then **own their DOM**: they subscribe to the store and patch regions in place; main.js never rebuilds them (that would replace a button between pointerdown and click) and calls `refresh()` every 15 s so countdowns tick.
 
 Views (D2) and required behavior (all ported from v1, improved):
 - **nearby**: next bus at the nearest stop in one glance; with location -> 3 nearest stops with up to 3 arrivals; without -> "Use my location" + "Arriving soon" list + search stations field + "Type an address or place"; never dead-ends; location denied is a first-class state.
@@ -158,7 +159,81 @@ Views (D2) and required behavior (all ported from v1, improved):
 - **directions**: Start/Destination fields (station autocomplete + Photon places, "My location" default if granted), swap, up to 3 option cards (total min, arrive clock, summary chips), tap card -> `map.drawPlan`, step list with `Bus arrives at <stop> <clock>`, wait, ride, source tags, walking legs on sidewalks (via `refineWalking`, async, shows "sidewalk route"/"estimate"), note "Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.", walk-only fallback, no-service empty state.
 
 ## Tests
-No Node: browser test pages run in headless Edge. `web/tests/lib.js` exports `test(name, fn)`, `eq`, `ok`, `near`, and writes a JSON summary to `<pre id="result">` and `document.title = "TESTS pass=N fail=M"`. `tools/run_browser_tests.py [page...]` serves `web/` on a free port, runs `msedge --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --virtual-time-budget=30000 --dump-dom`, parses the title, exits non-zero on failure. Edge path: `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`. Screenshots: add `--hide-scrollbars --window-size=500,900 --blink-settings=preferredColorScheme=1|2 --timeout=20000 --screenshot=<abs path OUTSIDE repo>` (headless does not paint vector map tiles; UI and overlays do paint).
+No Node: browser test pages run in headless Edge. `web/tests/e2e.test.html` loads the real `index.html` in an iframe with `e2e-stubs.js` (geolocation, live feed, service worker, history) and `e2e-expose.js` (store, place search, walk router) injected, and drives the main flows. `web/tests/lib.js` exports `test(name, fn)`, `eq`, `ok`, `near`, and writes a JSON summary to `<pre id="result">` and `document.title = "TESTS pass=N fail=M"`. `tools/run_browser_tests.py [page...]` serves `web/` on a free port, runs `msedge --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --virtual-time-budget=30000 --dump-dom`, parses the title, exits non-zero on failure. Edge path: `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`. Screenshots: add `--hide-scrollbars --window-size=500,900 --blink-settings=preferredColorScheme=1|2 --timeout=20000 --screenshot=<abs path OUTSIDE repo>` (headless does not paint vector map tiles; UI and overlays do paint).
 
 ## Acceptance checklist (lead verifies at integration)
 Boot with no console errors; nearby list populated from live data; stale pill logic; sheet drag/detents; theme Auto/Light/Dark switch updates map style + markers; Routes to station flow (all 3 modes, no location needed); route toggles; directions with sidewalk walking and road-following bus legs and clock times; offline shell; all unit tests green; Lighthouse-style a11y spot checks; no file > 400 lines; no leftover v1 globals.
+
+## v2.1 features (My Routes, custom routes, journeys, route hours) — contract
+Lead already landed: new state fields (state.js), `core/visibility.js`, `core/custom.js`, the
+`myroutes` tab id (router TABS = nearby, routes, myroutes; index.html tab button), main.js map sync via
+`mapVisibility`, empty per-feature CSS files, stubs (`ui/views/myroutes.js`, `core/schedule.js`,
+`data/service.json`) and their sw.js PRECACHE entries (cache `sb-v2-3`). Code against what is below.
+
+### New state (state.js)
+```js
+service: {}                 // data/service.json, {} when missing (static)
+routeOrder: [rid]           // persisted. Map draw priority, first = drawn on top. May be partial/empty.
+customRoutes: [{id, name, rids:[rid], highlight:[rid]}]   // persisted. My Routes sets.
+activeCustom: id|null       // persisted. Applied custom route (its complement is in hiddenRoutes).
+prevHidden: [rid]           // persisted. hiddenRoutes before the custom route was applied.
+favStops: [stopId]          // persisted. Favorite stations.
+journey: null|{rids:[rid], label:string, kind:'plan'|'station'}   // NOT persisted. "Only show relevant routes".
+```
+
+### core/visibility.js (lead; everyone uses it, never re-derive visibility by hand)
+```js
+effectiveHidden(state): rid[]      // journey ? every route not in journey.rids : hiddenRoutes
+isVisible(state, rid): boolean
+activeCustomRoute(state): custom|null
+mapFocus(state): rid[]|null        // route view [routeId] > (journey: null) > routeFilter.ids > active custom highlight > null
+drawOrder(state, focus?): rid[]    // focus first, then routeOrder, then data order; top-most first
+mapVisibility(state): {hidden, focus, order}   // main.js passes these to drawNetwork / drawBuses
+```
+Lists (Nearby, stop, arrivals, route list) MUST pass `effectiveHidden(state)` wherever they used `state.hiddenRoutes`.
+
+### core/custom.js (lead) — every function returns a store PATCH
+`createCustom(state,{name,rids})->{patch,id}`, `saveVisibleAsCustom(state,name)->{patch,id}` (applied),
+`updateCustom(state,id,{name?,rids?,highlight?})`, `toggleHighlight(state,id,rid)`, `deleteCustom(state,id)`,
+`applyCustom(state,id)` (hiddenRoutes := complement, remembers prevHidden, clears routeFilter),
+`clearCustom(state)` (restores prevHidden), `matchesCurrent(state,c)`, `visibleRids(state)`, `hiddenFor(state,rids)`,
+`moveInOrder(state,rid,-1|1)` (routeOrder), `toggleFav(state,stopId)`, `cleanName(s)`.
+
+### Map (C) additions
+`drawNetwork({..., order})`: lines are stacked by `order` (index 0 on top); focused routes always above
+unfocused. Include `order` in `networkSig`. When focus has 1-3 routes, draw small direction-of-travel
+chevrons along each focused route (GTFS shape point order = travel direction), spaced in screen px,
+recomputed on zoom, honoring reduced motion (static), never intercepting taps.
+
+### data/service.json (built by tools/build_gtfs.py) and core/schedule.js
+```js
+{ generated:'ISO', feed:{start:'YYYY-MM-DD', end:'YYYY-MM-DD'},
+  routes: { rid: {
+    days: { mon|tue|wed|thu|fri|sat|sun: null | { first:'HH:MM', last:'HH:MM' /* may be >= 24:00 */, trips:int,
+            buses:[24 ints] /* scheduled vehicles in service per local hour = max concurrent trips */ } },
+    exceptions: [{ date:'YYYY-MM-DD', type:'removed'|'added', days?:dayKey }],   // calendar_dates in feed window
+  } } }
+```
+```js
+// core/schedule.js (pure; Chicago local time; never throws; null/[] when no data)
+routeService(service, rid): object|null
+dayKey(unixS): 'mon'..'sun'                         // America/Chicago
+hoursOn(service, rid, unixS): {first, last, label:'7:00 AM – 11:30 PM', exception?:'removed'|'added'}|null   // that date, exceptions applied
+weekSummary(service, rid): [{days:'Mon–Fri', label:'7:00 AM – 11:30 PM'}|{days:'Sat', label:'No service'}]   // groups equal days
+busesByHour(service, rid, dayKey): [{hour, buses}]  // only hours with service
+upcomingChanges(service, rid, unixS, horizonDays=30): [{date, label:'Thu, Nov 26', text:'No service'|'Extra service'}]
+isScheduledNow(service, rid, unixS): boolean|null
+```
+
+### Ownership for v2.1 (in addition to the table above; never edit files you do not own)
+| Agent | Owns |
+|---|---|
+| SHELL | index.html, main.js, ui/router.js, ui/components.js, ui/sheet.js, ui/actions.js, css/tokens.css base.css sheet.css components.css, ui/views/nearby.js, ui/views/alerts.js, ui/views/about.js, tests/ui-shell-*, tests/e2e* |
+| MAP | map/*.js, css/map.css, tests/map-* |
+| ROUTE | tools/build_gtfs.py, web/data/service.json, data/static.js, core/schedule.js, ui/views/route.js, css/route.css, tests/data-static.js, tests/route-* + route.test.html |
+| ROUTES | ui/views/routes.js, css/routes.css, tests/routes-* + routes.test.html |
+| MYROUTES | ui/views/myroutes.js, ui/views/stop.js, css/myroutes.css, tests/myroutes-* + myroutes.test.html |
+| JOURNEY | ui/views/directions.js, ui/views/pick.js, css/journey.css, tests/journey-* + journey.test.html |
+| MONITOR | monitoring.md, tools/monitor.py |
+| lead | state.js, core/visibility.js, core/custom.js, sw.js, docs/ARCHITECTURE.md, css/views.css (frozen: override in your own css file) |
+New view files must be added to main.js VIEW_IDS and sw.js PRECACHE: ask the lead in your report.

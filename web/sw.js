@@ -1,6 +1,6 @@
 // Service worker: offline app shell. Network-first so deploys show up immediately.
 // Live feeds and map tiles are cross-origin and never touched (stale bus data is unsafe).
-const CACHE = 'sb-v2-1';
+const CACHE = 'sb-v2-3';
 // PRECACHE:BEGIN (generated list; keep one path per line)
 const PRECACHE = [
   './',
@@ -12,17 +12,24 @@ const PRECACHE = [
   'css/sheet.css',
   'css/tokens.css',
   'css/views.css',
+  'css/routes.css',
+  'css/route.css',
+  'css/myroutes.css',
+  'css/journey.css',
   'js/main.js',
   'js/state.js',
   'js/core/arrivals.js',
+  'js/core/custom.js',
   'js/core/esc.js',
   'js/core/events.js',
   'js/core/geo.js',
   'js/core/planner.js',
   'js/core/predict.js',
+  'js/core/schedule.js',
   'js/core/storage.js',
   'js/core/store.js',
   'js/core/time.js',
+  'js/core/visibility.js',
   'js/core/walk.js',
   'js/data/geocode.js',
   'js/data/live.js',
@@ -39,6 +46,7 @@ const PRECACHE = [
   'js/ui/views/about.js',
   'js/ui/views/alerts.js',
   'js/ui/views/directions.js',
+  'js/ui/views/myroutes.js',
   'js/ui/views/nearby.js',
   'js/ui/views/pick.js',
   'js/ui/views/route.js',
@@ -55,6 +63,8 @@ const PRECACHE = [
   'data/route_stops.json',
   'data/stop_addresses.json',
   'data/segments.json',
+  'data/meta.json',
+  'data/service.json',
 ];
 // PRECACHE:END
 
