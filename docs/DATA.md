@@ -5,7 +5,7 @@ predictions and train our own (`tools/model_*.py`, `docs/ALGORITHMS.md`). Unoffi
 
 | File | Where | What |
 |---|---|---|
-| `data/ground_truth/arrivals.csv` | `data` branch only (git-ignored on main) | real arrivals, appended hourly |
+| `data/ground_truth/arrivals.csv` | `data` branch only (git-ignored on main) | real arrivals, collected around the clock, merged every 30 min |
 | `data/ground_truth/archive/*.csv` | `data` branch | same schema, rotated when the live file passes 40 MB |
 | `web/data/learned.json` | `data` branch | model refreshed after each run (if `tools/refresh_model.py` exists) |
 | `data/ground_truth/synthetic_arrivals.csv` | main | **fake**, seeded 3-week demo (ids start `syn`); `tools/make_synthetic_truth.py` |
@@ -49,8 +49,11 @@ Arrival times are good to about **+-10 s**: reports come every ~10 s, GPS is +-5
 python tools/truth_logger.py --once                 # one poll (smoke test)
 python tools/truth_logger.py --duration 180         # 3 minutes -> data/ground_truth/arrivals.csv
 python tools/truth_logger.py --out my.csv --interval 10 --rotate-mb 40
+python tools/truth_logger.py --seed arrivals.csv --out run.csv   # write only new rows (what CI does)
+python tools/merge_arrivals.py --into arrivals.csv --add run.csv # dedupe-merge a run into the shared CSV
 python tools/truth_stats.py [csv]                   # coverage, speeds, Passio MAE by lead time
 python tools/test_truth.py                          # detector tests
+python tools/test_merge.py                          # merge / dedupe tests
 ```
 Windows, hourly in the background (run once in **cmd.exe**; delete with `schtasks /Delete /TN SBTruth /F`):
 ```
@@ -58,18 +61,29 @@ schtasks /Create /TN SBTruth /SC HOURLY /ST 00:07 /F /TR "\"C:\Users\NK\AppData\
 ```
 
 ## Automatic collection and reading it
-`.github/workflows/collect.yml` runs at :07 every hour (and on demand): checks out main, logs 55 min into a
-worktree of the orphan `data` branch, refreshes the model, commits `data: arrivals <ts>`, pushes (3 rebase
-retries; conflicting appends are merged as a line union). It never pushes to main, so Pages never redeploys.
+`.github/workflows/collect.yml` (must live on **main**: GitHub only runs schedules from the default branch)
+starts a run at :07 and :37 every hour, and each run logs for 70 min. Runs always overlap, so a start
+GitHub delays or skips leaves no gap. Each run:
+1. checks out main, refreshes `web/data` from the GTFS zip (falls back to the committed copy),
+2. seeds the detector from the tail of the shared CSV, logs 70 min into its own `run.csv`,
+3. merges with `tools/merge_arrivals.py` into a worktree of the orphan `data` branch: duplicates from
+   the overlap (same vehicle + trip + stop + stop_index within 120 s) are dropped, keeping the row with
+   more filled fields; the file is archived past 40 MB,
+4. refreshes `web/data/learned.json`, commits `data: arrivals <ts>`, pushes. If another run pushed first
+   it re-fetches and re-merges (5 tries),
+5. re-enables its own workflow through the API so GitHub's 60-day idle rule does not switch it off.
+
+It never pushes to main, so Pages never redeploys. One row per bus per stop visit; no rows overnight
+while no shuttles run.
 ```
 git fetch origin data
 git show origin/data:data/ground_truth/arrivals.csv > data/ground_truth/arrivals.csv
 ```
 or download `https://raw.githubusercontent.com/blobberus/straight-bussing/data/data/ground_truth/arrivals.csv`.
 
-**Cost**: free; GitHub Actions minutes are unlimited for public repos (a private repo would need ~41k
-min/month vs 2k free). Scheduled runs can start late or be skipped under GitHub load, and are disabled
-after 60 days without repo activity (re-enable in the Actions tab).
+**Cost**: free; GitHub Actions minutes are unlimited for public repos (about 2-3 runners are busy at any
+time; a private repo would need ~100k min/month vs 2k free). If the Actions tab ever shows the
+workflow disabled, press "Enable workflow" there.
 
 **Privacy**: the feeds hold only vehicle positions and predictions, no riders. Nothing personal is
 collected; addresses come from public OpenStreetMap data via Photon (stop coordinates only).

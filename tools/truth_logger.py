@@ -5,6 +5,7 @@ per true bus arrival at a stop (schema in arrivals_lib.COLUMNS, docs in docs/DAT
   python tools/truth_logger.py --once
   python tools/truth_logger.py --duration 180
   python tools/truth_logger.py --out some.csv --interval 10
+  python tools/truth_logger.py --seed arrivals.csv --out run.csv   # new rows only (CI; merge_arrivals.py)
 No rider data exists in these feeds; nothing personal is collected.
 """
 import argparse, json, sys, time, urllib.request
@@ -92,6 +93,7 @@ def main():
     ap.add_argument("--out", default=str(L.DEFAULT_OUT))
     ap.add_argument("--rotate-mb", type=float, default=0,
                     help="at start, move --out to archive/<name>-<UTC date>.csv if larger than this (0 = never)")
+    ap.add_argument("--seed", help="CSV whose tail seeds the detector (default --out); lets a run write only its own rows")
     a = ap.parse_args()
     a.interval = max(5.0, a.interval)
     st = L.Static()
@@ -99,7 +101,7 @@ def main():
         sys.exit("web/data/route_stops.json missing (run tools/build_gtfs.py)")
     rotate(Path(a.out), a.rotate_mb)
     tr, w = Tracker(st), Writer(a.out, st)
-    tr.seed(L.read_tail(a.out), int(time.time()))
+    tr.seed(L.read_tail(a.seed or a.out), int(time.time()))
     end = time.time() + a.duration if a.duration else None
     polls = 0
     try:
