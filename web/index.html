@@ -5,41 +5,51 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Straight Bussing</title>
 <meta name="description" content="Unofficial live campus shuttle tracker">
-<meta name="theme-color" content="#800000">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1c1e" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Straight Bussing">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="map" aria-label="Shuttle map"></div>
-<div id="banner" class="banner" hidden></div>
 
-<section id="sheet" class="sheet">
-  <button id="grab" class="grab" aria-label="Expand or collapse panel"></button>
-  <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="arrivals" class="on">Arrivals</button>
-    <button role="tab" data-tab="routes">Routes</button>
-    <button role="tab" data-tab="alerts">Alerts <span id="alertCount" class="pill" hidden></span></button>
-    <button role="tab" data-tab="about">About</button>
-  </nav>
-  <div id="panel-arrivals" class="panel"></div>
-  <div id="panel-routes" class="panel" hidden></div>
-  <div id="panel-alerts" class="panel" hidden></div>
-  <div id="panel-about" class="panel" hidden>
-    <p><strong>Straight Bussing is an unofficial student project.</strong> It is not affiliated with or endorsed by the University of Chicago or Passio. Times are predictions and can be wrong.</p>
-    <p>For safety or NightRide, always use the official service: <a href="tel:7737028181">773.702.8181</a> or the university's shuttle page at <a href="https://safety-security.uchicago.edu/Transportation" target="_blank" rel="noopener">safety-security.uchicago.edu/Transportation</a>.</p>
-    <p>Data: public Passio GTFS feeds. No ads, no account, no tracking. Your location, if you allow it, stays on your device.</p>
-    <p id="meta" class="muted"></p>
-  </div>
+<button id="locateBtn" class="fab" aria-label="Show my location">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
+</button>
+<div id="pill" class="statuspill" role="status" aria-live="polite" hidden></div>
+
+<section id="sheet" class="sheet half" role="dialog" aria-label="Shuttle information" aria-modal="false">
+  <header id="sheetHead" class="head">
+    <button id="grab" class="grab" aria-label="Resize panel" aria-expanded="true"></button>
+    <div class="titleline">
+      <button id="back" class="back" aria-label="Back" hidden>
+        <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2L2 10l8 8"/></svg>
+      </button>
+      <h1 id="title">Nearby</h1>
+      <span id="titleRight" class="titleright"></span>
+    </div>
+    <nav id="seg" class="seg" aria-label="Sections">
+      <button data-view="nearby" class="on">Nearby</button>
+      <button data-view="routes">Routes</button>
+      <button data-view="alerts">Alerts <span id="alertCount" class="badge" hidden></span></button>
+    </nav>
+  </header>
+  <div id="content" class="content"></div>
 </section>
 
+<div class="probe" id="pPeek"></div><div class="probe" id="pHalf"></div><div class="probe" id="pFull"></div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

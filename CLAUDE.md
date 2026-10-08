@@ -24,8 +24,9 @@ Static site, no build step: `web/` (index.html, app.js, style.css, sw.js, manife
 - [x] GitHub Actions + Pages link
 - [x] docs: APPSTORE.md, IOS.md, RUN.md
 
-- [ ] UI redesign per docs/DESIGN.md (Apple Maps / Citymapper feel)
-- [ ] Verify live site (Pages) + mobile layout
+- [x] UI redesign per docs/DESIGN.md (sheet w/ 3 detents, ETA rows, route/stop detail, OpenFreeMap vector tiles via maplibre-gl-leaflet; CARTO raster tiles now need an API key, don't use)
+- [x] Pages live: https://blobberus.github.io/straight-bussing/
+- [ ] QA pass on a real iPhone (sheet drag, safe areas, basemap render; headless Edge could not confirm basemap)
 
 ## Next deliverable
-Implement docs/DESIGN.md checklist in web/, verify Pages deploy, then wait for owner's App Store conversion prompt.
+QA on iPhone Safari; polish from findings. Then wait for owner's App Store conversion prompt (see `conversion to appstore.md`). Local test: `cd web; python -m http.server 8000`; headless shot: msedge --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --timeout=20000 --screenshot=...
