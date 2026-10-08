@@ -1,5 +1,5 @@
 /**
- * Overlay demo for headless screenshots: map.test.html?demo=light|dark[&raster=1][&plan=0].
+ * Overlay demo for headless screenshots: map.test.html?demo=light|dark[&raster=1][&plan=0][&focus=rid][&order=rid,rid].
  * Draws the real network, fake buses (one stale, one without heading), a selected stop, the user dot,
  * picker highlights and a trip plan above a fake 300 px sheet. Sets document.title to "DEMO ready".
  */
@@ -39,7 +39,8 @@ const api = createMap('map');
 api.setTheme(dark);
 api.setBottomInset(300);
 const focus = q.get('focus') ? [q.get('focus')] : null;
-api.drawNetwork({ routes, shapes, routeStops, stopRoutes, stops, hidden: [], focus, dark });
+const order = q.get('order') ? q.get('order').split(',') : [];   // draw priority, first on top
+api.drawNetwork({ routes, shapes, routeStops, stopRoutes, stops, hidden: [], focus, order, dark });
 
 const now = Date.now() / 1000;
 const buses = [];
@@ -78,7 +79,8 @@ if (q.get('plan') !== '0') {
 } else {
   api.setSelectedStop(st(seq[4]));
   api.highlightStops([st(seq[1]), st(seq[5])], { onPick: () => {} });
-  api.flyTo(st(seq[4]), 16);
+  if (focus && shapes[focus[0]]) api.fitTo(shapes[focus[0]].flat(), { maxZoom: 16, animate: false });
+  else api.flyTo(st(seq[4]), 16);
 }
 // diagnostics for headless runs: style layer count + maplibre errors end up in the title
 const diag = { layers: 0, errors: [] };

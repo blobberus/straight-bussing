@@ -90,9 +90,11 @@ export function createMap(elId) {
 
     /**
      * Route lines + stops. Redraws only when inputs change (identity/size of static data, hidden, focus).
-     * focus null/[] = no focus; [rid...] = those routes drawn last at full strength, others at .25.
+     * focus null/[] = no focus; [rid...] = those routes drawn last at full strength, others at .25, with
+     * direction-of-travel chevrons when 1-3 routes are focused. order = draw priority, index 0 on top
+     * (core/visibility.js drawOrder); focused routes always stack above unfocused ones.
      * `dark` (optional) is forwarded to setTheme. While a plan is drawn every route dims to .25.
-     * @param {{routes, shapes, routeStops, stopRoutes, stops, hidden?:string[], focus?:string[]|null, dark?:boolean}} o
+     * @param {{routes, shapes, routeStops, stopRoutes, stops, hidden?:string[], focus?:string[]|null, order?:string[], dark?:boolean}} o
      */
     drawNetwork(o) {
       if (!o) return;

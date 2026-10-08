@@ -30,6 +30,8 @@
 .sb-stop{fill:var(--sb-stop-fill)}
 .sb-stop-multi{stroke:var(--sb-stop-multi)}
 .sb-halo{fill:transparent;cursor:pointer}
+/* direction-of-travel chevrons (map/chevrons.js); pane ignores pointer events */
+.sb-chev{fill:none;pointer-events:none}
 
 /* selected stop + picker highlights + accuracy */
 .sb-sel{stroke:var(--sb-accent);fill:var(--sb-stop-fill)}
@@ -64,6 +66,9 @@
 .sb-bus-hd::before{content:"";position:absolute;left:50%;top:-8px;margin-left:-5px;border:5px solid transparent;border-top:0;
   border-bottom:7px solid var(--c,#555);filter:drop-shadow(0 -1px 0 #fff)}
 .sb-bus.no-hd .sb-bus-hd{display:none}
+/* focused route (route detail / highlight): bigger, outlined arrow so travel direction reads at a glance */
+.sb-bus.is-focus .sb-bus-hd::before{top:-11px;margin-left:-7px;border-width:0 7px 10px;border-bottom-color:var(--c,#555);
+  filter:drop-shadow(0 -1.5px 0 #fff) drop-shadow(0 0 1px var(--sb-ring))}
 .sb-bus::after{content:"";position:absolute;inset:-6px;border-radius:13px;border:2px solid var(--c,#555);opacity:0;pointer-events:none}
 .sb-bus.sb-pulse::after{animation:sb-pulse 2s cubic-bezier(.2,.8,.2,1) 1}
 .sb-busicon{overflow:visible}

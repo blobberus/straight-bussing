@@ -222,3 +222,68 @@ export function alongShape(shapeLines, routeStopsList, board, alight, fallbackLa
     return fb;
   }
 }
+
+/**
+ * Evenly spaced marks along a projected (pixel) polyline, for direction-of-travel chevrons.
+ * @param {Array<[number, number]>} px [[x, y], ...] in pixels (any consistent pixel space)
+ * @param {number} spacing pixels between marks (> 0)
+ * @param {{start?:number, max?:number}} [o] first mark offset (default spacing / 2), max marks (default 600)
+ * @returns {Array<{x:number, y:number, angle:number}>} angle = atan2(dy, dx) of the segment, radians
+ */
+export function marksAlong(px, spacing, o = {}) {
+  const out = [];
+  if (!Array.isArray(px) || px.length < 2 || !(spacing > 0)) return out;
+  const max = o.max ?? 600;
+  let next = o.start ?? spacing / 2, run = 0;
+  for (let i = 1; i < px.length && out.length < max; i++) {
+    const [x0, y0] = px[i - 1], [x1, y1] = px[i];
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    if (!(len > 0)) continue;
+    const angle = Math.atan2(y1 - y0, x1 - x0);
+    while (next <= run + len && out.length < max) {
+      const t = (next - run) / len;
+      out.push({ x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t, angle });
+      next += spacing;
+    }
+    run += len;
+  }
+  return out;
+}
+
+/**
+ * The three points of a chevron ("V" pointing along `angle`) centered on the mark.
+ * @param {{x:number, y:number, angle:number}} m
+ * @param {number} size arm length in pixels
+ * @returns {Array<[number, number]>} [armA, tip, armB]
+ */
+export function chevronPx(m, size) {
+  const c = Math.cos(m.angle), s = Math.sin(m.angle), h = size * 0.45;
+  const tip = [m.x + c * h, m.y + s * h];
+  const arm = (a) => [tip[0] + size * Math.cos(m.angle + a), tip[1] + size * Math.sin(m.angle + a)];
+  return [arm(Math.PI * 0.78), tip, arm(-Math.PI * 0.78)];
+}
+
+/**
+ * Does a shape line run in the route's stop order (= the direction buses travel)? Votes on the
+ * nearest-vertex index of consecutive stops; a loop's wrap-around is a single vote. Too little
+ * evidence (fewer than 2 usable stops) counts as forward.
+ * @param {Array<[number, number]>} line shape [[lat, lon], ...]
+ * @param {Array<[number, number]|{lat, lon}>} stopPts stops in route order
+ * @returns {boolean}
+ */
+export function runsForward(line, stopPts) {
+  const pts = normLatLngs(line), sp = normLatLngs(stopPts);
+  if (pts.length < 2 || sp.length < 2) return true;
+  const k = Math.cos(pts[0][0] * RAD);
+  const idx = sp.map((p) => {
+    let best = Infinity, bi = -1;
+    for (let i = 0; i < pts.length; i++) {
+      const d = (pts[i][0] - p[0]) ** 2 + ((pts[i][1] - p[1]) * k) ** 2;
+      if (d < best) { best = d; bi = i; }
+    }
+    return bi;
+  });
+  let up = 0, down = 0;
+  for (let i = 1; i < idx.length; i++) { if (idx[i] > idx[i - 1]) up++; else if (idx[i] < idx[i - 1]) down++; }
+  return up >= down;
+}

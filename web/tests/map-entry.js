@@ -9,6 +9,7 @@ if (q.has('demo')) {
     await import('./map-geometry.js');
     await import('./map-style.js');
     await import('./map-layers.js');
+    await import('./map-direction.js');
   } catch (e) {
     lib.test('import map test modules', () => { throw e; });
   }
