@@ -34,7 +34,7 @@
     const P = (typeof window !== "undefined" && window.Predict) || null;
     const pt = (id) => ({ id, name: stops[id]?.name || id, lat: stops[id].lat, lon: stops[id].lon });
     const walkOnlyM = walkM(from, to);
-    const result = { options: [], walkOnly: { m: Math.round(walkOnlyM), min: Math.max(1, Math.round(walkMin(walkOnlyM))) } };
+    const result = { now: t0, options: [], walkOnly: { m: Math.round(walkOnlyM), min: Math.max(1, Math.round(walkMin(walkOnlyM))) } };
 
     const cache = new Map();
     function ride(rid, seq, path, w) { // minutes for stop index path
@@ -72,17 +72,17 @@
     for (const rid of Object.keys(D.routeStops || {})) {
       const seq = seqs[rid] = seqOf(D.routeStops[rid]); const bo = [], al = [];
       seq.ids.forEach((id, i) => { const s = stops[id]; if (!s) return;
-        const d1 = walkM(from, s), d2 = walkM(to, s); if (d1 <= MAX_WALK) bo.push({ i, d: d1 }); if (d2 <= MAX_WALK) al.push({ i, d: d2 }); });
+        const d1 = walkM(from, s) + (opts.lateStops?.[id] || 0) * WALK_M_MIN, d2 = walkM(to, s); if (d1 <= MAX_WALK) bo.push({ i, d: d1 }); if (d2 <= MAX_WALK) al.push({ i, d: d2 }); });
       near[rid] = { bo, al };
     }
 
     const cands = [];
-    const legWalk = (a, b, m, label) => ({ type: "walk", from: a, to: b, m: Math.round(m), min: walkMin(m), label });
+    const legWalk = (a, b, m, label) => ({ type: "walk", from: a, to: b, m: Math.round(m), min: walkMin(m), est: walkMin(m), label });
     const label = (p, name) => ({ lat: p.lat, lon: p.lon, name });
     function busLeg(rid, seq, path, w, r) {
       const ids = path.map((k) => seq.ids[k]);
       return { type: "bus", rid, board: pt(ids[0]), alight: pt(ids[ids.length - 1]), path: ids.map((id) => ({ lat: stops[id].lat, lon: stops[id].lon })), stopsPassed: ids.length - 1,
-        wait: w.min, waitLive: w.live, ride: r.min, source: r.source, conf: r.conf };
+        wait: w.min, waitLive: w.live, t: w.live ? w.t : null, ride: r.min, source: r.source, conf: r.conf };
     }
 
     for (const rid of Object.keys(seqs)) {
@@ -144,7 +144,7 @@
     for (const c of cands) {
       if (result.options.length >= MAX_OPTS) break;
       if (c.total > result.walkOnly.min + 45) continue; // absurdly longer than walking
-      c.arrive = t0 + c.total * 60; c.totalMin = Math.max(1, Math.round(c.total)); result.options.push(c);
+      c.arrive = t0 + c.total * 60; c.t0 = t0; c.totalMin = Math.max(1, Math.round(c.total)); result.options.push(c);
     }
     return result;
   }

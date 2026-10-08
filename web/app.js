@@ -207,7 +207,8 @@ function viewAbout() {
   return `<div id="themeMount" style="margin-bottom:12px"></div><p><b>Straight Bussing is an unofficial student project.</b> It is not affiliated with or endorsed by the University or by Passio. Times are predictions and can be wrong.</p>
   <p>For safety or NightRide, use the official service: <a href="tel:7737028181">773.702.8181</a> or <a href="https://safety-security.uchicago.edu/Transportation" target="_blank" rel="noopener">the official transportation page</a>.</p>
   <p class="muted">Data: public Passio GTFS feeds. No ads, no account, no tracking. Your location, if you allow it, stays on your device.</p>
-  <p class="muted">Directions: if you type a place or address, the text you type (and nothing else) is sent to <b>photon.komoot.io</b> (OpenStreetMap geocoder) to find it. Station names are searched on your device. Bus times in Directions are estimates.</p>`;
+  <p class="muted">Directions: if you type a place or address, the text you type (and nothing else) is sent to <b>photon.komoot.io</b> (OpenStreetMap geocoder) to find it. Station names are searched on your device. Bus times in Directions are estimates.</p>
+  <p class="muted">Walking directions: the start and end points of each walking leg (rounded to about 10 m) are sent to <b>routing.openstreetmap.de</b> (OpenStreetMap pedestrian routing), or to <b>valhalla1.openstreetmap.de</b> if that is down, to follow sidewalks. If both fail, a straight-line estimate is used.</p>`;
 }
 const activeAlerts = () => S.alerts.filter((a) => !(a.active_period || []).length || a.active_period.some((w) => (!w.start || w.start <= now()) && (!w.end || w.end >= now())));
 
@@ -503,17 +504,49 @@ function dirPlan(fresh) {
   if (!D.from || !D.to) { D.opts = null; renderRes(); dirDraw(false); return; }
   if (!S.loaded) { renderRes(); return; }
   if (!window.Planner) { D.opts = { options: [], walkOnly: { min: 0, m: 0 }, err: true }; renderRes(); return; }
-  D.opts = Planner.plan({ from: D.from, to: D.to, now: now(), data: { stops: S.stops, routes: S.routes, routeStops: S.routeStops, trips: S.trips, buses: S.buses } });
+  if (fresh || !D.late) D.late = {};
+  const planOnce = () => Planner.plan({ from: D.from, to: D.to, now: now(), lateStops: D.late || {}, data: { stops: S.stops, routes: S.routes, routeStops: S.routeStops, trips: S.trips, buses: S.buses } });
+  D.opts = planOnce();
+  for (let n = 0; n < 2 && window.Walk; n++) { if (!refineWalks(D.opts)) break; D.opts = planOnce(); } // missed first bus with the real walk: re-plan with that stop delayed
+  if (window.Walk) { refineWalks(D.opts, true); }
   const o = D.opts.options; let k = fresh ? -1 : o.findIndex((x) => x.key === D.selKey);
   if (k < 0) k = o.length ? 0 : -1; const changed = k !== D.sel || o[k]?.key !== D.selKey; D.sel = k; D.selKey = o[k]?.key;
   renderRes(); if (fresh || changed) dirDraw(fresh);
+}
+/* Refine walk legs of the top options with sidewalk routes (cached; missing ones are fetched async, max ~6 calls).
+   Returns true if the first bus was missed with the real walk time (D.late updated; caller re-plans). */
+let walkTimer = 0;
+function refineWalks(opts, final) {
+  if (!opts) return false; let calls = 0, missed = false; const pend = [];
+  const want = (a, b) => { const hit = Walk.peek(a, b); if (hit) return hit; if (calls < 6) { calls++; pend.push(Walk.route(a, b)); } return Walk.estimate(a, b); };
+  const sameTrip = (f, t) => D.from === f && D.to === t;
+  const f0 = D.from, t0 = D.to, top = opts.options.slice(0, 3), keep = [];
+  for (const o of top) {
+    for (const l of o.legs) if (l.type === "walk") { const r = want(l.from, l.to); l.m = r.m; l.min = r.m / 80; l.coords = r.source === "router" ? r.coords : null; l.src = r.source; }
+    let tt = opts.now || now(), ok = true;
+    o.legs.forEach((l, i) => {
+      if (l.type === "walk") { tt += l.min * 60; return; }
+      if (l.t) { if (l.t < tt - 20) { ok = false; if (i === 1 && o.legs[0].type === "walk" && !final) { const k = l.board.id; D.late[k] = Math.max(D.late[k] || 0, o.legs[0].min - o.legs[0].est + 0.5); missed = true; } return; }
+        l.wait = Math.max(0, (l.t - tt) / 60); tt = Math.max(l.t, tt) + l.ride * 60; }
+      else tt += (l.wait + l.ride) * 60;
+    });
+    if (!ok) continue;
+    o.total = (tt - (opts.now || now())) / 60; o.totalMin = Math.max(1, Math.round(o.total)); o.arrive = tt; keep.push(o);
+  }
+  if (missed && !final) return true;
+  const dropped = top.length - keep.length;
+  opts.options = keep.concat(opts.options.slice(3)); opts.options.sort((x, y) => x.total - y.total);
+  if (!opts.options.length && dropped) opts.missedAll = true;
+  if (!opts.options.length && D.from && D.to && opts.walkOnly) { const r = want(D.from, D.to); opts.walkOnly = { m: r.m, min: Math.max(1, Math.round(r.m / 80)), coords: r.source === "router" ? r.coords : null, src: r.source }; }
+  if (pend.length && final) Promise.all(pend).then(() => { clearTimeout(walkTimer); walkTimer = setTimeout(() => { if (S.view === "dir" && sameTrip(f0, t0)) dirPlan(false); }, 30); });
+  return false;
 }
 const bold = (t) => `<b>${esc(t)}</b>`;
 function stepsHTML(o) {
   const li = (ic, h) => `<li><span class="si">${ic}</span><span>${h}</span></li>`;
   let tt = now();
   return '<ol class="steps">' + o.legs.map((l) => {
-    if (l.type === "walk") { tt += l.min * 60; return li("&#128694;", `Walk ${Math.max(1, Math.round(l.min))} min (${l.m} m) to ${bold(l.to.name)}`); }
+    if (l.type === "walk") { tt += l.min * 60; return li("&#128694;", `Walk ${Math.max(1, Math.round(l.min))} min (${l.m} m) to ${bold(l.to.name)} <span class="est">${l.src === "router" ? "sidewalk route" : "estimate"}</span>`); }
     const w = Math.round(l.wait), r = Math.max(1, Math.round(l.ride)), tb = tt + l.wait * 60, ta = tb + l.ride * 60; tt = ta;
     return li(chip(l.rid), `Bus arrives at ${bold(l.board.name)} <b>${esc(clock(tb))}</b> <span class="est">${l.waitLive ? "live" : "est."}</span><br><span class="muted">Wait ~${w < 1 ? "&lt;1" : w} min · Ride ~${r} min <span class="est">est.</span> to ${esc(l.alight.name)} (${esc(clock(ta))}) · ${l.stopsPassed} stop${l.stopsPassed > 1 ? "s" : ""} · ${esc(SRC[l.source] || l.source)}</span>`);
   }).join("") + "</ol>";
@@ -559,12 +592,12 @@ function dirDraw(fit) {
   if (D.from) dot(D.from, "#1e9e4a"); if (D.to) dot(D.to, "#c4291c");
   const o = D.opts?.options[D.sel];
   if (o) for (const l of o.legs) {
-    if (l.type === "walk") L.polyline([[l.from.lat, l.from.lon], [l.to.lat, l.to.lon]], { color: acc, weight: 4, dashArray: "2 8", lineCap: "round", interactive: false }).addTo(dirLayer);
+    if (l.type === "walk") L.polyline(l.coords || [[l.from.lat, l.from.lon], [l.to.lat, l.to.lon]], { color: acc, weight: 4, dashArray: "2 8", lineCap: "round", interactive: false }).addTo(dirLayer);
     else { const ll = alongShape(l.rid, l.board, l.alight, l.path.map((p) => [p.lat, p.lon])); pts.push(...ll);
       L.polyline(ll, { color: "#fff", weight: 9, opacity: 0.9, lineCap: "round", lineJoin: "round", interactive: false }).addTo(dirLayer);
       L.polyline(ll, { color: color(l.rid), weight: 6, lineCap: "round", lineJoin: "round", interactive: false }).addTo(dirLayer);
       for (const p of [l.board, l.alight]) L.circleMarker([p.lat, p.lon], { radius: 6, color: color(l.rid), weight: 3, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(dirLayer); }
-  } else if (D.from && D.to && D.opts && !D.opts.options.length) L.polyline([[D.from.lat, D.from.lon], [D.to.lat, D.to.lon]], { color: acc, weight: 4, dashArray: "2 8", lineCap: "round", interactive: false }).addTo(dirLayer);
+  } else if (D.from && D.to && D.opts && !D.opts.options.length) L.polyline(D.opts.walkOnly?.coords || [[D.from.lat, D.from.lon], [D.to.lat, D.to.lon]], { color: acc, weight: 4, dashArray: "2 8", lineCap: "round", interactive: false }).addTo(dirLayer);
   if (fit && pts.length > 1) map.fitBounds(L.latLngBounds(pts), { paddingBottomRight: [0, visHeight()], paddingTopLeft: [0, 70], maxZoom: 17, animate: true });
 }
 
