@@ -20,6 +20,7 @@ import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibi
 import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, cleanName } from "../../core/custom.js";
 import { routeChip, emptyState, skeleton } from "../components.js";
 import { OFFICIAL_HTML } from "./pick.js";
+import { stationToggleHTML } from "./journey.js";
 
 const EYE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYEOFF = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z" opacity=".45"/><circle cx="12" cy="12" r="3" opacity=".45"/><path d="M3 3l18 18"/></svg>';
@@ -59,14 +60,14 @@ export function groupRoutes(state) {
 }
 
 /**
- * The "Routes to <station> x" chip, or '' when no filter is active.
+ * The "Routes to <station> x" chip plus the "Only show these routes" journey toggle, or '' when no filter is active.
  * @param {object} state
  * @returns {string}
  */
 export function filterChipHTML(state) {
   const f = state.routeFilter;
   if (!f) return "";
-  return `<div class="v-fchip" role="status"><span class="v-fchip-t">Routes to ${esc(f.label || "station")}</span><button type="button" class="v-fchip-x" data-action="routes:clear-filter" aria-label="Clear station filter, show all routes"><span aria-hidden="true">&times;</span></button></div>`;
+  return `<div class="v-fchip" role="status"><span class="v-fchip-t">Routes to ${esc(f.label || "station")}</span><button type="button" class="v-fchip-x" data-action="routes:clear-filter" aria-label="Clear station filter, show all routes"><span aria-hidden="true">&times;</span></button></div>${stationToggleHTML(state)}`;
 }
 
 const nameOf = (state, id) => { const r = state.routes?.[id] || {}; return r.long || r.short || id; };
