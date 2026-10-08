@@ -1,0 +1,54 @@
+/* route view styles (ROUTE agent; see docs/ARCHITECTURE.md ownership). Builds on .v-tl in views.css. */
+
+/* today's hours under the status line */
+.r-today { margin: -4px 0 var(--s2); }
+.r-k { font-weight: 600; color: var(--text); margin-right: 4px; }
+.r-sched { font-weight: 600; color: var(--text-2); }
+.r-sched.is-on { color: var(--live); }
+.r-sched.is-on::before { content: "\25CF "; }            /* dot + words: state not by color alone */
+
+/* where the buses are (text, also the accessible description of the rail) */
+.r-buslist { list-style: none; margin: var(--s2) 0; padding: 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
+.r-buslist li { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; }
+
+.r-dot { flex: none; width: 8px; height: 8px; border-radius: 2px; transform: translateY(-1px); }
+
+/* the parallel bus rail: a thin line beside the stop line, chevrons = direction of travel */
+.r-tl .v-tlstop { padding-left: 76px; }
+.r-seg { position: absolute; left: 47px; top: 50%; height: 100%; width: 2px; background: var(--hairline-strong); color: var(--text-2); pointer-events: none; }
+.r-seg .r-chev { position: absolute; left: -4px; top: 50%; margin-top: -3px; }
+.r-tl .v-tlstop.is-loopend .r-seg { height: 50%; }
+.r-bus { position: absolute; left: 48px; z-index: 1; transform: translate(-50%, -50%); min-width: 26px; max-width: 46px; height: 22px; padding: 0 5px; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center; border-radius: 6px; font-size: var(--fs-cap); font-weight: 700; line-height: 1;
+  white-space: nowrap; overflow: hidden; box-shadow: 0 0 0 2px var(--bg-solid), 0 1px 3px rgba(0, 0, 0, .25); pointer-events: none;
+  transition: top var(--d-swap, .25s) ease; }
+.r-bus::after { content: ""; position: absolute; left: 50%; bottom: -5px; margin-left: -4px; border: 4px solid transparent; border-bottom: 0; border-top-color: inherit; }
+.r-bus.is-stale { opacity: .55; outline: 2px dashed var(--text-2); outline-offset: 1px; }
+.r-loop { margin: 0 0 var(--s2) 40px; }
+
+/* hours & service */
+.r-svc { margin-top: var(--s4); }
+.r-h { margin: 0 0 var(--s2); font-size: var(--fs-row); line-height: var(--lh-row, 1.3); font-weight: 650; }
+.r-h3 { margin: var(--s3) 0 var(--s1); font-size: var(--fs-body); line-height: var(--lh-body); font-weight: 600; color: var(--text-2); }
+.r-week { padding: var(--s2) var(--s4); }
+.r-wrow { display: flex; gap: var(--s3); padding: 6px 0; font-size: var(--fs-body); line-height: var(--lh-body); }
+.r-wrow + .r-wrow { border-top: 1px solid var(--hairline); }
+.r-wrow dt { flex: 0 0 84px; font-weight: 600; }
+.r-wrow dd { margin: 0; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.r-changes { list-style: none; padding: var(--s2) var(--s4); font-size: var(--fs-body); line-height: var(--lh-body); }
+.r-changes li { padding: 6px 0; }
+.r-changes li + li { border-top: 1px solid var(--hairline); }
+.r-tag { display: inline-block; margin-right: 4px; padding: 0 6px; border-radius: var(--r-chip); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-cap); font-weight: 700; }
+.r-nochange { margin: var(--s2) 0; }
+.r-hours { padding: var(--s3) var(--s4); }
+.r-bars { display: flex; align-items: flex-end; gap: 3px; height: 76px; padding-bottom: 16px; position: relative; }
+.r-bar { flex: 1 1 0; min-width: 6px; height: 100%; position: relative; display: flex; flex-direction: column; justify-content: flex-end; }
+.r-barfill { display: block; border-radius: 3px 3px 0 0; background: var(--accent-fill); min-height: 3px; }
+.r-barn { display: block; margin-bottom: 2px; text-align: center; font-size: 10px; line-height: 1; color: var(--text-2); font-variant-numeric: tabular-nums; order: -1; }
+.r-bars.is-dense .r-barn { display: none; }
+.r-barfill.is-zero { min-height: 1px; background: var(--hairline-strong); }
+.r-barh { position: absolute; left: -6px; bottom: -15px; font-size: 10px; line-height: 1; color: var(--text-2); white-space: nowrap; }
+.r-bartext { margin: var(--s2) 0 0; font-size: var(--fs-cap); line-height: var(--lh-cap); }
+
+@media (prefers-reduced-motion: reduce) { .r-bus { transition: none; } }
+@media (prefers-contrast: more) { .r-seg { background: currentColor; } .r-bus { outline: 1px solid currentColor; } }

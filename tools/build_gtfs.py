@@ -2,7 +2,7 @@
 """Download the Passio GTFS zip and convert it to compact JSON in web/data/."""
 import csv, io, json, statistics, sys, zipfile, urllib.request
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 URL = "https://passio3.com/chicago/passioTransit/gtfs/google_transit.zip"
@@ -99,6 +99,179 @@ def build_segments(trips, route_stops, sched, freqs=()):
     return out
 
 
+DAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+CAL_COLS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+
+
+def ymd(v):
+    try:
+        return datetime.strptime(v.strip(), "%Y%m%d").date()
+    except (AttributeError, ValueError):
+        return None
+
+
+def hhmm(sec):
+    return f"{sec // 3600:02d}:{sec % 3600 // 60:02d}"
+
+
+def trip_intervals(trips, sched, freqs):
+    """trip_id -> [(start_s, end_s)] service-day seconds; frequency trips expand from their template."""
+    by_trip = defaultdict(list)
+    for f in freqs:
+        by_trip[f["trip_id"]].append(f)
+    out = {}
+    for t in trips:
+        tid = t["trip_id"]
+        times = [x for st in sched.get(tid, ()) for x in (st[2], st[3]) if x is not None]
+        if not times:
+            continue
+        start, end = min(times), max(times)
+        fs = by_trip.get(tid)
+        if not fs:
+            out[tid] = [(start, end)]
+            continue
+        inst = []
+        for f in fs:
+            a, b = hms(f.get("start_time")), hms(f.get("end_time"))
+            try:
+                hw = int(f.get("headway_secs") or 0)
+            except ValueError:
+                hw = 0
+            if a is None or b is None or hw <= 0:
+                continue
+            t0 = a
+            while t0 < b:
+                inst.append((t0, t0 + (end - start)))
+                t0 += hw
+        out[tid] = inst or [(start, end)]
+    return out
+
+
+def day_summary(intervals):
+    """[(start,end)] for one route on one service day -> {first,last,trips,buses[24]} or None."""
+    iv = [(a, b) for a, b in intervals if b >= a]
+    if not iv:
+        return None
+    buses = [0] * 24
+    ev = sorted([(a, 1) for a, b in iv if b > a] + [(b, -1) for a, b in iv if b > a])
+    cur, i = 0, 0
+    while i < len(ev):                      # sweep: max concurrent trips touching each local hour
+        t = ev[i][0]
+        while i < len(ev) and ev[i][0] == t:
+            cur += ev[i][1]
+            i += 1
+        nxt = ev[i][0] if i < len(ev) else t
+        if cur > 0:
+            for h in range(t // 3600, (max(nxt - 1, t)) // 3600 + 1):
+                buses[h % 24] = max(buses[h % 24], cur)
+    for a, b in iv:                         # zero-length trips still mean a bus that hour
+        buses[(a // 3600) % 24] = max(buses[(a // 3600) % 24], 1)
+    spans = service_spans(iv)
+    return {"first": spans[0][0], "last": spans[-1][1], "trips": len(iv), "buses": buses,
+            "spans": [list(x) for x in spans]}
+
+
+def service_spans(iv, min_gap=60):
+    """Service windows from trip intervals folded onto one 24 h clock (night routes write after-midnight
+    trips as 00:xx on the same service day). Windows split at gaps >= min_gap minutes; the day starts
+    after the longest gap. -> [("HH:MM", "HH:MM")], end may be >= 24:00."""
+    cov = [False] * 1440
+    for a, b in iv:
+        for m in range(a // 60, max(a // 60, (b - 1) // 60) + 1):
+            cov[m % 1440] = True
+    if all(cov):
+        return [("00:00", "24:00")]
+    gaps, m = [], 0                          # circular uncovered runs (start, length)
+    start = cov.index(False)
+    while m < 1440:
+        i = (start + m) % 1440
+        if not cov[i]:
+            n = 0
+            while n < 1440 and not cov[(i + n) % 1440]:
+                n += 1
+            gaps.append((i, n))
+            m += n
+        else:
+            m += 1
+    longest = max(gaps, key=lambda g: g[1])
+    day0 = (longest[0] + longest[1]) % 1440      # first covered minute after the longest gap
+    out, cur, m = [], None, 0
+    while m < 1440:
+        i = (day0 + m) % 1440
+        if cov[i]:
+            if cur is None:
+                cur = [day0 + m, day0 + m + 1]
+            else:
+                cur[1] = day0 + m + 1
+            m += 1
+            continue
+        n = 0
+        while m + n < 1440 and not cov[(day0 + m + n) % 1440]:
+            n += 1
+        if cur and (n >= min_gap or m + n >= 1440):
+            out.append(cur)
+            cur = None
+        m += n
+    if cur:
+        out.append(cur)
+    base = (out[0][0] // 1440) * 1440            # keep the first start within 00:00-23:59
+    return [(hhmm((a - base) * 60), hhmm((b - base) * 60)) for a, b in out]
+
+
+def build_service(z, trips, sched, freqs, today=None):
+    """Per-route hours by weekday, scheduled buses per hour, calendar_dates changes in the feed window."""
+    info = (rows(z, "feed_info.txt") or [{}])[0]
+    today = today or datetime.now(timezone.utc).date()
+    w0 = ymd(info.get("feed_start_date", "")) or today
+    w1 = ymd(info.get("feed_end_date", "")) or (w0 + timedelta(days=60))
+    cal = {}
+    for c in rows(z, "calendar.txt"):
+        a, b = ymd(c.get("start_date", "")), ymd(c.get("end_date", ""))
+        if a and b and (b < w0 or a > w1):
+            continue                        # not in effect during this feed
+        cal[c["service_id"]] = {"days": {k for k, col in zip(DAY_KEYS, CAL_COLS) if c.get(col, "0").strip() == "1"},
+                                "a": a, "b": b}
+    cdates = defaultdict(dict)              # date -> {service_id: 1 added | 2 removed}
+    for r in rows(z, "calendar_dates.txt"):
+        d = ymd(r.get("date", ""))
+        if d and w0 <= d <= w1 and r.get("exception_type", "").strip() in ("1", "2"):
+            cdates[d][r["service_id"]] = int(r["exception_type"])
+    iv = trip_intervals(trips, sched, freqs)
+    by_route = defaultdict(lambda: defaultdict(list))   # rid -> service_id -> [(s,e)]
+    for t in trips:
+        by_route[t["route_id"]][t.get("service_id", "")] += iv.get(t["trip_id"], [])
+
+    def active(svcs, d):
+        k = DAY_KEYS[d.weekday()]
+        on = {s for s in svcs if s in cal and k in cal[s]["days"] and (not cal[s]["a"] or cal[s]["a"] <= d <= cal[s]["b"])}
+        for s, typ in cdates.get(d, {}).items():
+            if s in svcs:
+                (on.add if typ == 1 else on.discard)(s)
+        return on
+
+    out = {}
+    for rid, svcs in sorted(by_route.items()):
+        days = {}
+        for k in DAY_KEYS:
+            on = [s for s in svcs if s in cal and k in cal[s]["days"]]
+            days[k] = day_summary([x for s in on for x in svcs[s]])
+        exc = []
+        for d in sorted(cdates):
+            k = DAY_KEYS[d.weekday()]
+            regular = {s for s in svcs if s in cal and k in cal[s]["days"] and (not cal[s]["a"] or cal[s]["a"] <= d <= cal[s]["b"])}
+            now_on = active(svcs, d)
+            if now_on == regular:
+                continue
+            got = day_summary([x for s in now_on for x in svcs[s]])
+            reg_trips = days[k]["trips"] if days[k] else 0
+            e = {"date": d.isoformat(), "type": "removed" if (got["trips"] if got else 0) < reg_trips else "added", "days": k}
+            e["hours"] = {"first": got["first"], "last": got["last"], "trips": got["trips"], "spans": got["spans"]} if got else None
+            exc.append(e)
+        out[rid] = {"days": days, "exceptions": exc}
+    return {"generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "feed": {"start": w0.isoformat(), "end": w1.isoformat()}, "routes": out}
+
+
 def dump(name, obj):
     (OUT / name).write_text(json.dumps(obj, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
 
@@ -178,6 +351,7 @@ def main():
     dump("shapes.json", dict(shapes))
     dump("route_stops.json", route_stops)
     dump("segments.json", {"v": 1, "routes": build_segments(trips, route_stops, sched, rows(z, "frequencies.txt"))})
+    dump("service.json", build_service(z, trips, sched, rows(z, "frequencies.txt")))
     dump("meta.json", {"generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                        "source": URL})
 

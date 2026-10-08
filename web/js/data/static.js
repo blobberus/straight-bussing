@@ -9,6 +9,7 @@ export const STATIC_FILES = Object.freeze([
   ['shapes', 'shapes.json', true],
   ['routeStops', 'route_stops.json', true],
   ['addresses', 'stop_addresses.json', false],
+  ['service', 'service.json', false],
 ]);
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -61,7 +62,27 @@ export function cleanSlice(key, v) {
       if (Array.isArray(x)) out[id] = x.filter((s) => s != null).map(String);
     } else if (key === 'addresses') {
       if (isObj(x) && x.address) out[id] = x;
+    } else if (key === 'service') {
+      if (id === 'routes') out.routes = cleanServiceRoutes(x);
+      else if (id === 'feed' || id === 'generated') out[id] = x;
     } else out[id] = x;
+  }
+  return out;
+}
+
+/**
+ * Keep only well-formed route entries of service.json ({days:{mon..sun}, exceptions:[]}).
+ * @param {any} v service.routes
+ * @returns {object}
+ */
+function cleanServiceRoutes(v) {
+  const out = {};
+  if (!isObj(v)) return out;
+  for (const [rid, r] of Object.entries(v)) {
+    if (!isObj(r) || !isObj(r.days)) continue;
+    const days = {};
+    for (const k of ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']) days[k] = isObj(r.days[k]) ? r.days[k] : null;
+    out[rid] = { days, exceptions: Array.isArray(r.exceptions) ? r.exceptions.filter(isObj) : [] };
   }
   return out;
 }
@@ -80,7 +101,7 @@ export function deriveStopRoutes(routeStops) {
 }
 
 /**
- * Load routes/stops/shapes/route_stops (+ optional stop_addresses) into the store, derive
+ * Load routes/stops/shapes/route_stops (+ optional stop_addresses, service) into the store, derive
  * stopRoutes, then set staticLoaded:true in one patch. Never rejects; failed files leave empty slices.
  * @param {{set(patch:object):void}} store
  * @param {{base?:string, fetch?:typeof fetch}} [opts] base URL of the data folder (default 'data/')

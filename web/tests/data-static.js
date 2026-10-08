@@ -9,6 +9,9 @@ const FILES = {
   'shapes.json': { r1: [[[41.79, -87.6], [41.8, -87.59]]], r2: [] },
   'route_stops.json': { r1: ['s1', 's2', 's1'], r2: ['s2'] },
   'stop_addresses.json': { s1: { address: '1 Main St' }, s2: { street: 'no address field' } },
+  'service.json': { generated: 'x', feed: { start: '2026-10-07', end: '2026-11-07' }, routes: {
+    r1: { days: { mon: { first: '07:00', last: '19:00', trips: 3, buses: [] }, sat: 'bad' }, exceptions: [{ date: '2026-11-26', type: 'removed', hours: null }, 5] },
+    r2: 'bad' } },
 };
 const fileOf = (url) => url.split('/').pop();
 const okFetch = (overrides = {}) => stubFetch((url) => {
@@ -32,6 +35,10 @@ test('static: loads all files, derives stopRoutes, sets staticLoaded in one patc
   eq(s.routeStops.r1, ['s1', 's2', 's1'], 'loop kept (first==last)');
   eq(s.stopRoutes, { s1: ['r1'], s2: ['r1', 'r2'] });
   eq(s.addresses, { s1: { address: '1 Main St' } });
+  eq(Object.keys(s.service.routes), ['r1'], 'bad service route dropped');
+  eq(s.service.routes.r1.days.mon.first, '07:00');
+  eq([s.service.routes.r1.days.sat, s.service.routes.r1.days.sun], [null, null], 'missing/bad days -> null');
+  eq(s.service.routes.r1.exceptions.length, 1, 'bad exception dropped');
   ok(f.calls.every((c) => c.url.startsWith('data/')), 'uses base');
   await new Promise((r) => setTimeout(r, 0));
   eq(notes, 1, 'single store notification');
@@ -62,6 +69,18 @@ test('static: optional stop_addresses 404 -> addresses {} without retry', async 
   eq(Object.keys(store.get().stops).length, 2);
 });
 
+test('static: optional service.json 404 -> service {} without retry, never blocks', async () => {
+  const store = createStore({});
+  let n = 0;
+  const f = okFetch({ 'service.json': () => { n++; return res(null, 404); } });
+  const out = await loadStatic(store, { fetch: f });
+  eq(n, 1);
+  eq(out.failed, ['service.json']);
+  eq(store.get().service, {});
+  eq(store.get().staticLoaded, true);
+  eq(Object.keys(store.get().routes).length, 2);
+});
+
 test('static: bad JSON, thrown fetch and non-object bodies never reject', async () => {
   const store = createStore({});
   const f = okFetch({
@@ -80,9 +99,9 @@ test('static: bad JSON, thrown fetch and non-object bodies never reject', async 
 test('static: everything failing still sets staticLoaded with empty slices', async () => {
   const store = createStore({});
   const out = await loadStatic(store, { fetch: async () => { throw new TypeError('offline'); } });
-  eq(out.failed.length, 5);
+  eq(out.failed.length, 6);
   const s = store.get();
-  eq([s.routes, s.stops, s.shapes, s.routeStops, s.stopRoutes, s.addresses], [{}, {}, {}, {}, {}, {}]);
+  eq([s.routes, s.stops, s.shapes, s.routeStops, s.stopRoutes, s.addresses, s.service], [{}, {}, {}, {}, {}, {}, {}]);
   eq(s.staticLoaded, true);
 });
 
@@ -102,5 +121,7 @@ test('static: real web/data files load and cross-reference', async () => {
   ok(Object.keys(s.routes).length > 0, 'routes');
   ok(Object.keys(s.stops).length > 0, 'stops');
   ok(Object.keys(s.stopRoutes).length > 0, 'stopRoutes');
+  ok(Object.keys(s.service.routes || {}).length > 0, 'service.json routes');
+  for (const rid of Object.keys(s.service.routes)) ok(s.routes[rid], 'service route exists: ' + rid);
   for (const [rid, ids] of Object.entries(s.routeStops)) for (const id of ids) ok(s.stopRoutes[id].includes(rid), 'stopRoutes covers ' + id);
 });
