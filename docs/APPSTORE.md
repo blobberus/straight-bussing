@@ -14,7 +14,7 @@ Researched 2026-10-07. Items marked (est.) are not verified from a first-party p
 | Proxy hosting (small) | $0 | $60 | $120 | Free tiers (Cloudflare Workers, Fly, Render) vs about $5-10/mo VPS (est.). |
 | Domain | $0 | $12 | $20 | Optional. Low uses a github.io or workers.dev URL (est.). |
 | Privacy policy / support page hosting | $0 | $0 | $0 | GitHub Pages. Apple requires a policy URL. |
-| Push notifications (APNs) | $0 | $0 | $10 | APNs itself is free. You need a server to send; the proxy can do it. High covers a paid push relay. |
+| Push notifications (APNs) | $0 | $0 | $10 | APNs itself is free. You need a server to send; the proxy can do it (also drives Live Activity push-to-update). Time Sensitive notification entitlement is free. High covers a paid push relay. |
 | **Year 1 total** | **~$99** | **~$170-200** | **~$900** | High includes buying a Mac. |
 | **Recurring per year** | **$99** | **~$170** | **~$300** | Apple fee plus hosting and domain. |
 
@@ -51,8 +51,9 @@ Researched 2026-10-07. Items marked (est.) are not verified from a first-party p
 
 1. Now: ship and polish the PWA. It costs $0, installs from Safari "Add to Home Screen", and has no review risk. Get written Passio/UChicago permission in the meantime.
 2. If you want the App Store: use **Capacitor** with real native plugins (geolocation, local and push notifications, plus a small Swift WidgetKit extension). It reuses the existing code and can plausibly clear 4.2 if the native features are substantial.
-3. Go **SwiftUI** only if reviewers reject the Capacitor build under 4.2 or you want Live Activities and richer widgets. It is more work, and you would rewrite the map and UI.
+3. Go **SwiftUI** only if reviewers reject the Capacitor build under 4.2 or you want a MapKit-native feel. Live Activities, Dynamic Island and widgets work with Capacitor too, through a Swift Widget Extension plus a small custom plugin (see `conversion to appstore.md` sections 6-9). It is more work, and you would rewrite the map and UI.
 4. Budget about $100-200 for year 1 and use an individual account with CI or a borrowed Mac. Do not buy a Mac unless you go native.
+5. Locked-phone bus alerts (2 stops / 1 stop away) and an always-accurate Live Activity need APNs pushes from a small server (the proxy row above; APNs is free). Push tokens leaving the device must be declared in the privacy label.
 
 ## Sources
 - https://developer.apple.com/programs/enroll/
