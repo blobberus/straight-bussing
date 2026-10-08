@@ -37,6 +37,32 @@ def sum_lognormals(parts, rho=0.3):
     return math.log(mean) - s2 / 2, math.sqrt(s2)
 
 
+def interval(mu, sigma, dwell=0.0, scale=1.0, q_lo=0.1, q_hi=0.9):
+    """(p_lo, p50, p_hi) in SEGMENT seconds: log-normal run time (sigma widened by the calibrated
+    `scale`) shifted by the median dwell. Right-skewed: p_hi - p50 > p50 - p_lo."""
+    s = sigma * scale
+    return lognormal_q(mu, s, q_lo) + dwell, math.exp(mu) + dwell, lognormal_q(mu, s, q_hi) + dwell
+
+
+def calibrate_scale(preds, ys, target=0.8, lo=0.3, hi=6.0):
+    """Smallest sigma multiplier c whose out-of-sample 80% intervals cover `target` of the truths.
+    preds = [(mu, sigma, dwell)], ys = actual segment seconds. Coverage is monotone in c -> bisection.
+    (Split-conformal in spirit: calibrate the width on data the model did not see.)"""
+    if not ys:
+        return 1.0
+    Z = ND.inv_cdf(0.5 + target / 2)
+
+    def cov(c):
+        return sum(1 for (m, s, d), y in zip(preds, ys)
+                   if math.exp(m - Z * s * c) + d <= y <= math.exp(m + Z * s * c) + d) / len(ys)
+    if cov(hi) < target:
+        return hi
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        lo, hi = (lo, mid) if cov(mid) >= target else (mid, hi)
+    return hi
+
+
 def empirical_table(rows, min_n=20):
     """{(route, prev, stop, how): (n, p10, p50, p90)} from raw run times (buckets with n >= min_n)."""
     g = {}

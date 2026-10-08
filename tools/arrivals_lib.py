@@ -1,10 +1,9 @@
 """Shared helpers for the ground-truth arrival logger (stdlib only).
 
 Schema, geometry (distance along the route shape), America/Chicago time without tzdata,
-prediction ring buffer, CSV tail reader, and the per-vehicle arrival detector (Tracker).
+CSV row formatting and tail reader. The arrival detector itself is tools/arrival_detector.py.
 """
 import csv, io, json, math
-from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -18,8 +17,15 @@ COLUMNS = ("epoch,ts_utc,local_time,dow,hour,minute_of_day,route_id,route_name,t
 
 RADIUS_M = 40.0          # proximity arrival radius
 STOP_SPEED = 1.0         # m/s: "stopped" threshold for proximity arrivals
+DEPART_SPEED = 2.0       # m/s: moving this fast (or leaving the radius) ends the dwell
+NEAR_M = 120.0           # a passing report this close can still time a transition
+MAX_GAP = 60             # s: longest report gap we interpolate a transition across
+MAX_SKIP = 3             # stop_id may jump this many stops forward (skipped / missed stops)
+SAME_VISIT_S = 900       # same vehicle + same stop with nothing in between within 15 min = one visit
+MAX_SPEED = 30.0         # m/s: segment speeds above this are timing artefacts (left blank)
 MIN_PRED_AGE = 120       # predictions must be >= this old at arrival to count
 STATE_TTL = 3600         # forget a (vehicle, trip) after this many seconds silent
+HIST = 8                 # recent reports kept per (vehicle, trip) for back-dating arrivals
 
 try:
     from zoneinfo import ZoneInfo
@@ -34,9 +40,9 @@ def _nth_sunday(y, m, n):
     return first + timedelta(days=(6 - first.weekday()) % 7 + 7 * (n - 1))
 
 
-def chicago(epoch):
-    """-> naive local datetime (America/Chicago) for a UTC epoch."""
-    if _CHI is not None:
+def chicago(epoch, force_rule=False):
+    """-> naive local datetime (America/Chicago) for a UTC epoch (zoneinfo, else US DST rule)."""
+    if _CHI is not None and not force_rule:
         return datetime.fromtimestamp(epoch, _CHI).replace(tzinfo=None)
     d = datetime.fromtimestamp(epoch, timezone.utc)
     start = _nth_sunday(d.year, 3, 2).replace(hour=8)   # 2:00 CST = 08:00 UTC
@@ -123,7 +129,7 @@ class Static:
         return res
 
     def dist_between(self, rid, i, j):
-        """Metres along the route from stop index i to j (i<j) -> (metres, method)."""
+        """Metres along the route from stop index i to j (i<j) -> (metres, 'shape'|'haversine')."""
         order = self.route_stops.get(rid) or []
         a, b = self.stops.get(order[i]), self.stops.get(order[j])
         hav = hav_m(a["lat"], a["lon"], b["lat"], b["lon"]) if a and b else None
@@ -151,8 +157,8 @@ def fmt_row(st, e):
         psid, pe, seg = st.route_stops[rid][prev["idx"]], prev["epoch"], seg_s
         if d:
             dist = round(d, 1)
-            eff = seg_s - (prev.get("dwell") or 0)
-            if eff > 0:
+            eff = seg_s - (prev.get("dwell") or (prev.get("visit") or {}).get("dwell") or 0)
+            if eff > 0 and d / eff <= MAX_SPEED:      # implausible (timing jitter) -> blank
                 speed = round(d / eff, 2)
     pred = e.get("pred")
     return [e["epoch"], datetime.fromtimestamp(e["epoch"], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -182,131 +188,3 @@ def read_tail(path, nbytes=600_000):
     if size > nbytes:
         lines = lines[1:]
     return [dict(zip(COLUMNS, r)) for r in csv.reader(lines) if len(r) == len(COLUMNS) and r[0] != "epoch"]
-
-
-class Tracker:
-    """Turns vehicle reports into arrival events. Events are emitted once their dwell is known
-    (departure seen, silence, or shutdown), so rows can be a few minutes behind real time."""
-
-    def __init__(self, st):
-        self.st = st
-        self.v = {}                                            # (veh, trip) -> state
-        self.preds = defaultdict(lambda: deque(maxlen=400))    # (trip, stop_id) -> (made, predicted)
-
-    # ---- Passio predictions ----
-    def add_prediction(self, trip, stop_id, made, predicted):
-        d = self.preds[(trip, stop_id)]
-        if not d or d[-1] != (made, predicted):
-            d.append((made, predicted))
-
-    def pred_for(self, trip, stop_id, epoch):
-        best = None
-        for made, pred in self.preds.get((trip, stop_id), ()):
-            if made <= epoch - MIN_PRED_AGE:
-                best = (made, pred)
-        return (best[1], epoch - best[0]) if best else None
-
-    # ---- resume from CSV tail ----
-    def seed(self, rows, now):
-        for r in rows:
-            try:
-                ep, idx = int(r["epoch"]), int(r["stop_index"])
-                if now - ep > STATE_TTL:
-                    continue
-                s = self._state((r["vehicle_id"], r["trip_id"]), r["route_id"], now)
-                s["done"].add(idx)
-                if s["prev"] is None or ep >= s["prev"]["epoch"]:
-                    s["prev"] = {"idx": idx, "epoch": ep, "dwell": float(r["dwell_s"]) if r["dwell_s"] else None}
-            except (ValueError, KeyError):
-                continue
-
-    def _state(self, key, route, t):
-        s = self.v.get(key)
-        if s is None:
-            s = self.v[key] = {"route": route, "done": set(), "prev": None, "last_t": t, "last_vt": None,
-                               "pend": None, "pos": None, "pnext": None}
-        return s
-
-    def update(self, rep, now):
-        """rep: veh,trip,route,lat,lon,speed,q,stop_id,vt. -> list of finished event dicts."""
-        out = []
-        key, route = (rep["veh"], rep["trip"]), rep["route"]
-        order = self.st.route_stops.get(route)
-        if not order or rep["lat"] is None or not rep["trip"]:
-            return out
-        vt = rep["vt"] or now
-        if abs(now - vt) > 90:                       # stale report from a parked/offline vehicle
-            return out
-        s = self._state(key, route, now)
-        if s["last_vt"] is not None and vt <= s["last_vt"]:
-            return out                               # repeated report
-        s["last_t"] = now
-        q, sid = rep["q"], rep.get("stop_id")
-        nxt = None                                   # index of the stop being approached
-        if q is not None and 1 <= q <= len(order):
-            nxt = q - 1
-            if sid and order[nxt] != sid:
-                alt = [i for i, x in enumerate(order) if x == sid]
-                if alt:
-                    nxt = min(alt, key=lambda i: abs(i - nxt))
-        elif sid in order:
-            nxt = order.index(sid)
-
-        sp = rep["speed"]
-        if sp is None and s["pos"] and vt > s["pos"][2]:
-            sp = hav_m(rep["lat"], rep["lon"], s["pos"][0], s["pos"][1]) / (vt - s["pos"][2])
-
-        p = s["pend"]                                # finalize dwell of the stop we are sitting at
-        if p is not None:
-            a = self.st.stops[order[p["idx"]]]
-            if hav_m(rep["lat"], rep["lon"], a["lat"], a["lon"]) > RADIUS_M or (sp is not None and sp >= 2.0):
-                p["dwell"] = int(vt - p["epoch"]) if vt - p["epoch"] < 1800 else None
-                out.append(self._finish(s, p))
-                s["pend"] = None
-
-        pn = s["pnext"]                              # transition: sequence advanced by exactly one
-        if pn is not None and nxt == pn + 1 and s["last_vt"] is not None and vt - s["last_vt"] <= 60:
-            self._arrive(s, key, route, pn, vt, "transition", out)
-        if nxt is not None and sp is not None and sp < STOP_SPEED:      # proximity + stopped
-            for i in sorted({max(0, nxt - 1), nxt, min(len(order) - 1, nxt + 1)}):
-                a = self.st.stops.get(order[i])
-                if i not in s["done"] and a and hav_m(rep["lat"], rep["lon"], a["lat"], a["lon"]) <= RADIUS_M:
-                    self._arrive(s, key, route, i, vt, "proximity", out)
-                    break
-        s["last_vt"] = vt
-        if nxt is not None:
-            s["pnext"] = nxt
-        s["pos"] = (rep["lat"], rep["lon"], vt)
-        return out
-
-    def _arrive(self, s, key, route, idx, epoch, source, out):
-        if idx in s["done"]:
-            return
-        if s["pend"] is not None:                    # previous stop never saw a departure
-            out.append(self._finish(s, s["pend"]))
-            s["pend"] = None
-        prev = s["prev"] if s["prev"] and s["prev"]["idx"] < idx and epoch - s["prev"]["epoch"] <= STATE_TTL else None
-        s["done"].add(idx)
-        s["pend"] = {"epoch": epoch, "route": route, "trip": key[1], "veh": key[0], "idx": idx, "source": source,
-                     "prev": prev, "dwell": None,
-                     "pred": self.pred_for(key[1], self.st.route_stops[route][idx], epoch)}
-        s["prev"] = {"idx": idx, "epoch": epoch, "dwell": None}
-
-    @staticmethod
-    def _finish(s, e):
-        if s["prev"] and s["prev"]["idx"] == e["idx"]:
-            s["prev"]["dwell"] = e["dwell"]
-        return e
-
-    def drain(self, now, final=False):
-        """Close pending rows of vehicles silent >120 s (all at shutdown) and expire old state."""
-        out = []
-        for key, s in list(self.v.items()):
-            if s["pend"] is not None and (final or now - s["last_t"] > 120):
-                out.append(self._finish(s, s["pend"]))
-                s["pend"] = None
-            if s["pend"] is None and now - s["last_t"] > STATE_TTL:
-                del self.v[key]
-        for k in [k for k, d in self.preds.items() if d and d[-1][0] < now - 2 * STATE_TTL]:
-            del self.preds[k]
-        return out

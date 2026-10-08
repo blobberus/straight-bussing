@@ -1,0 +1,157 @@
+/* Design tokens (docs/DESIGN.md section 1). Owner: D1.
+   Order of precedence: [data-theme=light|dark] on <html> first, then prefers-color-scheme.
+   Variable names are the shared vocabulary for every other stylesheet. */
+:root {
+  /* color: light */
+  --bg: rgba(255, 255, 255, .86);
+  --bg-solid: #ffffff;
+  --surface: #f2f2f7;
+  --surface-press: #e5e5ea;
+  --text: #111114;
+  --text-2: #5c5c63;
+  --hairline: rgba(60, 60, 67, .18);
+  --hairline-strong: rgba(60, 60, 67, .30);
+  --accent: #0066d6;          /* accent used as text/icon on light */
+  --accent-fill: #0a84ff;     /* accent used as a fill (buttons, location dot) */
+  --on-accent: #ffffff;
+  --live: #1e9e4a;
+  --warn: #b25e00;
+  --warn-bg: #fff4e0;
+  --danger: #c4291c;
+  --danger-bg: #fdeceb;
+  --seg-on: #ffffff;
+  --scrim: rgba(0, 0, 0, .4);
+  --marker-ring: rgba(0, 0, 0, .28);
+  --casing: rgba(255, 255, 255, .9);
+
+  /* legacy aliases (v1 class names / other agents) */
+  --sheet-bg: var(--bg);
+  --text2: var(--text-2);
+  --hair: var(--hairline);
+  --warnbg: var(--warn-bg);
+  --dangerbg: var(--danger-bg);
+
+  /* elevation */
+  --shadow-sheet: 0 -8px 32px rgba(0, 0, 0, .14);
+  --shadow-float: 0 2px 10px rgba(0, 0, 0, .16);
+  --shadow-fab: var(--shadow-float);
+  --blur: blur(24px) saturate(1.8);
+
+  /* type */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-rounded: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+  --fs-large: 1.75rem;   /* 28/34 */
+  --lh-large: 2.125rem;
+  --fs-title: 1.25rem;   /* 20/25 */
+  --lh-title: 1.5625rem;
+  --fs-eta: 2.125rem;    /* 34/36 */
+  --lh-eta: 2.25rem;
+  --fs-row: 1.0625rem;   /* 17/22 */
+  --lh-row: 1.375rem;
+  --fs-body: .9375rem;   /* 15/20 */
+  --lh-body: 1.25rem;
+  --fs-cap: .75rem;      /* 12/16 */
+  --lh-cap: 1rem;
+
+  /* spacing (4pt grid) */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px;
+  --tap: 44px;
+
+  /* radii */
+  --r-sheet: 20px;
+  --r-card: 14px;
+  --r-control: 12px;
+  --r-chip: 999px;
+
+  /* motion */
+  --d-press: 120ms;
+  --d-swap: 220ms;
+  --d-sheet: 320ms;
+  --ease-enter: cubic-bezier(.2, .8, .2, 1);
+  --ease-exit: cubic-bezier(.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(.32, .72, 0, 1);
+  --ease: var(--ease-enter);
+  --spring: var(--ease-spring);
+
+  /* safe areas + sheet detents (visible heights) */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --v-peek: calc(112px + var(--safe-b));
+  --v-half: 46vh;
+  --v-full: calc(100vh - 56px - var(--safe-t));
+  --panel-w: 380px;
+
+  color-scheme: light;
+}
+@supports (height: 100dvh) {
+  :root { --v-half: 46dvh; --v-full: calc(100dvh - 56px - var(--safe-t)); }
+}
+
+/* color: dark (system, unless the user forced light) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: rgba(28, 28, 30, .82);
+    --bg-solid: #1c1c1e;
+    --surface: #2c2c2e;
+    --surface-press: #3a3a3c;
+    --text: #f5f5f7;
+    --text-2: #a1a1a8;
+    --hairline: rgba(84, 84, 88, .55);
+    --hairline-strong: rgba(120, 120, 128, .7);
+    --accent: #409cff;
+    --accent-fill: #409cff;
+    --on-accent: #ffffff;
+    --live: #32d74b;
+    --warn: #ffb340;
+    --warn-bg: #3a2a10;
+    --danger: #ff6961;
+    --danger-bg: #3a1a18;
+    --seg-on: #636366;
+    --scrim: rgba(0, 0, 0, .55);
+    --marker-ring: rgba(0, 0, 0, .55);
+    --casing: rgba(28, 28, 30, .9);
+    --shadow-sheet: 0 0 0 1px var(--hairline);
+    --shadow-float: 0 0 0 1px var(--hairline);
+    color-scheme: dark;
+  }
+}
+/* color: dark (user forced) */
+:root[data-theme="dark"] {
+  --bg: rgba(28, 28, 30, .82);
+  --bg-solid: #1c1c1e;
+  --surface: #2c2c2e;
+  --surface-press: #3a3a3c;
+  --text: #f5f5f7;
+  --text-2: #a1a1a8;
+  --hairline: rgba(84, 84, 88, .55);
+  --hairline-strong: rgba(120, 120, 128, .7);
+  --accent: #409cff;
+  --accent-fill: #409cff;
+  --on-accent: #ffffff;
+  --live: #32d74b;
+  --warn: #ffb340;
+  --warn-bg: #3a2a10;
+  --danger: #ff6961;
+  --danger-bg: #3a1a18;
+  --seg-on: #636366;
+  --scrim: rgba(0, 0, 0, .55);
+  --marker-ring: rgba(0, 0, 0, .55);
+  --casing: rgba(28, 28, 30, .9);
+  --shadow-sheet: 0 0 0 1px var(--hairline);
+  --shadow-float: 0 0 0 1px var(--hairline);
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
+
+/* high contrast: solid hairlines, no translucency, secondary text at full strength */
+@media (prefers-contrast: more) {
+  :root, :root[data-theme] {
+    --hairline: currentColor;
+    --hairline-strong: currentColor;
+    --text-2: var(--text);
+    --bg: var(--bg-solid);
+    --blur: none;
+  }
+}

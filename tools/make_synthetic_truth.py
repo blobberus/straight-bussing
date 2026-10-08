@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Deterministic synthetic ground-truth CSV (same schema as arrivals.csv) for backtests.
-Writes data/ground_truth/synthetic_arrivals.csv (~3 weeks, < 5 MB). NOT real data.
+Writes data/ground_truth/synthetic_arrivals.csv (3 weeks, 4 routes, < 5 MB). NOT real data: ids start "syn".
   python tools/make_synthetic_truth.py [--weeks 4] [--seed 7]"""
 import argparse, math, random, sys
 from datetime import datetime, timedelta, timezone
@@ -28,7 +28,7 @@ def main():
     a = ap.parse_args()
     rnd = random.Random(a.seed)
     st = L.Static()
-    routes = sorted((r for r in st.route_stops if len(st.route_stops[r]) >= 6), key=lambda r: (len(st.route_stops[r]), r))[:3]
+    routes = sorted((r for r in st.route_stops if len(st.route_stops[r]) >= 6), key=lambda r: (len(st.route_stops[r]), r))[:4]
     start = datetime(2026, 9, 7, 0, 0, tzinfo=timezone.utc) + timedelta(hours=5)   # Mon 2026-09-07 00:00 CDT
     # fixed per-route headway and per-segment free-flow speed
     head = {r: rnd.choice([1200, 1500, 1800]) for r in routes}
@@ -48,7 +48,8 @@ def main():
             t = day0 + t_first * 3600 + rnd.uniform(0, h)
             while t < day0 + t_last * 3600:
                 veh_n += 1
-                veh, trip = str(4300 + veh_n % 5), str(500000 + r_hash(r) + veh_n)
+                # synthetic ids are prefixed so they can never collide with real Passio ids
+                veh, trip = f"syn{4300 + 10 * routes.index(r) + veh_n % 4}", f"syn{500000 + r_hash(r) + veh_n}"
                 ep, prev, delay_state = int(t), None, 0.0
                 for i in range(len(order)):
                     if i > 0:

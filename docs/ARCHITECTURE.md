@@ -87,7 +87,7 @@ export async function loadStatic(store): Promise<void>   // fetch data/routes.js
 // data/live.js
 export function startLive(store, {intervalMs=10000}): {stop(), pollNow()}   // polls the 3 Passio JSON feeds (BASE https://passio3.com/chicago/passioTransit/gtfs/realtime/<name>.json?_=ts, cache:'no-store'), sets live fields; failure keeps last data and sets failed:true; pause when document.hidden, poll on visible
 // data/geocode.js
-export function searchPlaces(q, {signal}): Promise<[{label, sub, lat, lon}]>   // Photon, limit 5, biased lat 41.79 lon -87.60, min 3 chars enforced by caller; 400 ms debounce helper debounce(fn, ms) exported too
+export function searchPlaces(q, {signal}): Promise<{items:[{label, sub, lat, lon}], error?:string}>   // never throws (error: 'aborted'|'timeout'|'network'|'http <status>'|'bad response'); Photon, limit 5, biased lat 41.79 lon -87.60, min 3 chars enforced by caller (<3 -> {items:[]}); 400 ms debounce helper debounce(fn, ms) exported too (.cancel(), .flush())
 ```
 `sw.js`: network-first for same-origin GET with `cache:'no-cache'`, cache only `r.ok && r.status===200`, never cache cross-origin; precache index.html + css + js/main.js + manifest + icons; cache name constant `sb-v2-<n>`; serve offline fallback. Also keep the daily GTFS refresh workflow `pages.yml` working (it copies `web/`).
 

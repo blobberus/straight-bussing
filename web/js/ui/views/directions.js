@@ -1,0 +1,329 @@
+/**
+ * @module ui/views/directions
+ * Directions: Start / Destination fields (station autocomplete + Photon places, "My location"
+ * default when granted), swap, plan via core/planner plan(), then refineWalking() async with
+ * core/walk walkRoute (sidewalk routes). Up to 3 option cards (total, arrive clock, chip summary,
+ * est tags); tapping a card draws it on the map. Steps say "Bus arrives at <stop> <clock>" with
+ * wait / ride / source. Walk-only fallback and no-service state. Recomputes on live updates by
+ * patching the results region only, so typing focus is never stolen.
+ */
+import { registerView } from "../router.js";
+import { registerAction } from "../actions.js";
+import { esc } from "../../core/esc.js";
+import { nowS, clock } from "../../core/time.js";
+import { hav } from "../../core/geo.js";
+import { staleLevel } from "../../core/arrivals.js";
+import { plan, refineWalking } from "../../core/planner.js";
+import { walkRoute } from "../../core/walk.js";
+import { predict } from "../../core/predict.js";
+import { routeChip, emptyState, skeleton } from "../components.js";
+import { matchStations, createPlaceSearch, OFFICIAL_HTML, ICONS } from "./pick.js";
+
+/** The required estimate note under the options. */
+export const NOTE = "Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.";
+const SRC = { live: "from live bus prediction", learned: "learned from past rides", schedule: "from schedule", estimate: "distance estimate" };
+const WALK_IC = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="2"/><path d="M10 22l2-7-3-3 1-5 4 3 3 1M9 12l-3 2v3"/></svg>';
+const SWAP_IC = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>';
+
+/** View-local state. Endpoints are {lat, lon, label, stop?, me?}. */
+export const D = { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null, sel: 0, selKey: null, refining: false, meDenied: false, token: 0, missed: false };
+/** Injectable dependencies (tests replace them). */
+export const deps = { plan, refineWalking, walkRoute, predict };
+let rootRef = null, ctxRef = null, offStore = null, lastUser = null;
+const photon = createPlaceSearch(() => patchSug());
+
+const cur = () => ctxRef?.store?.get?.() || {};
+const nowFn = () => (ctxRef?.now ? ctxRef.now() : nowS());
+const tag = (t) => `<span class="v-est">${esc(t)}</span>`;
+const mins = (m) => Math.max(1, Math.round(m || 0));
+const me = (u) => ({ lat: u.lat, lon: u.lon, label: "My location", me: true });
+
+/**
+ * Endpoint for a stop id.
+ * @param {object} state
+ * @param {string} id
+ * @returns {{lat:number,lon:number,label:string,stop:string}|null}
+ */
+export function stopEndpoint(state, id) {
+  const s = state.stops?.[id];
+  return s ? { lat: s.lat, lon: s.lon, label: s.name, stop: id } : null;
+}
+
+/**
+ * Suggestions for a field's text: My location, matching stations, Photon places (when loaded).
+ * @param {object} state
+ * @param {string} text
+ * @returns {object[]}
+ */
+export function computeSugs(state, text) {
+  const q = String(text || "").trim(), out = [];
+  if (!q || "my location".startsWith(q.toLowerCase())) out.push({ kind: "me", label: "My location", sub: state.user ? "Use current location" : "Allow location access" });
+  if (q) for (const s of matchStations(state, q, 5)) out.push({ kind: "stop", id: s.id, lat: s.lat, lon: s.lon, label: s.name, sub: "Shuttle stop · " + (state.stopRoutes?.[s.id] || []).map((r) => state.routes?.[r]?.short || r).join(", ") });
+  if (q.length >= 3 && photon.state.q === q && !photon.state.status) for (const p of photon.state.items) out.push({ kind: "place", lat: p.lat, lon: p.lon, label: p.label, sub: p.sub || "Place" });
+  return out;
+}
+
+function sugHTML() {
+  const key = D.active;
+  if (!key) return "";
+  const text = key === "from" ? D.fromText : D.toText, q = text.trim();
+  let h = D.sugs.length ? `<div class="v-card v-sugs" role="listbox" aria-label="Suggestions for ${key === "from" ? "start" : "destination"}">` + D.sugs.map((s, i) => `<button type="button" class="v-row" role="option" data-action="dir:sug" data-i="${i}"><span class="v-ic" aria-hidden="true">${s.kind === "me" ? ICONS.loc : s.kind === "stop" ? ICONS.stop : ICONS.place}</span><span class="v-grow"><span class="v-prim">${esc(s.label)}</span><span class="v-sec">${esc(s.sub || "")}</span></span></button>`).join("") + "</div>" : "";
+  if (q.length >= 3 && photon.state.status === "busy") h += '<p class="v-hint" role="status">Searching places&hellip;</p>';
+  if (q.length >= 3 && photon.state.status === "err") h += '<p class="v-hint">Couldn\'t search places right now. Station names still work.</p>';
+  if (D.meDenied) h += '<p class="v-hint">Location is off. Allow it in your browser settings, or type a start.</p>';
+  if (q.length >= 3) h += '<p class="v-fine">Only the text you type is sent to photon.komoot.io to find places.</p>';
+  return h;
+}
+
+function legsTimes(o, now) {
+  let t = now;
+  return o.legs.map((l) => {
+    if (l.type === "walk") { t += (l.min || 0) * 60; return null; }
+    const b = l.boardT || t + (l.wait || 0) * 60, a = l.alightT || b + (l.ride || 0) * 60;
+    t = a; return { b, a };
+  });
+}
+
+/**
+ * Step list for an option.
+ * @param {object} o Option
+ * @param {number} now
+ * @param {object} state
+ * @returns {string}
+ */
+export function stepsHTML(o, now, state) {
+  const times = legsTimes(o, now);
+  const li = (ic, h) => `<li><span class="v-si" aria-hidden="true">${ic}</span><span class="v-stept">${h}</span></li>`;
+  const steps = o.legs.map((l, i) => {
+    if (l.type === "walk") {
+      const to = (i === o.legs.length - 1 ? D.to?.label : l.to?.name) || l.to?.name || "the stop";
+      return li(WALK_IC, `Walk ${mins(l.min)} min (${Math.round(l.m || 0)} m) to <b>${esc(to)}</b> ${tag(l.source === "router" ? "sidewalk route" : "estimate")}`);
+    }
+    const t = times[i], w = Math.round(l.wait || 0), r = mins(l.ride);
+    return li(routeChip(l.rid, state.routes), `Bus arrives at <b>${esc(l.board?.name || "")}</b> <b class="v-clock">${esc(clock(t.b))}</b> ${tag(l.waitLive ? "live" : "est.")}`
+      + `<span class="v-sec v-stepsub">Wait ~${w < 1 ? "&lt;1" : w} min &middot; Ride ~${r} min to ${esc(l.alight?.name || "")} (${esc(clock(t.a))}) &middot; ${l.stopsPassed || 1} stop${(l.stopsPassed || 1) > 1 ? "s" : ""} &middot; ${esc(SRC[l.source] || "estimate")} ${tag("est.")}</span>`);
+  });
+  steps.push(li('<span class="v-pin v-pin--b"></span>', `Arrive at <b>${esc(D.to?.label || "destination")}</b> about <b class="v-clock">${esc(clock(o.arrive))}</b>`));
+  return '<ol class="v-steps">' + steps.join("") + "</ol>";
+}
+
+function optionHTML(o, i, now, state) {
+  const on = i === D.sel, times = legsTimes(o, now);
+  const sum = o.legs.map((l) => (l.type === "walk" ? `<span class="v-wk">${WALK_IC}${mins(l.min)}</span>` : routeChip(l.rid, state.routes))).join('<span class="v-arr" aria-hidden="true">&rsaquo;</span>');
+  const firstBus = o.legs.findIndex((l) => l.type === "bus");
+  const bus = firstBus >= 0 ? o.legs[firstBus] : null;
+  const busLine = bus ? `<span class="v-sec">Bus at ${esc(bus.board?.name || "")} ${esc(clock(times[firstBus].b))}</span>` : "";
+  const routesTxt = o.legs.filter((l) => l.type === "bus").map((l) => state.routes?.[l.rid]?.short || l.rid).join(" then ");
+  const aria = `Option ${i + 1}: about ${o.totalMin} minutes, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. Estimate.`;
+  return `<div class="v-opt${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}"><span class="v-otop"><span class="v-otot">~${o.totalMin}<small> min</small></span>${tag("est.")}<span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span><span class="v-osum">${sum}</span>${busLine}</button>${on ? stepsHTML(o, now, state) : ""}</div>`;
+}
+
+/**
+ * Results region (hint, loading, options, walk-only, no service).
+ * @param {object} state
+ * @param {number} [now]
+ * @returns {string}
+ */
+export function resHTML(state, now = nowS()) {
+  if (!D.from || !D.to) {
+    let h = '<p class="v-hint">Choose a start and a destination. Type a station name, a place, or an address.</p>';
+    if (!D.from && !state.user) h += '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="dir:me" data-key="from">Start from my location</button>';
+    return h;
+  }
+  if (!state.staticLoaded || !D.result) return skeleton(2);
+  const r = D.result, w = r.walkOnly || { m: 0, min: 0 }, level = staleLevel(state, now);
+  let h = level ? '<p class="v-stale" role="status">Live data delayed. Bus times may be off.</p>' : "";
+  const walkTag = tag(w.source === "router" ? "sidewalk route" : "estimate");
+  if (!r.options.length) {
+    const running = (state.buses || []).length > 0;
+    h += emptyState("No practical shuttle route right now", D.missed ? "The next buses leave before you could reach the stop." : running ? "Nothing runs close enough to both places." : "No shuttles are running right now.");
+    h += `<div class="v-opt is-on"><div class="v-optmain"><span class="v-otop"><span class="v-otot">${mins(w.min)}<small> min</small></span>${walkTag}<span class="v-oarr">Arrive ${esc(clock(now + (w.min || 0) * 60))}</span></span><span class="v-osum"><span class="v-wk">${WALK_IC}Walk the whole way</span><span class="v-sec">${Math.round(w.m || 0)} m</span></span></div></div>`;
+    return h + (running ? "" : OFFICIAL_HTML);
+  }
+  h += r.options.slice(0, 3).map((o, i) => optionHTML(o, i, now, state)).join("");
+  h += `<p class="v-foot">Walking the whole way: ${mins(w.min)} min (${Math.round(w.m || 0)} m) ${walkTag}</p>`;
+  if (D.refining) h += '<p class="v-foot" role="status">Checking sidewalk routes&hellip;</p>';
+  return h + `<p class="v-foot v-estnote">${esc(NOTE)}</p>`;
+}
+
+function field(key) {
+  const ep = D[key], val = ep ? ep.label : key === "from" ? D.fromText : D.toText;
+  const lab = key === "from" ? "Start" : "Destination";
+  return `<div class="v-dfield"><span class="v-pin v-pin--${key === "from" ? "a" : "b"}" aria-hidden="true"></span><input type="text" data-input="dir-${key}" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${lab}" aria-label="${lab}: station or place" value="${esc(val)}"></div>`;
+}
+
+/**
+ * Render the directions view.
+ * @param {object} state
+ * @param {number} [now]
+ * @returns {string}
+ */
+export function renderDirections(state, now = nowS()) {
+  return `<div class="v-dir"><div class="v-dirbox">${field("from")}${field("to")}<button type="button" class="v-dswap" data-action="dir:swap" aria-label="Swap start and destination">${SWAP_IC}</button></div><div data-region="dir-sug">${sugHTML()}</div><div data-region="dir-res">${resHTML(state, now)}</div></div>`;
+}
+
+const lastHtml = {};
+function patch(region, html) { const el = rootRef?.querySelector?.(`[data-region="${region}"]`); if (el && lastHtml[region] !== html) { el.innerHTML = html; lastHtml[region] = html; } }
+function patchSug() { if (D.active) D.sugs = computeSugs(cur(), D.active === "from" ? D.fromText : D.toText); patch("dir-sug", sugHTML()); }
+function patchRes() { patch("dir-res", resHTML(cur(), nowFn())); }
+function setInput(key) { const el = rootRef?.querySelector?.(`[data-input="dir-${key}"]`); if (el) el.value = D[key]?.label || (key === "from" ? D.fromText : D.toText); }
+
+/** Draw the selected option (or the walk-only line) on the map; optionally fit to it. */
+export function drawSel(fit) {
+  const map = ctxRef?.map, s = cur();
+  if (!map?.drawPlan) return;
+  const r = D.result;
+  let o = r?.options?.[D.sel] || null;
+  if (!o && r && D.from && D.to) o = { key: "walk", total: r.walkOnly?.min || 0, totalMin: mins(r.walkOnly?.min), arrive: 0, legs: [{ type: "walk", from: D.from, to: D.to, m: r.walkOnly?.m || 0, min: r.walkOnly?.min || 0, coords: r.walkOnly?.coords, source: r.walkOnly?.source }] };
+  try {
+    map.drawPlan(o, { routes: s.routes, shapes: s.shapes, routeStops: s.routeStops });
+    if (fit && o && map.fitTo) {
+      const pts = [[D.from.lat, D.from.lon], [D.to.lat, D.to.lon]];
+      for (const l of o.legs) if (l.type === "bus") pts.push([l.board.lat, l.board.lon], [l.alight.lat, l.alight.lon]);
+      map.fitTo(pts, { maxZoom: 17 });
+    }
+  } catch (e) { /* map optional */ }
+}
+
+function pickSel(fresh) {
+  const opts = D.result?.options || [];
+  let k = fresh ? 0 : opts.findIndex((x) => x.key === D.selKey);
+  if (k < 0) k = 0;
+  D.sel = opts.length ? k : -1; D.selKey = opts[k]?.key ?? null;
+}
+
+/**
+ * Plan (sync) then refine walking legs (async). Stale async results are ignored via a token.
+ * @param {{fresh?:boolean}} [opts] fresh: new endpoints (select first option, fit the map)
+ * @returns {Promise<void>}
+ */
+export async function replan({ fresh = false } = {}) {
+  const state = cur(), token = ++D.token;
+  if (!D.from || !D.to || !state.staticLoaded) { D.result = null; D.refining = false; patchRes(); try { ctxRef?.map?.drawPlan?.(null); } catch (e) { /* */ } return; }
+  const now = nowFn(), from = D.from, to = D.to;
+  const data = { stops: state.stops, routes: state.routes, routeStops: state.routeStops, trips: state.trips || [], buses: state.buses || [] };
+  let r;
+  try { r = deps.plan({ from, to, now, data, predict: deps.predict }); } catch (e) { r = null; }
+  if (!r || !Array.isArray(r.options)) { const m = hav(from, to) * 1.2; r = { options: [], walkOnly: { m, min: m / 80 } }; }
+  if (fresh || !D.result) { D.result = r; D.missed = false; D.refining = true; pickSel(fresh); patchRes(); drawSel(fresh); }
+  const top = r.options.slice(0, 3);
+  const [settled, walk] = await Promise.all([
+    Promise.allSettled(top.map((o) => deps.refineWalking(o, { walkRoute: deps.walkRoute, now, data, from, to, predict: deps.predict }))),
+    Promise.resolve().then(() => deps.walkRoute(from, to)).catch(() => null),
+  ]);
+  if (token !== D.token) return;
+  const opts = settled.map((s, i) => (s.status === "fulfilled" ? s.value : top[i])).filter((o) => o && Array.isArray(o.legs)).sort((a, b) => a.total - b.total);
+  D.missed = top.length > 0 && !opts.length;
+  D.result = { ...r, options: opts, walkOnly: walk ? { m: walk.m, min: walk.min, coords: walk.coords, source: walk.source } : r.walkOnly };
+  D.refining = false; pickSel(fresh); patchRes(); drawSel(fresh);
+}
+
+function focusField(key) { rootRef?.querySelector?.(`[data-input="dir-${key}"]`)?.focus({ preventScroll: true }); }
+function afterSet() {
+  D.active = null; D.sugs = []; patch("dir-sug", "");
+  replan({ fresh: true });
+  if (!D.to) focusField("to"); else if (!D.from) focusField("from"); else if (rootRef?.contains?.(document.activeElement)) document.activeElement.blur?.();
+}
+
+/** Set an endpoint ('from'|'to') and re-plan. */
+export function setEndpoint(key, ep) {
+  D[key] = ep; if (ep) D[key + "Text"] = ep.label;
+  setInput(key); afterSet();
+}
+
+/** Use the current location for a field (asks permission if needed). */
+export async function useMyLocation(key) {
+  let u = cur().user;
+  if (!u && ctxRef?.locate) { let ok = false; try { ok = await ctxRef.locate(); } catch (e) { ok = false; } u = ok ? cur().user : null; }
+  if (u) { D.meDenied = false; setEndpoint(key, me(u)); } else { D.meDenied = true; D.active = key; patchSug(); }
+}
+
+/** Apply suggestion i to the active field. */
+export function applySug(i) {
+  const s = D.sugs[i], key = D.active || (D.from ? "to" : "from");
+  if (!s) return false;
+  if (s.kind === "me") { useMyLocation(key); return true; }
+  setEndpoint(key, { lat: s.lat, lon: s.lon, label: s.label, stop: s.kind === "stop" ? s.id : null });
+  return true;
+}
+
+/** Swap start and destination. */
+export function swap() {
+  [D.from, D.to] = [D.to, D.from]; [D.fromText, D.toText] = [D.toText, D.fromText];
+  setInput("from"); setInput("to"); D.active = null; D.sugs = []; patch("dir-sug", ""); replan({ fresh: true });
+}
+
+const keyOf = (t) => (t?.matches?.('[data-input="dir-from"]') ? "from" : t?.matches?.('[data-input="dir-to"]') ? "to" : null);
+function onFocus(e) { const k = keyOf(e.target); if (!k) return; D.active = k; e.target.select?.(); patchSug(); }
+function onInput(e) {
+  const k = keyOf(e.target); if (!k) return;
+  D.active = k; D[k] = null; D[k + "Text"] = e.target.value; D.result = null; D.token++; D.meDenied = false;
+  photon.query(e.target.value); patchSug(); patchRes();
+  try { ctxRef?.map?.drawPlan?.(null); } catch (err) { /* */ }
+}
+function onKey(e) {
+  const k = keyOf(e.target); if (!k) return;
+  if (e.key === "Enter") { e.preventDefault(); if (D.sugs.length) applySug(0); }
+  else if (e.key === "Escape" && D.active) { e.preventDefault(); e.stopPropagation(); D.active = null; patch("dir-sug", ""); }
+  else if (e.key === "ArrowDown") { const b = rootRef.querySelector('[data-action="dir:sug"]'); if (b) { e.preventDefault(); b.focus(); } }
+}
+
+/** Mount: default start = My location (if available), listeners, live re-plan subscription. */
+export function mountDirections(root, ctx) {
+  unmountDirections();
+  rootRef = root; ctxRef = ctx; lastHtml["dir-sug"] = lastHtml["dir-res"] = undefined;
+  const state = cur();
+  if (!D.from && !D.fromText && state.user) { D.from = me(state.user); setInput("from"); }
+  lastUser = state.user;
+  root.addEventListener("focusin", onFocus);
+  root.addEventListener("input", onInput);
+  root.addEventListener("keydown", onKey);
+  offStore = ctx?.store?.subscribe?.((s, ch) => {
+    if (ch.has("user") && s.user && D.from?.me && (!lastUser || hav(lastUser, s.user) > 50)) { D.from = me(s.user); lastUser = s.user; replan(); return; }
+    if (ch.has("staticLoaded")) { replan({ fresh: true }); return; }
+    if ((ch.has("trips") || ch.has("buses")) && D.from && D.to) replan();
+    else if (ch.has("lastOk") || ch.has("failed") || ch.has("user")) patchRes();
+  }) || null;
+  if (!D.from && !state.user && state.locState !== "denied" && typeof navigator !== "undefined" && navigator.permissions?.query) {
+    navigator.permissions.query({ name: "geolocation" }).then((p) => { if (p.state === "granted" && rootRef && !D.from) useMyLocation("from"); }).catch(() => {});
+  }
+  replan({ fresh: true });
+  Promise.resolve(deps.predict?.ready).then(() => { if (rootRef && D.from && D.to) replan(); }).catch(() => {});
+  if (D.from && !D.to) focusField("to"); else if (!D.from && D.to) focusField("from");
+}
+
+/** Unmount: clear the plan from the map, stop async updates (endpoints are kept). */
+export function unmountDirections() {
+  if (rootRef) { rootRef.removeEventListener("focusin", onFocus); rootRef.removeEventListener("input", onInput); rootRef.removeEventListener("keydown", onKey); }
+  offStore?.(); offStore = null; photon.cancel(); D.token++; D.active = null; D.sugs = [];
+  try { ctxRef?.map?.drawPlan?.(null); } catch (e) { /* */ }
+  rootRef = null;
+}
+
+/** Test hook: the place-search state. */
+export const _photon = photon;
+
+registerView("directions", {
+  title: () => "Directions",
+  detent: "full",
+  render: (state) => renderDirections(state),
+  mount: (root, ctx) => mountDirections(root, ctx),
+  unmount: () => unmountDirections(),
+  onStopTap: (id, ctx) => { ctxRef = ctx || ctxRef; const ep = stopEndpoint(cur(), id); if (!ep) return false; setEndpoint(D.active || (D.from ? "to" : "from"), ep); return true; },
+});
+
+registerAction("dir:open", (ds, ev, ctx) => ctx.navigate("directions"));
+registerAction("dir:from-stop", (ds, ev, ctx) => { const ep = stopEndpoint(ctx.store.get(), ds.id); if (!ep) return; D.from = ep; D.to = null; D.toText = ""; D.result = null; ctx.navigate("directions"); });
+registerAction("dir:to-stop", (ds, ev, ctx) => {
+  const s = ctx.store.get(), ep = stopEndpoint(s, ds.id); if (!ep) return;
+  D.to = ep; if (!D.from || D.from.stop === ds.id) { D.from = s.user ? me(s.user) : null; D.fromText = ""; }
+  D.result = null; ctx.navigate("directions");
+});
+registerAction("dir:sug", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; applySug(+ds.i); });
+registerAction("dir:swap", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; swap(); });
+registerAction("dir:me", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; useMyLocation(ds.key === "to" ? "to" : "from"); });
+registerAction("dir:opt", (ds, ev, ctx) => {
+  ctxRef = ctx || ctxRef;
+  const o = D.result?.options?.[+ds.i]; if (!o) return;
+  D.sel = +ds.i; D.selKey = o.key; patchRes(); drawSel(true);
+});

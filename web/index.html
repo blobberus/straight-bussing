@@ -1,71 +1,70 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Straight Bussing</title>
-<meta name="description" content="Unofficial live campus shuttle tracker">
+<meta name="description" content="Unofficial live campus shuttle tracker. Times are estimates; not affiliated with the University.">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1c1c1e" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Straight Bussing">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="css/tokens.css?v=2">
+<link rel="stylesheet" href="css/base.css?v=2">
+<link rel="stylesheet" href="css/sheet.css?v=2">
+<link rel="stylesheet" href="css/components.css?v=2">
+<link rel="stylesheet" href="css/map.css?v=2">
+<link rel="stylesheet" href="css/views.css?v=2">
 </head>
 <body>
-<div id="map" aria-label="Shuttle map"></div>
+<div id="map" role="region" aria-label="Shuttle map"></div>
 
-<button id="locateBtn" class="fab" aria-label="Show my location">
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
+<button id="locateBtn" class="fab" type="button" aria-label="Show my location">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
 </button>
-<div id="fchip" class="fchip-float" hidden></div>
-<div id="pill" class="statuspill" role="status" aria-live="polite" hidden></div>
 
-<section id="sheet" class="sheet half" role="dialog" aria-label="Shuttle information" aria-modal="false">
-  <header id="sheetHead" class="head">
-    <button id="grab" class="grab" aria-label="Resize panel" aria-expanded="true"></button>
+<div id="pill" class="statuspill" role="status" aria-live="polite" hidden><span id="pillText" class="pilltext"></span><button id="pillRetry" class="pillbtn" type="button" data-action="retry" hidden>Retry</button></div>
+
+<section id="sheet" class="sheet" data-detent="half" role="dialog" aria-modal="false" aria-labelledby="title">
+  <header id="sheetHead" class="sheet-head">
+    <button id="grab" class="grab" type="button" aria-label="Resize panel" aria-expanded="true" aria-controls="content"></button>
     <div class="titleline">
-      <button id="back" class="back" aria-label="Back" hidden>
-        <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2L2 10l8 8"/></svg>
+      <button id="back" class="back" type="button" aria-label="Back" hidden>
+        <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 2L2 10l8 8"/></svg>
       </button>
-      <h1 id="title">Nearby</h1>
+      <h1 id="title" class="sheet-title" tabindex="-1">Nearby</h1>
       <span id="titleRight" class="titleright"></span>
     </div>
-    <nav id="seg" class="seg" aria-label="Sections">
-      <button data-view="nearby" class="on">Nearby</button>
-      <button data-view="routes">Routes</button>
-      <button data-view="alerts">Alerts <span id="alertCount" class="badge" hidden></span></button>
+    <nav id="tabs" class="seg tabs" aria-label="Sections">
+      <button type="button" data-tab="nearby" aria-current="page">Nearby</button>
+      <button type="button" data-tab="routes">Routes</button>
+      <button type="button" data-tab="alerts" id="alertsTab">Alerts<span id="alertBadge" class="badge" hidden></span></button>
     </nav>
   </header>
-  <div id="content" class="content"></div>
+  <div id="content" class="sheet-content" tabindex="-1">
+    <div class="skels" aria-busy="true"><span class="sr">Loading</span><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+  </div>
 </section>
 
-<div id="dlg" class="scrim" hidden>
-  <div class="dlgcard" role="dialog" aria-modal="true" aria-labelledby="dlgT">
-    <h2 id="dlgT" class="dlgt">Routes to a station</h2>
-    <p class="muted" style="margin:0 0 12px">How should we find the station? Location is optional.</p>
-    <button class="cta" id="dlgLoc">Use current location</button>
-    <button class="cta alt" id="dlgSel">Select a station</button>
-    <button class="cta alt" id="dlgAddr">Type an address or place</button>
-    <button class="cta ghost" id="dlgCancel">Cancel</button>
-  </div>
-</div>
+<div id="dlg" class="scrim" hidden></div>
+<div id="toast" class="toast hide" role="status" aria-live="polite" aria-atomic="true"></div>
 
-<div class="probe" id="pPeek"></div><div class="probe" id="pHalf"></div><div class="probe" id="pFull"></div>
+<noscript><p style="position:fixed;inset:auto 0 0;padding:16px;background:#fff;color:#111">Straight Bussing needs JavaScript. Official service: 773.702.8181.</p></noscript>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
-<script src="theme.js?v=10"></script><script src="mapstyle.js?v=10"></script>
-<script src="predict.js?v=10"></script>
-<script src="walk.js?v=10"></script>
-<script src="planner.js?v=10"></script>
-<script src="app.js?v=10"></script>
+<script type="module" src="js/main.js?v=2"></script>
 </body>
 </html>

@@ -1,6 +1,8 @@
 name: Collect ground truth
-# Hourly job: logs true bus arrivals for ~55 min and commits the CSV to the 'data' branch.
-# Pages deploys only on pushes to main (pages.yml), so pushes to 'data' never trigger it.
+# Hourly: log true bus arrivals for 55 min, append them to data/ground_truth/arrivals.csv on the
+# orphan 'data' branch, then refresh the learned model (if tools/refresh_model.py exists) and store
+# web/data/learned.json on the 'data' branch too. Nothing is ever pushed to main, and pages.yml
+# deploys only on pushes to main, so this workflow never triggers a Pages deploy. Docs: docs/DATA.md
 on:
   schedule: [{ cron: "7 * * * *" }]
   workflow_dispatch:
@@ -12,31 +14,59 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 58
     steps:
-      - uses: actions/checkout@v4          # main: tools/ + web/data
+      - uses: actions/checkout@v4            # code (tools/ + web/data) always from main
+        with: { ref: main }
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - name: Prepare data branch worktree
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
-            git fetch origin data
-            git worktree add databranch -B data origin/data
+            git fetch --no-tags --depth 1 origin +refs/heads/data:refs/remotes/origin/data
+            git worktree add -B data databranch origin/data
           else
-            git worktree add --orphan -b data databranch 2>/dev/null || { git worktree add --detach databranch && git -C databranch checkout --orphan data && git -C databranch rm -rf . >/dev/null 2>&1 || true; }
+            git worktree add --orphan -b data databranch 2>/dev/null || {
+              git worktree add --detach databranch
+              git -C databranch checkout --orphan data
+              git -C databranch rm -rfq . || true
+            }
+            printf '# data branch\nAutomated ground-truth data. See docs/DATA.md on main.\n' > databranch/README.md
           fi
-          mkdir -p databranch/data/ground_truth
-      - name: Log arrivals
-        run: python tools/truth_logger.py --duration 3300 --out databranch/data/ground_truth/arrivals.csv
+          mkdir -p databranch/data/ground_truth databranch/web/data
+      - name: Log arrivals (55 min)
+        run: python tools/truth_logger.py --duration 3300 --rotate-mb 40 --out databranch/data/ground_truth/arrivals.csv
+      - name: Refresh learned model (if available)
+        run: |
+          if [ -f tools/refresh_model.py ] && [ -f databranch/data/ground_truth/arrivals.csv ]; then
+            python tools/refresh_model.py --data databranch/data/ground_truth/arrivals.csv \
+              --out databranch/web/data/learned.json \
+              || echo "refresh_model failed; arrivals are still committed"
+          fi
       - name: Commit and push to data branch
         working-directory: databranch
         run: |
-          git add data/ground_truth/arrivals.csv
+          git add -A data/ground_truth
+          [ -f web/data/learned.json ] && git add web/data/learned.json
+          [ -f README.md ] && git add README.md
           if git diff --cached --quiet; then echo "no new rows"; exit 0; fi
-          git commit -m "data: arrivals $(date -u +%Y-%m-%dT%H:%MZ)"
+          git commit -qm "data: arrivals $(date -u +%Y-%m-%dT%H:%MZ)"
           for i in 1 2 3; do
-            if git push origin data; then exit 0; fi
-            git pull --rebase -X theirs origin data || git rebase --abort
-            sleep 5
+            if git push origin HEAD:refs/heads/data; then exit 0; fi
+            echo "push rejected (attempt $i); rebasing"
+            git fetch --no-tags --depth 1 origin +refs/heads/data:refs/remotes/origin/data
+            if ! git rebase origin/data; then
+              # conflicting appends: union of both CSVs (header once, upstream rows first)
+              git rebase --abort || true
+              git show origin/data:data/ground_truth/arrivals.csv > /tmp/theirs.csv || : > /tmp/theirs.csv
+              cp data/ground_truth/arrivals.csv /tmp/mine.csv
+              [ -f web/data/learned.json ] && cp web/data/learned.json /tmp/learned.json
+              git reset -q --hard origin/data
+              cat /tmp/theirs.csv /tmp/mine.csv | awk '!seen[$0]++' > data/ground_truth/arrivals.csv
+              [ -f /tmp/learned.json ] && mkdir -p web/data && cp /tmp/learned.json web/data/learned.json
+              git add -A data web/data 2>/dev/null || git add -A data
+              git commit -qm "data: arrivals $(date -u +%Y-%m-%dT%H:%MZ) (merged)"
+            fi
+            sleep $((i * 5))
           done
           echo "push failed after 3 attempts"; exit 1

@@ -8,11 +8,12 @@ per true bus arrival at a stop (schema in arrivals_lib.COLUMNS, docs in docs/DAT
 No rider data exists in these feeds; nothing personal is collected.
 """
 import argparse, json, sys, time, urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arrivals_lib as L
+from arrival_detector import Tracker
 
 BASE = "https://passio3.com/chicago/passioTransit/gtfs/realtime/"
 UA = "StraightBussing-collector (student project)"
@@ -44,7 +45,7 @@ def store_predictions(tr, feed, now):
         for st in u.get("stop_time_update") or []:
             t = (st.get("arrival") or st.get("departure") or {}).get("time")
             if trip and t is not None and st.get("stop_id"):
-                tr.add_prediction(trip, st["stop_id"], made, t)
+                tr.add_prediction(trip, st["stop_id"], made, t, st.get("stop_sequence"))
 
 
 class Writer:
@@ -53,6 +54,11 @@ class Writer:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists() or self.path.stat().st_size == 0:
             self.path.write_text(",".join(L.COLUMNS) + "\n", encoding="utf-8", newline="\n")
+        else:                                    # a crash mid-write may leave a partial last line
+            with open(self.path, "rb+") as f:
+                f.seek(-1, 2)
+                if f.read(1) != b"\n":
+                    f.write(b"\n")
 
     def write(self, events):
         if not events:
@@ -60,22 +66,39 @@ class Writer:
         events.sort(key=lambda e: e["epoch"])
         with open(self.path, "a", encoding="utf-8", newline="") as f:
             for e in events:
-                f.write(L.row_text(L.fmt_row(self.st, e)))
-                self.n += 1
+                try:
+                    f.write(L.row_text(L.fmt_row(self.st, e)))
+                    self.n += 1
+                except (KeyError, IndexError, TypeError, ValueError) as ex:   # stop missing from static data
+                    print(f"skip row {e.get('route')}/{e.get('idx')}: {ex!r}", file=sys.stderr)
             f.flush()
+
+
+def rotate(path, max_mb):
+    """Keep the live CSV small (GitHub rejects files > 100 MB): archive it once it passes max_mb."""
+    if max_mb <= 0 or not path.exists() or path.stat().st_size < max_mb * 1e6:
+        return
+    dest = path.parent / "archive" / f"{path.stem}-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    path.replace(dest)
+    print(f"rotated {path} -> {dest}")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true", help="single poll then exit")
     ap.add_argument("--duration", type=float, help="seconds to run")
-    ap.add_argument("--interval", type=float, default=10)
+    ap.add_argument("--interval", type=float, default=10, help="seconds between polls (min 5)")
     ap.add_argument("--out", default=str(L.DEFAULT_OUT))
+    ap.add_argument("--rotate-mb", type=float, default=0,
+                    help="at start, move --out to archive/<name>-<UTC date>.csv if larger than this (0 = never)")
     a = ap.parse_args()
+    a.interval = max(5.0, a.interval)
     st = L.Static()
     if not st.route_stops:
         sys.exit("web/data/route_stops.json missing (run tools/build_gtfs.py)")
-    tr, w = L.Tracker(st), Writer(a.out, st)
+    rotate(Path(a.out), a.rotate_mb)
+    tr, w = Tracker(st), Writer(a.out, st)
     tr.seed(L.read_tail(a.out), int(time.time()))
     end = time.time() + a.duration if a.duration else None
     polls = 0
