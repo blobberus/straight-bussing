@@ -4,3 +4,5 @@
 # Real ground truth lives on the orphan 'data' branch (see docs/DATA.md), never on main.
 ground_truth/arrivals.csv
 ground_truth/archive/
+# Local fallback collector working files (tools/monitor.py)
+monitor/
