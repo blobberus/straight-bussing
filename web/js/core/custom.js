@@ -171,6 +171,49 @@ export function moveInOrder(state, rid, delta) {
 }
 
 /**
+ * Move a route to an absolute position in the draw-priority list (drag and drop). Missing routes are
+ * appended in data order first, so the list always holds every route.
+ * @param {object} state
+ * @param {string} rid
+ * @param {number} index target position, clamped to the list (0 = drawn on top)
+ * @returns {object} patch ({} if unknown or unchanged)
+ */
+export function moveToIndex(state, rid, index) {
+  const all = Object.keys(state.routes || {});
+  const order = (state.routeOrder || []).filter((r) => all.includes(r));
+  for (const r of all) if (!order.includes(r)) order.push(r);
+  const i = order.indexOf(String(rid));
+  const j = Math.max(0, Math.min(order.length - 1, Math.round(Number(index) || 0)));
+  if (i < 0 || i === j) return {};
+  order.splice(i, 1);
+  order.splice(j, 0, String(rid));
+  return { routeOrder: order };
+}
+
+/**
+ * Show every route (optionally only `rids`), dropping an applied custom route.
+ * @param {object} state
+ * @param {string[]|null} [rids] limit to these routes (e.g. the station filter); null = all
+ * @returns {object} patch
+ */
+export function showAll(state, rids = null) {
+  const only = rids ? new Set(rids.map(String)) : null;
+  const hidden = only ? (state.hiddenRoutes || []).filter((r) => !only.has(r)) : [];
+  return { activeCustom: null, prevHidden: [], hiddenRoutes: hidden };
+}
+
+/**
+ * Hide every route (optionally only `rids`), dropping an applied custom route.
+ * @param {object} state
+ * @param {string[]|null} [rids] limit to these routes; null = all
+ * @returns {object} patch
+ */
+export function hideAll(state, rids = null) {
+  const add = rids ? rids.map(String) : Object.keys(state.routes || {});
+  return { activeCustom: null, prevHidden: [], hiddenRoutes: [...new Set([...(state.hiddenRoutes || []), ...add])] };
+}
+
+/**
  * Toggle a favorite station.
  * @param {{favStops?:string[]}} state
  * @param {string} stopId

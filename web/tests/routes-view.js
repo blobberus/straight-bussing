@@ -151,3 +151,62 @@ test("routes: moveInOrder no-op at the ends", () => {
   runAction("routes:move", { id: "R1", dir: "up" }, null, ctx);   // R1 is first in data order
   eq(ctx.store.get().routeOrder, []);
 });
+
+const ptr = (el, type, y, id = 7) => el.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: 10, clientY: y, button: 0, bubbles: true, cancelable: true }));
+
+test("routes: drag a row by its grip to a new position; Escape cancels; no rebuild mid-drag", async () => {
+  const { ctx, el, done } = mounted();
+  el.querySelector('[data-action="routes:order-edit"]').click();
+  const rows = () => [...el.querySelectorAll(".rt-orow")].map((r) => r.dataset.id);
+  const start = rows();
+  ok(el.querySelector(".rt-orow [data-grip][data-nodrag][aria-hidden=true]"), "grip is pointer-only and exempt from sheet drag");
+  const li = el.querySelector(".rt-orow"), grip = li.querySelector("[data-grip]");
+  const r = li.getBoundingClientRect(), y0 = r.top + r.height / 2;
+  ptr(grip, "pointerdown", y0);
+  ok(li.classList.contains("is-dragging"), "row lifted");
+  ctx.store.set({ feedTs: (ctx.store.get().feedTs || 0) + 10 });   // live poll mid-drag
+  await tick();
+  ok(el.querySelector(".rt-orow") === li, "rows not rebuilt under the finger");
+  ptr(grip, "pointermove", y0 + r.height * 1.6);
+  ptr(grip, "pointerup", y0 + r.height * 1.6);
+  await tick();
+  eq(rows(), [start[1], start[0], ...start.slice(2)], "first route dropped one slot down");
+  eq(ctx.store.get().routeOrder.slice(0, 2), [start[1], start[0]]);
+  ok(ctx.calls.toast.pop().includes("moved to position 2"));
+  const li2 = el.querySelector(".rt-orow"), g2 = li2.querySelector("[data-grip]");
+  const r2 = li2.getBoundingClientRect();
+  ptr(g2, "pointerdown", r2.top + 5);
+  ptr(g2, "pointermove", r2.top + 5 + r2.height * 2);
+  key(document.body, "Escape");
+  ptr(g2, "pointerup", r2.top + 5 + r2.height * 2);
+  await tick();
+  eq(rows()[0], start[1], "Escape cancelled the drag");
+  ok(!el.querySelector(".is-dragging") && !el.querySelector(".rt-orow[style*=translate]"), "transforms cleared");
+  done();
+});
+
+test("routes: Show all / Hide all (disabled states, station-filter scope, clears custom route)", async () => {
+  let h = renderRoutes(base());
+  ok(/data-action="routes:show-all" disabled/.test(h) && !/data-action="routes:hide-all" disabled/.test(h), "nothing hidden");
+  h = renderRoutes(base({ hiddenRoutes: ["R1", "R2", "R3"] }));
+  ok(/data-action="routes:hide-all" disabled/.test(h) && !/data-action="routes:show-all" disabled/.test(h), "all hidden");
+  ok(!renderRoutes(base({ journey: { rids: ["R1"], label: "x" } })).includes("routes:show-all"), "not during a journey");
+  const ctx = makeCtx({ hiddenRoutes: ["R3"], customRoutes: [C1], activeCustom: "c1", prevHidden: ["R2"] });
+  runAction("routes:hide-all", {}, null, ctx);
+  eq([ctx.store.get().hiddenRoutes.sort(), ctx.store.get().activeCustom], [["R1", "R2", "R3"], null]);
+  eq(ctx.calls.toast.pop(), "All routes hidden. Show them again here.");
+  runAction("routes:show-all", {}, null, ctx);
+  eq([ctx.store.get().hiddenRoutes, ctx.store.get().prevHidden], [[], []]);
+  const f = makeCtx({ hiddenRoutes: [], routeFilter: { ids: ["R1"], label: "Stop" } });
+  runAction("routes:hide-all", {}, null, f);
+  eq(f.store.get().hiddenRoutes, ["R1"], "filter: only the station's routes");
+  ok(renderRoutes(f.store.get()).includes("All routes at this station"));
+});
+
+test("routes: official phone + page sit at the bottom of the list", () => {
+  for (const s of [base(), base({ buses: [], liveLoaded: true }), base({ routeFilter: { ids: ["R1"], label: "S" } })]) {
+    const h = renderRoutes(s), at = h.indexOf("773.702.8181");
+    ok(at > 0 && at > h.indexOf("routes:order-edit"), "after the list and its tools");
+    eq((h.match(/773\.702\.8181/g) || []).length, 1, "shown once");
+  }
+});

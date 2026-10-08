@@ -56,7 +56,7 @@ Also every ship: bump the cache name in `web/sw.js` when shell files change; esc
 | Directions: trace route shapes, walking path on streets | next | needs shape clipping / routing |
 | Learned wait/headway (not just ride time) | next | extend data-learning roadmap |
 | v2.1: My Routes tab (custom named route sets, favorite stations), "Make this a custom route", map draw order, direction chevrons + bus rail on route detail, route hours/modified schedules/buses by hour, "only show relevant routes" journeys, alerts moved to Nearby banner | done, live 2026-10-08 | contract: `docs/ARCHITECTURE.md` "v2.1 features"; `core/visibility.js` is the one visibility rule |
-| Routes list: "Show all" and "Hide all" buttons | next (owner request 2026-10-08) | `ui/views/routes.js`; Show all = `hiddenRoutes: []` (+ `clearCustom`), Hide all = every rid; keep "Make this a custom route" working |
+| Routes list: Show all / Hide all, drag-to-reorder map order, official contact at list bottom | done 2026-10-08 | `ui/views/routes.js`, `routes-drag.js`, `core/custom.js` (`showAll`/`hideAll`/`moveToIndex`) |
 | Monitoring runbook | done | `monitoring.md` + `tools/monitor.py` ("run monitoring.md"); first scheduled collector run had not fired yet on 2026-10-08 |
 | Settings (top-right gear): theme, alerts, bus-near alerts (2 / 1 stops, N min; web = only while open) | done | `ui/views/settings.js`, `core/notify.js`, `ui/notifier.js`; Live Activity / lock screen = iPhone app only, see `conversion to appstore.md` |
 | iPhone-sized frame on desktop browsers (393x852) | done | `ui/frame.js`, `css/base.css` |

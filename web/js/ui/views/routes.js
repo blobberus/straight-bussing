@@ -6,7 +6,9 @@
  *
  * v2.1: a custom-route bar ("Make this a custom route" with an inline name field, or "Showing <name>"
  * with Clear / Update / Save as new), a journey note ("Only showing routes for <label>"), and an
- * "Edit map order" mode with Move up / Move down per route (store.routeOrder, drawn top-first).
+ * "Edit map order" mode: drag a row by its grip (routes-drag.js) or use Move up / Move down
+ * (store.routeOrder, drawn top-first). Show all / Hide all above the groups; the official service
+ * phone and page always sit at the bottom of the list.
  *
  * The view mounts and owns its DOM: two regions are patched in place on store changes
  * ([data-region="routes-top"], [data-region="routes-body"]); the top region is never touched while
@@ -17,19 +19,22 @@ import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { runningCount } from "../../core/arrivals.js";
 import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibility.js";
-import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, cleanName } from "../../core/custom.js";
+import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, cleanName } from "../../core/custom.js";
 import { routeChip, emptyState, skeleton } from "../components.js";
 import { OFFICIAL_HTML } from "./pick.js";
 import { stationToggleHTML } from "./journey.js";
+import { attachOrderDrag } from "./routes-drag.js";
 
 const EYE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYEOFF = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z" opacity=".45"/><circle cx="12" cy="12" r="3" opacity=".45"/><path d="M3 3l18 18"/></svg>';
 const UP = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>';
+const GRIP = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"/></svg>';
 const DOWN = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 
 /** View-local UI state (not in the store). mode: 'list' | 'order'. */
 const R = { mode: "list", naming: false, draft: "" };
 let rootRef = null, ctxRef = null, offStore = null, lastTop = null, lastBody = null, pendingFocus = null;
+let detachDrag = null, dragging = false;
 
 /**
  * Route ids sorted by short name (numeric aware), restricted to the active station filter.
@@ -129,17 +134,32 @@ export function topBarHTML(state, ui = R) {
  */
 export function orderHTML(state) {
   const ids = drawOrder(state, null), last = ids.length - 1;
-  let h = `<h3 class="v-h rt-ordertitle">Map order</h3><div class="rt-orderhead"><p class="v-sec rt-orderhelp">Routes higher in this list are drawn on top on the map.</p><button type="button" class="v-btn v-btn--primary rt-done" data-action="routes:order-done">Done</button></div>`;
-  h += `<ol class="v-list rt-order" aria-label="Map drawing order, top first">`;
+  let h = `<h3 class="v-h rt-ordertitle">Map order</h3><div class="rt-orderhead"><p class="v-sec rt-orderhelp">Drag a route by its handle, or use the arrows. Routes higher in this list are drawn on top on the map.</p><button type="button" class="v-btn v-btn--primary rt-done" data-action="routes:order-done">Done</button></div>`;
+  h += `<ol class="v-list rt-order" data-sort aria-label="Map drawing order, top first">`;
   ids.forEach((id, i) => {
     const name = esc(nameOf(state, id));
-    h += `<li class="rt-orow">${routeChip(id, state.routes)}<span class="v-grow v-prim">${name}</span>`
+    h += `<li class="rt-orow" data-id="${esc(id)}"><span class="rt-grip" data-grip data-nodrag aria-hidden="true" title="Drag to reorder">${GRIP}</span>${routeChip(id, state.routes)}<span class="v-grow v-prim">${name}</span>`
       + `<button type="button" class="rt-move" data-action="routes:move" data-id="${esc(id)}" data-dir="up" aria-label="Move ${name} up"${i === 0 ? " disabled" : ""}>${UP}</button>`
       + `<button type="button" class="rt-move" data-action="routes:move" data-id="${esc(id)}" data-dir="down" aria-label="Move ${name} down"${i === last ? " disabled" : ""}>${DOWN}</button></li>`;
   });
   h += "</ol>";
   if ((state.routeOrder || []).length) h += `<button type="button" class="v-btn v-btn--quiet rt-reset" data-action="routes:order-reset">Reset order</button>`;
   return h;
+}
+
+/**
+ * Show all / Hide all for the routes in the list (the station filter's routes when one is set).
+ * Not offered during a journey (its bar has its own Show all).
+ * @param {object} state
+ * @param {{running:string[], idle:string[], hidden:string[]}} g groupRoutes(state)
+ * @returns {string}
+ */
+export function bulkHTML(state, g) {
+  if (state.journey) return "";
+  const shown = g.running.length + g.idle.length, scope = state.routeFilter ? " at this station" : "";
+  return `<div class="rt-bulk" role="group" aria-label="All routes${scope}">`
+    + `<button type="button" class="v-btn v-btn--quiet" data-action="routes:show-all"${g.hidden.length ? "" : " disabled"}>Show all<span class="v-sr"> routes${scope}</span></button>`
+    + `<button type="button" class="v-btn v-btn--quiet" data-action="routes:hide-all"${shown ? "" : " disabled"}>Hide all<span class="v-sr"> routes${scope}</span></button></div>`;
 }
 
 /**
@@ -156,13 +176,14 @@ export function listHTML(state) {
   if (!total) {
     return h + (state.routeFilter ? emptyState("No routes at this station", "Clear the filter to see every route.") : emptyState("No routes", "The schedule data did not load. Reload the app.") + OFFICIAL_HTML);
   }
-  if (state.liveLoaded && !(state.buses || []).length && !state.routeFilter) h += emptyState("No shuttles running right now", "Routes are listed below for reference.") + OFFICIAL_HTML;
+  if (state.liveLoaded && !(state.buses || []).length && !state.routeFilter) h += emptyState("No shuttles running right now", "Routes are listed below for reference.");
+  h += bulkHTML(state, g);
   const group = (title, ids, hidden, cls) => (ids.length ? `<h3 class="v-h">${title}</h3><div class="v-list${cls ? " " + cls : ""}">${ids.map((i) => row(state, i, hidden)).join("")}</div>` : "");
   h += group("Running", g.running, false, "");
   h += group("Not running", g.idle, false, state.liveLoaded && !(state.buses || []).length ? "is-dim" : "");
   h += group(state.journey ? "Not on this trip" : "Hidden", g.hidden, true, "");
   h += `<div class="rt-tools"><button type="button" class="v-btn v-btn--quiet" data-action="routes:order-edit">Edit map order</button></div>`;
-  return h;
+  return h + `<div class="rt-official">${OFFICIAL_HTML}</div>`;
 }
 
 function topRegion(state) { return R.mode === "order" ? "" : topBarHTML(state); }
@@ -196,7 +217,7 @@ const nameInput = () => rootRef?.querySelector?.('[data-input="routes-name"]') |
 
 /** Patch both regions in place (the top is skipped while its field has focus, unless forced). */
 function patch(force = false) {
-  if (!rootRef) return;
+  if (!rootRef || dragging) return;              // never rebuild rows under a finger; patched on drop
   const s = curState();
   const top = rootRef.querySelector('[data-region="routes-top"]'), body = rootRef.querySelector('[data-region="routes-body"]');
   if (!top || !body) { rootRef.innerHTML = renderRoutes(s); lastTop = lastBody = null; return; }
@@ -269,13 +290,26 @@ export function mountRoutes(root, ctx) {
   root.addEventListener("input", onInput);
   root.addEventListener("keydown", onKey);
   offStore = ctx?.store?.subscribe?.(() => patch()) || null;
+  detachDrag = attachOrderDrag(root, { onStart: () => { dragging = true; }, onEnd: () => { dragging = false; }, onDrop: dropAt });
   patch();
+}
+
+/** Drag-and-drop commit: move the route, announce the new position. */
+function dropAt(rid, index) {
+  const store = ctxRef?.store;
+  if (!store) return;
+  const p = moveToIndex(store.get(), rid, index);
+  if (!p.routeOrder) { patch(true); return; }
+  store.set(p);
+  ctxRef?.toast?.(`${nameOf(store.get(), rid)} moved to position ${index + 1}`);
+  patch(true);
 }
 
 /** Unmount: drop listeners; leave edit/naming modes. */
 export function unmountRoutes() {
   if (rootRef) { rootRef.removeEventListener("input", onInput); rootRef.removeEventListener("keydown", onKey); }
   offStore?.(); offStore = null;
+  detachDrag?.(); detachDrag = null; dragging = false;
   rootRef = null;
   R.mode = "list"; R.naming = false; R.draft = "";
 }
@@ -297,6 +331,18 @@ registerAction("routes:toggle", (ds, ev, ctx) => {
   const name = ctx.store.get().routes?.[ds.id]?.long || "Route";
   const hid = toggleRoute(ctx.store, ds.id);
   ctx.toast?.(hid ? `${name} hidden` : `${name} shown`);
+});
+/** Routes Show all / Hide all act on: the station filter's routes, else every route (null). */
+const bulkScope = (s) => (s.routeFilter && Array.isArray(s.routeFilter.ids) ? routeIds(s) : null);
+registerAction("routes:show-all", (ds, ev, ctx) => {
+  const s = ctx.store.get();
+  ctx.store.set(showAll(s, bulkScope(s)));
+  ctx.toast?.("All routes shown");
+});
+registerAction("routes:hide-all", (ds, ev, ctx) => {
+  const s = ctx.store.get();
+  ctx.store.set(hideAll(s, bulkScope(s)));
+  ctx.toast?.("All routes hidden. Show them again here.");
 });
 registerAction("routes:clear-filter", (ds, ev, ctx) => ctx.store.set({ routeFilter: null }));
 registerAction("routes:order-edit", (ds, ev, ctx) => {

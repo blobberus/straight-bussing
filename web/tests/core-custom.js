@@ -98,3 +98,16 @@ test("state: cleanCustom drops bad entries, dedupes ids, prunes highlight", () =
     { id: "", name: "x" }, { id: "b", name: "  " }, "junk"]), [{ id: "a", name: "A", rids: ["1", "2"], highlight: ["2"] }]);
   eq(cleanCustom("nope"), []);
 });
+
+test("custom: moveToIndex clamps and fills; showAll/hideAll scope + drop custom route", () => {
+  const s = base({ routeOrder: ["c"] });
+  eq(C.moveToIndex(s, "d", 0).routeOrder, ["d", "c", "a", "b"]);
+  eq(C.moveToIndex(s, "c", 99).routeOrder, ["a", "b", "d", "c"]);
+  eq(C.moveToIndex(s, "c", 0), {});
+  eq(C.moveToIndex(s, "zz", 1), {});
+  const h = base({ hiddenRoutes: ["a", "b"], activeCustom: "x", prevHidden: ["d"] });
+  eq(C.showAll(h), { activeCustom: null, prevHidden: [], hiddenRoutes: [] });
+  eq(C.showAll(h, ["a"]).hiddenRoutes, ["b"]);
+  eq(C.hideAll(h).hiddenRoutes.sort(), ["a", "b", "c", "d"]);
+  eq(C.hideAll(base({ hiddenRoutes: ["a"] }), ["a", "c"]).hiddenRoutes, ["a", "c"]);
+});
