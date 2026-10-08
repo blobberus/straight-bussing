@@ -166,11 +166,11 @@ input::placeholder { color: var(--text-2); opacity: 1; }
 .dlgcard {
   width: 100%; max-width: 380px; padding: var(--s5); border-radius: var(--r-sheet);
   background: var(--bg-solid); color: var(--text); box-shadow: var(--shadow-sheet);
-  max-height: calc(100dvh - 32px); overflow: auto;
+  max-height: calc(var(--app-h) - 32px); overflow: auto;
 }
 .dlgcard .cta { margin: var(--s2) 0 0; }
 .dlgt { margin: 0 0 var(--s1); font-size: var(--fs-title); line-height: var(--lh-title); font-weight: 650; }
-@media (min-width: 768px) { .scrim { align-items: center; } }
+@media (min-width: 768px) and (max-height: 559px) { .scrim { align-items: center; } }
 
 @media (forced-colors: active) {
   .chip, .card, .cta, .seg button, .badge, .pill, .est { border: 1px solid CanvasText; }

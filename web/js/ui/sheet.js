@@ -1,6 +1,8 @@
 /**
  * @module ui/sheet
- * Bottom sheet with three detents (peek / half / full) on phones; a fixed left panel at >=768 px.
+ * Bottom sheet with three detents (peek / half / full) on phones and inside the desktop phone frame
+ * (ui/frame.js); a fixed left panel only on wide + short screens (PANEL_MEDIA, e.g. phone landscape).
+ * Drag math works in the sheet's own CSS px, so it stays right when the phone frame is scaled down.
  * Drag: pointer events on the header (any part, incl. tabs; a drag suppresses the click), touch
  * events on the content when it is scrolled to the top. Release projects velocity (px/ms * 200)
  * and snaps; a flick (>0.5 px/ms) goes to the next detent in that direction. Rubber band 0.3 past
@@ -93,6 +95,9 @@ export function stepDetent(d, dir) {
   return DETENTS[Math.max(0, Math.min(DETENTS.length - 1, i + dir))];
 }
 
+/** Panel (left column, no detents) layout. Must match css/sheet.css, base.css, components.css. */
+export const PANEL_MEDIA = "(min-width: 768px) and (max-height: 559px)";
+
 function makeProbe(varName) {
   const p = document.createElement("div");
   p.setAttribute("aria-hidden", "true");
@@ -104,13 +109,13 @@ function makeProbe(varName) {
 /**
  * Create the sheet controller.
  * @param {{sheetEl:HTMLElement, contentEl:HTMLElement, headEl:HTMLElement, grabEl?:HTMLElement, initial?:string, panelMedia?:string}} els
- *   panelMedia: media query for panel mode (default '(min-width: 768px)', must match css/sheet.css)
+ *   panelMedia: media query for panel mode (default PANEL_MEDIA, must match css/sheet.css)
  * @returns {{setDetent(d:string):void, getDetent():string, onChange(fn:(d:string)=>void):()=>void,
  *            stepDown():boolean, stepUp():boolean, inset():number, isPanel():boolean, destroy():void}}
  */
 export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panelMedia }) {
   const grab = grabEl || sheetEl.querySelector(".grab");
-  const panelMq = matchMedia(panelMedia || "(min-width: 768px)");
+  const panelMq = matchMedia(panelMedia || PANEL_MEDIA);
   const probes = { peek: makeProbe("--v-peek"), half: makeProbe("--v-half"), full: makeProbe("--v-full") };
   const listeners = new Set();
   const offs = [];
@@ -150,13 +155,24 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     emitInset();
   }
 
-  /* ---- drag core ---- */
-  function begin(y, source) {
-    drag = { y0: y, y, sizes: measure(), startVis: 0, samples: [{ y, t: performance.now() }], moved: false, source };
+  /* ---- drag core (y arrives in screen px; k converts to the sheet's CSS px under a scaled frame) ---- */
+  const scaleOf = () => {
+    const h = sheetEl.offsetHeight, r = h ? sheetEl.getBoundingClientRect().height / h : 1;
+    return r > 0.05 && isFinite(r) ? r : 1;
+  };
+  function begin(yRaw, source) {
+    const k = scaleOf(), y = yRaw / k;
+    drag = { k, y0: y, y, sizes: measure(), startVis: 0, samples: [{ y, t: performance.now() }], moved: false, source };
     drag.startVis = drag.sizes[detent];
   }
-  function move(y) {
+  function track(yRaw) {
+    if (!drag) return;
+    drag.y = yRaw / drag.k;
+    drag.samples.push({ y: drag.y, t: performance.now() });
+  }
+  function move(yRaw) {
     if (!drag) return false;
+    const y = yRaw / drag.k;
     const dy = y - drag.y0;
     if (!drag.moved) {
       if (Math.abs(dy) < SLOP && drag.source !== "touch") return false;
@@ -203,10 +219,7 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   });
   on(headEl, "pointerup", (e) => {
     if (e.pointerId !== pid) return;
-    if (drag) {
-      drag.y = e.clientY;
-      drag.samples.push({ y: e.clientY, t: performance.now() });
-    }
+    track(e.clientY);
     pid = null;
     end(false);
   });
@@ -281,10 +294,7 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   const touchEnd = (e) => {
     if (tc && tc.dragging && drag) {
       const t = e.changedTouches && e.changedTouches[0];
-      if (t) {
-        drag.y = t.clientY;
-        drag.samples.push({ y: t.clientY, t: performance.now() });
-      }
+      if (t) track(t.clientY);
       end(e.type === "touchcancel");
     }
     tc = null;

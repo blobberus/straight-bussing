@@ -4,7 +4,7 @@
  * stubbed geolocation (denied), stubbed live feed, stubbed place search and walking router.
  * Tests run in order and share the one app instance, like a user session.
  */
-import { test, eq, ok, holdRun, run } from "./lib.js";
+import { test, eq, ok, near, holdRun, run } from "./lib.js";
 
 holdRun();
 
@@ -43,21 +43,32 @@ const tab = (id) => click($(`#tabs button[data-tab="${id}"]`), "tab " + id);
 const highlights = () => $$("#map .sb-hl").length;
 const stopName = (id) => state().stops[id].name;
 
-async function boot() {
+/** The real index.html with the stubs injected. */
+async function pageHTML() {
   const html = await (await fetch("../index.html", { cache: "no-store" })).text();
   const base = new URL("../", location.href).href;
   let page = html.replace(/<head>/i, `<head><base href="${base}"><script src="tests/e2e-stubs.js"></script>`);
   page = page.replace(/<script type="module" src="js\/main\.js[^"]*"><\/script>/,
     (m) => `<script type="module" src="tests/e2e-expose.js"></script>${m}`);
   if (!page.includes("e2e-expose.js")) throw new Error("js/main.js <script> tag not found in index.html");
+  return page;
+}
+/** Load the app into a new iframe (optionally sized, e.g. a desktop window). */
+async function openApp(style) {
   const frame = document.createElement("iframe");
   frame.title = "app under test";
+  if (style) frame.style.cssText = style;
   document.body.appendChild(frame);
-  FRAME = frame;
   const d = frame.contentDocument;
   d.open();
-  d.write(page);
+  d.write(await pageHTML());
   d.close();
+  return frame;
+}
+
+async function boot() {
+  const frame = await openApp();
+  FRAME = frame;
   W = frame.contentWindow;
   D = W.document;
   await waitFor(() => W.__sb && W.__e2e, "app modules", 15000);
@@ -279,8 +290,42 @@ test("status pill: failing feed shows the error pill with Retry; recovery hides 
   await waitFor(() => $("#pill").hidden && !state().failed, "pill hidden after recovery");
 });
 
+test("settings gear: top-right, labeled, 44px target, clear of the locate button", async () => {
+  const g = $("#settingsBtn"), loc = $("#locateBtn");
+  ok(g && g.getAttribute("aria-label") === "Settings" && g.dataset.action === "settings:open", "gear button");
+  const r = g.getBoundingClientRect(), l = loc.getBoundingClientRect();
+  ok(r.width >= 44 && r.height >= 44, "44px target: " + r.width + "x" + r.height);
+  ok(r.bottom <= l.top, "gear sits above the locate button");
+  ok(W.innerWidth - r.right <= 16, "right edge");
+  click(g, "gear");
+  await waitFor(() => state().view === "settings" && !$("#back").hidden, "Settings opened from the gear");
+  click($("#back"), "back");
+  await waitFor(() => state().view !== "settings", "back from Settings");
+});
+
 test("no console errors or uncaught exceptions in the app", () => {
   eq(T.errors, []);
+});
+
+test("desktop window: the app runs in a 393x852 phone frame with the phone layout", async () => {
+  const f = await openApp("width:1280px;height:800px");
+  const w = f.contentWindow;
+  await waitFor(() => w.__sb && w.__sb.store.get().staticLoaded && w.document.querySelector(".leaflet-container"), "framed app booted", 15000);
+  const d = w.document, app = d.getElementById("app"), cs = w.getComputedStyle(app);
+  eq([cs.width, cs.height], ["393px", "852px"], "frame layout size");
+  const r = app.getBoundingClientRect();
+  near(r.height, 800 - 56, 3, "scaled to fit the window height");
+  ok(Math.abs((r.left + r.right) / 2 - 640) < 2 && Math.abs((r.top + r.bottom) / 2 - 400) < 2, "centered: " + JSON.stringify([r.top, r.bottom]));
+  eq(w.getComputedStyle(d.documentElement).getPropertyValue("--safe-t").trim(), "54px", "emulated status bar");
+  const map = d.getElementById("map");
+  eq([map.clientWidth, map.clientHeight], [393, 852], "Leaflet container fills the frame");
+  const sh = d.getElementById("sheet"), sr = sh.getBoundingClientRect();
+  near(sr.width, r.width, 2, "bottom sheet spans the frame (not the >=768px left panel)");
+  ok(sr.top > r.top + r.height * 0.3 && sr.top < r.bottom, "sheet at half detent inside the frame");
+  const g = d.getElementById("settingsBtn").getBoundingClientRect();
+  ok(g.right <= r.right && g.top >= r.top + 54 * (r.height / 852) - 1, "gear inside the frame, below the status bar");
+  eq(w.__e2e.errors, [], "no console errors in the framed app");
+  f.remove();
 });
 
 boot().then(() => run(), (e) => {

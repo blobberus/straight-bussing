@@ -78,15 +78,23 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
+  /* app viewport: the window on phones, the 393x852 phone frame on desktop/tablet (see base.css) */
+  --app-w: 100vw;
+  --app-h: 100vh;
   --v-peek: calc(112px + var(--safe-b));
-  --v-half: 46vh;
-  --v-full: calc(100vh - 56px - var(--safe-t));
+  --v-half: calc(var(--app-h) * .46);
+  --v-full: calc(var(--app-h) - 56px - var(--safe-t));
   --panel-w: 380px;
 
   color-scheme: light;
 }
 @supports (height: 100dvh) {
-  :root { --v-half: 46dvh; --v-full: calc(100dvh - 56px - var(--safe-t)); }
+  :root { --app-h: 100dvh; }
+}
+/* desktop / tablet: the app runs inside an iPhone-sized frame (base.css). Keep this media query in sync
+   with FRAME_MEDIA in js/ui/frame.js. Emulated safe areas: status bar + Dynamic Island, home indicator. */
+@media (min-width: 521px) and (min-height: 560px) {
+  :root { --app-w: 393px; --app-h: 852px; --safe-t: 54px; --safe-b: 34px; --safe-l: 0px; --safe-r: 0px; }
 }
 
 /* color: dark (system, unless the user forced light) */

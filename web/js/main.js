@@ -19,9 +19,12 @@ import { registerAction, bindActions } from "./ui/actions.js";
 import { initTheme, isDark, onChange as onThemeChange } from "./ui/theme.js";
 import { emptyState, OFFICIAL_PHONE } from "./ui/components.js";
 import { registerContextActions, mountContextBar } from "./ui/contextbar.js";
+import { initFrame } from "./ui/frame.js";
 
 /** Every view module; each calls registerView() at import time. */
-export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes"]);
+export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes", "settings"]);
+/** Views that may not be deployed yet: a failed import is a warning, not an error. */
+const OPTIONAL_VIEWS = new Set(["settings"]);
 const RENDER_TICK_MS = 15000;
 const FIRST_POLL_GRACE_S = 20;
 const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "setSelectedStop", "setUser",
@@ -33,7 +36,7 @@ const BUS_KEYS = ["buses", "feedTs", "routes", ...VIS_KEYS];
 const $ = (id) => document.getElementById(id);
 const el = {
   sheet: $("sheet"), head: $("sheetHead"), grab: $("grab"), content: $("content"), title: $("title"),
-  right: $("titleRight"), back: $("back"), tabs: $("tabs"), ctxbar: $("ctxbar"),
+  right: $("titleRight"), back: $("back"), tabs: $("tabs"), ctxbar: $("ctxbar"), gear: $("settingsBtn"),
   pill: $("pill"), pillText: $("pillText"), pillRetry: $("pillRetry"), dlg: $("dlg"), toast: $("toast"), locate: $("locateBtn"),
 };
 const bootS = nowS();
@@ -273,7 +276,7 @@ function wireUI() {
   el.back.addEventListener("click", () => back());
   el.tabs.addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) navigate(b.dataset.tab); });
   el.locate.addEventListener("click", onLocateFab);
-  for (const root of [el.content, el.pill, el.dlg, el.ctxbar]) bindActions(root, () => ctx);
+  for (const root of [el.content, el.pill, el.dlg, el.ctxbar, el.gear]) bindActions(root, () => ctx);
   el.dlg.addEventListener("click", (e) => { if (e.target === el.dlg) closeDlg(); });
   el.content.addEventListener("focusout", () => setTimeout(() => { if (dirty && !inputFocused()) render(); }, 0));
   document.addEventListener("keydown", (e) => {
@@ -317,6 +320,7 @@ function openRoute(rid) {
 /* ---------------- boot ---------------- */
 async function boot() {
   initTheme(store);
+  initFrame();
   try {
     if (!window.L) throw new Error("Leaflet not loaded");
     map = createMap("map");
@@ -344,7 +348,7 @@ async function boot() {
   onThemeChange((d) => { mapCall("setTheme", d); syncMap(store.get(), null); });
 
   const results = await Promise.allSettled(VIEW_IDS.map((v) => import(`./ui/views/${v}.js`)));
-  results.forEach((r, i) => r.status === "rejected" && console.error("view " + VIEW_IDS[i] + " failed to load", r.reason));
+  results.forEach((r, i) => r.status === "rejected" && (OPTIONAL_VIEWS.has(VIEW_IDS[i]) ? console.warn : console.error)("view " + VIEW_IDS[i] + " failed to load", r.reason));
   registerCoreActions();
   registerContextActions();
   mountContextBar(el.ctxbar, store);
@@ -352,6 +356,8 @@ async function boot() {
   store.subscribe((s, changed) => { syncMap(s, changed); scheduleRender(); syncHistory(); });
   render();
   syncMap(store.get(), null);
+  // bus-near alerts while the page is open (SETTINGS owns ui/notifier.js; optional until it ships)
+  import("./ui/notifier.js").then((m) => m.startNotifier?.(store, { toast })).catch(() => {});
 
   loadStatic(store).catch((e) => { console.error("static data", e); toast("Couldn't load stops and routes. Check your connection."); });
   live = startLive(store, { intervalMs: 10000 });
