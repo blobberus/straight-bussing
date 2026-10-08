@@ -309,6 +309,7 @@ registerView("directions", {
   render: (state) => renderDirections(state),
   mount: (root, ctx) => mountDirections(root, ctx),
   unmount: () => unmountDirections(),
+  refresh: () => patchRes(),
   onStopTap: (id, ctx) => { ctxRef = ctx || ctxRef; const ep = stopEndpoint(cur(), id); if (!ep) return false; setEndpoint(D.active || (D.from ? "to" : "from"), ep); return true; },
 });
 

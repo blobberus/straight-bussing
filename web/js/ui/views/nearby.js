@@ -252,6 +252,7 @@ registerView("nearby", {
   peek: (state) => peekNearby(state),
   mount: (root, ctx) => mountNearby(root, ctx),
   unmount: () => unmountNearby(),
+  refresh: () => patchResults(),
 });
 
 registerAction("nearby:locate", async (ds, ev, ctx) => {

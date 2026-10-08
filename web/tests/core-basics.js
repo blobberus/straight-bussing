@@ -42,6 +42,8 @@ test("lum and textOn", () => {
   eq(textOn("#0000FF"), "#ffffff");
   eq(textOn("#000000"), "#ffffff");
   eq(textOn("garbage"), "#ffffff"); // falls back to #555555
+  eq(textOn("#FF9900"), "#111114"); // orange CEN: dark text has the higher contrast
+  eq(textOn("#800000"), "#ffffff");
 });
 
 /* ---------- time ---------- */

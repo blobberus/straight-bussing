@@ -44,10 +44,14 @@ export function lum(hex) {
 }
 
 /**
- * Readable text color on a background color, chosen by luminance.
+ * Readable text color on a background color: whichever of near-black / white has the higher
+ * WCAG contrast ratio (crossover near luminance 0.19, so e.g. orange #FF9900 gets dark text).
  * @param {string} hex background
  * @returns {'#111114'|'#ffffff'}
  */
 export function textOn(hex) {
-  return lum(hex) > 0.45 ? "#111114" : "#ffffff";
+  const L = lum(hex);
+  const vsDark = (L + 0.05) / (lum("#111114") + 0.05);
+  const vsWhite = 1.05 / (L + 0.05);
+  return vsDark >= vsWhite ? "#111114" : "#ffffff";
 }

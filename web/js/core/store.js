@@ -18,6 +18,7 @@ export function createStore(initial) {
     pending = null;
     if (!changed || !changed.size) return;
     for (const fn of [...subs]) {
+      if (!subs.has(fn)) continue; // unsubscribed earlier in this same flush
       try {
         fn(state, changed);
       } catch (e) {

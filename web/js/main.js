@@ -246,8 +246,9 @@ function render() {
   if (!def) return;
   const key = id + "|" + (s.stopId || "") + "|" + (s.routeId || "");
   if (def !== cur.def || (def.mount && key !== cur.key)) return switchView(id, def, key, s);
-  // Views with mount() keep their listeners on the content element (it is never replaced) and
-  // patch regions in place while typing; their render(state) must reproduce the full screen.
+  // Views with mount() own their DOM after mounting (store subscription + in-place patches).
+  // Rebuilding them here would replace a button between pointerdown and click, losing the tap.
+  if (def.mount) return;
   if ((dirty = inputFocused())) return;
   const html = renderView(def, s);
   const keyChanged = key !== cur.key;
@@ -360,7 +361,12 @@ async function boot() {
   loadStatic(store).catch((e) => { console.error("static data", e); toast("Couldn't load stops and routes. Check your connection."); });
   live = startLive(store, { intervalMs: 10000 });
 
-  setInterval(() => { if (!document.hidden) { render(); syncMap(store.get(), new Set(["buses"])); } }, RENDER_TICK_MS);
+  setInterval(() => {
+    if (document.hidden) return;
+    render();
+    if (cur.def && cur.def.mount && typeof cur.def.refresh === "function") safe(() => cur.def.refresh(), null);
+    syncMap(store.get(), new Set(["buses"]));
+  }, RENDER_TICK_MS);
 
   try {
     if (navigator.permissions && navigator.permissions.query) {

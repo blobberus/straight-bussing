@@ -36,7 +36,9 @@ export function initRouter(deps) {
  * @param {string} id
  * @param {{title:(state:Object)=>string, parent?:string, detent?:'peek'|'half'|'full', tab?:'nearby'|'routes'|'alerts',
  *          render?:(state:Object)=>string, mount?:(rootEl:HTMLElement, ctx:Object)=>void, unmount?:()=>void,
- *          meta?:(state:Object)=>string, onStopTap?:(stopId:string, ctx:Object)=>boolean}} def
+ *          meta?:(state:Object)=>string, onStopTap?:(stopId:string, ctx:Object)=>boolean, refresh?:()=>void}} def
+ *   Views with mount() own their DOM after mounting: main.js never rebuilds them; it calls
+ *   refresh() (optional) every 15 s so countdowns tick between polls.
  *   meta (optional, D1 extension): plain text for the right side of the sheet title line.
  *   onStopTap (optional, D1 extension): return true to handle a map stop tap instead of opening the stop view.
  */
