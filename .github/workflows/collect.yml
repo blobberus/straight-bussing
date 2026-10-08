@@ -1,0 +1,73 @@
+name: Collect ground truth
+# Constant collection: a run starts at :07 and :37 and logs for 70 min, so runs always overlap and a
+# late or skipped scheduled start leaves no gap. Each run writes only its own rows, then merges them
+# into data/ground_truth/arrivals.csv on the orphan 'data' branch (tools/merge_arrivals.py drops the
+# duplicates from the overlap) and refreshes web/data/learned.json there. Nothing is ever pushed to
+# main, so this never triggers a Pages deploy. Docs: docs/DATA.md
+on:
+  schedule: [{ cron: "7,37 * * * *" }]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write          # keepalive: re-enable this workflow so GitHub's 60-day idle rule can't stop it
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 95
+    steps:
+      - uses: actions/checkout@v4            # code (tools/ + web/data) always from main
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Refresh static network data
+        run: python tools/build_gtfs.py || echo "GTFS download failed; using committed web/data"
+      - name: Seed from the shared CSV
+        run: |
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch --no-tags --depth 1 origin +refs/heads/data:refs/remotes/origin/data
+            git show origin/data:data/ground_truth/arrivals.csv > "$RUNNER_TEMP/seed.csv" 2>/dev/null || : > "$RUNNER_TEMP/seed.csv"
+          else
+            : > "$RUNNER_TEMP/seed.csv"
+          fi
+      - name: Log arrivals (70 min)
+        timeout-minutes: 75
+        continue-on-error: true              # rows are flushed as they are found; keep what we have
+        run: python tools/truth_logger.py --duration 4200 --seed "$RUNNER_TEMP/seed.csv" --out "$RUNNER_TEMP/run.csv"
+      - name: Merge into the data branch and push
+        if: always()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          [ -s "$RUNNER_TEMP/run.csv" ] || { echo "no rows this run"; exit 0; }
+          for i in 1 2 3 4 5; do
+            rm -rf databranch; git worktree prune
+            if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+              git fetch --no-tags --depth 1 origin +refs/heads/data:refs/remotes/origin/data
+              git worktree add -f -B data databranch origin/data
+            else
+              git worktree add --orphan -b data databranch 2>/dev/null || {
+                git worktree add --detach databranch
+                git -C databranch checkout --orphan data
+                git -C databranch rm -rfq . || true
+              }
+              printf '# data branch\nAutomated ground-truth data. See docs/DATA.md on main.\n' > databranch/README.md
+            fi
+            python tools/merge_arrivals.py --into databranch/data/ground_truth/arrivals.csv --add "$RUNNER_TEMP/run.csv" --rotate-mb 40
+            python tools/refresh_model.py --data databranch/data/ground_truth/arrivals.csv \
+              --out databranch/web/data/learned.json || echo "refresh_model failed; arrivals are still committed"
+            git -C databranch add -A data README.md 2>/dev/null || git -C databranch add -A data
+            [ -f databranch/web/data/learned.json ] && git -C databranch add web/data/learned.json
+            if git -C databranch diff --cached --quiet; then echo "nothing new (all duplicates)"; exit 0; fi
+            git -C databranch commit -qm "data: arrivals $(date -u +%Y-%m-%dT%H:%MZ)"
+            if git -C databranch push origin HEAD:refs/heads/data; then exit 0; fi
+            echo "push rejected (attempt $i): another run pushed first; re-merging on top of it"
+            sleep $((RANDOM % 20 + 5 * i))
+          done
+          echo "push failed after 5 attempts"; exit 1
+      - name: Keep the schedule alive
+        if: always()
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          curl -fsS -X PUT -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/collect.yml/enable" \
+            || echo "keepalive call failed (harmless)"
