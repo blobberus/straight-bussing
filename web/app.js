@@ -6,6 +6,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const safeColor = (c) => (/^#[0-9a-fA-F]{6}$/.test(c || "") ? c : "#555555");
 const now = () => Date.now() / 1000;
 
+if (!window.L) { document.getElementById("pill").hidden = false; document.getElementById("pill").className = "statuspill err"; document.getElementById("pill").textContent = "Couldn't load the map. Check your connection and reload."; throw new Error("Leaflet not loaded"); }
 const S = { routes: {}, stops: {}, shapes: {}, routeStops: {}, stopRoutes: {}, buses: [], trips: [], alerts: [],
   view: "nearby", prev: null, stop: null, route: null, user: null, lastOk: 0, feedTs: 0, loaded: false, failed: false };
 
@@ -31,6 +32,7 @@ function setTiles() {
   tiles.addTo(map);
 }
 setTiles(); dark.addEventListener?.("change", setTiles);
+map.attributionControl.setPosition("topleft");
 map.createPane("casing").style.zIndex = 380; map.createPane("lines").style.zIndex = 390;
 const lineLayer = L.layerGroup().addTo(map), stopLayer = L.layerGroup().addTo(map), selLayer = L.layerGroup().addTo(map), busLayer = L.layerGroup().addTo(map);
 map.on("zoomstart", () => $("map").classList.add("nogl")); map.on("zoomend", () => { $("map").classList.remove("nogl"); toggleStops(); });
@@ -72,7 +74,7 @@ function drawBuses() {
     if (!m || m.rid !== rid) {
       if (m) busLayer.removeLayer(m.mk);
       const icon = L.divIcon({ className: "busicon", iconSize: [28, 28], iconAnchor: [14, 14],
-        html: `<div class="bus" style="background:${c};color:${textOn(c)};--c:${c}"><div class="hd"></div>${esc(rname(rid)).slice(0, 3)}</div>` });
+        html: `<div class="bus" style="background:${c};color:${textOn(c)};--c:${c}"><div class="hd"></div>${esc(rname(rid).slice(0, 3))}</div>` });
       m = { rid, mk: L.marker(ll, { icon, zIndexOffset: 500, keyboard: false }).addTo(busLayer) };
       m.mk.on("click", () => { if (rid) openRoute(rid); });
       busMarkers.set(id, m);
@@ -125,7 +127,7 @@ function arrivalsFor(stopId, rid) {
 function hav(a, b) { const R = 6371000, rad = Math.PI / 180, dLa = (b.lat - a.lat) * rad, dLo = (b.lon - a.lon) * rad;
   const x = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); }
 const walkMin = (m) => Math.max(1, Math.round(m / 80));
-const nearest = (n) => (S.user ? Object.entries(S.stops).map(([id, s]) => ({ id, ...s, d: hav(S.user, s) })).sort((a, b) => a.d - b.d).slice(0, n) : []);
+const nearest = (n) => (S.user ? Object.entries(S.stops).map(([id, s]) => ({ id, ...s, d: hav(S.user, s) })).filter((s) => s.d < 5000).sort((a, b) => a.d - b.d).slice(0, n) : []);
 const runningCount = (rid) => S.buses.filter((v) => v.trip?.route_id === rid).length;
 
 /* ---------- views ---------- */
@@ -200,8 +202,8 @@ function render() {
   $("back").hidden = !sub;
   $("titleRight").textContent = v === "nearby" && S.user ? "" : "";
   $("seg").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.view === (sub ? S.prev || "nearby" : v)));
-  c.innerHTML = { nearby: viewNearby, stop: viewStop, routes: viewRoutes, route: viewRoute, alerts: viewAlerts, about: viewAbout }[v]();
-  c.scrollTop = top;
+  const html = { nearby: viewNearby, stop: viewStop, routes: viewRoutes, route: viewRoute, alerts: viewAlerts, about: viewAbout }[v]();
+  if (html !== c._html) { c._html = html; c.innerHTML = html; c.scrollTop = top; }
   const n = activeAlerts().length; $("alertCount").hidden = !n; $("alertCount").textContent = n;
   if (v === "nearby" && S.loaded) { const s = nearest(1)[0], a = s && arrivalsFor(s.id)[0]; $("titleRight").textContent = a ? rname(a.rid) + " · " + Math.max(0, Math.floor((a.t - now()) / 60)) + " min" : ""; }
 }
@@ -224,7 +226,7 @@ function go(view, opts = {}) {
 function openStop(id) { S.stop = id; S.route = null; go("stop", { detent: "half" }); const s = S.stops[id]; if (s) flyTo([s.lat, s.lon]); }
 function openRoute(id) { S.route = id; S.stop = null; go("route", { detent: "half" });
   const pts = (S.shapes[id] || []).flat(); if (pts.length) map.fitBounds(L.latLngBounds(pts), { paddingBottomRight: [0, visHeight() ], paddingTopLeft: [0, 70], animate: true }); }
-function flyTo(ll) { map.flyTo(ll, Math.max(map.getZoom(), 16), { duration: 0.6 }); map.once("moveend", () => {}); const off = visHeight() / 2; map.panBy([0, off], { animate: false }); }
+function flyTo(ll) { const z = Math.max(map.getZoom(), 16), p = map.project(ll, z).add([0, visHeight() / 2]); map.flyTo(map.unproject(p, z), z, { duration: 0.6 }); }
 const visHeight = () => (matchMedia("(min-width:768px)").matches ? 0 : $("sheet").classList.contains("peek") ? $("pPeek").offsetHeight : $("pHalf").offsetHeight);
 $("back").onclick = () => go(S.prev || "nearby");
 $("seg").onclick = (e) => { const b = e.target.closest("button"); if (b) go(b.dataset.view); };
@@ -267,6 +269,7 @@ function setDetent(d) { detent = d; sheet.classList.remove(...DET); sheet.classL
   });
   const end = (e) => {
     if (!active) return; active = false; sheet.classList.remove("dragging"); sheet.style.removeProperty("--drag");
+    if (e.type === "pointercancel") return;
     const dy = e.clientY - y0, moved = Math.abs(dy) > 6;
     if (!moved) { if (detent === "peek") setDetent("half"); return; }
     const proj = startVis - dy - v * 200; // v>0 means moving down
@@ -280,6 +283,8 @@ function setDetent(d) { detent = d; sheet.classList.remove(...DET); sheet.classL
   $("grab").addEventListener("click", (e) => { if (e.detail === 0) setDetent(detent === "full" ? "half" : detent === "half" ? "peek" : "half"); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if (detent === "full") setDetent("half"); else if (S.view === "stop" || S.view === "route" || S.view === "about") go(S.prev || "nearby"); } });
 })();
+
+matchMedia("(min-width:768px)").addEventListener?.("change", (e) => { if (e.matches) setDetent("half"); });
 
 /* ---------- boot ---------- */
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
