@@ -1,0 +1,59 @@
+/* Settings view (ui/views/settings.js). Theme tokens only; `st-` prefix. */
+.st-intro, .st-note { margin: 0 0 var(--s2); }
+.st-note { margin-top: var(--s3); }
+.st-pad { margin: var(--s2) 0; }
+.st-label { display: block; margin: var(--s3) 0 var(--s1); font-weight: 600; }
+.st-count { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--warn-bg); color: var(--warn); font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 600; vertical-align: 1px; }
+.st-theme { margin: var(--s1) 0; }
+
+/* alerts */
+.st-alerts { list-style: none; padding: var(--s1) var(--s4); }
+.st-alert { display: flex; gap: var(--s3); padding: var(--s2) 0; }
+.st-alert + .st-alert { border-top: 1px solid var(--hairline); }
+.st-alert p { margin: 2px 0; }
+.st-alertic { flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 2px; border-radius: 50%; background: var(--warn); color: var(--bg-solid); font-weight: 800; font-size: 14px; line-height: 1; }
+.st-when { font-variant-numeric: tabular-nums; }
+.st-empty { padding: var(--s3) var(--s4); }
+.st-empty p { margin: 2px 0; }
+
+/* station */
+.st-station { padding: var(--s2) var(--s4); }
+.st-stationrow { display: flex; align-items: center; gap: var(--s3); min-height: 56px; }
+.st-stationrow .v-grow > span { display: block; }
+.st-off { min-height: var(--tap); padding-left: 0; }
+.st-pick .v-grow > span { display: block; }
+.st-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.st-search input { box-sizing: border-box; width: 100%; min-height: 48px; padding: 0 var(--s4); border: 1px solid var(--hairline-strong); border-radius: var(--r-control); background: var(--surface); color: var(--text); font: inherit; font-size: 1rem; }
+.st-search input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* options */
+.st-routes { margin: var(--s2) 0; padding: var(--s1) var(--s4) var(--s2); border: 0; min-width: 0; }
+.st-routes legend { float: left; width: 100%; margin: var(--s2) 0 0; padding: 0; }
+.st-check, .st-sw, .st-sel { display: flex; align-items: center; gap: var(--s3); min-height: 52px; cursor: pointer; position: relative; clear: both; }
+.st-check + .st-check, .st-kinds > * + * { border-top: 1px solid var(--hairline); }
+.st-check input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--accent-fill); }
+.st-kinds, .st-ios { padding: 0 var(--s4); }
+.st-sw .v-grow > span, .st-sel .v-grow { display: block; }
+.st-sel select { min-height: var(--tap); padding: 0 var(--s2); border: 1px solid var(--hairline-strong); border-radius: var(--r-control); background: var(--bg-solid); color: var(--text); font: inherit; }
+
+/* switch: native checkbox stays focusable/clickable on top, the knob is drawn behind it */
+.st-sw input { position: absolute; right: 0; top: 50%; width: 51px; height: 31px; margin: -15.5px 0 0; opacity: 0; cursor: pointer; z-index: 1; }
+.st-knob { flex: none; position: relative; width: 51px; height: 31px; border-radius: 16px; background: var(--hairline-strong); transition: background-color var(--d-press) var(--ease); }
+.st-knob::after { content: ""; position: absolute; left: 2px; top: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform var(--d-press) var(--ease); }
+.st-sw input:checked + .st-knob { background: var(--live); }
+.st-sw input:checked + .st-knob::after { transform: translateX(20px); }
+.st-sw input:focus-visible + .st-knob { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* state is not color alone: an "I" bar marks the on position */
+.st-sw input:checked + .st-knob::before { content: ""; position: absolute; left: 12px; top: 10px; width: 2px; height: 11px; border-radius: 1px; background: #fff; }
+
+/* status */
+.st-status { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); }
+.st-status .v-grow > span { display: block; }
+.st-ok { vertical-align: -3px; color: var(--live); }
+
+@media (prefers-reduced-motion: reduce) {
+  .st-knob, .st-knob::after { transition: none; }
+}
+@media (prefers-contrast: more) {
+  .st-knob { outline: 1px solid currentColor; }
+}
