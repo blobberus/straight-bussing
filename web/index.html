@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Straight Bussing</title>
+<meta name="description" content="Unofficial live campus shuttle tracker">
+<meta name="theme-color" content="#800000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bussing">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="map" aria-label="Shuttle map"></div>
+<div id="banner" class="banner" hidden></div>
+
+<section id="sheet" class="sheet">
+  <button id="grab" class="grab" aria-label="Expand or collapse panel"></button>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="arrivals" class="on">Arrivals</button>
+    <button role="tab" data-tab="routes">Routes</button>
+    <button role="tab" data-tab="alerts">Alerts <span id="alertCount" class="pill" hidden></span></button>
+    <button role="tab" data-tab="about">About</button>
+  </nav>
+  <div id="panel-arrivals" class="panel"></div>
+  <div id="panel-routes" class="panel" hidden></div>
+  <div id="panel-alerts" class="panel" hidden></div>
+  <div id="panel-about" class="panel" hidden>
+    <p><strong>Straight Bussing is an unofficial student project.</strong> It is not affiliated with or endorsed by the University of Chicago or Passio. Times are predictions and can be wrong.</p>
+    <p>For safety or NightRide, always use the official service: <a href="tel:7737028181">773.702.8181</a> or the university's shuttle page at <a href="https://safety-security.uchicago.edu/Transportation" target="_blank" rel="noopener">safety-security.uchicago.edu/Transportation</a>.</p>
+    <p>Data: public Passio GTFS feeds. No ads, no account, no tracking. Your location, if you allow it, stays on your device.</p>
+    <p id="meta" class="muted"></p>
+  </div>
+</section>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
