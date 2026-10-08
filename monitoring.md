@@ -1,7 +1,8 @@
 # monitoring.md: constant ground-truth collection runbook
 
 For Claude. When Nathan says **"run monitoring.md"**: do **Run it** top to bottom, fix what it finds,
-then **Report back**. Paths assume the repo at `C:\Users\NK\Documents\straight-bussing` (Bash: `/c/Users/NK/Documents/straight-bussing`).
+then **Report back**. Paths assume the repo at `C:\Users\NK\Documents\straight-bussing` (Bash: `/c/Users/NK/Documents/straight-bussing`);
+on any other PC use that clone's folder (see **Run the stopgap on another PC**).
 
 ## What is running
 - **CI collector** `.github/workflows/collect.yml` on **main** (schedules only run from the default branch;
@@ -48,6 +49,58 @@ cd /c/Users/NK/Documents/straight-bussing && python tools/monitor.py local --hou
   `schtasks /Create /TN SBMonitor /SC HOURLY /F /TR "C:\Users\NK\AppData\Local\Programs\Python\Python311\pythonw.exe C:\Users\NK\Documents\straight-bussing\tools\monitor.py resume"`
   (no inner quotes needed: neither path has spaces)
   Remove it with `schtasks /Delete /TN SBMonitor /F`. Check the pythonw path first: `python -c "import sys; print(sys.executable)"`.
+
+## Run the stopgap on another PC
+For Nathan (by hand) or Claude Code on that PC. Any Windows, macOS or Linux machine works; several PCs plus CI
+can run at once (the merge drops duplicates). Each PC keeps its own state in its clone's `data/monitor/`.
+
+**1. One-time setup**
+- Install **Git** (https://git-scm.com; on Windows keep "Git Credential Manager" checked) and **Python 3.11+**
+  (https://python.org; on Windows tick "Add python.exe to PATH"). No pip packages are needed.
+- Sign in with a GitHub account that can push to `blobberus/straight-bussing` (Nathan's, or a collaborator).
+  The first push opens a browser sign-in (Windows/macOS Credential Manager). Linux / headless: use a
+  fine-grained personal access token with **Contents: read and write** on this repo as the password.
+- Clone and check:
+  ```
+  git clone https://github.com/blobberus/straight-bussing.git
+  cd straight-bussing
+  python tools/build_gtfs.py           # fresh stop/route data (CI does this every run)
+  python tools/test_merge.py           # ok 7/7 tests
+  python tools/truth_logger.py --once  # "done: N rows appended" (0 at night is fine)
+  git push --dry-run origin HEAD:refs/heads/data-permission-check   # must not say 403 / denied (dry run: nothing is pushed)
+  python tools/monitor.py status
+  ```
+  macOS/Linux: use `python3` if `python` is missing.
+
+**2. Start it so it survives closing the terminal** (pick your OS; run from the clone folder)
+- Windows (PowerShell):
+  ```
+  git pull; Start-Process pythonw -ArgumentList 'tools\monitor.py','local' -WorkingDirectory (Get-Location) -WindowStyle Hidden
+  ```
+- macOS / Linux:
+  ```
+  git pull && nohup python3 tools/monitor.py local > /dev/null 2>&1 &
+  ```
+- Claude Code on that PC: same as **Take over locally** above, with this clone's path instead of `C:\Users\NK\...`.
+
+**3. Keep it running**
+- The PC must stay awake and online. Windows: Settings > System > Power > Sleep: Never (while plugged in).
+  macOS: run `caffeinate -dis &` (or System Settings > Battery > prevent sleep). A laptop with the lid shut sleeps.
+- Optional watchdog that restarts it after a reboot or crash (`resume` is a no-op while one is running):
+  - Windows (PowerShell, from the clone folder):
+    ```
+    $py = (Get-Command pythonw).Source; $m = Join-Path (Get-Location) 'tools\monitor.py'
+    schtasks /Create /TN SBMonitor /SC HOURLY /F /TR "`"$py`" `"$m`" resume"
+    ```
+    Remove: `schtasks /Delete /TN SBMonitor /F`.
+  - macOS / Linux: `crontab -e`, add (fix the path):
+    `7 * * * * cd $HOME/straight-bussing && /usr/bin/env python3 tools/monitor.py resume > /dev/null 2>&1`
+
+**4. Check and stop**
+- `python tools/monitor.py status` shows `local RUNNING pid ...`, rows merged and the last push. Log: `data/monitor/monitor.log`.
+- Stop: `python tools/monitor.py stop` (pushes the rows it has first). Delete the watchdog too if you added one.
+- Before pulling a new version: stop, `git pull`, start again. If it was killed instead of stopped, step 2 with `resume`
+  instead of `local` (or the watchdog) pushes the leftover rows first.
 
 ## Resume after a stop
 Same background command, with `resume`:
