@@ -254,13 +254,14 @@ $("back").onclick = () => go(S.prev || "nearby");
 $("fchip").onclick = (e) => { if (e.target.closest("[data-clearfilter]")) clearFilter(); };
 $("seg").onclick = (e) => { const b = e.target.closest("button"); if (b) go(b.dataset.view); };
 $("content").onclick = (e) => {
-  const t = e.target.closest("[data-stop],[data-route],[data-view],[data-toggle],[data-clearfilter],[data-pickstop],[data-pickmode],[data-opt],[data-sug],#useLoc,#btnPick,#btnDir"); if (!t) return;
+  const t = e.target.closest("[data-stop],[data-route],[data-view],[data-toggle],[data-clearfilter],[data-pickstop],[data-pickplace],[data-pickmode],[data-opt],[data-sug],#useLoc,#btnPick,#btnDir"); if (!t) return;
   if (t.id === "useLoc") return locate();
   if (t.id === "btnPick") return openDlg();
   if (t.id === "btnDir") return go("dir", { detent: "full" });
   if (t.dataset.toggle) return toggleRoute(t.dataset.toggle);
   if (t.hasAttribute("data-clearfilter")) return clearFilter();
   if (t.dataset.pickstop) return chooseStation(t.dataset.pickstop);
+  if (t.dataset.pickplace) { const p = S.pick?.places?.[+t.dataset.pickplace]; if (p) { S.pick.anchor = p; $("content")._built = null; render(); } return; }
   if (t.dataset.pickmode) return startPick(t.dataset.pickmode);
   if (t.dataset.opt) return selectOpt(+t.dataset.opt);
   if (t.dataset.sug) return applySug(+t.dataset.sug);
@@ -327,7 +328,7 @@ function openDlg() { $("dlg").hidden = false; $("dlgLoc").focus(); }
 function closeDlg() { $("dlg").hidden = true; }
 $("dlg").addEventListener("click", (e) => {
   if (e.target === $("dlg") || e.target.id === "dlgCancel") { closeDlg(); $("btnPick")?.focus(); }
-  else if (e.target.id === "dlgLoc") startPick("loc"); else if (e.target.id === "dlgSel") startPick("sel");
+  else if (e.target.id === "dlgLoc") startPick("loc"); else if (e.target.id === "dlgSel") startPick("sel"); else if (e.target.id === "dlgAddr") startPick("addr");
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("dlg").hidden) { closeDlg(); e.stopImmediatePropagation(); } }, true);
 function startPick(mode) {
@@ -340,6 +341,10 @@ function startPick(mode) {
 }
 function pickItems() {
   const P = S.pick || {};
+  if (P.mode === "addr") {
+    if (!P.anchor) return [];
+    return Object.entries(S.stops).map(([id, s]) => ({ id, ...s, d: hav(P.anchor, s) })).filter((s) => s.d <= 1500 && (S.stopRoutes[s.id] || []).length).sort((a, b) => a.d - b.d).slice(0, 5);
+  }
   if (P.mode === "loc") {
     if (!S.user) return [];
     return Object.entries(S.stops).map(([id, s]) => ({ id, ...s, d: hav(S.user, s) })).filter((s) => s.d <= 1500 && (S.stopRoutes[s.id] || []).length).sort((a, b) => a.d - b.d).slice(0, 5);
@@ -350,31 +355,63 @@ function pickItems() {
 }
 function pickListHTML() {
   const P = S.pick || {}, items = pickItems();
+  if (P.mode === "addr" && !P.anchor) {
+    const q = (P.q || "").trim();
+    if (q.length < 3) return '<div class="empty">Type at least 3 letters of an address, building or place.</div>';
+    if (P.placeState === "busy") return '<div class="empty">Searching places&hellip;</div>';
+    if (P.placeState === "err") return '<div class="empty"><b>Could not search places right now</b>Try again, or select a station by name.</div><button class="cta" data-pickmode="sel">Select a station</button>';
+    return (P.places || []).length ? '<div class="card">' + P.places.map((p, i) => `<button class="row" data-pickplace="${i}"><div class="grow"><span class="prim">${esc(p.label)}</span><span class="sec">${esc(p.sub)}</span></div></button>`).join("") + "</div>" : '<div class="empty"><b>No places found</b>Check the spelling or try a nearby landmark.</div>';
+  }
+  if (P.mode === "addr" && P.anchor && !items.length) return `<div class="empty"><b>No stops within 1.5 km of ${esc(P.anchor.label)}</b>Try another place or select a station.</div><button class="cta" data-pickmode="addr">Search another place</button>`;
   if (P.mode === "loc" && P.locState === "wait") return '<div class="empty">Finding your location&hellip;</div>';
-  if (P.mode === "loc" && !S.user) return '<div class="empty"><b>Location unavailable</b>Allow location access, or pick a station by name.</div><button class="cta" data-pickmode="sel">Select a station</button>';
+  if (P.mode === "loc" && !S.user) return '<div class="empty"><b>Location unavailable</b>You can still choose without sharing location.</div><button class="cta" data-pickmode="sel">Select a station</button><button class="cta alt" data-pickmode="addr">Type an address or place</button>';
   if (!items.length) return `<div class="empty"><b>${P.mode === "loc" ? "No stops within 1.5 km" : "No matching stations"}</b>${P.mode === "loc" ? "Try selecting a station by name." : "Check the spelling."}</div>${P.mode === "loc" ? '<button class="cta" data-pickmode="sel">Select a station</button>' : ""}`;
   return '<div class="card">' + items.map((s) => `<button class="row" data-pickstop="${esc(s.id)}"><div class="grow"><span class="prim">${esc(s.name)}</span><span class="sec">${s.d != null ? walkMin(s.d) + " min walk · " + Math.round(s.d) + " m · " : ""}${(S.stopRoutes[s.id] || []).map((r) => esc(rname(r))).join(", ")}</span></div></button>`).join("") + "</div>";
 }
 function highlightPick() {
   pickLayer.clearLayers(); const items = pickItems(), pts = [];
   if (S.view !== "pick" || !items.length || (S.pick.mode === "loc" && !S.user)) return;
+  if (S.pick.mode === "addr" && S.pick.anchor) pts.push([S.pick.anchor.lat, S.pick.anchor.lon]);
   const acc = dark.matches ? "#409cff" : "#0a84ff";
   for (const s of items.slice(0, S.pick.mode === "loc" ? 5 : 12)) {
     pts.push([s.lat, s.lon]);
     L.circleMarker([s.lat, s.lon], { radius: 11, color: acc, weight: 3, fillColor: acc, fillOpacity: 0.25 }).on("click", () => chooseStation(s.id)).addTo(pickLayer);
   }
   if (S.pick.mode === "loc" && S.user) pts.push([S.user.lat, S.user.lon]);
-  if (pts.length && (S.pick.mode === "loc" || S.pick.q)) map.fitBounds(L.latLngBounds(pts), { paddingBottomRight: [0, visHeight()], paddingTopLeft: [0, 70], maxZoom: 17, animate: true });
+  if (pts.length && (S.pick.mode === "loc" || S.pick.mode === "addr" || S.pick.q)) map.fitBounds(L.latLngBounds(pts), { paddingBottomRight: [0, visHeight()], paddingTopLeft: [0, 70], maxZoom: 17, animate: true });
 }
 function buildPick() {
   const P = S.pick || (S.pick = { mode: "sel", q: "" });
-  return (P.mode === "sel" ? '<label class="srch"><span class="sr">Search stations</span><input id="pickQ" type="search" inputmode="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search station name" aria-label="Search station name"></label>'
+  return (P.mode === "addr" && P.anchor ? `<p class="muted" style="margin:4px 0">Stops within 1.5 km of <b>${esc(P.anchor.label)}</b>. Tap one to see its routes. <button class="small" data-pickmode="addr">Change</button></p>`
+    : P.mode === "addr" ? '<label class="srch"><span class="sr">Search address or place</span><input id="pickQ" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Address, building or place" aria-label="Address or place"></label><p class="foot" style="margin:6px 0">The text you type is sent to photon.komoot.io to find the place. Nothing else is sent.</p>'
+    : P.mode === "sel" ? '<label class="srch"><span class="sr">Search stations</span><input id="pickQ" type="search" inputmode="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search station name" aria-label="Search station name"></label>'
     : '<p class="muted" style="margin:4px 0">Nearest stops within 1.5 km. Tap one to see its routes.</p>') + '<div id="pickList">' + pickListHTML() + "</div>";
 }
 function bindPick() {
   const q = $("pickQ");
-  if (q) { q.oninput = () => { S.pick.q = q.value; $("pickList").innerHTML = pickListHTML(); highlightPick(); }; q.focus({ preventScroll: true }); }
+  if (q && S.pick.mode === "addr") { q.value = S.pick.q || ""; q.oninput = () => { S.pick.q = q.value; searchPlaces(q.value.trim()); }; q.focus({ preventScroll: true }); }
+  else if (q) { q.oninput = () => { S.pick.q = q.value; $("pickList").innerHTML = pickListHTML(); highlightPick(); }; q.focus({ preventScroll: true }); }
   highlightPick();
+}
+let placeTimer = 0, placeCtl = null;
+function searchPlaces(q) {
+  const P = S.pick; clearTimeout(placeTimer); placeCtl?.abort();
+  const draw = () => { const l = $("pickList"); if (l && S.view === "pick" && S.pick === P) l.innerHTML = pickListHTML(); };
+  if (q.length < 3) { P.placeState = ""; P.places = []; draw(); return; }
+  P.placeState = "busy"; draw();
+  placeTimer = setTimeout(async () => {
+    placeCtl = new AbortController();
+    try {
+      const r = await fetch("https://photon.komoot.io/api/?q=" + encodeURIComponent(q) + "&limit=5&lat=41.79&lon=-87.60&lang=en", { signal: placeCtl.signal });
+      if (!r.ok) throw new Error(r.status);
+      const j = await r.json();
+      P.places = (j.features || []).filter((f) => f.geometry?.coordinates).map((f) => { const p = f.properties || {};
+        const line = [p.street ? (p.housenumber ? p.housenumber + " " : "") + p.street : "", p.city || p.county, p.state].filter(Boolean).join(", ");
+        return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], label: p.name || line || q, sub: p.name ? line : "Place" }; });
+      P.placeState = "";
+    } catch (e) { if (e.name === "AbortError") return; P.placeState = "err"; }
+    draw();
+  }, 400);
 }
 function chooseStation(id) {
   const rs = S.stopRoutes[id] || []; if (!rs.length) return;

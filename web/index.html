@@ -16,7 +16,7 @@
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 <div id="map" aria-label="Shuttle map"></div>
@@ -49,9 +49,10 @@
 <div id="dlg" class="scrim" hidden>
   <div class="dlgcard" role="dialog" aria-modal="true" aria-labelledby="dlgT">
     <h2 id="dlgT" class="dlgt">Routes to a station</h2>
-    <p class="muted" style="margin:0 0 12px">How should we find the station?</p>
+    <p class="muted" style="margin:0 0 12px">How should we find the station? Location is optional.</p>
     <button class="cta" id="dlgLoc">Use current location</button>
     <button class="cta alt" id="dlgSel">Select a station</button>
+    <button class="cta alt" id="dlgAddr">Type an address or place</button>
     <button class="cta ghost" id="dlgCancel">Cancel</button>
   </div>
 </div>
@@ -61,9 +62,9 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
-<script src="theme.js"></script><script src="mapstyle.js"></script>
-<script src="predict.js"></script>
-<script src="planner.js"></script>
-<script src="app.js"></script>
+<script src="theme.js?v=8"></script><script src="mapstyle.js?v=8"></script>
+<script src="predict.js?v=8"></script>
+<script src="planner.js?v=8"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
