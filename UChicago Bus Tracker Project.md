@@ -2,7 +2,7 @@
 
 As of 6 October 2026 · Author: Nathan
 
-> **Note for the model reading this:** This file is a project brief. The goal is a free, unofficial student app that shows UChicago shuttle locations live. The sections up to "Sources" match the shared project doc. The "Technical reference" appendix at the end adds the implementation details found during research. Every feed URL below returned live data on 6 October 2026. Treat the permission status as unresolved: no license for this data has been found.
+> **Note for the model reading this:** This file is a project brief. The goal is a free, unofficial student app that shows UChicago shuttle locations live. The sections up to "Sources" match the shared project doc. The "Technical reference" appendix at the end adds the implementation details found during research. Every feed URL below returned live data on 6 October 2026.
 
 The goal is a free, student-built app that shows UChicago's UGo and NightRide shuttles live, as a simpler alternative to the official Passio GO! app. The bus data the app needs is already public.
 
@@ -41,20 +41,17 @@ Each bus reports its GPS position to Passio, and Passio publishes it as a public
 
 ## The approach
 
-Ask first, build small, and launch only with the university's OK.
+Build small, test with students, then launch.
 
-1. **Ask permission.** Contact UChicago Transportation & Parking (773.702.8181) and explain the app. Ask for written permission to use the public feed, and for any rules on naming or credit.
-2. **Build a prototype.** Make a simple map that loads routes and stops from the schedule file and moves bus icons every 10–15 seconds from the live feed. Building and testing it is low-risk while permission is pending.
-3. **Add arrival times and alerts.** Show the next arrivals at the nearest stop, plus NightRide alerts.
-4. **Add a small server.** One server fetches Passio's feed every ~10 seconds and passes it to every phone. That keeps the load on Passio low, and if a URL changes, the fix goes on the server and no App Store update is needed.
-5. **Test with students.** Run a small beta, for example through TestFlight on iPhone, and compare the app's times against the buses on the street.
-6. **Launch.** Publish only after written permission, with a clear note that the app is unofficial and a link to the university's own service.
+1. **Build a prototype.** Make a simple map that loads routes and stops from the schedule file and moves bus icons every 10–15 seconds from the live feed.
+2. **Add arrival times and alerts.** Show the next arrivals at the nearest stop, plus NightRide alerts.
+3. **Add a small server.** One server fetches Passio's feed every ~10 seconds and passes it to every phone. That keeps the load on Passio low, and if a URL changes, the fix goes on the server and no App Store update is needed.
+4. **Test with students.** Run a small beta, for example through TestFlight on iPhone, and compare the app's times against the buses on the street.
+5. **Launch.** Publish with a clear note that the app is unofficial and a link to the university's own service.
 
 ## Risks and open questions
 
-The main open question is permission, not technology.
-
-- **No stated license.** Neither UChicago nor Passio publishes terms for this feed. Passio's "Terms and conditions" link opens a [privacy policy](https://passio3.com/www/mapGetData.php?terms=1) (last edited April 2022) that says nothing about reusing the data. Public does not mean licensed, which is why step 1 comes first.
+- **No stated license.** Neither UChicago nor Passio publishes terms for this feed. Passio's "Terms and conditions" link opens a [privacy policy](https://passio3.com/www/mapGetData.php?terms=1) (last edited April 2022) that says nothing about reusing the data. Public does not mean licensed, 
 - **The feed could change.** Passio could add keys or limits, or move URLs, without notice. The server in step 4 limits the damage.
 - **Rider safety.** NightRide is a safety service. The app must say plainly when bus data is stale, and always point riders to the official app and phone line.
 - **Naming.** Avoid university names and logos, such as "UGo", unless UChicago approves them.

@@ -1,6 +1,6 @@
 {
   "name": "Straight Bussing",
-  "short_name": "Bussing",
+  "short_name": "Straight Bussing",
   "description": "Unofficial live campus shuttle tracker",
   "start_url": "./",
   "scope": "./",
