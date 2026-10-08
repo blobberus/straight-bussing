@@ -11,7 +11,7 @@ Owner: Nathan. Repo: github.com/blobberus/straight-bussing (main). Work on Windo
 - Permission from UChicago Transportation is UNRESOLVED. App must say "unofficial", avoid UChicago names/logos/"UGo", warn when data is stale, link to official app/phone (773.702.8181).
 
 ## Architecture
-Static site, no build step: `web/` v2 ES modules (index.html, js/{core,data,map,ui}, css/, sw.js, data/; contract + file ownership in `docs/ARCHITECTURE.md`). Branch `v2-rewrite`; live Pages site is still v1 on `main` (main also carries the collector, see `monitoring.md`). Leaflet via CDN. Hosted on GitHub Pages. PWA -> installable on iPhone ("Add to Home Screen"). Later: Capacitor wrap (needs a Mac + Xcode), see `docs/IOS.md`.
+Static site, no build step: `web/` v2 ES modules (index.html, js/{core,data,map,ui}, css/, sw.js, data/; contract + file ownership in `docs/ARCHITECTURE.md`). v2 is merged to `main` and live on Pages since 2026-10-08 (v1 = tag `v1-final`); `v2-rewrite` is kept level with `main`. Collector: see `monitoring.md`. Leaflet via CDN. Hosted on GitHub Pages. PWA -> installable on iPhone ("Add to Home Screen"). Later: Capacitor wrap (needs a Mac + Xcode), see `docs/IOS.md`.
 
 ## Directory map
 - `web/` app (deployed as-is)  · `tools/` data scripts  · `.github/workflows/` Pages deploy + daily GTFS refresh  · `docs/` APPSTORE.md (cost/feasibility), IOS.md, RUN.md (how to operate)
@@ -55,7 +55,7 @@ Also every ship: bump the cache name in `web/sw.js` when shell files change; esc
 | Theme + basemap styling | in progress | `web/theme.js`, `web/mapstyle.js` |
 | Directions: trace route shapes, walking path on streets | next | needs shape clipping / routing |
 | Learned wait/headway (not just ride time) | next | extend data-learning roadmap |
-| v2.1: My Routes tab (custom named route sets, favorite stations), "Make this a custom route", map draw order, direction chevrons + bus rail on route detail, route hours/modified schedules/buses by hour, "only show relevant routes" journeys, alerts moved to Nearby banner | done (on `v2-rewrite`, not deployed) | contract: `docs/ARCHITECTURE.md` "v2.1 features"; `core/visibility.js` is the one visibility rule |
+| v2.1: My Routes tab (custom named route sets, favorite stations), "Make this a custom route", map draw order, direction chevrons + bus rail on route detail, route hours/modified schedules/buses by hour, "only show relevant routes" journeys, alerts moved to Nearby banner | done, live 2026-10-08 | contract: `docs/ARCHITECTURE.md` "v2.1 features"; `core/visibility.js` is the one visibility rule |
 | Routes list: "Show all" and "Hide all" buttons | next (owner request 2026-10-08) | `ui/views/routes.js`; Show all = `hiddenRoutes: []` (+ `clearCustom`), Hide all = every rid; keep "Make this a custom route" working |
 | Monitoring runbook | done | `monitoring.md` + `tools/monitor.py` ("run monitoring.md"); first scheduled collector run had not fired yet on 2026-10-08 |
 | Settings (top-right gear): theme, alerts, bus-near alerts (2 / 1 stops, N min; web = only while open) | done | `ui/views/settings.js`, `core/notify.js`, `ui/notifier.js`; Live Activity / lock screen = iPhone app only, see `conversion to appstore.md` |
