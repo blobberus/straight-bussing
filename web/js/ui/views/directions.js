@@ -6,6 +6,10 @@
  * est tags); tapping a card draws it on the map. Steps say "Bus arrives at <stop> <clock>" with
  * wait / ride / source. Walk-only fallback and no-service state. Recomputes on live updates by
  * patching the results region only, so typing focus is never stolen.
+ * Start (selected option with a bus) begins a trip: store.journey {rids, label, kind:'plan'} so the map
+ * shows only that trip's routes, the plan stays drawn (also after leaving the view) and a trip bar with
+ * "End trip" (journey:end, registered by the shell) heads the results. Picking another option updates
+ * the journey; changing an endpoint ends it.
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -18,6 +22,7 @@ import { walkRoute } from "../../core/walk.js";
 import { predict } from "../../core/predict.js";
 import { routeChip, emptyState, skeleton } from "../components.js";
 import { matchStations, createPlaceSearch, OFFICIAL_HTML, ICONS } from "./pick.js";
+import { planJourney, sameRids, isPlanJourney, tripBarHTML } from "./journey.js";
 
 /** The required estimate note under the options. */
 export const NOTE = "Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.";
@@ -29,7 +34,7 @@ const SWAP_IC = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" str
 export const D = { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null, sel: 0, selKey: null, refining: false, meDenied: false, token: 0, missed: false };
 /** Injectable dependencies (tests replace them). */
 export const deps = { plan, refineWalking, walkRoute, predict };
-let rootRef = null, ctxRef = null, offStore = null, lastUser = null;
+let rootRef = null, ctxRef = null, offStore = null, lastUser = null, offPlanWatch = null;
 const photon = createPlaceSearch(() => patchSug());
 
 const cur = () => ctxRef?.store?.get?.() || {};
@@ -115,7 +120,8 @@ function optionHTML(o, i, now, state) {
   const busLine = bus ? `<span class="v-sec">Bus at ${esc(bus.board?.name || "")} ${esc(clock(times[firstBus].b))}</span>` : "";
   const routesTxt = o.legs.filter((l) => l.type === "bus").map((l) => state.routes?.[l.rid]?.short || l.rid).join(" then ");
   const aria = `Option ${i + 1}: about ${o.totalMin} minutes, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. Estimate.`;
-  return `<div class="v-opt${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}"><span class="v-otop"><span class="v-otot">~${o.totalMin}<small> min</small></span>${tag("est.")}<span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span><span class="v-osum">${sum}</span>${busLine}</button>${on ? stepsHTML(o, now, state) : ""}</div>`;
+  const start = on && !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Shows only this trip&rsquo;s routes on the map.</p>' : "";
+  return `<div class="v-opt${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}"><span class="v-otop"><span class="v-otot">~${o.totalMin}<small> min</small></span>${tag("est.")}<span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span><span class="v-osum">${sum}</span>${busLine}</button>${on ? stepsHTML(o, now, state) + start : ""}</div>`;
 }
 
 /**
@@ -132,7 +138,7 @@ export function resHTML(state, now = nowS()) {
   }
   if (!state.staticLoaded || !D.result) return skeleton(2);
   const r = D.result, w = r.walkOnly || { m: 0, min: 0 }, level = staleLevel(state, now);
-  let h = level ? '<p class="v-stale" role="status">Live data delayed. Bus times may be off.</p>' : "";
+  let h = tripBarHTML(state) + (level ? '<p class="v-stale" role="status">Live data delayed. Bus times may be off.</p>' : "");
   const walkTag = tag(w.source === "router" ? "sidewalk route" : "estimate");
   if (!r.options.length) {
     const running = (state.buses || []).length > 0;
@@ -187,7 +193,7 @@ export function drawSel(fit) {
 
 function pickSel(fresh) {
   const opts = D.result?.options || [];
-  let k = fresh ? 0 : opts.findIndex((x) => x.key === D.selKey);
+  let k = fresh && !isPlanJourney(cur()) ? 0 : opts.findIndex((x) => x.key === D.selKey);
   if (k < 0) k = 0;
   D.sel = opts.length ? k : -1; D.selKey = opts[k]?.key ?? null;
 }
@@ -215,7 +221,33 @@ export async function replan({ fresh = false } = {}) {
   const opts = settled.map((s, i) => (s.status === "fulfilled" ? s.value : top[i])).filter((o) => o && Array.isArray(o.legs)).sort((a, b) => a.total - b.total);
   D.missed = top.length > 0 && !opts.length;
   D.result = { ...r, options: opts, walkOnly: walk ? { m: walk.m, min: walk.min, coords: walk.coords, source: walk.source } : r.walkOnly };
-  D.refining = false; pickSel(fresh); patchRes(); drawSel(fresh);
+  D.refining = false; pickSel(fresh); syncJourney(); patchRes(); drawSel(fresh);
+}
+
+/** Start a trip with the selected option: only its routes stay on the map. @returns {boolean} */
+export function startTrip() {
+  const j = planJourney(D.result?.options?.[D.sel], D.to?.label);
+  if (!j || !ctxRef?.store) return false;
+  ctxRef.store.set({ journey: j });
+  drawSel(true);
+  try { ctxRef.setDetent?.("half"); } catch (e) { /* sheet optional */ }
+  patchRes();
+  const t = rootRef?.querySelector?.(".j-title");
+  if (t) { t.focus({ preventScroll: true }); t.scrollIntoView?.({ block: "nearest" }); }
+  return true;
+}
+
+/** While a trip is on, keep journey.rids equal to the selected option's routes. */
+function syncJourney() {
+  const s = cur();
+  if (!isPlanJourney(s) || !rootRef) return;
+  const j = planJourney(D.result?.options?.[D.sel], D.to?.label);
+  if (j && (!sameRids(j.rids, s.journey.rids) || j.label !== s.journey.label)) ctxRef.store.set({ journey: j });
+}
+
+/** New endpoints mean a new trip: end a started one. */
+function endPlanJourney() {
+  if (isPlanJourney(cur())) ctxRef.store.set({ journey: null });
 }
 
 function focusField(key) { rootRef?.querySelector?.(`[data-input="dir-${key}"]`)?.focus({ preventScroll: true }); }
@@ -227,6 +259,7 @@ function afterSet() {
 
 /** Set an endpoint ('from'|'to') and re-plan. */
 export function setEndpoint(key, ep) {
+  endPlanJourney();
   D[key] = ep; if (ep) D[key + "Text"] = ep.label;
   setInput(key); afterSet();
 }
@@ -249,6 +282,7 @@ export function applySug(i) {
 
 /** Swap start and destination. */
 export function swap() {
+  endPlanJourney();
   [D.from, D.to] = [D.to, D.from]; [D.fromText, D.toText] = [D.toText, D.fromText];
   setInput("from"); setInput("to"); D.active = null; D.sugs = []; patch("dir-sug", ""); replan({ fresh: true });
 }
@@ -257,6 +291,7 @@ const keyOf = (t) => (t?.matches?.('[data-input="dir-from"]') ? "from" : t?.matc
 function onFocus(e) { const k = keyOf(e.target); if (!k) return; D.active = k; e.target.select?.(); patchSug(); }
 function onInput(e) {
   const k = keyOf(e.target); if (!k) return;
+  endPlanJourney();
   D.active = k; D[k] = null; D[k + "Text"] = e.target.value; D.result = null; D.token++; D.meDenied = false;
   photon.query(e.target.value); patchSug(); patchRes();
   try { ctxRef?.map?.drawPlan?.(null); } catch (err) { /* */ }
@@ -271,6 +306,7 @@ function onKey(e) {
 /** Mount: default start = My location (if available), listeners, live re-plan subscription. */
 export function mountDirections(root, ctx) {
   unmountDirections();
+  offPlanWatch?.(); offPlanWatch = null;
   rootRef = root; ctxRef = ctx; lastHtml["dir-sug"] = lastHtml["dir-res"] = undefined;
   const state = cur();
   if (!D.from && !D.fromText && state.user) { D.from = me(state.user); setInput("from"); }
@@ -281,6 +317,7 @@ export function mountDirections(root, ctx) {
   offStore = ctx?.store?.subscribe?.((s, ch) => {
     if (ch.has("user") && s.user && D.from?.me && (!lastUser || hav(lastUser, s.user) > 50)) { D.from = me(s.user); lastUser = s.user; replan(); return; }
     if (ch.has("staticLoaded")) { replan({ fresh: true }); return; }
+    if (ch.has("journey")) patchRes();
     if ((ch.has("trips") || ch.has("buses")) && D.from && D.to) replan();
     else if (ch.has("lastOk") || ch.has("failed") || ch.has("user")) patchRes();
   }) || null;
@@ -292,11 +329,21 @@ export function mountDirections(root, ctx) {
   if (D.from && !D.to) focusField("to"); else if (!D.from && D.to) focusField("from");
 }
 
-/** Unmount: clear the plan from the map, stop async updates (endpoints are kept). */
+/** Unmount: clear the plan from the map (kept while a trip is on, until it ends), stop async updates (endpoints are kept). */
 export function unmountDirections() {
   if (rootRef) { rootRef.removeEventListener("focusin", onFocus); rootRef.removeEventListener("input", onInput); rootRef.removeEventListener("keydown", onKey); }
   offStore?.(); offStore = null; photon.cancel(); D.token++; D.active = null; D.sugs = [];
-  try { ctxRef?.map?.drawPlan?.(null); } catch (e) { /* */ }
+  const st = ctxRef?.store, keep = !!st && isPlanJourney(st.get());
+  if (keep && rootRef) {
+    offPlanWatch?.();
+    offPlanWatch = st.subscribe((s, ch) => {
+      if (!ch.has("journey") || isPlanJourney(s)) return;
+      offPlanWatch?.(); offPlanWatch = null;
+      if (!rootRef) try { ctxRef?.map?.drawPlan?.(null); } catch (e) { /* */ }
+    });
+  } else if (!keep) {
+    try { ctxRef?.map?.drawPlan?.(null); } catch (e) { /* */ }
+  }
   rootRef = null;
 }
 
@@ -326,5 +373,6 @@ registerAction("dir:me", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; useMyLocatio
 registerAction("dir:opt", (ds, ev, ctx) => {
   ctxRef = ctx || ctxRef;
   const o = D.result?.options?.[+ds.i]; if (!o) return;
-  D.sel = +ds.i; D.selKey = o.key; patchRes(); drawSel(true);
+  D.sel = +ds.i; D.selKey = o.key; syncJourney(); patchRes(); drawSel(true);
 });
+registerAction("dir:start", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; startTrip(); });

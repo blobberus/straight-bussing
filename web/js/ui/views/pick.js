@@ -4,6 +4,8 @@
  * station by name, or type an address/place). Nothing is highlighted until the user chooses.
  * Then nearby stops (<= 1.5 km) are listed and ring-highlighted on the map; choosing one sets
  * store.routeFilter {ids, label} and returns to the Routes view. Works without location permission.
+ * Once a mode is chosen, a switch "Only show the chosen station's routes" (off by default, remembered
+ * for the session) also starts a station journey (store.journey, see ./journey.js) on choosing.
  * Also exports small helpers shared by the other D2 views (station matching, place search, official links).
  */
 import { registerView } from "../router.js";
@@ -12,6 +14,7 @@ import { esc } from "../../core/esc.js";
 import { hav, walkMin } from "../../core/geo.js";
 import { searchPlaces, debounce } from "../../data/geocode.js";
 import { officialLinks } from "../components.js";
+import { onlySwitchHTML, filterJourney, watchStation } from "./journey.js";
 
 /** Radius for "stops near here" in the picker (meters). */
 export const PICK_RADIUS_M = 1500;
@@ -119,6 +122,8 @@ export function placeRows(items, action) {
 
 /** @type {{mode:null|'loc'|'sel'|'addr', q:string, anchor:null|{label:string,lat:number,lon:number}, locWait:boolean}} */
 export const P = { mode: null, q: "", anchor: null, locWait: false };
+/** Session preference (survives resetPick): choosing a station also hides every other route. */
+export const PREF = { only: false };
 let ctxRef = null, rootRef = null, offStore = null, dlg = null;
 const places = createPlaceSearch(() => patchList());
 
@@ -197,7 +202,7 @@ export function renderPick(state) {
   else if (P.mode === "addr" && P.anchor) head = `<div class="v-anchor"><span class="v-grow"><span class="v-sec">Stops within 1.5 km of</span><span class="v-prim">${esc(P.anchor.label)}</span></span><button type="button" class="v-btn v-btn--quiet" data-action="pick:change-place">Change</button></div>`;
   else if (P.mode === "addr") head = field("Address, building or place", "Address or place") + '<p class="v-fine">Only the text you type is sent to photon.komoot.io to find the place.</p>';
   else head = '<p class="v-lead">Nearest stops within 1.5 km of you. Tap one to see its routes.</p>';
-  return `<div class="v-pick" data-mode="${P.mode}">${head}<div class="v-list" data-region="pick-list">${pickListHTML(state)}</div>${otherModes(P.mode)}</div>`;
+  return `<div class="v-pick" data-mode="${P.mode}">${head}${onlySwitchHTML(PREF.only)}<div class="v-list" data-region="pick-list">${pickListHTML(state)}</div>${otherModes(P.mode)}</div>`;
 }
 
 function curState() { return ctxRef?.store?.get?.() || {}; }
@@ -267,7 +272,10 @@ export function chooseStation(id, ctx) {
   const state = ctx?.store?.get?.() || {};
   const ids = [...new Set(state.stopRoutes?.[id] || [])];
   if (!ids.length) return false;
-  ctx.store.set({ routeFilter: { ids, label: state.stops?.[id]?.name || "station" } });
+  const routeFilter = { ids, label: state.stops?.[id]?.name || "station" }, patch = { routeFilter };
+  if (PREF.only) { const j = filterJourney({ ...state, routeFilter }); if (j) patch.journey = j; }
+  watchStation(ctx.store);   // a station journey follows the filter (cleared filter ends it)
+  ctx.store.set(patch);
   try { ctx.map?.highlightStops?.(null); } catch (e) { /* map optional */ }
   resetPick();
   ctx.navigate?.("routes");
@@ -289,7 +297,7 @@ export function openPickDialog(ctx, opener) {
     dlg = document.createElement("dialog");
     dlg.className = "v-dialog";
     dlg.setAttribute("aria-labelledby", "v-dlg-title");
-    dlg.innerHTML = '<h2 class="v-dlg-title" id="v-dlg-title">Routes to station</h2><p class="v-sec v-dlg-sub">How do you want to find the station?</p>' + chooserHTML() + '<button type="button" class="v-btn v-btn--quiet v-dlg-cancel" data-dlg-cancel>Cancel</button>';
+    dlg.innerHTML = '<h2 class="v-dlg-title" id="v-dlg-title" tabindex="-1" autofocus>Routes to station</h2><p class="v-sec v-dlg-sub">How do you want to find the station?</p>' + chooserHTML() + '<button type="button" class="v-btn v-btn--quiet v-dlg-cancel" data-dlg-cancel>Cancel</button>';
     dlg.addEventListener("click", (e) => {
       const b = e.target.closest?.("[data-mode],[data-dlg-cancel]");
       if (e.target === dlg || b?.hasAttribute("data-dlg-cancel")) { dlg.close("cancel"); return; }
@@ -301,7 +309,8 @@ export function openPickDialog(ctx, opener) {
   dlg._opener = opener || document.activeElement;
   dlg.returnValue = "";
   try { dlg.showModal(); } catch (e) { dlg.setAttribute("open", ""); }
-  dlg.querySelector("[data-mode]")?.focus();
+  // focus the title, not the first choice: no option should look pre-selected
+  dlg.querySelector("#v-dlg-title")?.focus();
   return dlg;
 }
 
@@ -359,5 +368,10 @@ registerAction("pick:place", (ds, ev, ctx) => {
   ctxRef = ctx || ctxRef;
   const p = places.state.items[+ds.i];
   if (p) { P.anchor = p; rerender(false); }
+});
+registerAction("pick:only", (ds, ev, ctx) => {
+  PREF.only = !PREF.only;
+  const b = ev?.target?.closest?.('[data-action="pick:only"]') || rootRef?.querySelector?.('[data-action="pick:only"]');
+  b?.setAttribute("aria-checked", String(PREF.only));
 });
 registerAction("pick:change-place", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; P.anchor = null; rerender(true); });

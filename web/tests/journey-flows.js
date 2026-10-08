@@ -1,0 +1,209 @@
+// Journey tests: helpers (ui/views/journey.js), Directions Start / trip bar, picker "only these routes".
+import { test, eq, ok } from "./lib.js";
+import { NOW, makeCtx, tick, root } from "./views-fixtures.js";
+import { runAction } from "../js/ui/actions.js";
+import { optionRids, planJourney, filterJourney, sameRids, tripBarHTML, stationToggleHTML, watchStation, onlySwitchHTML } from "../js/ui/views/journey.js";
+import { D, deps, renderDirections, mountDirections, unmountDirections, swap } from "../js/ui/views/directions.js";
+import { PREF, renderPick, mountPick, unmountPick, setMode, resetPick, chooseStation } from "../js/ui/views/pick.js";
+
+const USER = { lat: 41.7899, lon: -87.6001 };
+const last = (a) => a[a.length - 1];
+
+function mountWith(ctx, render, mount) {
+  const el = root();
+  el.innerHTML = render(ctx.store.get());
+  mount(el, ctx);
+  return el;
+}
+function resetDir() { Object.assign(D, { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null, sel: 0, selKey: null, refining: false, meDenied: false, missed: false }); }
+function stubDeps(planImpl) {
+  deps.plan = planImpl;
+  deps.refineWalking = async (o) => o;
+  deps.walkRoute = async (a, b) => ({ m: 900, min: 11.25, coords: [[a.lat, a.lon], [b.lat, b.lon]], source: "router" });
+  deps.predict = null;
+}
+const B = { id: "S1", name: "Main & 1st", lat: 41.79, lon: -87.6 }, A = { id: "S3", name: "Hospital", lat: 41.795, lon: -87.595 };
+const walk = (m, min) => ({ type: "walk", from: { lat: 41.7899, lon: -87.6001, name: "Start" }, to: B, m, min, source: "estimate" });
+const busLeg = (rid) => ({ type: "bus", rid, board: B, alight: A, path: [], stopsPassed: 2, wait: 2, waitLive: true, ride: 8, source: "live", conf: 1, boardT: NOW + 120, alightT: NOW + 600 });
+function opt(key, total, ...rids) {
+  return { key, total, totalMin: Math.round(total), arrive: NOW + total * 60, legs: [walk(20, 0.3), ...rids.map(busLeg)] };
+}
+/** Directions mounted with from/to set and the given options; returns {ctx, el, detents}. */
+async function dirWith(options, over = {}) {
+  resetDir();
+  stubDeps(() => ({ now: NOW, options: typeof options === "function" ? options() : options, walkOnly: { m: 800, min: 10 } }));
+  const ctx = makeCtx({ view: "directions", journey: null, ...over });
+  const detents = [];
+  ctx.setDetent = (d) => detents.push(d);
+  D.from = { lat: 41.79, lon: -87.6, label: "Main & 1st", stop: "S1" };
+  D.to = { lat: 41.795, lon: -87.595, label: "Hospital", stop: "S3" };
+  const el = mountWith(ctx, renderDirections, mountDirections);
+  await tick(10);
+  return { ctx, el, detents };
+}
+
+/* ---------------- helpers ---------------- */
+
+test("journey: optionRids / planJourney (unique bus routes; walk-only -> null)", () => {
+  eq(optionRids(opt("a", 10, "R1", "R2", "R1")), ["R1", "R2"]);
+  eq(planJourney(opt("a", 10, "R1"), "Hospital"), { rids: ["R1"], label: "To Hospital", kind: "plan" });
+  eq(planJourney({ legs: [walk(500, 6)] }, "X"), null, "walk-only hides nothing");
+  eq(planJourney(null), null);
+  ok(sameRids(["R1", "R2"], ["R2", "R1"]) && !sameRids(["R1"], ["R1", "R2"]));
+});
+
+test("journey: filterJourney uses the user's hidden routes (not the journey), falls back when all hidden", () => {
+  const base = makeCtx().store.get();
+  const f = { ids: ["R1", "R2"], label: "Library" };
+  eq(filterJourney({ ...base, routeFilter: f }), { rids: ["R1", "R2"], label: "Library", kind: "station" });
+  eq(filterJourney({ ...base, routeFilter: f, hiddenRoutes: ["R2"] }).rids, ["R1"], "hidden route left out");
+  eq(filterJourney({ ...base, routeFilter: f, hiddenRoutes: ["R1", "R2"] }).rids, ["R1", "R2"], "all hidden -> station's routes anyway");
+  eq(filterJourney({ ...base, routeFilter: f, journey: { rids: ["R3"], kind: "plan", label: "x" } }).rids, ["R1", "R2"], "active journey ignored");
+  eq(filterJourney({ ...base, routeFilter: null }), null);
+});
+
+test("journey: trip bar and station toggle escape text and expose state", () => {
+  const s = makeCtx().store.get();
+  eq(tripBarHTML({ ...s, journey: null }), "");
+  const h = tripBarHTML({ ...s, journey: { rids: ["R3"], label: "To <img src=x onerror=alert(1)>", kind: "plan" } });
+  ok(!h.includes("<img") && h.includes("&lt;img"), "label escaped");
+  ok(h.includes('data-action="journey:end"') && h.includes("End trip"));
+  ok(!h.includes("<script>"), "route name escaped");
+  eq(stationToggleHTML({ ...s, routeFilter: null }), "");
+  ok(stationToggleHTML({ ...s, routeFilter: { ids: ["R1"], label: "L" } }).includes('aria-pressed="false"'));
+  ok(stationToggleHTML({ ...s, routeFilter: { ids: ["R1"], label: "L" }, journey: { rids: ["R1"], kind: "station", label: "L" } }).includes('aria-pressed="true"'));
+  ok(onlySwitchHTML(true).includes('role="switch"') && onlySwitchHTML(true).includes('aria-checked="true"'));
+});
+
+/* ---------------- directions ---------------- */
+
+test("directions: Start sets the journey, keeps the plan drawn, lowers the sheet, shows the trip bar", async () => {
+  const { ctx, el, detents } = await dirWith([opt("a", 12, "R1", "R2"), opt("b", 15, "R3")]);
+  const res = el.querySelector('[data-region="dir-res"]');
+  const start = res.querySelector('[data-action="dir:start"]');
+  ok(start && start.closest(".v-opt.is-on"), "Start on the selected option only");
+  eq(res.querySelectorAll('[data-action="dir:start"]').length, 1, "one primary action");
+  runAction("dir:start", {}, null, ctx);
+  await tick();
+  eq(ctx.store.get().journey, { rids: ["R1", "R2"], label: "To Hospital", kind: "plan" });
+  eq(last(ctx.calls.drawPlan).key, "a", "plan drawn");
+  eq(last(detents), "half", "sheet lowered so the map shows");
+  ok(res.querySelector(".j-trip") && res.textContent.includes("End trip"), "trip bar");
+  ok(!res.querySelector('[data-action="dir:start"]'), "Start replaced while the trip is on");
+  ok(document.activeElement === res.querySelector(".j-title"), "focus moved to the trip bar");
+  unmountDirections(); el.remove();
+});
+
+test("directions: picking another option during a trip updates journey.rids; live re-plan keeps it", async () => {
+  let gen = 0;
+  const { ctx, el } = await dirWith(() => (gen++ ? [opt("b", 14, "R3"), opt("a", 13, "R1", "R2")] : [opt("a", 12, "R1", "R2"), opt("b", 15, "R3")]));
+  runAction("dir:start", {}, null, ctx);
+  runAction("dir:opt", { i: "1" }, null, ctx);
+  await tick();
+  eq(ctx.store.get().journey.rids, ["R3"], "follows the chosen option");
+  ctx.store.set({ trips: ctx.store.get().trips.slice() });   // live update -> re-plan (options reorder)
+  await tick(20);
+  eq(D.selKey, "b", "selection kept by key");
+  eq(ctx.store.get().journey.rids, ["R3"], "journey kept");
+  unmountDirections(); el.remove();
+});
+
+test("directions: changing endpoints ends the trip; ending it elsewhere brings Start back", async () => {
+  const { ctx, el } = await dirWith([opt("a", 12, "R1")]);
+  runAction("dir:start", {}, null, ctx);
+  await tick();
+  ok(ctx.store.get().journey);
+  ctx.store.set({ journey: null });   // what the shell's journey:end does
+  await tick();
+  ok(el.querySelector('[data-action="dir:start"]') && !el.querySelector(".j-trip"), "Start back after End trip");
+  runAction("dir:start", {}, null, ctx);
+  swap();
+  await tick(10);
+  eq(ctx.store.get().journey, null, "swap = new trip");
+  unmountDirections(); el.remove();
+});
+
+test("directions: leaving the view keeps the trip on the map until it ends", async () => {
+  const { ctx, el } = await dirWith([opt("a", 12, "R1")]);
+  runAction("dir:start", {}, null, ctx);
+  const n = ctx.calls.drawPlan.length;
+  unmountDirections(); el.remove();
+  eq(ctx.calls.drawPlan.length, n, "plan not cleared while the trip is on");
+  unmountDirections();
+  eq(ctx.calls.drawPlan.length, n, "repeated unmount keeps it too");
+  ctx.store.set({ journey: null });
+  await tick();
+  eq(last(ctx.calls.drawPlan), null, "cleared once the trip ends");
+});
+
+test("directions: walk-only results offer no Start", async () => {
+  const { el } = await dirWith([]);
+  ok(el.textContent.includes("Walk the whole way"));
+  ok(!el.querySelector('[data-action="dir:start"]'));
+  unmountDirections(); el.remove();
+});
+
+/* ---------------- picker ---------------- */
+
+test("pick: switch appears only after a mode is chosen and highlights nothing", async () => {
+  resetPick(); PREF.only = false;
+  const ctx = makeCtx({ view: "routes", journey: null });
+  ok(!renderPick(ctx.store.get()).includes("pick:only"), "not on the chooser");
+  await setMode("sel", ctx);
+  const el = mountWith(ctx, renderPick, mountPick);
+  const sw = el.querySelector('[data-action="pick:only"]');
+  ok(sw && sw.getAttribute("aria-checked") === "false", "off by default");
+  const before = ctx.calls.highlight.filter((c) => c.items).length;
+  runAction("pick:only", {}, { target: sw }, ctx);
+  eq(sw.getAttribute("aria-checked"), "true");
+  eq(ctx.calls.highlight.filter((c) => c.items).length, before, "toggling highlights nothing");
+  eq(ctx.store.get().journey, null, "nothing hidden until a station is chosen");
+  unmountPick(); el.remove(); resetPick(); PREF.only = false;
+});
+
+test("pick: current location + switch on -> choosing starts a station journey of visible routes", async () => {
+  resetPick(); PREF.only = true;
+  const ctx = makeCtx({ view: "routes", user: USER, locState: "granted", hiddenRoutes: ["R2"], journey: null });
+  await setMode("loc", ctx);
+  const el = mountWith(ctx, renderPick, mountPick);
+  ok(el.querySelector('[data-action="pick:only"]').getAttribute("aria-checked") === "true", "remembered");
+  chooseStation("S2", ctx);
+  await tick();
+  const s = ctx.store.get();
+  eq(s.routeFilter.ids.slice().sort(), ["R1", "R2"], "filter unchanged");
+  eq(s.journey, { rids: ["R1"], label: "Library", kind: "station" }, "only visible routes");
+  eq(s.view, "routes");
+  ctx.store.set({ routeFilter: { ids: ["R1", "R3"], label: "Main & 1st" } });   // another station
+  await tick();
+  eq(ctx.store.get().journey.label, "Main & 1st", "journey follows the filter");
+  ctx.store.set({ routeFilter: null });   // Routes' filter chip x
+  await tick();
+  eq(ctx.store.get().journey, null, "clearing the station ends its journey");
+  unmountPick(); el.remove(); resetPick(); PREF.only = false;
+});
+
+test("pick: switch off keeps the old behavior; journey:station toggles it afterwards", async () => {
+  resetPick(); PREF.only = false;
+  const ctx = makeCtx({ view: "routes", journey: null });
+  await setMode("sel", ctx);
+  chooseStation("S3", ctx);
+  await tick();
+  eq(ctx.store.get().journey, null, "no journey without the switch");
+  runAction("journey:station", {}, null, ctx);
+  await tick();
+  eq(ctx.store.get().journey.kind, "station");
+  eq(ctx.store.get().journey.rids.slice().sort(), ["R1", "R2", "R3"]);
+  runAction("journey:station", {}, null, ctx);
+  await tick();
+  eq(ctx.store.get().journey, null, "toggled off, filter kept");
+  ok(ctx.store.get().routeFilter, "filter still set");
+  resetPick();
+});
+
+test("journey: watchStation leaves plan journeys alone", async () => {
+  const ctx = makeCtx({ journey: { rids: ["R1"], label: "To X", kind: "plan" }, routeFilter: { ids: ["R2"], label: "L" } });
+  watchStation(ctx.store);
+  ctx.store.set({ routeFilter: null });
+  await tick();
+  eq(ctx.store.get().journey.kind, "plan");
+});
