@@ -24,6 +24,7 @@
 <button id="locateBtn" class="fab" aria-label="Show my location">
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
 </button>
+<div id="fchip" class="fchip-float" hidden></div>
 <div id="pill" class="statuspill" role="status" aria-live="polite" hidden></div>
 
 <section id="sheet" class="sheet half" role="dialog" aria-label="Shuttle information" aria-modal="false">
@@ -45,11 +46,24 @@
   <div id="content" class="content"></div>
 </section>
 
+<div id="dlg" class="scrim" hidden>
+  <div class="dlgcard" role="dialog" aria-modal="true" aria-labelledby="dlgT">
+    <h2 id="dlgT" class="dlgt">Routes to a station</h2>
+    <p class="muted" style="margin:0 0 12px">How should we find the station?</p>
+    <button class="cta" id="dlgLoc">Use current location</button>
+    <button class="cta alt" id="dlgSel">Select a station</button>
+    <button class="cta ghost" id="dlgCancel">Cancel</button>
+  </div>
+</div>
+
 <div class="probe" id="pPeek"></div><div class="probe" id="pHalf"></div><div class="probe" id="pFull"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
+<script src="theme.js"></script><script src="mapstyle.js"></script>
+<script src="predict.js"></script>
+<script src="planner.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

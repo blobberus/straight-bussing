@@ -1,5 +1,16 @@
 # Straight Bussing: UI Design Spec
 
+## Taste notes (research summary)
+
+- Sources: taste-skill (third-party, reference only), Apple HIG Maps, Eleken bottom-sheet guide, UXPin map UI, OpenFreeMap docs/styles. Web search returned little Citymapper-specific detail; its patterns below come from general knowledge, unverified.
+- Taken from taste-skill: one accent, one radius scale, real states (loading/empty/error), tactile :active, 100dvh, contrast checks. Ignored: landing-page rules (hero, eyebrows, bento, Tailwind/React stack, marketing motion); they do not fit a mobile map tool.
+- Apple Maps: non-modal bottom sheet over a map that stays interactive; the map reframes when the sheet moves; labels fade by importance as zoom changes.
+- Citymapper: the line color is the identity; dense but quiet chrome; big ETA numerals; the map shows only what the task needs.
+- Map labels: contrast against the land matters more than size; a 2px halo in the land color keeps text readable over casings; minor streets appear only from z14+, house numbers from z16.5.
+- OpenFreeMap: styles at tiles.openfreemap.org/styles/{positron,bright,liberty,dark} (OpenMapTiles schema, glyphs "Noto Sans Regular/Bold/Italic" only; no Medium). positron and dark have NO house numbers or POIs and dark's street names are near-invisible (#504e4e on black), so we patch them at runtime (see "Map style changes"). bright/liberty are busier (POI icons, 3D); not used.
+- Theme: Auto/Light/Dark via theme.js; CSS honors [data-theme] first, then prefers-color-scheme.
+- Nothing installed; no other design-taste skills were adopted.
+
 Direction: Apple Maps / Citymapper. The map is the product; chrome is quiet, white-space heavy, one accent. No gradients, no glow, no emoji icons, no card-in-card. Route colors are the only saturated color on screen. Unofficial: never use UChicago names/logos/maroon as a brand cue.
 
 ## 1. Tokens (put in `:root` / `@media (prefers-color-scheme: dark)` in style.css)
@@ -38,7 +49,7 @@ Motion: durations 120 (press/fade), 220 (content swap), 320 (sheet settle). Easi
 
 ## 2. Map
 
-- Basemap: CARTO "Positron" (light) `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png` and "Dark Matter" (dark) `dark_all`, swapped via `matchMedia('(prefers-color-scheme: dark)')`. Free for non-commercial / low-volume use with attribution "© OpenStreetMap contributors © CARTO" (keep the attribution small, bottom-left, above the sheet's collapsed detent). Current code uses Voyager (too colorful); switch to Positron. If traffic grows, move to MapTiler/Stadia free tier or self-host (Protomaps PMTiles). OSM's own tile server forbids heavy app use; do not use it.
+- Basemap (CARTO raster now needs a key, superseded): OpenFreeMap vector tiles through `web/mapstyle.js` (positron light / dark), see "Map style changes". OSM raster is only an emergency fallback (heavy use is against OSM tile policy). If traffic grows, self-host (Protomaps PMTiles).
 - Zoom 13-18, start 15 on user or campus center. Disable Leaflet zoom control (pinch only); add one 44px locate button (floating, top-right under safe-area, 12 radius, --bg-solid) and nothing else.
 - Route lines: weight 5 at z15 (4 at z13, 6 at z17), round caps/joins, opacity .9, 2px white casing underneath (weight+3, light rgba(255,255,255,.9), dark rgba(28,28,30,.9)). Overlapping routes: offset not needed; draw selected route last, dim others to .25 when a route is selected.
 - Stops: 10px circle, white fill, 2.5px stroke in route color (neutral --text-2 when multi-route); hidden below z14; selected stop = 16px with accent ring and name label. Tap target extended to 44px with a transparent halo (`L.circleMarker` radius 22, fillOpacity 0).
@@ -98,3 +109,25 @@ Motion: durations 120 (press/fade), 220 (content swap), 320 (sheet settle). Easi
 11. **A11y pass**: aria labels, focus rings, reduced-motion media query, 200% text check, contrast spot-check with devtools. (P2)
 12. **Tablet/landscape** floating side panel at >=768px; bump `sw.js` cache version so new CSS ships. (P2)
 13. Final QA on iPhone Safari standalone mode: safe areas, rubber-banding, address bar collapse, dark mode toggle. (P2)
+
+## Map style changes (web/mapstyle.js)
+
+Fetches the OpenFreeMap style (`positron` or `dark`), deep-clones it and patches by layer id (cached per theme; an empty background-only style shows until it loads):
+- `background`, `water`, `park`, `building`: muted palette per theme (light land #eef0ec, dark #161618); building outline stronger.
+- `highway_minor`: wider (z13 1.5 -> z18 12px), round caps; NEW `sb_minor_casing` layer beneath it for road/land contrast.
+- `highway_major_casing`, `highway_major_inner`, `highway_path`: recolored, wider, higher-contrast casing.
+- `highway-name-*` (positron) / `highway_name_other` (dark): size 10.5-15 by zoom, majors Noto Sans Bold, no uppercase, text #2f3036 / #e8e8ee, 2px halo in land color, minzoom 14 minor, 12.5 major, 16 path, denser spacing. Motorway refs untouched.
+- `highway-shield-*`, `road_shield_us`: hidden (clutter).
+- NEW `sb_housenumber` (source-layer `housenumber`, z16.5+, size 10-14) and `sb_poi_campus` (source-layer `poi`, z15.5+, only college/school/hospital/library/stadium/museum/theatre, text only, bold). Both are inserted below the street-name layers so street names win collisions.
+- Raster fallback (no maplibre): OSM tiles, CSS-inverted in dark (`.tiles-dark`).
+Limitation: headless Edge does not paint WebGL tiles, so legibility was not confirmed visually; the patched style loads in maplibre 4.7.1 with no style errors.
+
+## Integration for app.js
+
+index.html already loads theme.js and mapstyle.js before app.js. Replace the `dark`/`setTiles` block with:
+```js
+let tiles = MapStyle.create(map, Theme.isDark());
+tiles.addTo(map);
+Theme.onChange((isDark) => MapStyle.update(tiles, isDark));
+```
+`Theme.onChange` fires for system changes while in Auto and for manual Light/Dark. Settings UI: `Theme.mount(someElement)` renders a `.themeseg` control (styled in style.css). `Theme.get()` returns "auto" | "light" | "dark". Also add theme.js and mapstyle.js to SHELL in sw.js and bump the cache version.

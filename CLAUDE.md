@@ -30,3 +30,31 @@ Static site, no build step: `web/` (index.html, app.js, style.css, sw.js, manife
 
 ## Next deliverable
 QA on iPhone Safari; polish from findings. Then wait for owner's App Store conversion prompt (see `conversion to appstore.md`). Local test: `cd web; python -m http.server 8000`; headless shot: msedge --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --timeout=20000 --screenshot=...
+
+## Ship checklist (priorities and deliverables)
+Weigh EVERY change against these, in order. A lower item never justifies breaking a higher one. Tick them before shipping.
+1. [ ] **Rider safety / stale-data honesty**: stale or failed feeds are always flagged; estimates are labeled as estimates; never imply official status; keep the 773.702.8181 / official-app link.
+2. [ ] **Correctness of times**: ETAs come from live tripUpdates; any derived number (ride, wait, total) is marked "est." and states its source (live / schedule / learned). No invented precision.
+3. [ ] **Speed to "where is my bus"**: Nearby shows the next bus in one glance, no taps; first paint < 2 s on mobile; never block on optional data (geocoder, learned data).
+4. [ ] **Intuitive UI** (Apple Maps / Citymapper): one primary action per screen, sheet detents work, back always works, no dead ends. See `docs/DESIGN.md`.
+5. [ ] **Accessibility**: 44px targets, labels on every control, contrast in light and dark, reduced motion, state not by color alone.
+6. [ ] **Privacy**: no account, no tracking; location stays on device; only typed destination text goes to photon.komoot.io, and About says so; localStorage wrapped in try/catch.
+7. [ ] **App Store portability**: plain static JS, no build step, no browser-only hacks that block a Capacitor wrap (see `conversion to appstore.md`).
+Also every ship: bump the cache name in `web/sw.js` when shell files change; escape dynamic text with `esc()`; verify in headless Edge (light + dark).
+
+| Deliverable | Status | Notes |
+|---|---|---|
+| Live map, buses, arrivals, alerts, stale warning | done | |
+| PWA + GitHub Pages + daily GTFS refresh | done | |
+| Sheet UI redesign (3 detents), vector basemap | done | `docs/DESIGN.md` |
+| Routes to station (picker, filter chip) | done | `web/app.js`; location or search first, nothing highlighted until chosen |
+| Hide/show single routes (persisted) | done | map, arrivals, Nearby honor it |
+| Directions (walk + shuttle, 1 transfer) | done | `web/planner.js`; Photon geocoding; bus legs drawn as straight stop-to-stop lines |
+| Ride-time learning (`Predict`) | in progress | `tools/`, `web/predict.js`, `docs/LEARNING.md`; planner uses it when present |
+| Theme + basemap styling | in progress | `web/theme.js`, `web/mapstyle.js` |
+| Directions: trace route shapes, walking path on streets | next | needs shape clipping / routing |
+| Learned wait/headway (not just ride time) | next | extend data-learning roadmap |
+| QA on a real iPhone (sheet drag, safe areas, keyboard) | next | headless Edge can't confirm |
+| App Store conversion (Capacitor) | next | wait for owner's prompt |
+
+**Data-learning roadmap:** (1) log observed stop-to-stop times from vehiclePositions + tripUpdates (GitHub Action, no server); (2) aggregate to `web/data/segments.json` by route, segment, hour; (3) `Predict.rideMinutes` prefers learned medians when enough samples, else schedule; (4) later: learned headways and delay by time of day.

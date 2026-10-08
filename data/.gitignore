@@ -1,0 +1,3 @@
+# Collected bus observations can get large; keep them local (or move to cloud storage).
+*.jsonl.gz
+!sample/
