@@ -59,7 +59,6 @@
 
 /* segmented tabs (Nearby / Routes / Alerts) */
 .tabs { margin-top: var(--s2); }
-.tabs .badge { margin-left: 4px; vertical-align: 1px; }
 @media (max-width: 767px) {
   .sheet[data-detent="peek"] .tabs { display: none; }
 }

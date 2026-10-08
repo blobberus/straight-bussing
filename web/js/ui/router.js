@@ -3,7 +3,7 @@
  * View registry + navigation. Writes store.view / prevView / stopId / routeId and keeps an
  * in-memory back stack (with the sheet detent of each entry, so closing returns to it).
  *
- * Root views are the three tabs: 'nearby', 'routes', 'alerts'. Every other view is a sub view
+ * Root views are the three tabs: 'nearby', 'routes', 'myroutes'. Every other view is a sub view
  * with a Back button. Navigating to a view already on the back stack pops back to it (no loops).
  *
  * Call initRouter({store, setDetent, getDetent}) once at boot (main.js). Views call
@@ -11,7 +11,7 @@
  */
 
 /** Root (tab) view ids. */
-export const TABS = Object.freeze(["nearby", "routes", "alerts"]);
+export const TABS = Object.freeze(["nearby", "routes", "myroutes"]);
 const MAX_DEPTH = 20;
 
 const views = new Map();
@@ -34,7 +34,7 @@ export function initRouter(deps) {
 /**
  * Register a view.
  * @param {string} id
- * @param {{title:(state:Object)=>string, parent?:string, detent?:'peek'|'half'|'full', tab?:'nearby'|'routes'|'alerts',
+ * @param {{title:(state:Object)=>string, parent?:string, detent?:'peek'|'half'|'full', tab?:'nearby'|'routes'|'myroutes',
  *          render?:(state:Object)=>string, mount?:(rootEl:HTMLElement, ctx:Object)=>void, unmount?:()=>void,
  *          meta?:(state:Object)=>string, onStopTap?:(stopId:string, ctx:Object)=>boolean, refresh?:()=>void}} def
  *   Views with mount() own their DOM after mounting: main.js never rebuilds them; it calls
@@ -86,7 +86,7 @@ export function canGoBack() {
 /**
  * The root tab a view belongs to (follows def.tab, then the parent chain), default 'nearby'.
  * @param {string} id
- * @returns {'nearby'|'routes'|'alerts'}
+ * @returns {'nearby'|'routes'|'myroutes'}
  */
 export function rootOf(id) {
   const seen = new Set();
@@ -105,7 +105,7 @@ export function rootOf(id) {
 /**
  * The tab to highlight for the current state.
  * @param {Object} [state] defaults to store.get()
- * @returns {'nearby'|'routes'|'alerts'}
+ * @returns {'nearby'|'routes'|'myroutes'}
  */
 export function activeTab(state) {
   const s = state || (store && store.get()) || {};

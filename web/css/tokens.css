@@ -12,7 +12,7 @@
   --hairline: rgba(60, 60, 67, .18);
   --hairline-strong: rgba(60, 60, 67, .30);
   --accent: #0066d6;          /* accent used as text/icon on light */
-  --accent-fill: #0a84ff;     /* accent used as a fill (buttons, location dot) */
+  --accent-fill: #0071e3;     /* accent used as a fill (buttons, location dot); white text 4.7:1 */
   --on-accent: #ffffff;
   --live: #1e9e4a;
   --warn: #b25e00;
@@ -101,7 +101,7 @@
     --hairline: rgba(84, 84, 88, .55);
     --hairline-strong: rgba(120, 120, 128, .7);
     --accent: #409cff;
-    --accent-fill: #409cff;
+    --accent-fill: #0071e3;
     --on-accent: #ffffff;
     --live: #32d74b;
     --warn: #ffb340;
@@ -128,7 +128,7 @@
   --hairline: rgba(84, 84, 88, .55);
   --hairline-strong: rgba(120, 120, 128, .7);
   --accent: #409cff;
-  --accent-fill: #409cff;
+  --accent-fill: #0071e3;
   --on-accent: #ffffff;
   --live: #32d74b;
   --warn: #ffb340;

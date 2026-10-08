@@ -4,6 +4,9 @@
  * (up to 3 arrivals at the nearest, 1 at the others). Without location (unknown, asking, denied):
  * "Use my location", a station search, "Type an address or place" (stops near that place),
  * and an "Arriving soon" list. Never a dead end; denied location is a first-class state.
+ * Above everything: the service-alert banner (alerts are a sub view, not a tab). Above the nearby
+ * stops: a Favorites card (state.favStops, next visible arrival each). Visibility follows
+ * core/visibility.js effectiveHidden (journey > hidden routes / applied custom route).
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -12,6 +15,11 @@ import { nowS, minsUntil } from "../../core/time.js";
 import { arrivalsFor, staleLevel } from "../../core/arrivals.js";
 import { routeChip, etaBlock, arrivalRow, emptyState, skeleton } from "../components.js";
 import { stopsNear, matchStations, createPlaceSearch, placeRows, walkText, OFFICIAL_HTML, ICONS } from "./pick.js";
+import { effectiveHidden } from "../../core/visibility.js";
+import { alertBanner } from "./alerts.js";
+
+/** Favorites shown on Nearby (the rest are in My Routes). */
+export const FAV_MAX = 3;
 
 /** Farthest stop still called "nearby" (meters). */
 export const NEARBY_MAX_M = 5000;
@@ -25,7 +33,7 @@ const isStale = (state, now) => staleLevel(state, now) !== "";
 const nameOf = (state, rid) => state.routes?.[rid]?.short || state.routes?.[rid]?.long || rid;
 
 function soonest(state, now) {
-  const hidden = state.hiddenRoutes || [], out = [];
+  const hidden = effectiveHidden(state), out = [];
   for (const id of Object.keys(state.stops || {})) {
     if (!(state.stopRoutes?.[id] || []).length) continue;
     const a = arrivalsFor(state, id, { hidden, nowS: now })[0];
@@ -39,7 +47,7 @@ function noService(state) {
 }
 
 function stopCard(state, s, now, max, hero) {
-  const hidden = state.hiddenRoutes || [];
+  const hidden = effectiveHidden(state);
   const arr = state.liveLoaded ? arrivalsFor(state, s.id, { hidden, nowS: now }).slice(0, max) : null;
   const rs = (state.stopRoutes?.[s.id] || []).filter((r) => !hidden.includes(r));
   const head = `<button type="button" class="v-row v-cardhead" data-action="stop:open" data-id="${esc(s.id)}"><span class="v-grow"><span class="${hero ? "v-title" : "v-prim"}">${esc(s.name)}</span><span class="v-sec">${esc(walkText(s.d))}</span></span><span class="v-chev" aria-hidden="true">${ICONS.chev}</span></button>`;
@@ -50,8 +58,31 @@ function stopCard(state, s, now, max, hero) {
   return `<section class="v-card${hero ? " v-hero" : ""}">${head}${body}</section>`;
 }
 
+/**
+ * Favorites card: up to FAV_MAX favorite stations with their next visible arrival; '' if none.
+ * @param {object} state
+ * @param {number} [now]
+ * @returns {string}
+ */
+export function favoritesHTML(state, now = nowS()) {
+  const ids = (state.favStops || []).filter((id) => state.stops?.[id]);
+  if (!ids.length) return "";
+  const hidden = effectiveHidden(state), stale = isStale(state, now);
+  const rows = ids.slice(0, FAV_MAX).map((id) => {
+    const name = state.stops[id].name || id;
+    const a = state.liveLoaded ? arrivalsFor(state, id, { hidden, nowS: now })[0] : null;
+    const m = a ? Math.max(0, minsUntil(a.t, now)) : null;
+    const label = a ? `Favorite ${name}: route ${nameOf(state, a.rid)} ${m < 1 ? "arriving now" : "in " + m + " minutes"}${stale ? ", estimate" : ""}`
+      : `Favorite ${name}: ${state.liveLoaded ? "no upcoming arrivals" : "loading"}`;
+    const right = a ? etaBlock(a.t, { stale, now }) : `<span class="v-sec">${state.liveLoaded ? "No buses soon" : ""}</span>`;
+    return `<button type="button" class="v-row" data-action="stop:open" data-id="${esc(id)}" aria-label="${esc(label)}">${a ? routeChip(a.rid, state.routes) : `<span class="v-ic v-favic" aria-hidden="true">&#9733;</span>`}<span class="v-grow"><span class="v-prim">${esc(name)}</span>${a ? `<span class="v-sec">${esc(state.routes?.[a.rid]?.long || "")}</span>` : ""}</span>${right}</button>`;
+  }).join("");
+  const more = '<button type="button" class="v-link v-favmore" data-action="nav" data-view="myroutes">All favorites</button>';
+  return `<div class="v-favhead"><h3 class="v-h">Favorites</h3>${more}</div><section class="v-card v-favs" aria-label="Favorite stations">${rows}</section>`;
+}
+
 function nearList(state, point, now) {
-  const near = stopsNear(state, point, { maxM: NEARBY_MAX_M, max: 3, hidden: state.hiddenRoutes || [] });
+  const near = stopsNear(state, point, { maxM: NEARBY_MAX_M, max: 3, hidden: effectiveHidden(state) });
   if (!near.length) return null;
   let h = stopCard(state, near[0], now, 3, true);
   if (near.length > 1) h += '<h3 class="v-h">Also nearby</h3>' + near.slice(1).map((s) => stopCard(state, s, now, 1, false)).join("");
@@ -80,6 +111,10 @@ function locBlock(state) {
 
 /** Body below the search field when nothing is typed. */
 export function bodyHTML(state, now = nowS()) {
+  return favoritesHTML(state, now) + placesHTML(state, now);
+}
+
+function placesHTML(state, now) {
   if (state.user) {
     const h = nearList(state, state.user, now);
     if (h) return h;
@@ -132,7 +167,7 @@ export function renderNearby(state, now = nowS()) {
   const toggle = place
     ? '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="station">Search stations instead</button></div><p class="v-fine">Only the text you type is sent to photon.komoot.io to find the place.</p>'
     : '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="place">Type an address or place</button><button type="button" class="v-link" data-action="dir:open">Directions</button></div>';
-  return `<div class="v-nearby"><div data-region="nearby-loc">${locHTML(state)}</div>${search}${toggle}<div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
+  return `<div class="v-nearby"><div data-region="nearby-alert">${alertBanner(state, now)}</div><div data-region="nearby-loc">${locHTML(state)}</div>${search}${toggle}<div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
 }
 
 /**
@@ -144,7 +179,7 @@ export function renderNearby(state, now = nowS()) {
 export function metaNearby(state, now = nowS()) {
   const point = state.user || N.anchor;
   if (!point || !state.staticLoaded || !state.liveLoaded) return "";
-  const hidden = state.hiddenRoutes || [];
+  const hidden = effectiveHidden(state);
   const s = stopsNear(state, point, { maxM: NEARBY_MAX_M, max: 1, hidden })[0];
   const a = s && arrivalsFor(state, s.id, { hidden, nowS: now })[0];
   if (!a) return "";
@@ -161,9 +196,9 @@ export function metaNearby(state, now = nowS()) {
 export function peekNearby(state, now = nowS()) {
   const point = state.user || N.anchor;
   if (!point || !state.staticLoaded) return "";
-  const s = stopsNear(state, point, { maxM: NEARBY_MAX_M, max: 1, hidden: state.hiddenRoutes || [] })[0];
+  const s = stopsNear(state, point, { maxM: NEARBY_MAX_M, max: 1, hidden: effectiveHidden(state) })[0];
   if (!s) return "";
-  const a = state.liveLoaded && arrivalsFor(state, s.id, { hidden: state.hiddenRoutes || [], nowS: now })[0];
+  const a = state.liveLoaded && arrivalsFor(state, s.id, { hidden: effectiveHidden(state), nowS: now })[0];
   if (!a) return s.name;
   const m = minsUntil(a.t, now);
   return `${s.name} · ${nameOf(state, a.rid)} ${m < 1 ? "now" : (isStale(state, now) ? "~" : "") + m + " min"}`;
@@ -171,8 +206,10 @@ export function peekNearby(state, now = nowS()) {
 
 function curState() { return ctxRef?.store?.get?.() || {}; }
 
-let lastLoc = null;
+let lastLoc = null, lastAlert = null;
 function patchResults() {
+  const al = rootRef?.querySelector?.('[data-region="nearby-alert"]'), ah = alertBanner(curState(), ctxRef?.now ? ctxRef.now() : nowS());
+  if (al && ah !== lastAlert) { al.innerHTML = ah; lastAlert = ah; }
   const loc = rootRef?.querySelector?.('[data-region="nearby-loc"]'), lh = locHTML(curState());
   if (loc && lh !== lastLoc) { loc.innerHTML = lh; lastLoc = lh; }
   const el = rootRef?.querySelector?.('[data-region="nearby-results"]');
@@ -183,7 +220,7 @@ function patchResults() {
 
 function rerender(focus) {
   if (!rootRef) return;
-  lastRegion = null; lastLoc = null;
+  lastRegion = null; lastLoc = null; lastAlert = null;
   rootRef.innerHTML = renderNearby(curState(), ctxRef?.now ? ctxRef.now() : nowS());
   if (focus) rootRef.querySelector('[data-input="nearby-q"]')?.focus({ preventScroll: true });
 }
@@ -223,7 +260,7 @@ export function choosePlace(i) {
  */
 export function mountNearby(root, ctx) {
   unmountNearby();
-  rootRef = root; ctxRef = ctx; lastRegion = null; lastLoc = null;
+  rootRef = root; ctxRef = ctx; lastRegion = null; lastLoc = null; lastAlert = null;
   root.addEventListener("input", onInput);
   root.addEventListener("keydown", onKey);
   offStore = ctx?.store?.subscribe?.((s, ch) => {

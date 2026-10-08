@@ -1,14 +1,15 @@
 /**
  * @module main
  * Wiring + boot (D1). Order: theme -> map -> sheet -> router/actions -> views -> loadStatic -> startLive.
- * Owns the render loop (header, status pill, tab badge, content), map sync on store changes,
+ * Owns the render loop (header, status pill, content), the map context bar, map sync on store changes,
  * geolocation (ctx.locate), Escape/back + browser history, toasts and the global error handler.
  */
 import { store } from "./state.js";
 import { bus } from "./core/events.js";
 import { nowS, clock } from "./core/time.js";
 import { hav } from "./core/geo.js";
-import { staleLevel, activeAlerts } from "./core/arrivals.js";
+import { staleLevel } from "./core/arrivals.js";
+import { mapVisibility } from "./core/visibility.js";
 import { createMap } from "./map/map.js";
 import { loadStatic } from "./data/static.js";
 import { startLive } from "./data/live.js";
@@ -17,20 +18,22 @@ import { initRouter, navigate, back, getView, activeTab, canGoBack, TABS } from 
 import { registerAction, bindActions } from "./ui/actions.js";
 import { initTheme, isDark, onChange as onThemeChange } from "./ui/theme.js";
 import { emptyState, OFFICIAL_PHONE } from "./ui/components.js";
+import { registerContextActions, mountContextBar } from "./ui/contextbar.js";
 
 /** Every view module; each calls registerView() at import time. */
-export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions"]);
+export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes"]);
 const RENDER_TICK_MS = 15000;
 const FIRST_POLL_GRACE_S = 20;
 const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "setSelectedStop", "setUser",
   "highlightStops", "drawPlan", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove"];
-const NET_KEYS = ["routes", "shapes", "routeStops", "stopRoutes", "stops", "hiddenRoutes", "routeFilter", "view", "routeId", "theme"];
-const BUS_KEYS = ["buses", "feedTs", "routes", "hiddenRoutes", "routeFilter", "view", "routeId"];
+const VIS_KEYS = ["hiddenRoutes", "routeFilter", "view", "routeId", "routeOrder", "journey", "activeCustom", "customRoutes"];
+const NET_KEYS = ["routes", "shapes", "routeStops", "stopRoutes", "stops", "theme", ...VIS_KEYS];
+const BUS_KEYS = ["buses", "feedTs", "routes", ...VIS_KEYS];
 
 const $ = (id) => document.getElementById(id);
 const el = {
   sheet: $("sheet"), head: $("sheetHead"), grab: $("grab"), content: $("content"), title: $("title"),
-  right: $("titleRight"), back: $("back"), tabs: $("tabs"), badge: $("alertBadge"), alertsTab: $("alertsTab"),
+  right: $("titleRight"), back: $("back"), tabs: $("tabs"), ctxbar: $("ctxbar"),
   pill: $("pill"), pillText: $("pillText"), pillRetry: $("pillRetry"), dlg: $("dlg"), toast: $("toast"), locate: $("locateBtn"),
 };
 const bootS = nowS();
@@ -71,17 +74,11 @@ function nullMap() {
 function mapCall(name, ...args) {
   try { return map && typeof map[name] === "function" ? map[name](...args) : undefined; } catch (e) { console.error("map." + name, e); }
 }
-function focusIds(s) {
-  if (s.view === "route" && s.routeId) return [s.routeId];
-  const ids = s.routeFilter && s.routeFilter.ids;
-  return ids && ids.length ? ids.slice() : null;
-}
 function syncMap(s, changed) {
   const has = (k) => !changed || changed.has(k);
-  const hidden = s.hiddenRoutes || [];
-  const focus = focusIds(s);
+  const { hidden, focus, order } = mapVisibility(s);   // journey > custom route / hidden list; see core/visibility.js
   if (NET_KEYS.some(has)) mapCall("drawNetwork", { routes: s.routes, shapes: s.shapes, routeStops: s.routeStops,
-    stopRoutes: s.stopRoutes, stops: s.stops, hidden, focus, dark: isDark() });
+    stopRoutes: s.stopRoutes, stops: s.stops, hidden, focus, order, dark: isDark() });
   if (BUS_KEYS.some(has)) mapCall("drawBuses", s.buses || [], { routes: s.routes, hidden, focus, nowS: nowS() });
   if (has("view") || has("stopId") || has("stops")) {
     const st = s.view === "stop" && s.stopId && s.stops ? s.stops[s.stopId] : null;
@@ -176,7 +173,7 @@ function renderPill(s, now) {
 function safe(fn, fallback) {
   try { return fn() ?? fallback; } catch (e) { console.error(e); return fallback; }
 }
-function renderHeader(s, id, def, now) {
+function renderHeader(s, id, def) {
   const title = def ? String(safe(() => def.title(s), "")) : "Nearby";
   if (el.title.textContent !== title) el.title.textContent = title;
   el.title.classList.toggle("sm", !TABS.includes(id));
@@ -190,10 +187,6 @@ function renderHeader(s, id, def, now) {
     if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     b.classList.toggle("on", on);
   }
-  const n = safe(() => activeAlerts(s, now).length, 0);
-  el.badge.hidden = !n;
-  el.badge.textContent = n ? String(n) : "";
-  el.alertsTab.setAttribute("aria-label", n ? `Alerts, ${n} active` : "Alerts");
 }
 
 /* ---------------- content render loop ---------------- */
@@ -241,7 +234,7 @@ function render() {
   const now = nowS();
   let id = s.view, def = getView(id);
   if (!def && getView("nearby")) def = getView((id = "nearby"));
-  renderHeader(s, id, def, now);
+  renderHeader(s, id, def);
   renderPill(s, now);
   if (!def) return;
   const key = id + "|" + (s.stopId || "") + "|" + (s.routeId || "");
@@ -280,7 +273,7 @@ function wireUI() {
   el.back.addEventListener("click", () => back());
   el.tabs.addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) navigate(b.dataset.tab); });
   el.locate.addEventListener("click", onLocateFab);
-  for (const root of [el.content, el.pill, el.dlg]) bindActions(root, () => ctx);
+  for (const root of [el.content, el.pill, el.dlg, el.ctxbar]) bindActions(root, () => ctx);
   el.dlg.addEventListener("click", (e) => { if (e.target === el.dlg) closeDlg(); });
   el.content.addEventListener("focusout", () => setTimeout(() => { if (dirty && !inputFocused()) render(); }, 0));
   document.addEventListener("keydown", (e) => {
@@ -353,6 +346,8 @@ async function boot() {
   const results = await Promise.allSettled(VIEW_IDS.map((v) => import(`./ui/views/${v}.js`)));
   results.forEach((r, i) => r.status === "rejected" && console.error("view " + VIEW_IDS[i] + " failed to load", r.reason));
   registerCoreActions();
+  registerContextActions();
+  mountContextBar(el.ctxbar, store);
 
   store.subscribe((s, changed) => { syncMap(s, changed); scheduleRender(); syncHistory(); });
   render();

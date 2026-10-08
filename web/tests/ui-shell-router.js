@@ -15,16 +15,17 @@ function setup() {
   const v = (title, extra = {}) => ({ title: () => title, render: () => title, ...extra });
   registerView("nearby", v("Nearby", { tab: "nearby", detent: "half" }));
   registerView("routes", v("Routes", { tab: "routes", detent: "half" }));
-  registerView("alerts", v("Alerts", { tab: "alerts", detent: "half" }));
+  registerView("myroutes", v("My Routes", { tab: "myroutes", detent: "half" }));
+  registerView("alerts", v("Alerts", { parent: "nearby", tab: "nearby", detent: "half" }));
   registerView("stop", v("Stop", { detent: "half" }));
   registerView("route", v("Route", { parent: "routes", tab: "routes", detent: "half" }));
-  registerView("about", v("About", { parent: "alerts", detent: "full" }));
+  registerView("about", v("About", { parent: "myroutes", detent: "full" }));
   registerView("directions", v("Dir", { detent: "full" }));
   return { store, detents, setD: (d) => (detent = d), getD: () => detent };
 }
 
 test("router: TABS are the three root views", () => {
-  eq([...TABS], ["nearby", "routes", "alerts"]);
+  eq([...TABS], ["nearby", "routes", "myroutes"]);
 });
 
 test("router: navigate to a sub view sets view/prevView/stopId and detent", () => {
@@ -86,9 +87,9 @@ test("router: tab navigation resets the stack and keeps a non-peek detent", () =
   const t = setup();
   navigate("stop", { stopId: "a" });
   t.setD("full");
-  navigate("alerts");
+  navigate("myroutes");
   eq(_stack().length, 0);
-  eq(t.store.get().view, "alerts");
+  eq(t.store.get().view, "myroutes");
   eq(t.getD(), "full", "tab switch keeps detent");
   t.setD("peek");
   navigate("routes");
@@ -100,7 +101,20 @@ test("router: back with empty stack goes to parent", () => {
   store.set({ view: "about" }); // e.g. deep state restored without history
   ok(canGoBack());
   ok(back());
-  eq(store.get().view, "alerts");
+  eq(store.get().view, "myroutes");
+});
+
+test("router: alerts is a sub view of Nearby (tab nearby, back returns)", () => {
+  const { store } = setup();
+  navigate("myroutes");
+  navigate("alerts");
+  eq(activeTab(), "nearby", "def.tab wins");
+  ok(canGoBack());
+  ok(back());
+  eq(store.get().view, "myroutes");
+  store.set({ view: "alerts" });
+  ok(back());
+  eq(store.get().view, "nearby", "no stack: parent");
 });
 
 test("router: activeTab follows def.tab, stack root, then parent chain", () => {
@@ -108,10 +122,10 @@ test("router: activeTab follows def.tab, stack root, then parent chain", () => {
   navigate("routes");
   navigate("stop", { stopId: "x" });
   eq(activeTab(), "routes", "stop has no tab: use the stack root");
-  navigate("alerts");
+  navigate("myroutes");
   navigate("about");
-  eq(activeTab(), "alerts");
-  eq(rootOf("about"), "alerts");
+  eq(activeTab(), "myroutes");
+  eq(rootOf("about"), "myroutes");
   eq(rootOf("route"), "routes");
   eq(rootOf("unknown"), "nearby");
   eq(activeTab({ view: "nearby" }), "nearby");

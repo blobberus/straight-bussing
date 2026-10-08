@@ -63,6 +63,29 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 }
 .statuspill .pillbtn::after { content: ""; position: absolute; inset: -6px -4px; } /* 44px hit area */
 
+/* map context bar: why the map shows fewer routes (journey / custom route), with a way out.
+   Sits under the status pill (which always stays visible) and above the sheet. */
+.ctxbar {
+  position: fixed; z-index: 1090;
+  top: calc(var(--safe-t) + 12px); left: calc(var(--safe-l) + 12px); right: calc(var(--safe-r) + 68px);
+  display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+  min-height: var(--tap); padding: 6px 6px 6px 14px; border-radius: var(--r-control);
+  font-size: .875rem; line-height: 1.125rem;
+  background: var(--bg-solid); color: var(--text); box-shadow: var(--shadow-float);
+}
+.statuspill:not([hidden]) ~ .ctxbar { top: calc(var(--safe-t) + 64px); }
+.ctxbar[hidden] { display: none; }
+.ctxbar .ctx-text { flex: 1 1 140px; min-width: 0; padding: 4px 0; }
+.ctxbar .ctx-k { color: var(--text-2); }
+.ctxbar .ctx-v { font-weight: 600; }
+.ctxbar .ctx-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.ctxbar .ctx-more { font-size: var(--fs-cap); color: var(--text-2); font-weight: 600; }
+.ctxbar .ctx-btn {
+  flex: none; min-width: var(--tap); min-height: var(--tap); padding: 0 12px; border-radius: 9px;
+  background: var(--bg-solid); color: var(--accent); font-weight: 600; box-shadow: inset 0 0 0 1px var(--hairline-strong);
+}
+.ctxbar .ctx-btn:active { transform: scale(.97); }
+
 /* non-blocking toast (errors, confirmations) */
 .toast {
   position: fixed; z-index: 1300; left: 50%;
@@ -89,13 +112,13 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 .nomap #map { background: var(--surface); }
 
 @media (min-width: 768px) {
-  .statuspill { left: calc(var(--panel-w) + 24px); right: calc(var(--safe-r) + 68px); max-width: 520px; }
+  .statuspill, .ctxbar { left: calc(var(--panel-w) + 24px); right: calc(var(--safe-r) + 68px); max-width: 520px; }
   .toast { left: calc(var(--panel-w) + 24px + (100vw - var(--panel-w) - 24px) / 2); }
 }
 
 @media (forced-colors: active) {
-  .fab, .statuspill, .toast { border: 1px solid CanvasText; }
-  .statuspill .pillbtn { border: 1px solid ButtonText; }
+  .fab, .statuspill, .ctxbar, .toast { border: 1px solid CanvasText; }
+  .statuspill .pillbtn, .ctxbar .ctx-btn { border: 1px solid ButtonText; }
 }
 
 @media (prefers-reduced-motion: reduce) {

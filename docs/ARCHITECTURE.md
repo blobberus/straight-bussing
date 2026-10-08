@@ -237,3 +237,15 @@ isScheduledNow(service, rid, unixS): boolean|null
 | MONITOR | monitoring.md, tools/monitor.py |
 | lead | state.js, core/visibility.js, core/custom.js, sw.js, docs/ARCHITECTURE.md, css/views.css (frozen: override in your own css file) |
 New view files must be added to main.js VIEW_IDS and sw.js PRECACHE: ask the lead in your report.
+
+### Settings + bus-near notifications (v2.1b)
+State (state.js, persisted): `notify: {stopId|null, rids:[] /* empty = any visible route */, twoStops, oneStop, minutes /* 0 = off, else alert at <= N min */, liveActivity /* iPhone app only */, inApp}`; `cleanNotify`, `NOTIFY_DEFAULTS`.
+```js
+// core/notify.js (SETTINGS; pure, shared later by the iPhone app's native layer)
+stopsAway(state, stopId, rid?): [{rid, tripId, vehicleId, stopsAway:int, etaS:unixS|null, nextStopId, nextStopName}]  // from buses + trips + routeStops; loops wrap
+dueAlerts(state, prevFired:Set<string>, nowS): {alerts:[{key, kind:'twoStops'|'oneStop'|'minutes', title, body}], fired:Set}   // dedup per trip+kind
+liveStatus(state, nowS): {title, minutes, nextStop, stopsAway}|null   // what a lock-screen Live Activity would show
+```
+Web: `ui/notifier.js` (SETTINGS) watches the store while the page is open and shows in-app banners (bus 'toast') and, if the user granted it, a browser Notification; it never claims to work in the background. Settings view id `settings` (sub view, parent nearby, opened by a small top-right gear button in the sheet header that SHELL adds; action `settings:open`).
+| SETTINGS | ui/views/settings.js, ui/notifier.js, core/notify.js, css/settings.css, tests/settings-* + settings.test.html |
+| IPHONE | `conversion to appstore.md`, docs/IOS.md, docs/APPSTORE.md |

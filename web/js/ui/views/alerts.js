@@ -1,7 +1,8 @@
 /**
  * @module ui/views/alerts
  * Active service alerts (severity icon, title, body, affected route chips, time window) and the
- * link to About at the bottom. The tab badge count is drawn by the shell (D1) from activeAlerts().
+ * link to About at the bottom. Not a tab any more: a sub view of Nearby, opened from the Nearby alert
+ * banner (alertBanner below) or the "Service alerts" row in My Routes (action `alerts:open`).
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -63,11 +64,31 @@ export function renderAlerts(state, now = nowS()) {
   return h + "</div>";
 }
 
+/**
+ * Nearby's alert banner: count + first alert title, '' when nothing is active. Not color alone:
+ * the warning icon and the words "Service alert(s)" carry the state.
+ * @param {object} state
+ * @param {number} [now]
+ * @returns {string}
+ */
+export function alertBanner(state, now = nowS()) {
+  if (!state.liveLoaded) return "";
+  const act = activeAlerts(state, now);
+  if (!act.length) return "";
+  const first = alertText(act[0].header_text) || "Service change";
+  const n = act.length;
+  const head = n === 1 ? "Service alert" : `${n} service alerts`;
+  const more = n > 1 ? ` and ${n - 1} more` : "";
+  return `<button type="button" class="v-row v-alertbanner" data-action="alerts:open" aria-label="${esc(`${head}: ${first}${more}. Open alerts`)}"><span class="v-alertic" aria-hidden="true">${WARN}</span><span class="v-grow"><span class="v-prim">${esc(head)}</span><span class="v-sec v-alertfirst">${esc(first)}${esc(more)}</span></span><span class="v-chev" aria-hidden="true"><svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l6 6-6 6"/></svg></span></button>`;
+}
+
 registerView("alerts", {
   title: () => "Alerts",
+  parent: "nearby",
   detent: "half",
-  tab: "alerts",
+  tab: "nearby",
   render: (state) => renderAlerts(state),
 });
 
 registerAction("about:open", (ds, ev, ctx) => ctx.navigate("about"));
+registerAction("alerts:open", (ds, ev, ctx) => ctx.navigate("alerts"));

@@ -5,7 +5,7 @@ import { load, save } from './core/storage.js';
 
 /** Storage keys (core/storage.js adds the 'sb:' prefix). */
 export const KEYS = Object.freeze({ hiddenRoutes: 'hiddenRoutes', theme: 'theme', routeOrder: 'routeOrder',
-  customRoutes: 'customRoutes', activeCustom: 'activeCustom', prevHidden: 'prevHidden', favStops: 'favStops' });
+  customRoutes: 'customRoutes', activeCustom: 'activeCustom', prevHidden: 'prevHidden', favStops: 'favStops', notify: 'notify' });
 
 const THEMES = ['auto', 'light', 'dark'];
 
@@ -51,6 +51,23 @@ export function cleanId(v) {
   return (typeof v === 'string' || typeof v === 'number') && String(v) ? String(v) : null;
 }
 
+/** Default bus-arrival notification settings (see docs/ARCHITECTURE.md "Settings"). */
+export const NOTIFY_DEFAULTS = Object.freeze({ stopId: null, rids: [], twoStops: true, oneStop: true, minutes: 0,
+  liveActivity: true, inApp: true });
+
+/**
+ * Validate persisted notification settings (unknown keys dropped, bad values -> defaults).
+ * @param {unknown} v
+ * @returns {{stopId:string|null, rids:string[], twoStops:boolean, oneStop:boolean, minutes:number, liveActivity:boolean, inApp:boolean}}
+ */
+export function cleanNotify(v) {
+  const o = v && typeof v === 'object' ? v : {};
+  const b = (k) => (typeof o[k] === 'boolean' ? o[k] : NOTIFY_DEFAULTS[k]);
+  const m = Number(o.minutes);
+  return { stopId: cleanId(o.stopId), rids: cleanHidden(o.rids), twoStops: b('twoStops'), oneStop: b('oneStop'),
+    minutes: Number.isFinite(m) && m >= 0 && m <= 30 ? Math.round(m) : 0, liveActivity: b('liveActivity'), inApp: b('inApp') };
+}
+
 /**
  * Validate a persisted theme value.
  * @param {unknown} v
@@ -83,6 +100,7 @@ export function initialState() {
     activeCustom: cleanId(load(KEYS.activeCustom, null)),      // id of the applied custom route, or null
     prevHidden: cleanHidden(load(KEYS.prevHidden, [])),        // hiddenRoutes before a custom route was applied
     favStops: cleanHidden(load(KEYS.favStops, [])),            // favorite station ids
+    notify: cleanNotify(load(KEYS.notify, null)),              // "bus nearing my station" settings
     journey: null,                                             // {rids, label} while "only show relevant routes" is on (not persisted)
     // nav (ui/router.js writes)
     view: 'nearby', prevView: null, stopId: null, routeId: null,
@@ -104,13 +122,14 @@ export function persistPrefs(s) {
     if (!changed || changed.has('activeCustom')) save(KEYS.activeCustom, cleanId(state.activeCustom));
     if (!changed || changed.has('prevHidden')) save(KEYS.prevHidden, cleanHidden(state.prevHidden));
     if (!changed || changed.has('favStops')) save(KEYS.favStops, cleanHidden(state.favStops));
+    if (!changed || changed.has('notify')) save(KEYS.notify, cleanNotify(state.notify));
   });
 }
 
 /**
  * The single app store. `store.get()` returns the state above; `store.set(patch)` shallow-merges;
  * `store.subscribe(fn)` is called once per microtask with (state, changedKeys).
- * Prefs (hiddenRoutes, theme, routeOrder, customRoutes, activeCustom, prevHidden, favStops) are loaded from
+ * Prefs (hiddenRoutes, theme, routeOrder, customRoutes, activeCustom, prevHidden, favStops, notify) are loaded from
  * and saved to localStorage via core/storage.js.
  */
 export const store = createStore(initialState());

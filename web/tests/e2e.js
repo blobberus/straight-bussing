@@ -77,17 +77,62 @@ test("boot: Nearby fills from the live feed, no status pill", async () => {
   ok(txt(content()).includes("Use my location"), "location prompt shown without permission");
 });
 
-test("tabs: Routes / Alerts / Nearby switch title, aria-current and alert badge", async () => {
+test("tabs: Nearby / Routes / My Routes switch title and aria-current; no Alerts tab", async () => {
+  eq($$("#tabs button[data-tab]").map((b) => b.dataset.tab), ["nearby", "routes", "myroutes"]);
+  ok(!$("#alertBadge") && !$('#tabs [data-tab="alerts"]'), "alerts tab and badge are gone");
   tab("routes");
   await waitFor(() => title() === "Routes" && $(".v-routerow"), "Routes view");
   eq($('#tabs button[data-tab="routes"]').getAttribute("aria-current"), "page");
-  tab("alerts");
-  await waitFor(() => title() === "Alerts" && txt(content()).includes("E2E detour"), "Alerts view with the alert");
-  eq(txt($("#alertBadge")), "1");
-  ok(!$("#alertBadge").hidden, "badge visible");
+  tab("myroutes");
+  await waitFor(() => title() === "My Routes" && state().view === "myroutes", "My Routes view");
+  eq($('#tabs button[data-tab="myroutes"]').getAttribute("aria-current"), "page");
+  ok($("#back").hidden, "no Back button on a tab");
   tab("nearby");
   await waitFor(() => title() === "Nearby" && $('[data-region="nearby-results"] [data-action="stop:open"]'), "Nearby again");
   ok($("#back").hidden, "no Back button on a tab");
+});
+
+test("alerts: Nearby banner shows the active alert and opens the Alerts sub view; back returns", async () => {
+  const banner = await waitFor(() => $('#content [data-region="nearby-alert"] [data-action="alerts:open"]'), "alert banner");
+  ok(/Service alert/.test(txt(banner)) && txt(banner).includes("E2E detour"), "banner text: " + txt(banner));
+  click(banner, "alert banner");
+  await waitFor(() => title() === "Alerts" && txt(content()).includes("E2E detour"), "Alerts view with the alert");
+  eq($('#tabs button[data-tab="nearby"]').getAttribute("aria-current"), "page", "alerts belong to Nearby");
+  ok(!$("#back").hidden, "Back visible in the Alerts sub view");
+  click($("#back"), "back");
+  await waitFor(() => state().view === "nearby" && title() === "Nearby", "back to Nearby");
+});
+
+test("favorites: a favorite station shows on Nearby with its next bus and opens the stop", async () => {
+  SB.store.set({ favStops: [T.S] });
+  const row = await waitFor(() => $(`#content .v-favs [data-action="stop:open"][data-id="${T.S}"]`), "favorite row");
+  ok(/Favorite /.test(row.getAttribute("aria-label")), "spoken label");
+  ok($('#content [data-action="nav"][data-view="myroutes"]'), "All favorites link");
+  click(row, "favorite row");
+  await waitFor(() => state().view === "stop" && state().stopId === T.S, "stop opened from favorites");
+  click($("#back"), "back");
+  await waitFor(() => state().view === "nearby", "back to Nearby");
+  SB.store.set({ favStops: [] });
+  await waitFor(() => !$("#content .v-favs"), "favorites card gone");
+});
+
+test("context bar: journey shows 'Only showing routes for' and Show all ends it", async () => {
+  ok($("#ctxbar").hidden, "hidden by default");
+  SB.store.set({ journey: { rids: [T.R], label: "E2E trip", kind: "plan" } });
+  await waitFor(() => !$("#ctxbar").hidden && txt($("#ctxbar")).includes("E2E trip"), "journey bar");
+  ok(/Only showing routes for/.test(txt($("#ctxbar"))));
+  click($('#ctxbar [data-action="journey:end"]'), "Show all");
+  await waitFor(() => state().journey === null && $("#ctxbar").hidden, "journey ended");
+});
+
+test("context bar: an applied custom route shows its name and Clear restores the hidden list", async () => {
+  const rids = Object.keys(state().routes);
+  SB.store.set({ customRoutes: [{ id: "e2e", name: "E2E mine", rids: [T.R], highlight: [] }], activeCustom: "e2e",
+    prevHidden: [], hiddenRoutes: rids.filter((r) => r !== T.R) });
+  await waitFor(() => !$("#ctxbar").hidden && txt($("#ctxbar")).includes("E2E mine"), "custom route bar");
+  click($('#ctxbar [data-action="custom:clear"]'), "Clear");
+  await waitFor(() => state().activeCustom === null && state().hiddenRoutes.length === 0 && $("#ctxbar").hidden, "custom route cleared");
+  SB.store.set({ customRoutes: [] });
 });
 
 test("stop view: arrivals, directions buttons, back returns to Nearby", async () => {
@@ -207,8 +252,9 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
 });
 
 test("theme: About's Auto / Light / Dark updates the page and the map", async () => {
-  tab("alerts");
-  click(await waitFor(() => $('#content [data-action="about:open"]'), "About row"), "About row");
+  tab("nearby");
+  click(await waitFor(() => $('#content [data-action="alerts:open"]'), "alert banner"), "alert banner");
+  click(await waitFor(() => state().view === "alerts" && $('#content [data-action="about:open"]'), "About row"), "About row");
   const seg = await waitFor(() => $("#content .themeseg"), "theme control");
   click(seg.querySelector('[data-mode="dark"]'), "Dark");
   await waitFor(() => D.documentElement.dataset.theme === "dark" && $("#map").classList.contains("sb-dark"), "dark theme");

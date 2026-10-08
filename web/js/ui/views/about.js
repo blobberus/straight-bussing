@@ -87,9 +87,9 @@ export function mountAbout(root, ctx) {
 
 registerView("about", {
   title: () => "About",
-  parent: "alerts",
+  parent: "myroutes",
   detent: "full",
-  tab: "alerts",
+  tab: "myroutes",
   render: () => renderAbout(),
   mount: (root, ctx) => mountAbout(root, ctx),
   unmount: () => { offStore?.(); offStore = null; },

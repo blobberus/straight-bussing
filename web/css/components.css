@@ -16,8 +16,10 @@
   transition: background-color var(--d-press) var(--ease-enter), transform var(--d-press) var(--ease-enter);
 }
 .row + .row::before {
-  content: ""; position: absolute; top: 0; left: 52px; right: 0; height: 1px; background: var(--hairline);
+  content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--hairline);
 }
+/* a leading route chip is a fixed-width column so names and hairlines line up */
+.row > .chip:first-child, .v-row > .chip:first-child { min-width: 56px; }
 button.row:active { background: var(--surface-press); transform: scale(.98); }
 .row:focus-visible { outline-offset: -2px; border-radius: 8px; }
 .rowvis { display: flex; align-items: center; gap: var(--s3); flex: 1; min-width: 0; }
@@ -177,3 +179,16 @@ input::placeholder { color: var(--text-2); opacity: 1; }
 @media (prefers-contrast: more) {
   .card, .cta.alt { outline: 1px solid currentColor; }
 }
+
+/* Nearby: service-alert banner (alerts are a sub view now) + favorites card (SHELL) */
+.v-alertbanner { margin: 0 0 var(--s2); padding: var(--s2) var(--s3); min-height: 56px; border-radius: var(--r-card); background: var(--warn-bg); }
+.v-alertbanner + .v-alertbanner::before, .v-alertbanner::before { display: none; }
+.v-alertbanner .v-alertic { color: var(--warn); padding-top: 0; }
+.v-alertbanner .v-prim { font-weight: 650; color: var(--text); }
+.v-alertbanner .v-alertfirst { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--text); }
+.v-favhead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); }
+.v-favhead .v-h { flex: 1; }
+.v-favmore { margin-right: calc(-1 * var(--s2)); }
+.v-favic { width: 56px; text-align: center; color: var(--warn); font-size: 18px; }
+@media (forced-colors: active) { .v-alertbanner { border: 1px solid CanvasText; } }
+@media (prefers-contrast: more) { .v-alertbanner { outline: 1px solid currentColor; } }
