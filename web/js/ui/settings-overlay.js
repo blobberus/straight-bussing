@@ -1,11 +1,13 @@
 /**
  * @module ui/settings-overlay
  * The Settings overlay (SETTINGS): an iOS-style modal panel that is separate from the sheet router.
- * Opening it lifts the sheet to its "full" detent and covers everything below the segmented tab bar
- * (#tabs), so the tab bar stays visible on top of it; closing restores the previous detent.
- * Closes on Done, Escape, a tab tap (that tab then shows), any navigation (e.g. About) and when the
- * user drags the sheet out of "full". Accessible modal: role="dialog" aria-modal="true", focus moves
- * to the heading, Tab is trapped inside, focus returns to the opener (the gear) on close.
+ * Opening it lifts the sheet to its "full" detent and covers the WHOLE sheet, including its grab
+ * handle, title and tabs (owner: the Plan Trip title/tabs must not look like part of Settings); a
+ * scrim dims whatever is still visible behind it (map strip, floating buttons, context bar), and
+ * the covered sheet header and content are inert. Closing restores the previous detent.
+ * Closes on Done, Escape, a tap on the scrim, the gear (programmatic toggle), any navigation (e.g.
+ * About) and if the sheet leaves "full". Accessible modal: role="dialog" aria-modal="true", focus
+ * moves to the heading, Tab is trapped inside, focus returns to the opener (the gear) on close.
  *
  * The DOM is created from JS and appended to #app, so on desktop it lives inside the scaled iPhone
  * frame (ui/frame.js); positions are measured in #app's layout px (screen px / scale).
@@ -15,13 +17,11 @@ import { bindActions } from "./actions.js";
 
 /** Id of the overlay root element. */
 export const OVERLAY_ID = "settingsOverlay";
-/** Gap between the bottom of the tab bar and the overlay's top edge (the sheet header's padding), px. */
-export const TAB_GAP = 8;
 const REFRESH_MS = 15000;
 const HIDE_MS = 380;
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-let el = null, body = null, heading = null;
+let el = null, body = null, heading = null, scrim = null;
 let sess = null;      // open session
 let hideTimer = 0;
 let ctxRef = null;
@@ -31,18 +31,18 @@ const reducedMotion = () => { try { return matchMedia("(prefers-reduced-motion: 
 const navKey = (s) => `${s?.view || ""}|${s?.stopId || ""}|${s?.routeId || ""}`;
 
 /**
- * Where the overlay goes, in the containing block's layout px (pure; unit-tested).
- * The sheet may be mid-transition: subtracting its current translateY gives the tab bar's position
- * at the "full" detent (translateY 0), so the overlay lands where the tab bar will settle.
- * @param {{tabs:{bottom:number}, sheet:{left:number, width:number, bottom:number}, origin:{left:number, top:number},
- *          k?:number, ty?:number, height:number, gap?:number}} g
- *   tabs/sheet: bounding rects (screen px); origin: containing block's top-left (screen px);
+ * Where the overlay goes, in the containing block's layout px (pure; unit-tested): exactly over the
+ * sheet at its "full" detent. The sheet may be mid-transition: subtracting its current translateY
+ * gives its top edge at "full" (translateY 0), so the overlay lands where the sheet will settle.
+ * @param {{sheet:{top:number, left:number, width:number, bottom:number}, origin:{left:number, top:number},
+ *          k?:number, ty?:number, height:number}} g
+ *   sheet: bounding rect (screen px); origin: containing block's top-left (screen px);
  *   k: frame scale (screen px per layout px); ty: sheet's current translateY (layout px); height: containing block height (layout px)
  * @returns {{top:number, left:number, width:number, bottom:number}}
  */
-export function overlayBox({ tabs, sheet, origin, k = 1, ty = 0, height, gap = TAB_GAP }) {
+export function overlayBox({ sheet, origin, k = 1, ty = 0, height }) {
   const s = k > 0 ? k : 1;
-  const top = (tabs.bottom - origin.top) / s - ty + gap;
+  const top = (sheet.top - origin.top) / s - ty;
   const sheetBottom = (sheet.bottom - origin.top) / s - ty;
   return {
     top: Math.max(0, top),
@@ -61,15 +61,15 @@ function sheetTy() {
   } catch (e) { return 0; }
 }
 
-/** Measure the live DOM (#app, #sheet, #tabs) and return the overlay box, or null. */
+/** Measure the live DOM (#app, #sheet) and return the overlay box, or null. */
 function measure() {
-  const app = $("app") || document.body, sheet = $("sheet"), tabs = $("tabs");
-  if (!sheet || !tabs) return null;
+  const app = $("app") || document.body, sheet = $("sheet");
+  if (!sheet) return null;
   const framed = app !== document.body && getComputedStyle(app).transform !== "none";
   const ar = app.getBoundingClientRect();
   const ty = sheetTy();
   return overlayBox({
-    tabs: tabs.getBoundingClientRect(), sheet: sheet.getBoundingClientRect(),
+    sheet: sheet.getBoundingClientRect(),
     origin: framed ? { left: ar.left, top: ar.top } : { left: 0, top: 0 },
     k: framed && app.offsetWidth ? ar.width / app.offsetWidth : 1,
     ty, height: framed ? app.offsetHeight : document.documentElement.clientHeight || innerHeight,
@@ -106,7 +106,14 @@ function ensure() {
   heading = el.querySelector("#stoTitle");
   el.querySelector('[data-sto="done"]').addEventListener("click", () => closeSettingsOverlay());
   bindActions(el, () => ctxRef);   // data-action rows inside (About)
-  ($("app") || document.body).appendChild(el);
+  scrim = document.createElement("div");
+  scrim.className = "sto-scrim";
+  scrim.hidden = true;
+  scrim.setAttribute("aria-hidden", "true");
+  scrim.addEventListener("click", () => closeSettingsOverlay());
+  const host = $("app") || document.body;
+  host.appendChild(scrim);
+  host.appendChild(el);
   return el;
 }
 
@@ -164,8 +171,8 @@ export function openSettingsOverlay(ctx, content, opts = {}) {
   ensure();
   if (sess) return el;
   clearTimeout(hideTimer);
-  const sheet = $("sheet"), tabs = $("tabs"), sheetContent = $("content"), gear = $("settingsBtn");
-  sess = { ctx, content, trigger: pickTrigger(opts.trigger), prev: sheet?.dataset.detent || null, key: navKey(ctx.store.get()), offs: [], inerted: null };
+  const sheet = $("sheet"), gear = $("settingsBtn");
+  sess = { ctx, content, trigger: pickTrigger(opts.trigger), prev: sheet?.dataset.detent || null, key: navKey(ctx.store.get()), offs: [], inerted: [] };
   ctxRef = ctx;
   const tyBefore = sheetTy();     // read before the detent change: computed style jumps to the end value
   try { ctx.setDetent?.("full"); } catch (e) { /* no sheet */ }
@@ -182,23 +189,23 @@ export function openSettingsOverlay(ctx, content, opts = {}) {
   sess.from = tyBefore > 24 ? tyBefore : 0;
   el.style.setProperty("--sto-from", sess.from ? sess.from + "px" : "100%");
   el.removeAttribute("inert");
+  scrim.hidden = false;
   el.hidden = false;
   el.dataset.state = "open";
   placeOverlay();                 // forces style: the before-change style for the slide
   body.scrollTop = 0;
   el.classList.add("is-in");
-  if (sheetContent && !sheetContent.inert) { sheetContent.inert = true; sess.inerted = sheetContent; }
+  void scrim.offsetWidth;          // start the scrim fade from 0
+  scrim.classList.add("is-in");
+  // the covered sheet (title, tabs, content) must not be reachable while Settings is on top
+  for (const id of ["sheetHead", "content"]) {
+    const n = $(id);
+    if (n && !n.inert) { n.inert = true; sess.inerted.push(n); }
+  }
   gear?.setAttribute("aria-haspopup", "dialog");
   gear?.setAttribute("aria-expanded", "true");
 
   on(document, "keydown", onKey, true);
-  on(tabs, "click", (e) => {
-    const b = e.target.closest?.("button[data-tab]");
-    if (!b) return;
-    const p = sess?.prev;
-    closeSettingsOverlay({ restore: p === "peek" ? "half" : p, focus: "none" });
-    if (document.activeElement !== b) b.focus({ preventScroll: true });
-  });
   let raf = 0;
   const relayout = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(placeOverlay); };
   on(window, "resize", relayout);
@@ -231,7 +238,8 @@ export function closeSettingsOverlay(opts = {}) {
   const wasInside = el.contains(document.activeElement);
   s.offs.forEach((f) => { try { f(); } catch (e) { /* ignore */ } });
   try { s.content.unmount?.(); } catch (e) { console.error(e); }
-  if (s.inerted) s.inerted.inert = false;
+  s.inerted.forEach((n) => { n.inert = false; });
+  scrim.classList.remove("is-in");
   $("settingsBtn")?.setAttribute("aria-expanded", "false");
   el.dataset.state = "closed";
   el.setAttribute("inert", "");
@@ -244,7 +252,7 @@ export function closeSettingsOverlay(opts = {}) {
   else if (focus === "title" && wasInside) $("title")?.focus({ preventScroll: true });
   else if (wasInside) document.activeElement?.blur?.();
   clearTimeout(hideTimer);
-  const hide = () => { if (sess) return; el.hidden = true; body.innerHTML = ""; };
+  const hide = () => { if (sess) return; el.hidden = true; scrim.hidden = true; body.innerHTML = ""; };
   if (reducedMotion()) hide(); else hideTimer = setTimeout(hide, HIDE_MS);
   return true;
 }

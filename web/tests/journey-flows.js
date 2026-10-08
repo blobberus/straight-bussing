@@ -98,7 +98,9 @@ test("directions: picking another option during a trip updates journey.rids; liv
   let gen = 0;
   const { ctx, el } = await dirWith(() => (gen++ ? [opt("b", 14, "R3"), opt("a", 13, "R1", "R2")] : [opt("a", 12, "R1", "R2"), opt("b", 15, "R3")]));
   runAction("dir:start", {}, null, ctx);
-  runAction("dir:opt", { i: "1" }, null, ctx);
+  const ib = D.result.options.findIndex((o) => o.key === "b");   // cards are ranked (core/rank.js), so find it by key
+  ok(ib >= 0, "option b shown");
+  runAction("dir:opt", { i: String(ib) }, null, ctx);
   await tick();
   eq(ctx.store.get().journey.rids, ["R3"], "follows the chosen option");
   ctx.store.set({ trips: ctx.store.get().trips.slice() });   // live update -> re-plan (options reorder)

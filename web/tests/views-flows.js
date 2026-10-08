@@ -156,7 +156,8 @@ test("directions: My location default, station suggestions, plan + sidewalk refi
   await tick(10);
   eq(D.to.label, "Hospital");
   const res = el.querySelector('[data-region="dir-res"]');
-  eq(res.querySelectorAll(".v-opt").length, 3, "max 3 cards");
+  eq(res.querySelectorAll(".v-opt").length, 4, "up to 4 cards (one per ranking criterion + one)");
+  ok(res.querySelector(".v-opt .j-crit"), "a card says what it minimizes");
   const txt = res.textContent;
   ok(txt.includes("Bus arrives at Main & 1st"), "bus step");
   ok(txt.includes("sidewalk route"), "refined walk tag");

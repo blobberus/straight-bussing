@@ -57,3 +57,8 @@
   .j-only[aria-checked="true"] .j-sw { background: Highlight; }
   .j-knob { background: CanvasText; }
 }
+
+/* what a directions option minimizes (core/rank.js criteria): a small accent line at the top of the
+   card, e.g. "Least walking · Earliest arrival". Text, so it never relies on color alone. */
+.j-crit { display: block; margin-bottom: -2px; font-size: var(--fs-cap); line-height: 1rem; font-weight: 600; letter-spacing: .01em; color: var(--accent); }
+@media (forced-colors: active) { .j-crit { color: CanvasText; } }

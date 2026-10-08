@@ -273,7 +273,8 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
   await waitFor(() => $("#content .v-opt [data-action='dir:opt']") && !/Checking sidewalk/.test(txt(content())), "refined options");
   ok(T.walkCalls > 0, "walkRoute stub used");
   const opts = $$("#content [data-action='dir:opt']");
-  ok(opts.length >= 1 && opts.length <= 3, "1..3 option cards, got " + opts.length);
+  ok(opts.length >= 1 && opts.length <= 4, "1..4 option cards, got " + opts.length);
+  if (opts.length > 1) ok(/Least walking|Earliest arrival|Shortest wait/.test(txt($("#content .v-opt .j-crit"))), "first card says what it minimizes");
   click(opts[0], "first option");
   await waitFor(() => $("#content .v-opt.is-on .v-steps"), "steps of the selected option");
   const steps = txt($("#content .v-opt.is-on .v-steps"));
@@ -322,7 +323,10 @@ test("settings gear: top-right, labeled, 44px target, clear of the locate button
   const o = await waitFor(() => { const x = $("#settingsOverlay"); return x && !x.hidden && x.dataset.state === "open" ? x : null; }, "Settings overlay opened from the gear");
   eq([o.getAttribute("role"), o.getAttribute("aria-modal")], ["dialog", "true"], "modal dialog");
   ok(o.contains(D.activeElement), "focus moved into Settings");
-  ok(o.getBoundingClientRect().top >= $("#tabs").getBoundingClientRect().bottom - 1, "overlay sits below the tab bar");
+  const geo = () => JSON.stringify({ o: Math.round(o.getBoundingClientRect().top), st: o.style.top, state: o.dataset.state, tabs: Math.round($("#tabs").getBoundingClientRect().top), title: Math.round($("#title").getBoundingClientRect().top), sheet: Math.round($("#sheet").getBoundingClientRect().top), det: $("#sheet").dataset.detent });
+  try { await waitFor(() => o.getBoundingClientRect().top <= Math.min($("#tabs").getBoundingClientRect().top, $("#title").getBoundingClientRect().top) + 1 || null, "overlay covers the sheet title and tabs"); }
+  catch (e) { throw new Error(e.message + " GEO " + geo()); }
+  ok($("#sheetHead").inert && !$(".sto-scrim").hidden, "covered header inert, background dimmed");
   const done = o.querySelector(".sto-done"), dr = done.getBoundingClientRect(), orr = o.getBoundingClientRect();
   ok(/Done/.test(txt(done)) && dr.right > orr.left + orr.width * 0.7 && dr.top < orr.top + 60, "Done button in the top-right corner");
   click(done, "Done");

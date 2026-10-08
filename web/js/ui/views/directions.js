@@ -2,8 +2,9 @@
  * @module ui/views/directions
  * Directions: Start / Destination fields (station autocomplete + Photon places, "My location"
  * default when granted), swap, plan via core/planner plan(), then refineWalking() async with
- * core/walk walkRoute (sidewalk routes). Up to 3 option cards (total, arrive clock, chip summary,
- * est tags); tapping a card draws it on the map. Steps say "Bus arrives at <stop> <clock>" with
+ * core/walk walkRoute (sidewalk routes). Up to 4 option cards ranked by core/rank.js (least walking,
+ * then earliest arrival, then shortest wait, then how many it meets), each with a small line saying
+ * what it minimizes, total, arrive clock, chip summary and est tags; tapping a card draws it on the map. Steps say "Bus arrives at <stop> <clock>" with
  * wait / ride / source. Walk-only fallback and no-service state. Recomputes on live updates by
  * patching the results region only, so typing focus is never stolen.
  * Start (selected option with a bus) begins a trip: store.journey {rids, label, kind:'plan'} so the map
@@ -19,7 +20,8 @@ import { esc } from "../../core/esc.js";
 import { nowS, clock } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
 import { staleLevel } from "../../core/arrivals.js";
-import { plan, refineWalking } from "../../core/planner.js";
+import { plan, refineWalking, PLANNER } from "../../core/planner.js";
+import { rankOptions, criteriaText } from "../../core/rank.js";
 import { walkRoute } from "../../core/walk.js";
 import { predict } from "../../core/predict.js";
 import { routeChip, emptyState, skeleton } from "../components.js";
@@ -94,10 +96,13 @@ function optionHTML(o, i, now, state) {
   const on = i === D.sel;
   const sum = o.legs.map((l) => (l.type === "walk" ? `<span class="v-wk">${WALK_IC}${esc(walkMins(l.min))}</span>` : routeChip(l.rid, state.routes))).join('<span class="v-arr" aria-hidden="true">&rsaquo;</span>');
   const lines = optionLines(o, now), wt = walkTotal(o);
+  // what this option minimizes (core/rank.js), only when there is something to compare against
+  const crit = (D.result?.options?.length || 0) > 1 ? criteriaText(o.meets) : "";
+  const critHTML = crit ? `<span class="j-crit">${esc(crit)}</span>` : "";
   const routesTxt = o.legs.filter((l) => l.type === "bus").map((l) => state.routes?.[l.rid]?.short || l.rid).join(" then ");
-  const aria = `Option ${i + 1}: about ${o.totalMin} minutes including ${wt > 0 ? walkMins(wt) + " minutes walking" : "no walking"}, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. ${lines.text} Estimate.`.replace(/<1 min/g, "under 1 min");
+  const aria = `Option ${i + 1}${crit ? " (" + crit.replace(/ · /g, ", ") + ")" : ""}: about ${o.totalMin} minutes including ${wt > 0 ? walkMins(wt) + " minutes walking" : "no walking"}, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. ${lines.text} Estimate.`.replace(/<1 min/g, "under 1 min");
   const start = on && !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Shows only this trip&rsquo;s routes on the map.</p>' : "";
-  return `<div class="v-opt${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}"><span class="v-otop"><span class="v-otot">~${o.totalMin}<small> min</small></span>${tag("est.")}<span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span><span class="v-osum">${sum}</span>${lines.html}</button>${on ? stepsHTML(o, now, state) + start : ""}</div>`;
+  return `<div class="v-opt${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}">${critHTML}<span class="v-otop"><span class="v-otot">~${o.totalMin}<small> min</small></span>${tag("est.")}<span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span><span class="v-osum">${sum}</span>${lines.html}</button>${on ? stepsHTML(o, now, state) + start : ""}</div>`;
 }
 
 /**
@@ -122,7 +127,7 @@ export function resHTML(state, now = nowS()) {
     h += `<div class="v-opt is-on"><div class="v-optmain"><span class="v-otop"><span class="v-otot">${mins(w.min)}<small> min</small></span>${walkTag}<span class="v-oarr">Arrive ${esc(clock(now + (w.min || 0) * 60))}</span></span><span class="v-osum"><span class="v-wk">${WALK_IC}Walk the whole way</span><span class="v-sec">${Math.round(w.m || 0)} m</span></span></div></div>`;
     return h + (running ? "" : OFFICIAL_HTML);
   }
-  h += r.options.slice(0, 3).map((o, i) => optionHTML(o, i, now, state)).join("");
+  h += r.options.slice(0, PLANNER.MAX_OPTS).map((o, i) => optionHTML(o, i, now, state)).join("");
   h += `<p class="v-foot">Walking the whole way: ${mins(w.min)} min (${Math.round(w.m || 0)} m) ${walkTag}</p>`;
   if (D.refining) h += '<p class="v-foot" role="status">Checking sidewalk routes&hellip;</p>';
   return h + `<p class="v-foot v-estnote">${esc(NOTE)}</p>`;
@@ -188,15 +193,16 @@ export async function replan({ fresh = false } = {}) {
   try { r = deps.plan({ from, to, now, data, predict: deps.predict }); } catch (e) { r = null; }
   if (!r || !Array.isArray(r.options)) { const m = hav(from, to) * 1.2; r = { options: [], walkOnly: { m, min: m / 80 } }; }
   if (fresh || !D.result) { D.result = r; D.missed = false; D.refining = true; pickSel(fresh); patchRes(); drawSel(fresh); }
-  const top = r.options.slice(0, 3);
+  const top = r.options.slice(0, PLANNER.MAX_OPTS);
   const [settled, walk] = await Promise.all([
     Promise.allSettled(top.map((o) => deps.refineWalking(o, { walkRoute: deps.walkRoute, now, data, from, to, predict: deps.predict }))),
     Promise.resolve().then(() => deps.walkRoute(from, to)).catch(() => null),
   ]);
   if (token !== D.token) return;
-  const opts = settled.map((s, i) => (s.status === "fulfilled" ? s.value : top[i])).filter((o) => o && Array.isArray(o.legs)).sort((a, b) => a.total - b.total);
-  D.missed = top.length > 0 && !opts.length;
-  D.result = { ...r, options: opts, walkOnly: walk ? { m: walk.m, min: walk.min, coords: walk.coords, source: walk.source } : r.walkOnly };
+  const opts = settled.map((s, i) => (s.status === "fulfilled" ? s.value : top[i])).filter((o) => o && Array.isArray(o.legs));
+  const ranked = rankOptions(opts);   // sidewalk times can change who walks least
+  D.missed = top.length > 0 && !ranked.length;
+  D.result = { ...r, options: ranked, walkOnly: walk ? { m: walk.m, min: walk.min, coords: walk.coords, source: walk.source } : r.walkOnly };
   D.refining = false; pickSel(fresh); syncJourney(); patchRes(); drawSel(fresh);
 }
 

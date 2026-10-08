@@ -3,7 +3,7 @@ import { test, eq, ok, near } from "./lib.js";
 import { makeCtx, tick } from "./views-fixtures.js";
 import { bindActions, registerAction } from "../js/ui/actions.js";
 import { getView } from "../js/ui/router.js";
-import { overlayBox, isSettingsOpen, closeSettingsOverlay, TAB_GAP, OVERLAY_ID } from "../js/ui/settings-overlay.js";
+import { overlayBox, isSettingsOpen, closeSettingsOverlay, OVERLAY_ID } from "../js/ui/settings-overlay.js";
 import "../js/ui/views/settings.js";
 import { cleanNotify } from "../js/state.js";
 
@@ -35,20 +35,20 @@ function shell({ detent = "half" } = {}) {
 const click = (el) => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 const key = (el, k, o = {}) => { const e = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }); el.dispatchEvent(e); return e; };
 
-test("overlay box: below the tab bar at the full detent, also mid-transition, framed and floating", () => {
-  const sheet = { left: 0, width: 393, bottom: 852 };
-  eq(overlayBox({ tabs: { bottom: 300 }, sheet, origin: { left: 0, top: 0 }, height: 852 }), { top: 300 + TAB_GAP, left: 0, width: 393, bottom: 0 });
-  // sheet still 200 px below its full position: the overlay goes where the tab bar will settle
-  const mid = overlayBox({ tabs: { bottom: 500 }, sheet: { ...sheet, bottom: 1052 }, origin: { left: 0, top: 0 }, ty: 200, height: 852 });
-  eq([mid.top, mid.bottom], [300 + TAB_GAP, 0]);
+test("overlay box: exactly over the full-detent sheet, also mid-transition, framed and floating", () => {
+  const sheet = { top: 110, left: 0, width: 393, bottom: 852 };
+  eq(overlayBox({ sheet, origin: { left: 0, top: 0 }, height: 852 }), { top: 110, left: 0, width: 393, bottom: 0 });
+  // sheet still 200 px below its full position: the overlay goes where the sheet will settle
+  const mid = overlayBox({ sheet: { ...sheet, top: 310, bottom: 1052 }, origin: { left: 0, top: 0 }, ty: 200, height: 852 });
+  eq([mid.top, mid.bottom], [110, 0]);
   // desktop iPhone frame scaled to 0.5 at (100, 50): result is in #app layout px
-  const f = overlayBox({ tabs: { bottom: 50 + 300 * 0.5 }, sheet: { left: 100, width: 196.5, bottom: 50 + 852 * 0.5 }, origin: { left: 100, top: 50 }, k: 0.5, height: 852 });
-  near(f.top, 300 + TAB_GAP, 1e-9); eq([f.left, f.width, f.bottom], [0, 393, 0]);
+  const f = overlayBox({ sheet: { top: 50 + 110 * 0.5, left: 100, width: 196.5, bottom: 50 + 852 * 0.5 }, origin: { left: 100, top: 50 }, k: 0.5, height: 852 });
+  near(f.top, 110, 1e-9); eq([f.left, f.width, f.bottom], [0, 393, 0]);
   // landscape panel (sheet ends 12 px above the bottom)
-  eq(overlayBox({ tabs: { bottom: 120 }, sheet: { left: 12, width: 380, bottom: 380 }, origin: { left: 0, top: 0 }, height: 392 }).bottom, 12);
+  eq(overlayBox({ sheet: { top: 12, left: 12, width: 380, bottom: 380 }, origin: { left: 0, top: 0 }, height: 392 }).bottom, 12);
 });
 
-test("gear opens an accessible modal overlay below the tabs; sheet goes full; content not in the sheet", async () => {
+test("gear opens an accessible modal overlay over the whole sheet; sheet goes full; content not in the sheet", async () => {
   const t = shell();
   try {
     click(t.gear);
@@ -64,7 +64,10 @@ test("gear opens an accessible modal overlay below the tabs; sheet goes full; co
     for (const s of ["Appearance", "Service alerts", "Bus alerts", "iPhone app", 'data-action="about:open"']) ok(o.innerHTML.includes(s), s);
     ok(!document.getElementById("content").innerHTML.includes("Bus alerts"), "settings never render in the sheet");
     ok(document.getElementById("content").inert, "sheet content inert behind the modal");
-    near(parseFloat(o.style.top), document.getElementById("tabs").getBoundingClientRect().bottom + TAB_GAP, 1, "top edge under the tab bar");
+    near(parseFloat(o.style.top), Math.max(0, t.sheet.getBoundingClientRect().top), 1, "top edge at the sheet's top (clamped to the screen): title and tabs covered");
+    ok(document.getElementById("sheetHead").inert, "covered sheet header (title, tabs) inert");
+    const sc = t.app.querySelector(".sto-scrim");
+    ok(sc && !sc.hidden, "scrim dims what is behind");
     eq(t.gear.getAttribute("aria-expanded"), "true");
     ok(o.querySelector('[data-region="theme"] .themeseg'), "theme control mounted");
   } finally { t.done(); }
@@ -111,23 +114,18 @@ test("Done closes; the gear toggles; Tab is trapped inside", async () => {
   } finally { t.done(); }
 });
 
-test("tapping a tab closes Settings and shows that tab", async () => {
+test("tapping the dimmed area closes Settings and un-inerts the sheet", async () => {
   const t = shell({ detent: "half" });
   try {
     click(t.gear);
-    const routesTab = t.app.querySelector('[data-tab="routes"]');
-    click(routesTab);
-    await tick();
-    ok(!isSettingsOpen());
-    eq(t.ctx.store.get().view, "routes");
-    eq(t.sheet.dataset.detent, "half");
-    eq(document.activeElement, routesTab);
-    t.ctx.store.set({ view: "nearby" });
-    t.sheet.dataset.detent = "peek";
-    click(t.gear);
-    click(t.app.querySelector('[data-tab="nearby"]'));
-    ok(!isSettingsOpen(), "same tab also closes");
-    eq(t.sheet.dataset.detent, "half", "from peek the tab shows at half");
+    const sc = t.app.querySelector(".sto-scrim");
+    click(sc);
+    ok(!isSettingsOpen(), "scrim tap closes");
+    eq(t.sheet.dataset.detent, "half", "previous detent restored");
+    ok(!document.getElementById("sheetHead").inert && !document.getElementById("content").inert, "sheet usable again");
+    eq(document.activeElement, t.gear, "focus back on the gear");
+    await tick(450);
+    ok(sc.hidden, "scrim hidden after closing");
   } finally { t.done(); }
 });
 

@@ -116,14 +116,15 @@ test("absurdly slow bus options are dropped (vs walking)", () => {
   ok(slow.walkOnly.min > 10);
 });
 
-test("ranked by total, max 3 options", () => {
+test("same walking for all: earliest arrival decides the order; max 4 options; meets labels", () => {
   const rs = { P1: ["X", "Y"], P2: ["X", "Y"], P3: ["X", "Y"], P4: ["X", "Y"] };
   const mins = { P1: 9, P2: 3, P3: 6, P4: 12 };
   const r = plan({ from: near_("X"), to: near_("Y"), now: T,
     data: { stops, routeStops: rs, trips: [], buses: ["P1", "P2", "P3", "P4"].map(bus) },
     predict: { rideMinutes: (rid) => ({ min: mins[rid], source: "schedule", conf: 0.4 }) } });
-  eq(r.options.map((o) => o.key), ["P2", "P3", "P1"]);
-  ok(r.options[0].total < r.options[1].total && r.options[1].total < r.options[2].total);
+  eq(r.options.map((o) => o.key), ["P2", "P3", "P1", "P4"]);
+  ok(r.options.every((o) => o.meets.includes("walk")), "equal walking: every option meets 'least walking'");
+  ok(r.options[0].meets.includes("arrive") && !r.options[1].meets.includes("arrive"), "only the 3-min ride is earliest");
 });
 
 test("nothing running -> no options but walkOnly; bad input safe", () => {
@@ -312,7 +313,7 @@ test("real network data: plans quickly and returns sane options", async () => {
   const r = plan({ from, to, now: T, data: d });
   const ms = performance.now() - t0;
   ok(ms < 1500, "plan took " + Math.round(ms) + " ms");
-  ok(r.options.length >= 1 && r.options.length <= 3, "options " + r.options.length);
+  ok(r.options.length >= 1 && r.options.length <= 4, "options " + r.options.length);
   for (const o of r.options) {
     ok(isFinite(o.total) && o.total > 0 && o.arrive > T);
     for (const l of busLegs(o)) ok(l.boardT >= T && l.alightT > l.boardT && l.path.length === l.stopsPassed + 1);

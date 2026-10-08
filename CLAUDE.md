@@ -63,5 +63,6 @@ Also every ship: bump the cache name in `web/sw.js` when shell files change; esc
 | QA on a real iPhone (sheet drag, safe areas, keyboard) | next | headless Edge can't confirm |
 | App Store conversion (Capacitor) | next | wait for owner's prompt |
 | v2.2 (2026-10-08): Nearby tab renamed **Plan Trip** (ids stay `nearby`) with "Where to?" + "Routes to station…"; Edit map order first on Routes; favorite stars on the map; Settings = overlay below the tab bar with Done; place search Illinois-only, UChicago-first; planner counts every walk (1600 m end walks when nothing within 800 m) | done | `docs/ARCHITECTURE.md` (updated contracts); sw cache `sb-v2-6` |
+| v2.3 (2026-10-08): trip options ranked least walking > earliest arrival > shortest wait > criteria met (`core/rank.js`), small "what it minimizes" line per card, up to 4 options; Settings overlay covers the whole sheet with a scrim; slim 32px context bar (clears the full-detent grab handle) | done | sw cache `sb-v2-7` |
 
 **Data-learning roadmap:** (1) log observed stop-to-stop times from vehiclePositions + tripUpdates (GitHub Action, no server); (2) aggregate to `web/data/segments.json` by route, segment, hour; (3) `Predict.rideMinutes` prefers learned medians when enough samples, else schedule; (4) later: learned headways and delay by time of day.
