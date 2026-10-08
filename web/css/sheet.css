@@ -1,0 +1,102 @@
+/* Bottom sheet: 3 detents on phones and in the desktop phone frame; floating left panel only on wide,
+   short screens (phone landscape): (min-width: 768px) and (max-height: 559px), must match ui/sheet.js PANEL_MEDIA. Owner: D1.
+   Geometry: the sheet is always --v-full tall and slides with translateY so only --vis px show.
+   ui/sheet.js sets data-detent (peek|half|full) and --drag (px, live finger offset) on .sheet. */
+.sheet {
+  position: fixed; z-index: 1000; left: 0; right: 0; bottom: 0;
+  height: var(--v-full);
+  display: flex; flex-direction: column;
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  background: var(--bg);
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-sheet);
+  --vis: var(--v-half);
+  --drag: 0px;
+  transform: translate3d(0, calc(var(--v-full) - var(--vis) + var(--drag)), 0);
+  transition: transform var(--d-sheet) var(--ease-spring);
+  will-change: transform;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sheet { background: var(--bg-solid); }
+}
+.sheet[data-detent="peek"] { --vis: var(--v-peek); }
+.sheet[data-detent="half"] { --vis: var(--v-half); }
+.sheet[data-detent="full"] { --vis: var(--v-full); }
+.sheet.dragging { transition: none; }
+
+/* header: whole area is a drag handle */
+.sheet-head {
+  flex: none; padding: 0 var(--s4) var(--s2);
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.grab {
+  display: block; position: relative; width: 100%; height: 28px; cursor: grab;
+}
+.sheet.dragging .grab { cursor: grabbing; }
+.grab::before { /* the visible 36x5 grabber */
+  content: ""; position: absolute; left: 50%; top: 8px;
+  width: 36px; height: 5px; margin-left: -18px; border-radius: 3px;
+  background: var(--hairline-strong);
+}
+.grab::after { content: ""; position: absolute; left: 0; right: 0; top: -8px; bottom: -8px; } /* 44px hit area */
+.grab:focus-visible { outline-offset: -2px; border-radius: 8px; }
+
+.titleline { display: flex; align-items: center; gap: var(--s2); min-height: 36px; }
+.back {
+  flex: none; width: var(--tap); height: var(--tap); margin: -4px 0 -4px -14px;
+  display: grid; place-items: center; color: var(--accent); border-radius: var(--r-control);
+}
+.back:active { background: var(--surface); }
+.sheet-title {
+  flex: 1; min-width: 0; margin: 0;
+  font-size: var(--fs-large); line-height: var(--lh-large); font-weight: 700; letter-spacing: -.02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sheet-title.sm { font-size: var(--fs-title); line-height: var(--lh-title); font-weight: 650; letter-spacing: -.01em; }
+.titleright {
+  flex: none; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-2); font-weight: 600;
+}
+
+/* segmented tabs (Nearby / Routes / My Routes) */
+.tabs { margin-top: var(--s2); }
+@media not all and (min-width: 768px) and (max-height: 559px) {
+  .sheet[data-detent="peek"] .tabs { display: none; }
+}
+
+/* scrolling content: bottom padding equals the part of the sheet hidden below the screen,
+   so the last row can always be scrolled into view in every detent */
+.sheet-content {
+  flex: 1; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: var(--s1) var(--s4) calc(var(--v-full) - var(--vis) + max(16px, var(--safe-b)));
+  touch-action: pan-y;
+  outline: none;
+}
+.sheet.dragging .sheet-content { overflow-y: hidden; }
+
+/* wide + short (landscape phones): floating left panel, no detents */
+@media (min-width: 768px) and (max-height: 559px) {
+  .sheet {
+    left: calc(var(--safe-l) + 12px); right: auto; top: calc(var(--safe-t) + 12px); bottom: 12px;
+    width: var(--panel-w); height: auto;
+    border-radius: var(--r-sheet);
+    transform: none !important; transition: none;
+    box-shadow: var(--shadow-float);
+  }
+  .grab { display: none; }
+  .sheet-head { padding-top: var(--s3); touch-action: auto; }
+  .sheet-content { padding-bottom: max(16px, var(--safe-b)); }
+}
+
+@media (prefers-contrast: more) {
+  .sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--bg-solid); border: 1px solid var(--text); }
+}
+@media (forced-colors: active) {
+  .sheet { border: 1px solid CanvasText; }
+  .grab::before { background: CanvasText; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet { transition: transform var(--d-press) linear; }
+}

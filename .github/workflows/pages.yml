@@ -14,8 +14,14 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: python tools/build_gtfs.py
+      - name: Assemble site (web/ without tests)
+        run: |
+          rm -rf _site
+          cp -r web _site
+          rm -rf _site/tests
+          test -f _site/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
-        with: { path: web }
+        with: { path: _site }
       - id: d
         uses: actions/deploy-pages@v4

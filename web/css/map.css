@@ -1,0 +1,98 @@
+/* map.css: map overlays (route casings, stops, selection, buses, user dot, trip plan, attribution).
+   Owned by map/ (agent C). Theme: map.js toggles .sb-dark on the map element (.sb-map); every overlay
+   color below comes from these variables so a theme switch never needs a redraw. */
+.sb-map{
+  --sb-land:#eeefeb;--sb-casing:rgba(255,255,255,.92);--sb-stop-fill:#fff;--sb-stop-multi:#5c5c63;
+  --sb-accent:#0a84ff;--sb-live:#1e9e4a;--sb-danger:#d63a2e;--sb-text:#111114;--sb-text2:#5c5c63;
+  --sb-chrome:rgba(255,255,255,.82);--sb-chrome-solid:#fff;--sb-ring:rgba(0,0,0,.22);--sb-shadow:0 1px 4px rgba(0,0,0,.28);
+  background:var(--sb-land);
+}
+.sb-map.sb-dark{
+  --sb-land:#18181b;--sb-casing:rgba(58,58,64,.95);--sb-stop-fill:#f5f5f7;--sb-stop-multi:#a1a1a8;
+  --sb-accent:#409cff;--sb-live:#32d74b;--sb-danger:#ff6961;--sb-text:#f5f5f7;--sb-text2:#a1a1a8;
+  --sb-chrome:rgba(28,28,30,.78);--sb-chrome-solid:#1c1c1e;--sb-ring:rgba(0,0,0,.6);--sb-shadow:0 1px 4px rgba(0,0,0,.6);
+}
+.sb-map .maplibregl-canvas{outline:none}
+
+/* attribution: small, readable, top-left under the safe area */
+.sb-map .leaflet-top.leaflet-left .leaflet-control-attribution{
+  margin:calc(env(safe-area-inset-top,0px) + 8px) 0 0 8px;padding:2px 7px;border-radius:7px;
+  font:500 10.5px/15px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
+  color:var(--sb-text2);background:var(--sb-chrome);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  max-width:calc(100vw - 84px);white-space:normal;box-shadow:none}
+.sb-map .leaflet-control-attribution a{color:var(--sb-text2);text-decoration:none}
+.sb-map .leaflet-control-attribution a:hover,.sb-map .leaflet-control-attribution a:focus-visible{text-decoration:underline}
+.sb-map .leaflet-control-attribution a:focus-visible{outline:2px solid var(--sb-accent);outline-offset:1px;border-radius:3px}
+@media (min-width:768px){.sb-map .leaflet-top.leaflet-left .leaflet-control-attribution{margin-left:404px;max-width:calc(100vw - 480px)}}
+
+/* route network (CSS beats Leaflet's stroke/fill attributes) */
+.sb-casing,.sb-plan-casing{stroke:var(--sb-casing)}
+.sb-stop{fill:var(--sb-stop-fill)}
+.sb-stop-multi{stroke:var(--sb-stop-multi)}
+.sb-halo{fill:transparent;cursor:pointer}
+/* direction-of-travel chevrons (map/chevrons.js); pane ignores pointer events */
+.sb-chev{fill:none;pointer-events:none}
+
+/* selected stop + picker highlights + accuracy */
+.sb-sel{stroke:var(--sb-accent);fill:var(--sb-stop-fill)}
+.sb-hl{stroke:var(--sb-accent);fill:var(--sb-accent);fill-opacity:.22}
+.sb-acc{stroke:var(--sb-accent);stroke-opacity:.35;fill:var(--sb-accent);fill-opacity:.12}
+.sb-map .leaflet-tooltip.sb-sel-label{
+  padding:3px 8px;border:0;border-radius:8px;background:var(--sb-chrome-solid);color:var(--sb-text);
+  font:600 13px/18px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;box-shadow:var(--sb-shadow);white-space:nowrap}
+.sb-map .leaflet-tooltip.sb-sel-label::before{display:none}
+.sb-map.sb-dark .leaflet-tooltip.sb-sel-label{box-shadow:0 0 0 1px rgba(255,255,255,.14),var(--sb-shadow)}
+
+/* user location */
+.sb-me{box-sizing:border-box;width:20px;height:20px;border-radius:50%;background:var(--sb-accent);border:3px solid #fff;
+  box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow)}
+
+/* trip plan */
+.sb-walk{stroke:var(--sb-accent)}
+.sb-walk-casing{stroke:var(--sb-casing)}
+.sb-plan-stop{fill:var(--sb-stop-fill)}
+.sb-pin-start{fill:var(--sb-live);stroke:#fff}
+.sb-pin-end{position:relative;width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);margin-top:2px;
+  background:var(--sb-danger);border:3px solid #fff;box-sizing:border-box;box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow)}
+.sb-pin-end::after{content:"";position:absolute;left:50%;top:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:#fff}
+
+/* buses: 28 px rounded square in route color, white border, heading triangle, one-shot pulse */
+.sb-bus{position:absolute;left:50%;top:0;transform:translateX(-50%);box-sizing:border-box;min-width:28px;height:28px;padding:0 4px;
+  border-radius:9px;border:2px solid #fff;background:var(--c,#555);color:var(--t,#fff);display:grid;place-items:center;
+  box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow);transition:opacity .22s,border-color .22s}
+.sb-bus-tx{position:relative;font:800 11.5px/1 -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;letter-spacing:-.01em;white-space:nowrap}
+.sb-bus-tx-sm{font-size:10px;letter-spacing:-.03em}
+.sb-bus-hd{position:absolute;inset:-2px;pointer-events:none;transition:transform .6s ease}
+.sb-bus-hd::before{content:"";position:absolute;left:50%;top:-8px;margin-left:-5px;border:5px solid transparent;border-top:0;
+  border-bottom:7px solid var(--c,#555);filter:drop-shadow(0 -1px 0 #fff)}
+.sb-bus.no-hd .sb-bus-hd{display:none}
+/* focused route (route detail / highlight): bigger, outlined arrow so travel direction reads at a glance */
+.sb-bus.is-focus .sb-bus-hd::before{top:-11px;margin-left:-7px;border-width:0 7px 10px;border-bottom-color:var(--c,#555);
+  filter:drop-shadow(0 -1.5px 0 #fff) drop-shadow(0 0 1px var(--sb-ring))}
+.sb-bus::after{content:"";position:absolute;inset:-6px;border-radius:13px;border:2px solid var(--c,#555);opacity:0;pointer-events:none}
+.sb-bus.sb-pulse::after{animation:sb-pulse 2s cubic-bezier(.2,.8,.2,1) 1}
+.sb-busicon{overflow:visible}
+.sb-bus.is-stale{opacity:.5;border-color:#9a9aa0}
+.sb-bus.is-stale::after{display:none}
+@keyframes sb-pulse{0%{transform:scale(.85);opacity:.55}100%{transform:scale(1.45);opacity:0}}
+/* glide between polls; off while zooming (Leaflet's own zoom-anim transition wins during animated zooms) */
+.sb-map .leaflet-marker-icon.sb-busicon{transition:transform 9s linear}
+.sb-map.sb-zooming .leaflet-marker-icon.sb-busicon{transition:none}
+.sb-map .leaflet-zoom-anim .leaflet-marker-icon.sb-busicon{transition:transform .25s cubic-bezier(0,0,.25,1)}
+.sb-map .leaflet-marker-icon.sb-busicon.sb-snap{transition:none!important}
+.sb-map .leaflet-marker-icon.sb-busicon:focus-visible{outline:2px solid var(--sb-accent);outline-offset:3px;border-radius:11px}
+
+/* raster fallback basemap in dark */
+.sb-map.sb-dark .sb-raster{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.88)}
+
+@media (prefers-reduced-motion:reduce){
+  .sb-map .leaflet-marker-icon.sb-busicon,.sb-bus,.sb-bus-hd{transition:none!important}
+  .sb-bus.sb-pulse::after{animation:none}
+}
+@media (prefers-contrast:more){
+  .sb-map{--sb-ring:#000;--sb-text2:var(--sb-text)}
+  .sb-map .leaflet-control-attribution{background:var(--sb-chrome-solid)}
+}
+@media (forced-colors:active){
+  .sb-bus,.sb-me,.sb-pin-end{border:2px solid CanvasText;forced-color-adjust:none}
+}

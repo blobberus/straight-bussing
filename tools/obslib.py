@@ -47,7 +47,7 @@ def _chicago_offset(ts):
 
 
 def how_bucket(ts):
-    """dow*24+hour in America/Chicago, Monday=0 (matches web/predict.js)."""
+    """dow*24+hour in America/Chicago, Monday=0 (matches web/js/core/predict.js)."""
     d = datetime.fromtimestamp(ts + _chicago_offset(ts) * 3600, timezone.utc)
     return d.weekday() * 24 + d.hour
 

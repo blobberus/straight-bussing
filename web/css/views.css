@@ -1,0 +1,173 @@
+/* View-specific styles (owner: D2). Shared tokens come from tokens.css (D1).
+   Every class is prefixed v- so it never collides with components.css / sheet.css. */
+
+/* ---------- primitives ---------- */
+.v-grow { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.v-prim { font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 590; color: var(--text); margin: 0; overflow-wrap: anywhere; }
+.v-title { font-size: var(--fs-title); line-height: var(--lh-title); font-weight: 650; letter-spacing: -.01em; color: var(--text); }
+.v-sec { font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); margin: 0; }
+.v-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.v-ic { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; color: var(--accent); }
+.v-chev { flex: none; color: var(--text-2); display: inline-grid; place-items: center; opacity: .7; }
+.v-chev svg { width: 18px; height: 18px; }
+.v-h { margin: var(--s5) 0 var(--s1); font-size: var(--fs-body); line-height: var(--lh-body); font-weight: 600; color: var(--text-2); }
+.v-hint { margin: var(--s3) 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
+.v-fine { margin: var(--s1) 0 var(--s2); font-size: var(--fs-cap); line-height: var(--lh-cap); color: var(--text-2); }
+.v-lead { margin: var(--s1) 0 var(--s2); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
+.v-foot { margin: var(--s3) 0 var(--s2); font-size: var(--fs-cap); line-height: var(--lh-cap); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.v-foot--warn { color: var(--warn); font-weight: 600; }
+.v-official { margin: var(--s2) 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); text-align: center; }
+.v-official a, .v-foot a, .v-about a:not(.v-btn) { color: var(--accent); font-weight: 600; text-decoration: none; display: inline-block; padding: 12px 2px; margin: -12px 0; }
+
+/* ---------- rows and cards ---------- */
+.v-card { background: var(--surface); border-radius: var(--r-card); padding: 2px var(--s4); margin: var(--s2) 0; }
+.v-row { display: flex; align-items: center; gap: var(--s3); width: 100%; min-height: 56px; padding: var(--s2) 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform var(--d-press) var(--ease), opacity var(--d-press) var(--ease); }
+.v-row + .v-row::before { content: ""; position: absolute; top: 0; left: 40px; right: 0; height: 1px; background: var(--hairline); }
+.v-card > .v-row:first-child::before { display: none; }
+.v-row:has(> .chip:first-child)::before { left: 68px; }
+button.v-row:active { transform: scale(.98); opacity: .8; }
+.v-row:focus-visible, .v-tlbtn:focus-visible, .v-optmain:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; }
+.v-cardhead { min-height: 60px; }
+.v-hero { padding-bottom: var(--s1); }
+.v-none { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); min-height: 48px; padding: var(--s2) 0; border-top: 1px solid var(--hairline); }
+.v-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.v-livedot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--live); vertical-align: 1px; }
+
+/* ---------- buttons ---------- */
+.v-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: var(--tap); padding: 0 var(--s4); border: 0; border-radius: var(--r-control); font: inherit; font-size: var(--fs-row); font-weight: 600; text-decoration: none; cursor: pointer; transition: transform var(--d-press) var(--ease), background var(--d-press) var(--ease); }
+.v-btn:active { transform: scale(.98); }
+.v-btn:focus-visible, .v-link:focus-visible, .v-eye:focus-visible, .v-dswap:focus-visible, .v-fchip-x:focus-visible, .v-chipbtn:focus-visible, .v-segbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.v-btn--primary { background: var(--accent-fill); color: var(--on-accent); min-height: 48px; }
+.v-btn--secondary { background: var(--surface); color: var(--accent); min-height: 48px; }
+.v-btn--secondary:active { background: var(--surface-press); }
+.v-btn--quiet { background: none; color: var(--accent); padding: 0 var(--s2); font-size: var(--fs-body); }
+.v-btn--block { display: flex; width: 100%; margin: var(--s2) 0; }
+.v-btn .v-ic { color: inherit; width: 22px; height: 22px; }
+.v-actions { display: flex; gap: var(--s2); margin: var(--s2) 0 var(--s3); }
+.v-actions .v-btn { flex: 1 1 0; min-width: 0; padding: 0 var(--s3); font-size: var(--fs-body); text-align: center; }
+.v-actions .v-btn--primary { flex-grow: 1.4; }
+.v-link { min-height: var(--tap); padding: 0 var(--s2); border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
+.v-alt { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); margin: 0 0 var(--s1) calc(-1 * var(--s2)); }
+
+/* ---------- search field ---------- */
+.v-search { position: relative; display: block; margin: var(--s1) 0 var(--s1); }
+.v-search .v-ic { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-2); pointer-events: none; }
+.v-search .v-ic svg { width: 18px; height: 18px; }
+.v-search input, .v-dfield input { box-sizing: border-box; width: 100%; min-height: var(--tap); padding: 0 var(--s3) 0 40px; border: 1px solid transparent; border-radius: var(--r-control); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-row); appearance: none; -webkit-appearance: none; }
+.v-search input::placeholder, .v-dfield input::placeholder { color: var(--text-2); opacity: 1; }
+.v-search input:focus-visible, .v-dfield input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+
+/* ---------- empty / notices ---------- */
+.v-empty { display: flex; flex-direction: column; gap: 4px; padding: var(--s5) var(--s2); text-align: center; color: var(--text-2); font-size: var(--fs-body); line-height: var(--lh-body); }
+.v-empty b { color: var(--text); font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 600; }
+.v-locoff, .v-note, .v-anchor { display: flex; align-items: center; gap: var(--s3); margin: var(--s2) 0; padding: var(--s3) var(--s4); border-radius: var(--r-card); background: var(--surface); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
+.v-locoff b { color: var(--text); }
+.v-locoff .v-ic { color: var(--text-2); }
+.v-anchor .v-prim { font-size: var(--fs-body); }
+.v-stale { margin: var(--s2) 0; padding: var(--s2) var(--s3); border-radius: var(--r-control); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-body); font-weight: 600; }
+
+/* ---------- pick ---------- */
+.v-choice { min-height: 64px; }
+.v-choice--primary { background: var(--surface); border-radius: var(--r-card); padding: var(--s2) var(--s4); margin: var(--s2) 0; box-sizing: border-box; }
+.v-choices .v-row + .v-row::before { left: 40px; }
+.v-dialog { width: min(92vw, 400px); max-height: 86vh; box-sizing: border-box; padding: var(--s5); border: 0; border-radius: var(--r-sheet); background: var(--bg-solid); color: var(--text); box-shadow: var(--shadow-sheet); font-family: var(--font); }
+.v-dialog::backdrop { background: var(--scrim); }
+.v-dialog[open] { animation: v-pop var(--d-swap) var(--ease-enter); }
+.v-dlg-title { margin: 0; font-size: var(--fs-title); line-height: var(--lh-title); font-weight: 650; }
+.v-dlg-title:focus { outline: none; }
+.v-dlg-sub { margin: 4px 0 var(--s2); }
+.v-dlg-cancel { display: flex; width: 100%; margin-top: var(--s2); }
+@keyframes v-pop { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+
+/* ---------- stop ---------- */
+.v-stophead { display: flex; flex-direction: column; gap: var(--s1); margin: 0 0 var(--s1); }
+.v-chipbtn { display: inline-grid; place-items: center; min-width: var(--tap); min-height: var(--tap); padding: 0; border: 0; background: none; cursor: pointer; }
+.v-addr { margin: 0; }
+
+/* ---------- routes ---------- */
+.v-fchip { display: flex; align-items: center; gap: 2px; width: max-content; max-width: 100%; min-height: var(--tap); margin: var(--s1) 0 var(--s2); padding: 0 2px 0 var(--s4); border-radius: var(--r-chip); background: var(--accent-fill); color: var(--on-accent); font-weight: 600; font-size: var(--fs-body); box-sizing: border-box; }
+.v-fchip-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v-fchip-x { flex: none; width: var(--tap); height: var(--tap); border: 0; border-radius: 50%; background: none; color: inherit; font-size: 24px; line-height: 1; cursor: pointer; }
+.v-routerow { display: flex; align-items: center; gap: var(--s1); position: relative; }
+.v-routerow + .v-routerow::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--hairline); }
+.v-rowmain { flex: 1 1 auto; min-width: 0; }
+.v-routerow.is-off .v-rowmain { opacity: .55; }
+.v-list.is-dim .v-rowmain { opacity: .7; }
+.v-eye { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); border: 0; border-radius: var(--r-control); background: none; color: var(--accent); cursor: pointer; }
+.v-routerow.is-off .v-eye { color: var(--text-2); }
+
+/* ---------- route timeline ---------- */
+.v-status { margin: 0 0 var(--s2); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text); font-weight: 600; }
+.v-tl { list-style: none; margin: var(--s2) 0; padding: 0; }
+.v-tlstop { position: relative; padding-left: 32px; }
+.v-tlstop::before { content: ""; position: absolute; left: 10px; top: 0; bottom: 0; width: 4px; background: var(--rc, #888); }
+.v-tlstop:first-child::before { top: 50%; }
+.v-tlstop:last-child::before { bottom: 50%; }
+.v-tlstop::after { content: ""; position: absolute; left: 5px; top: 50%; margin-top: -7px; width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; background: var(--bg-solid); border: 3px solid var(--rc, #888); }
+.v-tlstop.has-bus::after { background: var(--rc, #888); box-shadow: 0 0 0 3px var(--bg-solid); }
+.v-tlbtn { display: flex; align-items: center; gap: var(--s3); width: 100%; min-height: 52px; padding: var(--s2) 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.v-tlbtn:active { opacity: .7; }
+.v-tlbus { align-self: flex-start; margin-top: 2px; padding: 1px 8px; border-radius: var(--r-chip); font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 600; }
+.v-tleta { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
+.v-tleta.is-now { color: var(--live); }
+
+/* ---------- alerts ---------- */
+.v-alertlist { list-style: none; margin: 0; padding: 0; }
+.v-alert { position: relative; display: flex; gap: var(--s3); padding: var(--s3) var(--s3); margin: var(--s2) 0; border-radius: var(--r-card); background: var(--surface); }
+.v-alert.is-severe { background: var(--warn-bg); }
+.v-alertic { flex: none; color: var(--warn); padding-top: 1px; }
+.v-alertbody { margin-top: 2px; white-space: pre-line; }
+.v-alertmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: var(--s2) 0 0; }
+.v-aboutrow { margin-top: var(--s3); border-top: 1px solid var(--hairline); }
+
+/* ---------- about ---------- */
+.v-about p { margin: var(--s2) 0; }
+.v-unofficial { padding: var(--s3) var(--s4); }
+.v-unofficial .v-actions { flex-wrap: wrap; }
+.v-unofficial .v-btn { flex: 1 1 140px; }
+.v-unofficial .v-btn--secondary { background: var(--bg-solid); }
+.v-plain { margin: var(--s1) 0; padding-left: 1.1em; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text); }
+.v-plain li { margin: var(--s2) 0; }
+.v-seg { display: flex; gap: 2px; padding: 2px; border-radius: var(--r-control); background: var(--surface); }
+.v-segbtn { flex: 1; min-height: 40px; border: 0; border-radius: 10px; background: none; color: var(--text); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
+.v-segbtn.is-on { background: var(--seg-on); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+
+/* ---------- directions ---------- */
+.v-dirbox { position: relative; display: flex; flex-direction: column; gap: 6px; margin: var(--s1) 0 var(--s2); padding-right: 52px; }
+.v-dfield { position: relative; }
+.v-pin { position: absolute; left: 14px; top: 50%; width: 12px; height: 12px; margin-top: -6px; box-sizing: border-box; border-radius: 50%; border: 3px solid var(--bg-solid); box-shadow: 0 0 0 1px var(--hairline-strong); }
+.v-pin--a { background: var(--live); }
+.v-pin--b { background: var(--danger); }
+.v-si .v-pin { position: static; display: inline-block; margin: 0; }
+.v-dswap { position: absolute; right: 0; top: 50%; width: var(--tap); height: var(--tap); margin-top: -22px; display: grid; place-items: center; border: 0; border-radius: var(--r-control); background: var(--surface); color: var(--accent); cursor: pointer; }
+.v-sugs { margin-top: 0; }
+.v-sugs .v-row { min-height: 52px; }
+.v-sugs .v-prim { font-size: 1rem; }
+.v-est { display: inline-block; padding: 0 6px; border-radius: 6px; background: var(--hairline); color: var(--text-2); font-size: 11px; line-height: 16px; font-weight: 600; vertical-align: 2px; white-space: nowrap; }
+.v-opt { margin: var(--s2) 0; padding: 0 var(--s4) var(--s1); border-radius: var(--r-card); background: var(--surface); border: 2px solid transparent; }
+.v-opt.is-on { border-color: var(--accent-fill); }
+.v-optmain { display: flex; flex-direction: column; gap: 6px; width: 100%; min-height: 56px; padding: var(--s3) 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.v-optmain:active { opacity: .8; }
+.v-otop { display: flex; align-items: baseline; gap: var(--s2); width: 100%; }
+.v-otot { font-family: var(--font-rounded); font-size: 1.625rem; line-height: 1.875rem; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text); }
+.v-otot small { font-family: var(--font); font-size: var(--fs-cap); font-weight: 600; letter-spacing: 0; color: var(--text-2); }
+.v-oarr { margin-left: auto; font-size: var(--fs-body); font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.v-osum { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.v-wk { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-body); font-weight: 600; color: var(--text-2); }
+.v-arr { color: var(--text-2); font-size: var(--fs-row); }
+.v-steps { list-style: none; margin: 0; padding: var(--s2) 0; border-top: 1px solid var(--hairline); font-size: var(--fs-body); line-height: var(--lh-body); }
+.v-steps li { display: flex; gap: var(--s3); padding: var(--s2) 0; }
+.v-si { flex: none; min-width: 36px; display: inline-flex; justify-content: center; align-items: flex-start; padding-top: 2px; color: var(--text-2); }
+.v-stept { flex: 1 1 auto; min-width: 0; display: block; }
+.v-stepsub { display: block; margin-top: 2px; }
+.v-clock { font-variant-numeric: tabular-nums; }
+
+.v-estnote { margin: var(--s3) 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .v-row, .v-btn, .v-dialog[open] { transition: none; animation: none; }
+  button.v-row:active, .v-btn:active { transform: none; }
+}
+@media (prefers-contrast: more) {
+  .v-card, .v-opt, .v-alert, .v-locoff, .v-note, .v-anchor { outline: 1px solid currentColor; }
+}
