@@ -1,10 +1,13 @@
 /**
  * @module ui/views/settings
- * Settings (sub view of Nearby, opened by the small gear in the sheet header: action `settings:open`):
+ * Settings content, shown in its own modal overlay (ui/settings-overlay.js), NOT in the sheet. The
+ * top-right gear runs action `settings:open`, which opens (or closes) the overlay:
  * appearance (ui/theme.js mount), service alerts inline, bus alerts ("notify me when my bus is near
  * <station>": station, routes, 2 stops / 1 stop / N min, in-app + optional system notifications),
  * the iPhone-only Live Activity preference, and About. Owns its DOM after mount (regions patched in
  * place, focus kept) so the station search field and checkboxes never lose a tap or keystroke.
+ * The router view id "settings" is kept only as a compatibility shim: navigating to it goes back and
+ * opens the overlay instead (main.js VIEW_IDS still imports this file under that id).
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -18,6 +21,7 @@ import { liveStatus, watchedRoutes, minutesText, stopsAway } from "../../core/no
 import { cleanNotify } from "../../state.js";
 import { routeChip, officialLinks } from "../components.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
+import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen } from "../settings-overlay.js";
 
 const MINUTES = [0, 2, 5, 10];
 const MAX_RESULTS = 6;
@@ -299,14 +303,45 @@ export function refreshSettings() {
   patch(live.root, "alerts", alertsHTML(s, now));
 }
 
+/** Stop the store subscription and listeners of the mounted settings content. */
+export function unmountSettings() {
+  offStore?.(); offStore = null; abort?.abort(); abort = null; live = null;
+}
+
+/** Content adapter for ui/settings-overlay.js. */
+export const SETTINGS_CONTENT = Object.freeze({
+  render: (state) => renderSettings(state),
+  mount: (root, ctx) => mountSettings(root, ctx),
+  unmount: () => unmountSettings(),
+  refresh: () => refreshSettings(),
+});
+
+/**
+ * Open the Settings overlay.
+ * @param {object} ctx app ctx
+ * @param {HTMLElement} [trigger] gets focus back on close (default: the gear)
+ * @returns {HTMLElement} overlay root
+ */
+export function openSettings(ctx, trigger) {
+  return openSettingsOverlay(ctx, SETTINGS_CONTENT, { trigger });
+}
+
+// Compatibility shim: Settings is no longer a sheet view. Anything that still navigates to
+// "settings" gets sent back where it came from and sees the overlay instead.
 registerView("settings", {
   title: () => "Settings",
   parent: "nearby",
-  detent: "half",
-  render: (state) => renderSettings(state),
-  mount: (root, ctx) => mountSettings(root, ctx),
-  refresh: () => refreshSettings(),
-  unmount: () => { offStore?.(); offStore = null; abort?.abort(); abort = null; live = null; },
+  render: () => "",
+  mount: (root, ctx) => {
+    setTimeout(() => {
+      if (ctx.store.get().view === "settings") ctx.back();
+      openSettings(ctx);
+    }, 0);
+  },
 });
 
-registerAction("settings:open", (ds, ev, ctx) => ctx.navigate("settings"));
+// The gear toggles the overlay.
+registerAction("settings:open", (ds, ev, ctx) => {
+  if (isSettingsOpen()) return void closeSettingsOverlay();
+  openSettings(ctx, ev?.target?.closest?.("[data-action]") || undefined);
+});

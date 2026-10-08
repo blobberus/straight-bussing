@@ -1,12 +1,14 @@
 /**
  * map/map.js: the MapApi (see docs/ARCHITECTURE.md "Map layer"). Leaflet map with a patched
- * OpenFreeMap basemap (map/style.js), route network + buses (map/layers.js), selected stop, user dot,
+ * OpenFreeMap basemap (map/style.js), route network + buses (map/layers.js), favorite stations
+ * (map/favorites.js), selected stop, user dot,
  * stop highlights and trip plans. Every method is idempotent and cheap to call on each poll: layers
  * redraw only when their signature changes. Theme colors for overlays come from CSS (css/map.css)
  * keyed on the `.sb-dark` class this module toggles on the map element.
  */
 import { createBasemap } from './style.js';
 import { createNetworkLayer, createBusLayer, sig } from './layers.js';
+import { createFavoritesLayer } from './favorites.js';
 import { alongShape, normLatLngs, toLatLng } from './geometry.js';
 import { safeColor } from '../core/esc.js';
 
@@ -35,8 +37,8 @@ function planSig(o) {
 /**
  * Create the map inside element `elId`.
  * @param {string} elId
- * @returns {object} MapApi: setTheme, setBottomInset, drawNetwork, drawBuses, setSelectedStop, setUser,
- *   highlightStops, drawPlan, fitTo, flyTo, onStopTap, onBusTap, onUserMove (+ `leaflet` escape hatch)
+ * @returns {object} MapApi: setTheme, setBottomInset, drawNetwork, drawBuses, setSelectedStop, drawFavorites,
+ *   setUser, highlightStops, drawPlan, fitTo, flyTo, onStopTap, onBusTap, onUserMove (+ `leaflet` escape hatch)
  */
 export function createMap(elId) {
   const L = window.L;
@@ -52,8 +54,25 @@ export function createMap(elId) {
   const basemap = createBasemap(map, dark);
   const network = createNetworkLayer(map, { onStopTap: (id) => stopTap.emit(id) });
   const buses = createBusLayer(map, { onBusTap: (info) => busTap.emit(info) });
+  const favs = createFavoritesLayer(map, { onStopTap: (id) => stopTap.emit(id) });
   const selG = L.layerGroup().addTo(map), hlG = L.layerGroup().addTo(map), planG = L.layerGroup().addTo(map);
-  let selSig = '', hlSig = '', planS = null, planPts = [], hlPick = null, me = null, meAcc = null;
+  let selSig = '', selStop = null, hlSig = '', planS = null, planPts = [], hlPick = null, me = null, meAcc = null;
+
+  /** (Re)draw the selection ring; a favorite gets a wider, unfilled ring around its star badge. */
+  function renderSel() {
+    const stop = selStop, ll = toLatLng(stop);
+    const fav = !!ll && favs.has(stop.id);
+    const s = ll ? sig(stop.id, ll[0], ll[1], stop.name, fav ? 1 : 0) : '';
+    favs.setSelected(ll ? stop.id : null);
+    if (s === selSig) return;
+    selSig = s;
+    selG.clearLayers();
+    if (!ll) return;
+    const m = L.circleMarker(ll, { pane: 'sbSel', radius: fav ? 15 : 8, weight: 3, className: fav ? 'sb-sel sb-sel-fav' : 'sb-sel',
+      fillOpacity: fav ? 0 : 1, interactive: false });
+    if (stop.name) m.bindTooltip(String(stop.name), { permanent: true, direction: 'top', offset: [0, fav ? -17 : -10], className: 'sb-sel-label' });
+    m.addTo(selG);
+  }
 
   // glide off while zooming (and two frames after, so the zoom jump never transitions)
   map.on('zoomstart', () => {
@@ -110,17 +129,23 @@ export function createMap(elId) {
      */
     drawBuses(list, o = {}) { buses.draw(list, o); },
 
-    /** Accent ring (+ name label when given) on the selected stop. @param {{id, lat, lon, name?}|null} stop */
+    /**
+     * Accent ring (+ name label when given) on the selected stop. On a favorite the ring widens to
+     * circle the star badge. @param {{id, lat, lon, name?}|null} stop
+     */
     setSelectedStop(stop) {
-      const ll = toLatLng(stop);
-      const s = ll ? sig(stop.id, ll[0], ll[1], stop.name) : '';
-      if (s === selSig) return;
-      selSig = s;
-      selG.clearLayers();
-      if (!ll) return;
-      const m = L.circleMarker(ll, { pane: 'sbSel', radius: 8, weight: 3, className: 'sb-sel', fillOpacity: 1, interactive: false });
-      if (stop.name) m.bindTooltip(String(stop.name), { permanent: true, direction: 'top', offset: [0, -10], className: 'sb-sel-label' });
-      m.addTo(selG);
+      selStop = toLatLng(stop) ? { id: String(stop.id), lat: stop.lat, lon: stop.lon, name: stop.name } : null;
+      renderSel();
+    },
+
+    /**
+     * Favorite stations: compact gold star badges above route lines and stops, below buses; visible at
+     * every zoom (smaller below z14); name on hover/focus only; taps go to onStopTap(id). Rebuilt only
+     * when the list's content changes, so it is cheap to call on every store change.
+     * @param {Array<{id, name?, lat, lon}>|null} stops null/[] clears
+     */
+    drawFavorites(stops) {
+      if (favs.draw(stops)) renderSel();
     },
 
     /** Blue location dot (+ accuracy circle when pos.accuracy is given). @param {{lat, lon, accuracy?}|null} pos */
@@ -173,7 +198,7 @@ export function createMap(elId) {
       planG.clearLayers();
       planPts = option ? renderPlan(L, planG, option, ctx) : [];
       const active = !!option;
-      if (active !== planActive) { planActive = active; if (lastNet) network.draw(lastNet, planActive); }
+      if (active !== planActive) { planActive = active; favs.setDim(active); if (lastNet) network.draw(lastNet, planActive); }
       if (ctx.fit && planPts.length > 1) api.fitTo(planPts, { maxZoom: 17 });
       return planPts;
     },

@@ -16,8 +16,10 @@
 .rt-nameact { margin: var(--s3) 0 0; }
 .rt-name .v-btn--secondary { background: var(--bg-solid); }
 
-/* entry to the order editor, under the list */
-.rt-tools { display: flex; justify-content: center; margin: var(--s3) 0 var(--s2); }
+/* entry to the order editor: first control on the tab, a quiet left-aligned text button with an icon */
+.rt-tools { display: flex; justify-content: flex-start; margin: var(--s1) 0 0; }
+.rt-orderbtn { min-height: var(--tap); margin-left: calc(-1 * var(--s2)); gap: var(--s2); }
+.rt-orderbtn .rt-toolic { width: 20px; height: 20px; flex: none; }
 
 /* map-order editor */
 .rt-ordertitle { margin-top: var(--s3); }

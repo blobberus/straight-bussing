@@ -28,7 +28,7 @@ const OPTIONAL_VIEWS = new Set(["settings"]);
 const RENDER_TICK_MS = 15000;
 const FIRST_POLL_GRACE_S = 20;
 const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "setSelectedStop", "setUser",
-  "highlightStops", "drawPlan", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove"];
+  "highlightStops", "drawPlan", "drawFavorites", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove"];
 const VIS_KEYS = ["hiddenRoutes", "routeFilter", "view", "routeId", "routeOrder", "journey", "activeCustom", "customRoutes"];
 const NET_KEYS = ["routes", "shapes", "routeStops", "stopRoutes", "stops", "theme", ...VIS_KEYS];
 const BUS_KEYS = ["buses", "feedTs", "routes", ...VIS_KEYS];
@@ -87,6 +87,8 @@ function syncMap(s, changed) {
     const st = s.view === "stop" && s.stopId && s.stops ? s.stops[s.stopId] : null;
     mapCall("setSelectedStop", st ? { id: s.stopId, lat: st.lat, lon: st.lon } : null);
   }
+  if (has("favStops") || has("stops")) mapCall("drawFavorites",
+    (s.favStops || []).map((id) => (s.stops && s.stops[id] ? { id: String(id), ...s.stops[id] } : null)).filter(Boolean));
   if (has("user")) mapCall("setUser", s.user || null);
 }
 
@@ -177,7 +179,7 @@ function safe(fn, fallback) {
   try { return fn() ?? fallback; } catch (e) { console.error(e); return fallback; }
 }
 function renderHeader(s, id, def) {
-  const title = def ? String(safe(() => def.title(s), "")) : "Nearby";
+  const title = def ? String(safe(() => def.title(s), "")) : "Plan Trip";
   if (el.title.textContent !== title) el.title.textContent = title;
   el.title.classList.toggle("sm", !TABS.includes(id));
   el.back.hidden = !canGoBack();

@@ -3,7 +3,9 @@ import { test, eq, ok } from "./lib.js";
 import { NOW, fixture, makeCtx, tick, root } from "./views-fixtures.js";
 import { getView } from "../js/ui/router.js";
 import { runAction } from "../js/ui/actions.js";
-import { renderNearby, resultsHTML, metaNearby, N } from "../js/ui/views/nearby.js";
+import { renderNearby, resultsHTML, metaNearby, N, guidedRow, pickArrivals } from "../js/ui/views/nearby.js";
+import { catchNote, stopWalkMin } from "../js/ui/views/tripinfo.js";
+import { rootOf } from "../js/ui/router.js";
 import { renderStop } from "../js/ui/views/stop.js";
 import { renderRoutes, groupRoutes } from "../js/ui/views/routes.js";
 import { renderRoute, stopOrder } from "../js/ui/views/route.js";
@@ -20,6 +22,70 @@ test("every view and action is registered", () => {
   for (const v of ["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions"]) ok(getView(v), "view " + v);
   for (const v of ["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions"]) ok(typeof getView(v).title(fixture()) === "string", "title " + v);
   ok(typeof getView("pick").mount === "function" && typeof getView("directions").mount === "function" && typeof getView("nearby").mount === "function", "input views mount");
+});
+
+test("plan trip: title, one Where to? entry (dir:open, focus to) and one Routes to station entry", () => {
+  resetNearby();
+  eq(getView("nearby").title(fixture()), "Plan Trip");
+  eq(getView("nearby").tab, "nearby");
+  for (const st of [fixture(), fixture({ user: USER, locState: "granted" }), fixture({ locState: "denied" })]) {
+    const h = renderNearby(st, NOW);
+    eq((h.match(/data-action="dir:open"/g) || []).length, 1, "one Directions entry");
+    eq((h.match(/data-action="pick:open"/g) || []).length, 1, "one Routes to station entry");
+    ok(/class="pt-where" data-action="dir:open" data-focus="to"/.test(h), "Where to? focuses destination");
+    ok(h.includes("Where to?") && h.includes("Routes to station&hellip;"));
+    ok(h.indexOf("pt-top") < h.indexOf('data-input="nearby-q"'), "entries above the station search");
+    ok(!/class="v-link" data-action="dir:open"/.test(h), "old small Directions link removed");
+  }
+  N.mode = "place";
+  ok(renderNearby(fixture(), NOW).includes('data-action="dir:open"'), "entry also in place mode");
+  resetNearby();
+});
+
+test("plan trip: Directions and Routes to station belong to the Plan Trip tab", () => {
+  for (const v of ["directions", "pick"]) {
+    eq(getView(v).parent, "nearby", v + " parent");
+    eq(getView(v).tab, "nearby", v + " tab");
+    eq(rootOf(v), "nearby", v + " root");
+  }
+});
+
+test("plan trip: catchNote from walking estimate (miss / leave now / leave in N)", () => {
+  eq(catchNote(NOW + 120, 4, NOW).kind, "miss");
+  ok(catchNote(NOW + 120, 4, NOW).text.includes("before you can walk there") && catchNote(NOW + 120, 4, NOW).text.includes("est."));
+  eq(catchNote(NOW + 150, 2, NOW).kind, "now");
+  eq(catchNote(NOW + 150, 2, NOW).text, "Leave now, est.");
+  const c = catchNote(NOW + 600, 4, NOW);
+  eq(c.kind, "later"); eq(c.text, "Leave in 6 min, est.");
+  ok(c.aria.includes("estimate"));
+  ok(Math.abs(stopWalkMin(400) - 6) < 1e-9, "400 m x1.2 / 80 = 6 min");
+});
+
+test("plan trip: arrivals you cannot walk to in time are marked (text + class + aria), catchable say when to leave", () => {
+  resetNearby();
+  const st = fixture();
+  const miss = guidedRow({ rid: "R1", t: NOW + 120, bus: "101", tripId: "t1" }, st, NOW, 5);
+  ok(miss.includes("pt-miss") && miss.includes("Leaves before you can walk there"), miss);
+  ok(/aria-label="[^"]*leaves before you can walk there, estimate/.test(miss), "aria says it");
+  const ok1 = guidedRow({ rid: "R1", t: NOW + 600, bus: "101", tripId: "t1" }, st, NOW, 2);
+  ok(ok1.includes("pt-later") && ok1.includes("Leave in 8 min"), ok1);
+  ok(ok1.includes('data-action="route:open"'), "row still opens the route");
+  const all = [{ t: NOW + 60 }, { t: NOW + 120 }, { t: NOW + 900 }];
+  eq(pickArrivals(all, 1, 5, NOW).length, 2, "one more when the first cannot be caught");
+  eq(pickArrivals(all, 1, null, NOW).length, 1, "no guidance -> plain slice");
+  eq(pickArrivals(all, 1, 0.1, NOW).length, 1);
+  // located ~400 m from Main & 1st: the 2-min R1 cannot be reached on foot
+  const far = { lat: 41.7864, lon: -87.6001 };
+  const h = renderNearby(fixture({ user: far, locState: "granted" }), NOW);
+  ok(h.includes("pt-miss") && h.includes("Leaves before you can walk there"), "far user sees miss");
+  ok(h.includes("walking estimate"), "guidance labeled as an estimate");
+  const near = renderNearby(fixture({ user: USER, locState: "granted" }), NOW);
+  const hero = near.split("Also nearby")[0];
+  ok(hero.includes("Leave in 1 min, est.") && !hero.includes("pt-miss"), "near user can catch the 2-min bus");
+  // a typed place is not where you are: no leave guidance
+  N.anchor = { label: "Somewhere", lat: 41.7864, lon: -87.6001 };
+  ok(!renderNearby(fixture(), NOW).includes("pt-arr"), "no guidance for a typed place");
+  resetNearby();
 });
 
 test("nearby: skeleton before static data", () => {
@@ -114,7 +180,7 @@ test("routes: actions, groups, eye toggles", () => {
   const g = groupRoutes(s);
   eq(g, { running: ["R1"], idle: ["R2"], hidden: ["R3"] });
   const h = renderRoutes(s);
-  ok(h.includes("Routes to station&hellip;") && h.includes('data-action="dir:open"'));
+  ok(!h.includes('data-action="pick:open"') && !h.includes('data-action="dir:open"'), "Routes to station / Directions moved to Plan Trip");
   ok(h.indexOf(">Running<") < h.indexOf(">Not running<") && h.indexOf(">Not running<") < h.indexOf(">Hidden<"));
   ok(h.includes('aria-pressed="false"') && h.includes('aria-pressed="true"'));
   ok(noRaw(h));

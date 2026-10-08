@@ -1,5 +1,5 @@
 import { test, eq, ok } from './lib.js';
-import { searchPlaces, debounce, clearPlaceCache, featureToPlace, PHOTON } from '../js/data/geocode.js';
+import { searchPlaces, debounce, clearPlaceCache, featureToPlace, inIllinois, rankPlaces, PHOTON } from '../js/data/geocode.js';
 import { res, hang, stubFetch, sleep } from './data-helpers.js';
 
 const PHOTON_BODY = {
@@ -10,21 +10,83 @@ const PHOTON_BODY = {
   ],
 };
 
-test('geocode: maps Photon features, sends only the text with fixed bias, limit 5', async () => {
+/** Photon-like feature. */
+const feat = (name, lon, lat, props = {}) => ({ geometry: { coordinates: [lon, lat] }, properties: { name, countrycode: 'US', state: 'Illinois', ...props } });
+
+test('geocode: maps Photon features with a city/state sub line', async () => {
   clearPlaceCache();
   const f = stubFetch(() => res(PHOTON_BODY));
   const out = await searchPlaces('  regenstein ', { fetch: f });
   eq(out.error, undefined);
   eq(out.items, [
-    { label: 'Regenstein Library', sub: '1100 East 57th Street, Chicago, Illinois', lat: 41.7886, lon: -87.5987 },
-    { label: '5801 South Ellis Avenue, Chicago', sub: 'Place', lat: 41.79, lon: -87.6 },
+    { label: 'Regenstein Library', sub: '1100 East 57th Street, Chicago, IL', lat: 41.7886, lon: -87.5987 },
+    { label: '5801 South Ellis Avenue', sub: 'Chicago', lat: 41.79, lon: -87.6 },
   ]);
   eq(f.calls.length, 1);
+});
+
+test('geocode: URL sends only the text plus fixed Hyde Park bias and Illinois bbox, asks for 15', async () => {
+  clearPlaceCache();
+  const f = stubFetch(() => res({ features: [] }));
+  eq(await searchPlaces('union station', { fetch: f }), { items: [] });
   const u = new URL(f.calls[0].url);
   eq(u.origin + u.pathname, PHOTON);
-  eq(u.searchParams.get('q'), 'regenstein');
-  eq(u.searchParams.get('limit'), '5');
-  eq([u.searchParams.get('lat'), u.searchParams.get('lon')], ['41.79', '-87.6']);
+  eq(u.searchParams.get('q'), 'union station');
+  eq(u.searchParams.get('limit'), '15');
+  eq([u.searchParams.get('lat'), u.searchParams.get('lon')], ['41.7886', '-87.5987']);
+  eq(u.searchParams.get('bbox'), '-91.52,36.97,-87.49,42.51');
+  eq(u.searchParams.get('zoom'), '10');
+  eq(u.searchParams.get('location_bias_scale'), '0.2');
+  eq(u.searchParams.get('lang'), 'en');
+  eq([...u.searchParams.keys()].sort(), ['bbox', 'lang', 'lat', 'limit', 'location_bias_scale', 'lon', 'q', 'zoom']);
+});
+
+test('geocode: drops features outside Illinois (other state, other country, no state outside bbox)', async () => {
+  clearPlaceCache();
+  const body = { features: [
+    feat('Springfield', -93.29, 37.21, { state: 'Missouri' }),
+    feat('Springfield', -72.59, 42.10, { state: 'Massachusetts' }),
+    feat('Regenstein', 10.9, 51.8, { countrycode: 'DE', state: 'Saxony-Anhalt' }),
+    feat('Somewhere', -122.68, 45.52, { state: undefined }),
+    feat('Lake Spot', -87.7, 41.9, { state: undefined, countrycode: undefined }),
+    feat('Springfield', -89.644, 39.799, { osm_key: 'place', osm_value: 'city', county: 'Sangamon' }),
+  ] };
+  const out = await searchPlaces('springfield', { fetch: async () => res(body) });
+  eq(out.items.map((x) => x.label), ['Springfield', 'Lake Spot']);
+  eq(out.items[0].sub, 'Sangamon County, IL');
+  eq(out.items[0].lat, 39.799);
+  ok(inIllinois(feat('x', -87.6, 41.8, { state: 'IL' })), 'IL abbreviation accepted');
+  ok(!inIllinois(feat('x', -87.6, 41.8, { state: 'Indiana' })), 'state wins over bbox');
+  ok(!inIllinois(feat('x', -87.6, 41.8, { countrycode: undefined, state: undefined, country: 'Canada' })), 'non-US country name');
+  eq(await searchPlaces('portland', { fetch: async () => res({ features: [feat('Portland', -122.68, 45.52, { state: 'Oregon' })] }) }), { items: [] });
+});
+
+test('geocode: re-ranks by proximity to Hyde Park, max 5 results', () => {
+  const far = [];
+  for (let i = 0; i < 6; i++) far.push(feat('Target ' + i, -88.2 - i * 0.1, 41.9));   // DuPage etc., 50+ km
+  const mid = feat('Target Loop', -87.6555, 41.8771, { street: 'West Jackson Boulevard', housenumber: '1101', city: 'Chicago' });  // ~11 km
+  const near = feat('Target Hyde Park', -87.5966, 41.7948, { city: 'Hyde Park Township' });  // < 1 km
+  const out = rankPlaces([...far, mid, near], 'target');
+  eq(out.length, 5);
+  eq(out.slice(0, 3).map((x) => x.label), ['Target Hyde Park', 'Target Loop', 'Target 0']);
+  eq(out[0].sub, 'Chicago, IL', 'Chicago township shown as Chicago');
+  eq(out[1].sub, '1101 West Jackson Boulevard, Chicago, IL');
+  // Photon order still breaks ties inside the same distance tier.
+  eq(rankPlaces([feat('A', -87.62, 41.88), feat('B', -87.63, 41.88)], 'x').map((x) => x.label), ['A', 'B']);
+});
+
+test('geocode: campus result beats earlier city matches; exact city name is pinned first; dupes merged', () => {
+  const zoo = [0, 1, 2].map((i) => feat('Regenstein Zoo House ' + i, -87.633, 41.92 + i * 0.001, { osm_key: 'building', osm_value: 'yes' }));
+  const lib = feat('Joseph Regenstein Library', -87.6, 41.7922, { osm_key: 'amenity', osm_value: 'library' });
+  eq(rankPlaces([...zoo, lib], 'regenstein')[0].label, 'Joseph Regenstein Library');
+  const sp = [feat('Springfield Avenue', -87.719, 41.72), feat('Springfield Avenue', -87.716, 41.65),
+    feat('Springfield', -89.644, 39.799, { osm_key: 'place', osm_value: 'city' })];
+  eq(rankPlaces(sp, 'Springfield')[0].label, 'Springfield');
+  const hamlet = feat('Midway', -87.6, 40.1, { osm_key: 'place', osm_value: 'hamlet' });
+  const stop = feat('Midway', -87.738, 41.7867, { osm_key: 'railway', osm_value: 'station' });
+  const stop2 = feat('Midway', -87.7383, 41.7869, { osm_key: 'railway', osm_value: 'stop' });
+  const park = feat('Midway Plaisance', -87.5939, 41.7876, { osm_key: 'leisure', osm_value: 'park' });
+  eq(rankPlaces([hamlet, stop, stop2, park], 'midway').map((x) => x.label + '@' + x.lat), ['Midway Plaisance@41.7876', 'Midway@41.7867', 'Midway@40.1'], 'hamlet not pinned; stops 30 m apart merged');
 });
 
 test('geocode: under 3 chars returns no items and no request', async () => {
@@ -65,14 +127,16 @@ test('geocode: repeated query is served from memory cache', async () => {
   const b = await searchPlaces('cached place', { fetch: f });
   eq(f.calls.length, 1);
   eq(a.items, b.items);
+  const first = a.items[0].label;
   b.items[0].label = 'mutated';
-  eq((await searchPlaces('cached place', { fetch: f })).items[0].label, 'Regenstein Library', 'cache not mutable by callers');
+  eq((await searchPlaces('cached place', { fetch: f })).items[0].label, first, 'cache not mutable by callers');
 });
 
 test('geocode: featureToPlace rejects bad coordinates', () => {
   eq(featureToPlace({ geometry: { coordinates: ['x', 1] } }, 'q'), null);
   eq(featureToPlace({}, 'q'), null);
   eq(featureToPlace({ geometry: { coordinates: [1, 2] }, properties: {} }, 'q'), { label: 'q', sub: 'Place', lat: 2, lon: 1 });
+  eq(featureToPlace(feat('Regency Plaza', -87.8, 41.9, { city: 'Leyden Township', district: 'Schiller Park' }), 'q').sub, 'Schiller Park, IL', 'non-Chicago township falls back to district');
 });
 
 test('debounce: only the last call in a burst runs, after the delay', async () => {

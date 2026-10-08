@@ -10,6 +10,8 @@
  * shows only that trip's routes, the plan stays drawn (also after leaving the view) and a trip bar with
  * "End trip" (journey:end, registered by the shell) heads the results. Picking another option updates
  * the journey; changing an endpoint ends it.
+ * Belongs to the Plan Trip tab (view id 'nearby'): opened from its "Where to?" entry (dir:open with
+ * data-focus="to" focuses Destination). Walking is always visible: card + step markup in ./tripinfo.js.
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -23,15 +25,14 @@ import { predict } from "../../core/predict.js";
 import { routeChip, emptyState, skeleton } from "../components.js";
 import { matchStations, createPlaceSearch, OFFICIAL_HTML, ICONS } from "./pick.js";
 import { planJourney, sameRids, isPlanJourney, tripBarHTML } from "./journey.js";
+import { WALK_IC, tag, mins, walkMins, walkTotal, optionLines, stepsHTML as stepsFor } from "./tripinfo.js";
 
 /** The required estimate note under the options. */
 export const NOTE = "Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.";
-const SRC = { live: "from live bus prediction", learned: "learned from past rides", schedule: "from schedule", estimate: "distance estimate" };
-const WALK_IC = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="2"/><path d="M10 22l2-7-3-3 1-5 4 3 3 1M9 12l-3 2v3"/></svg>';
 const SWAP_IC = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>';
 
 /** View-local state. Endpoints are {lat, lon, label, stop?, me?}. */
-export const D = { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null, sel: 0, selKey: null, refining: false, meDenied: false, token: 0, missed: false };
+export const D = { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null, sel: 0, selKey: null, refining: false, meDenied: false, token: 0, missed: false, focusTo: false };
 /** Injectable dependencies (tests replace them). */
 export const deps = { plan, refineWalking, walkRoute, predict };
 let rootRef = null, ctxRef = null, offStore = null, lastUser = null, offPlanWatch = null;
@@ -39,8 +40,6 @@ const photon = createPlaceSearch(() => patchSug());
 
 const cur = () => ctxRef?.store?.get?.() || {};
 const nowFn = () => (ctxRef?.now ? ctxRef.now() : nowS());
-const tag = (t) => `<span class="v-est">${esc(t)}</span>`;
-const mins = (m) => Math.max(1, Math.round(m || 0));
 const me = (u) => ({ lat: u.lat, lon: u.lon, label: "My location", me: true });
 
 /**
@@ -80,48 +79,25 @@ function sugHTML() {
   return h;
 }
 
-function legsTimes(o, now) {
-  let t = now;
-  return o.legs.map((l) => {
-    if (l.type === "walk") { t += (l.min || 0) * 60; return null; }
-    const b = l.boardT || t + (l.wait || 0) * 60, a = l.alightT || b + (l.ride || 0) * 60;
-    t = a; return { b, a };
-  });
-}
-
 /**
- * Step list for an option.
+ * Step list for an option (walk to the first stop and to the destination always shown; see ./tripinfo.js).
  * @param {object} o Option
  * @param {number} now
  * @param {object} state
  * @returns {string}
  */
 export function stepsHTML(o, now, state) {
-  const times = legsTimes(o, now);
-  const li = (ic, h) => `<li><span class="v-si" aria-hidden="true">${ic}</span><span class="v-stept">${h}</span></li>`;
-  const steps = o.legs.map((l, i) => {
-    if (l.type === "walk") {
-      const to = (i === o.legs.length - 1 ? D.to?.label : l.to?.name) || l.to?.name || "the stop";
-      return li(WALK_IC, `Walk ${mins(l.min)} min (${Math.round(l.m || 0)} m) to <b>${esc(to)}</b> ${tag(l.source === "router" ? "sidewalk route" : "estimate")}`);
-    }
-    const t = times[i], w = Math.round(l.wait || 0), r = mins(l.ride);
-    return li(routeChip(l.rid, state.routes), `Bus arrives at <b>${esc(l.board?.name || "")}</b> <b class="v-clock">${esc(clock(t.b))}</b> ${tag(l.waitLive ? "live" : "est.")}`
-      + `<span class="v-sec v-stepsub">Wait ~${w < 1 ? "&lt;1" : w} min &middot; Ride ~${r} min to ${esc(l.alight?.name || "")} (${esc(clock(t.a))}) &middot; ${l.stopsPassed || 1} stop${(l.stopsPassed || 1) > 1 ? "s" : ""} &middot; ${esc(SRC[l.source] || "estimate")} ${tag("est.")}</span>`);
-  });
-  steps.push(li('<span class="v-pin v-pin--b"></span>', `Arrive at <b>${esc(D.to?.label || "destination")}</b> about <b class="v-clock">${esc(clock(o.arrive))}</b>`));
-  return '<ol class="v-steps">' + steps.join("") + "</ol>";
+  return stepsFor(o, now, state, { fromLabel: D.from?.label, toLabel: D.to?.label });
 }
 
 function optionHTML(o, i, now, state) {
-  const on = i === D.sel, times = legsTimes(o, now);
-  const sum = o.legs.map((l) => (l.type === "walk" ? `<span class="v-wk">${WALK_IC}${mins(l.min)}</span>` : routeChip(l.rid, state.routes))).join('<span class="v-arr" aria-hidden="true">&rsaquo;</span>');
-  const firstBus = o.legs.findIndex((l) => l.type === "bus");
-  const bus = firstBus >= 0 ? o.legs[firstBus] : null;
-  const busLine = bus ? `<span class="v-sec">Bus at ${esc(bus.board?.name || "")} ${esc(clock(times[firstBus].b))}</span>` : "";
+  const on = i === D.sel;
+  const sum = o.legs.map((l) => (l.type === "walk" ? `<span class="v-wk">${WALK_IC}${esc(walkMins(l.min))}</span>` : routeChip(l.rid, state.routes))).join('<span class="v-arr" aria-hidden="true">&rsaquo;</span>');
+  const lines = optionLines(o, now), wt = walkTotal(o);
   const routesTxt = o.legs.filter((l) => l.type === "bus").map((l) => state.routes?.[l.rid]?.short || l.rid).join(" then ");
-  const aria = `Option ${i + 1}: about ${o.totalMin} minutes, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. Estimate.`;
+  const aria = `Option ${i + 1}: about ${o.totalMin} minutes including ${wt > 0 ? walkMins(wt) + " minutes walking" : "no walking"}, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. ${lines.text} Estimate.`.replace(/<1 min/g, "under 1 min");
   const start = on && !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Shows only this trip&rsquo;s routes on the map.</p>' : "";
-  return `<div class="v-opt${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}"><span class="v-otop"><span class="v-otot">~${o.totalMin}<small> min</small></span>${tag("est.")}<span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span><span class="v-osum">${sum}</span>${busLine}</button>${on ? stepsHTML(o, now, state) + start : ""}</div>`;
+  return `<div class="v-opt${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}"><span class="v-otop"><span class="v-otot">~${o.totalMin}<small> min</small></span>${tag("est.")}<span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span><span class="v-osum">${sum}</span>${lines.html}</button>${on ? stepsHTML(o, now, state) + start : ""}</div>`;
 }
 
 /**
@@ -326,7 +302,8 @@ export function mountDirections(root, ctx) {
   }
   replan({ fresh: true });
   Promise.resolve(deps.predict?.ready).then(() => { if (rootRef && D.from && D.to) replan(); }).catch(() => {});
-  if (D.from && !D.to) focusField("to"); else if (!D.from && D.to) focusField("from");
+  if (D.focusTo) { D.focusTo = false; focusField("to"); }
+  else if (D.from && !D.to) focusField("to"); else if (!D.from && D.to) focusField("from");
 }
 
 /** Unmount: clear the plan from the map (kept while a trip is on, until it ends), stop async updates (endpoints are kept). */
@@ -352,6 +329,8 @@ export const _photon = photon;
 
 registerView("directions", {
   title: () => "Directions",
+  parent: "nearby",
+  tab: "nearby",
   detent: "full",
   render: (state) => renderDirections(state),
   mount: (root, ctx) => mountDirections(root, ctx),
@@ -360,7 +339,8 @@ registerView("directions", {
   onStopTap: (id, ctx) => { ctxRef = ctx || ctxRef; const ep = stopEndpoint(cur(), id); if (!ep) return false; setEndpoint(D.active || (D.from ? "to" : "from"), ep); return true; },
 });
 
-registerAction("dir:open", (ds, ev, ctx) => ctx.navigate("directions"));
+/** dir:open from Plan Trip's "Where to?" (data-focus="to") focuses the destination field on mount. */
+registerAction("dir:open", (ds, ev, ctx) => { if (ds?.focus === "to") D.focusTo = true; ctx.navigate("directions"); });
 registerAction("dir:from-stop", (ds, ev, ctx) => { const ep = stopEndpoint(ctx.store.get(), ds.id); if (!ep) return; D.from = ep; D.to = null; D.toText = ""; D.result = null; ctx.navigate("directions"); });
 registerAction("dir:to-stop", (ds, ev, ctx) => {
   const s = ctx.store.get(), ep = stopEndpoint(s, ds.id); if (!ep) return;

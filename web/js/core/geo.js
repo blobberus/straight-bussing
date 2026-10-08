@@ -9,6 +9,9 @@ const RAD = Math.PI / 180;
 /** Walking pace in meters per minute (shared by planner and walk router). */
 export const WALK_M_PER_MIN = 80;
 
+/** Straight-line to street-distance factor for walking estimates (shared by planner and walk router). */
+export const WALK_DETOUR = 1.2;
+
 /**
  * Great-circle (haversine) distance in meters.
  * @param {{lat:number, lon:number}} a

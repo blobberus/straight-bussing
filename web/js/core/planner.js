@@ -3,25 +3,29 @@
  * Trip planner: walk + one direct shuttle, or walk + shuttle + short transfer walk + shuttle.
  * Pure logic, no DOM. Every number it produces is an ESTIMATE.
  *
- * Rules (ported from v1):
- *  - walking 80 m/min on straight line x 1.2; at most 800 m to the boarding stop and from the
- *    alighting stop; transfer walk <= 150 m; walk legs under 25 m are omitted (and cost 0).
+ * Rules (ported from v1, walking always counted):
+ *  - walking 80 m/min on straight line x 1.2 (same model as walkOnly and core/walk's estimate);
+ *    at most 800 m to the boarding stop and from the alighting stop, widened to 1600 m when no
+ *    option exists within 800 m; transfer walk <= 150 m. Every walk costs time, however short;
+ *    only walks under 1 m (same point) get no step in the list.
  *  - route_stops lists one representative trip; first == last means a loop that wraps.
  *  - ride time: same-trip live prediction (trip update at alight minus at board), else
  *    predict.rideMinutes, else path distance at 18 km/h.
- *  - wait: next live arrival at the board stop after you get there (15 s grace), else headway
+ *  - wait: next live arrival at the board stop after you WALK there (15 s grace), else headway
  *    estimate = cycle minutes / buses running / 2, clamped to [1, 30]; route skipped if neither.
+ *    A transfer's second wait starts after the transfer walk.
+ *  - total/arrive = walk + wait + ride (+ transfer walk + wait + ride) + walk to the destination.
  *  - options slower than max(2 x walking, walking + 15 min) are dropped; transfers must beat the
  *    best direct option by 2 min; ranked by arrival time; max 3.
  */
-import { hav } from "./geo.js";
+import { hav, WALK_M_PER_MIN as WALK_M_MIN, WALK_DETOUR as DETOUR } from "./geo.js";
 import { nowS } from "./time.js";
 
-const WALK_M_MIN = 80, DETOUR = 1.2, MAX_WALK = 800, XFER_M = 150, BUS_M_MIN = 18000 / 60;
-const MAX_OPTS = 3, MIN_WALK_LEG = 25, GRACE_S = 15, HEADWAY_CAP = 30, XFER_GAIN_MIN = 2;
+const MAX_WALK = 800, MAX_WALK_FAR = 1600, XFER_M = 150, BUS_M_MIN = 18000 / 60;
+const MAX_OPTS = 3, MIN_WALK_LEG = 1, GRACE_S = 15, HEADWAY_CAP = 30, XFER_GAIN_MIN = 2;
 
 /** Planner constants (read-only, for UI copy and tests). */
-export const PLANNER = Object.freeze({ WALK_M_MIN, DETOUR, MAX_WALK, XFER_M, BUS_KMH: 18, MAX_OPTS, GRACE_S, HEADWAY_CAP });
+export const PLANNER = Object.freeze({ WALK_M_MIN, DETOUR, MAX_WALK, MAX_WALK_FAR, XFER_M, BUS_KMH: 18, MAX_OPTS, MIN_WALK_LEG, GRACE_S, HEADWAY_CAP });
 
 const okPt = (p) => p && isFinite(p.lat) && isFinite(p.lon);
 const walkM = (a, b) => hav(a, b) * DETOUR;
@@ -135,18 +139,17 @@ function makeCtx({ data, predict, walkMins }) {
     return { ...r, alightT: w.t + r.min * 60 };
   };
   /** Walk candidate {i, m, min} from a point to/from stop index i, with optional router override. */
-  const walkTo = (p, id, i, kind) => {
+  const walkTo = (p, id, i, kind, maxM) => {
     const s = stops[id];
     if (!okPt(s)) return null;
     const m = walkM(p, s);
-    if (m > MAX_WALK) return null;
+    if (m > maxM) return null;
     const o = over[kind + ":" + id];
-    const min = typeof o === "number" && isFinite(o) ? o : m < MIN_WALK_LEG ? 0 : m / WALK_M_MIN;
-    return { i, id, m, min };
+    return { i, id, m, min: typeof o === "number" && isFinite(o) && o >= 0 ? o : m / WALK_M_MIN };
   };
   const xferMin = (ida, idb, d) => {
     const o = over["xfer:" + ida + ">" + idb];
-    return typeof o === "number" && isFinite(o) ? o : d < MIN_WALK_LEG ? 0 : d / WALK_M_MIN;
+    return typeof o === "number" && isFinite(o) && o >= 0 ? o : d / WALK_M_MIN;
   };
   const busLeg = (rid, seq, path, w, r) => {
     const ids = path.map((k) => seq.ids[k]);
@@ -164,29 +167,20 @@ function walkLeg(a, b, m, min) {
   return { type: "walk", from: a, to: b, m: Math.round(m), min, source: "estimate" };
 }
 
-/**
- * Plan trips from `from` to `to`.
- * @param {{from:{lat,lon}, to:{lat,lon}, now?:number, data:{stops,routes,routeStops,trips,buses},
- *   predict?:{rideMinutes:Function}, walkMins?:Object<string,number>}} args
- *   walkMins: router minute overrides keyed 'start:<stopId>', 'end:<stopId>', 'xfer:<fromId>><toId>'
- *   (used by refineWalking; normal callers omit it).
- * @returns {{now:number, options:Array<Object>, walkOnly:{m:number, min:number}}}
- *   Option = {key, total, totalMin, arrive, t0, legs:[WalkLeg|BusLeg]} (see docs/ARCHITECTURE.md)
- */
-export function plan({ from, to, now, data, predict, walkMins } = {}) {
-  const t0 = typeof now === "number" && isFinite(now) ? now : nowS();
-  const result = { now: t0, options: [], walkOnly: { m: 0, min: 0 } };
-  if (!okPt(from) || !okPt(to)) return result;
-  const wm = walkM(from, to);
-  result.walkOnly = { m: Math.round(wm), min: wm / WALK_M_MIN };
-  const C = makeCtx({ data, predict, walkMins });
-  const D = data || {};
-  const seqs = {}, near = {};
-  for (const rid of Object.keys(D.routeStops || {})) {
-    const seq = (seqs[rid] = seqOf(D.routeStops[rid], C.stops));
+/** Total walking over an option's walk legs: {walkMin, walkM}. */
+function walkTotals(legs) {
+  let min = 0, m = 0;
+  for (const l of legs) if (l.type === "walk") { min += Number(l.min) || 0; m += Number(l.m) || 0; }
+  return { walkMin: min, walkM: Math.round(m) };
+}
+
+/** Direct and one-transfer candidates whose end walks are at most maxM meters. */
+function candidates(C, seqs, from, to, t0, maxM) {
+  const near = {};
+  for (const rid of Object.keys(seqs)) {
     const bo = [], al = [];
-    seq.ids.forEach((id, i) => {
-      const b = C.walkTo(from, id, i, "start"), a = C.walkTo(to, id, i, "end");
+    seqs[rid].ids.forEach((id, i) => {
+      const b = C.walkTo(from, id, i, "start", maxM), a = C.walkTo(to, id, i, "end", maxM);
       if (b) bo.push(b);
       if (a) al.push(a);
     });
@@ -194,6 +188,8 @@ export function plan({ from, to, now, data, predict, walkMins } = {}) {
   }
   const start = { lat: from.lat, lon: from.lon, name: "Start" };
   const dest = { lat: to.lat, lon: to.lon, name: "Destination" };
+  // Every walk is already in arr; only same-point walks (< 1 m) get no step.
+  const addWalk = (legs, a, b, m, min) => { if (m >= MIN_WALK_LEG) legs.push(walkLeg(a, b, m, min)); };
   const cands = [];
 
   // Direct: per route keep the earliest arrival.
@@ -213,9 +209,9 @@ export function plan({ from, to, now, data, predict, walkMins } = {}) {
     }
     if (!best) continue;
     const bl = C.busLeg(rid, seq, best.path, best.w, best.r), legs = [];
-    if (best.b.m >= MIN_WALK_LEG) legs.push(walkLeg(start, bl.board, best.b.m, best.b.min));
+    addWalk(legs, start, bl.board, best.b.m, best.b.min);
     legs.push(bl);
-    if (best.a.m >= MIN_WALK_LEG) legs.push(walkLeg(bl.alight, dest, best.a.m, best.a.min));
+    addWalk(legs, bl.alight, dest, best.a.m, best.a.min);
     cands.push({ key: rid, legs, arr: best.arr, xfer: false });
   }
 
@@ -260,26 +256,56 @@ export function plan({ from, to, now, data, predict, walkMins } = {}) {
       if (!best) continue;
       const { x } = best;
       const l1 = C.busLeg(A, sa, x.path, x.w, x.r), l2 = C.busLeg(B, sb, best.pb, best.wb, best.rb), legs = [];
-      if (x.b.m >= MIN_WALK_LEG) legs.push(walkLeg(start, l1.board, x.b.m, x.b.min));
+      addWalk(legs, start, l1.board, x.b.m, x.b.min);
       legs.push(l1);
-      if (best.d > 0) legs.push(walkLeg(l1.alight, l2.board, best.d, best.xm));
+      addWalk(legs, l1.alight, l2.board, best.d, best.xm);
       legs.push(l2);
-      if (best.a.m >= MIN_WALK_LEG) legs.push(walkLeg(l2.alight, dest, best.a.m, best.a.min));
+      addWalk(legs, l2.alight, dest, best.a.m, best.a.min);
       cands.push({ key: A + ">" + B, legs, arr: best.arr, xfer: true });
     }
   }
+  return cands;
+}
 
-  const walkOnlyMin = result.walkOnly.min;
+/** Filter (vs walking, transfer gain), rank by arrival (walking included) and cap candidates. */
+function pick(cands, t0, walkOnlyMin) {
+  const out = [];
   const limit = Math.max(2 * walkOnlyMin, walkOnlyMin + 15);
   const bestDirect = Math.min(Infinity, ...cands.filter((c) => !c.xfer).map((c) => c.arr));
   cands.sort((x, y) => x.arr - y.arr || x.legs.length - y.legs.length);
   for (const c of cands) {
-    if (result.options.length >= MAX_OPTS) break;
+    if (out.length >= MAX_OPTS) break;
     const total = (c.arr - t0) / 60;
     if (total > limit) continue; // absurdly longer than walking
     if (c.xfer && c.arr > bestDirect - XFER_GAIN_MIN * 60) continue; // transfer not worth it
-    result.options.push({ key: c.key, total, totalMin: Math.max(1, Math.round(total)), arrive: c.arr, t0, legs: c.legs });
+    out.push({ key: c.key, total, totalMin: Math.max(1, Math.round(total)), arrive: c.arr, t0, ...walkTotals(c.legs), legs: c.legs });
   }
+  return out;
+}
+
+/**
+ * Plan trips from `from` to `to`. Totals include every walk: to the boarding stop, between stops
+ * on a transfer, and from the alighting stop to the destination.
+ * @param {{from:{lat,lon}, to:{lat,lon}, now?:number, data:{stops,routes,routeStops,trips,buses},
+ *   predict?:{rideMinutes:Function}, walkMins?:Object<string,number>}} args
+ *   walkMins: router minute overrides keyed 'start:<stopId>', 'end:<stopId>', 'xfer:<fromId>><toId>'
+ *   (used by refineWalking; normal callers omit it).
+ * @returns {{now:number, options:Array<Object>, walkOnly:{m:number, min:number}}}
+ *   Option = {key, total, totalMin, arrive, t0, walkMin, walkM, legs:[WalkLeg|BusLeg]} (see docs/ARCHITECTURE.md)
+ */
+export function plan({ from, to, now, data, predict, walkMins } = {}) {
+  const t0 = typeof now === "number" && isFinite(now) ? now : nowS();
+  const result = { now: t0, options: [], walkOnly: { m: 0, min: 0 } };
+  if (!okPt(from) || !okPt(to)) return result;
+  const wm = walkM(from, to);
+  result.walkOnly = { m: Math.round(wm), min: wm / WALK_M_MIN };
+  const C = makeCtx({ data, predict, walkMins });
+  const D = data || {};
+  const seqs = {};
+  for (const rid of Object.keys(D.routeStops || {})) seqs[rid] = seqOf(D.routeStops[rid], C.stops);
+  result.options = pick(candidates(C, seqs, from, to, t0, MAX_WALK), t0, result.walkOnly.min);
+  // Nothing within 800 m of one end: allow longer end walks; ranking stays by total incl. walking.
+  if (!result.options.length) result.options = pick(candidates(C, seqs, from, to, t0, MAX_WALK_FAR), t0, result.walkOnly.min);
   return result;
 }
 
@@ -297,7 +323,8 @@ function overridesOf(legs) {
 }
 
 /**
- * Replace estimated walk legs with sidewalk routes, then re-time the option. If a live bus would
+ * Replace estimated walk legs with sidewalk routes (never shorter than the straight line), then
+ * re-time every leg, including the final walk, and recompute total/arrive/walkMin/walkM. If a live bus would
  * now be missed, re-plan with the router walking times and return the same-route option from
  * that plan (refined again), or null when it no longer exists (drop the card). Never rejects.
  * @param {Object} option a plan() option
@@ -313,14 +340,17 @@ export async function refineWalking(option, { walkRoute, now, data, from, to, pr
     try {
       const r = await walkRoute(l.from, l.to);
       if (r && isFinite(r.min) && isFinite(r.m)) {
-        l.m = Math.round(r.m); l.min = r.min; l.source = r.source === "router" ? "router" : "estimate";
+        // Never shorter than the straight line (the router rounds endpoints to ~11 m).
+        const crow = okPt(l.from) && okPt(l.to) ? hav(l.from, l.to) : 0;
+        l.m = Math.round(Math.max(r.m, crow)); l.min = Math.max(r.min, crow / WALK_M_MIN);
+        l.source = r.source === "router" ? "router" : "estimate";
         if (Array.isArray(r.coords) && r.coords.length) l.coords = r.coords;
       }
     } catch (e) { /* keep the estimate */ }
   }));
   let t = t0, missed = false;
   for (const l of legs) {
-    if (l.type === "walk") { t += l.min * 60; continue; }
+    if (l.type === "walk") { t += (Number(l.min) || 0) * 60; continue; }
     if (l.type !== "bus") continue;
     if (l.waitLive) {
       if (t > l.boardT + GRACE_S) { missed = true; break; }
@@ -333,9 +363,9 @@ export async function refineWalking(option, { walkRoute, now, data, from, to, pr
   }
   if (missed) {
     if (_depth >= 2) return null;
-    const f = okPt(from) ? from : legs[0].type === "walk" ? legs[0].from : null;
-    const last = legs[legs.length - 1];
-    const d = okPt(to) ? to : last.type === "walk" ? last.to : null;
+    const first = legs[0], last = legs[legs.length - 1];
+    const f = okPt(from) ? from : first.type === "walk" ? first.from : first.board;
+    const d = okPt(to) ? to : last.type === "walk" ? last.to : last.alight;
     if (!okPt(f) || !okPt(d) || !data) return null;
     const again = plan({ from: f, to: d, now: t0, data, predict, walkMins: overridesOf(legs) });
     const same = again.options.find((o) => o.key === option.key);
@@ -344,5 +374,5 @@ export async function refineWalking(option, { walkRoute, now, data, from, to, pr
     return r ? { ...r, replanned: true } : null;
   }
   const total = (t - t0) / 60;
-  return { ...option, legs, total, totalMin: Math.max(1, Math.round(total)), arrive: t, t0, refined: true };
+  return { ...option, legs, total, totalMin: Math.max(1, Math.round(total)), arrive: t, t0, ...walkTotals(legs), refined: true };
 }

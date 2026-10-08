@@ -53,6 +53,11 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
   background: var(--bg-solid); box-shadow: var(--shadow-float);
 }
 .fab-sm:active { transform: scale(.92); }
+/* full detent (bottom-sheet layouts only): the sheet covers the map and its title row would sit under
+   the locate button, so hide it until the sheet comes down again */
+@media not all and (min-width: 768px) and (max-height: 559px) {
+  #app:has(.sheet[data-detent="full"]) #locateBtn { visibility: hidden; opacity: 0; pointer-events: none; }
+}
 
 /* status pill: stale / error / no service. Never color alone: always text. */
 .statuspill {

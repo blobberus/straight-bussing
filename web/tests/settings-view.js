@@ -2,7 +2,7 @@
 import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
 import { bindActions, hasAction } from "../js/ui/actions.js";
-import { renderSettings, mountSettings, stationHTML, optsHTML, alertsHTML, searchStations, permHTML, statusHTML } from "../js/ui/views/settings.js";
+import { renderSettings, mountSettings, unmountSettings, stationHTML, optsHTML, alertsHTML, searchStations, permHTML, statusHTML } from "../js/ui/views/settings.js";
 import { getView } from "../js/ui/router.js";
 import { cleanNotify } from "../js/state.js";
 
@@ -15,14 +15,15 @@ function mounted(over = {}) {
   el.innerHTML = renderSettings(ctx.store.get(), NOW);
   mountSettings(el, ctx);
   const off = bindActions(el, () => ctx);
-  return { ctx, el, done: () => { off?.(); getView("settings").unmount(); el.remove(); } };
+  return { ctx, el, done: () => { off?.(); unmountSettings(); el.remove(); } };
 }
 const click = (el) => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 const change = (el, set) => { set(el); el.dispatchEvent(new Event("change", { bubbles: true })); };
 
-test("settings: registered as a sub view of Nearby with settings:open", () => {
+test("settings: gear action registered; 'settings' view is only a shim (no sheet content, no detent)", () => {
   const d = getView("settings");
-  ok(d && d.parent === "nearby" && d.detent === "half" && typeof d.mount === "function");
+  ok(d && d.parent === "nearby" && !d.detent && typeof d.mount === "function");
+  eq(d.render(fixture(base())), "", "settings content no longer renders in the sheet");
   ok(hasAction("settings:open"));
 });
 

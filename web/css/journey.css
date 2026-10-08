@@ -1,4 +1,26 @@
-/* journey view styles (see docs/ARCHITECTURE.md ownership): Directions "Start" + trip bar, picker switch. */
+/* journey view styles (see docs/ARCHITECTURE.md ownership): Plan Trip entry + walking guidance,
+   Directions "Start" + trip bar + walking lines, picker switch. css/views.css is frozen: overrides live here. */
+
+/* Plan Trip top: "Where to?" (primary, field-like) + "Routes to station…" (secondary); wraps at large text */
+.pt-top { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s2) 0 var(--s3); }
+.pt-where { flex: 1 1 150px; display: flex; align-items: center; gap: var(--s3); min-height: 52px; padding: 0 var(--s4) 0 var(--s2); border: 1px solid var(--hairline-strong); border-radius: var(--r-control); background: var(--bg-solid); color: var(--text); font: inherit; font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 650; text-align: left; cursor: pointer; transition: transform var(--d-press) var(--ease), background var(--d-press) var(--ease); }
+.pt-where:active { transform: scale(.98); background: var(--surface-press); }
+.pt-where:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pt-whereic { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: var(--accent-fill); color: var(--on-accent); }
+.pt-wheret { flex: 1 1 auto; min-width: 0; }
+.v-btn.pt-pick { flex: 0 1 auto; min-height: 52px; margin: 0; font-size: var(--fs-body); }
+
+/* Plan Trip arrivals with walking guidance (text says it; strike-through is a second cue, not color alone) */
+.pt-arr .sec { white-space: normal; }
+.pt-now .sec { color: var(--text); font-weight: 600; }
+.pt-miss .eta .num { color: var(--text-2); text-decoration: line-through; text-decoration-thickness: 2px; }
+.pt-miss .prim { color: var(--text-2); }
+.pt-walknote { margin-top: var(--s2); }
+
+/* Directions option card: walk + leave lines */
+.j-oline { display: block; }
+.j-oline.j-now { color: var(--text); font-weight: 600; }
+
 
 /* Start button under the selected option's steps */
 .j-start { margin: var(--s3) 0 0; }
@@ -26,10 +48,11 @@
 .j-stoggle[aria-pressed="true"] { text-decoration: underline; }
 
 @media (prefers-reduced-motion: reduce) {
-  .j-sw, .j-knob { transition: none; }
+  .j-sw, .j-knob, .pt-where { transition: none; }
+  .pt-where:active { transform: none; }
 }
 @media (forced-colors: active) {
-  .j-trip, .j-only { outline: 1px solid CanvasText; }
+  .j-trip, .j-only, .pt-where { outline: 1px solid CanvasText; }
   .j-sw { border: 1px solid CanvasText; }
   .j-only[aria-checked="true"] .j-sw { background: Highlight; }
   .j-knob { background: CanvasText; }

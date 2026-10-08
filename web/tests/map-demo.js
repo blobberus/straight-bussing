@@ -1,6 +1,6 @@
 /**
- * Overlay demo for headless screenshots: map.test.html?demo=light|dark[&raster=1][&plan=0][&focus=rid][&order=rid,rid].
- * Draws the real network, fake buses (one stale, one without heading), a selected stop, the user dot,
+ * Overlay demo for headless screenshots: map.test.html?demo=light|dark[&raster=1][&plan=0][&focus=rid][&order=rid,rid][&fav=0].
+ * Draws the real network, fake buses (one stale, one without heading), favorite stations, a selected stop, the user dot,
  * picker highlights and a trip plan above a fake 300 px sheet. Sets document.title to "DEMO ready".
  */
 import { createMap } from '../js/map/map.js';
@@ -64,6 +64,9 @@ if (q.get('plan') === '0') { // a few buses near the selected stop: fresh, stale
     near(0.0004, -0.0016, '4346', 'n3'), near(-0.0010, 0.0012, '1075', 'n4', { position: { latitude: c.lat + 0.0012, longitude: c.lon - 0.001 } }));
 }
 api.drawBuses(buses, { routes, hidden: [], focus, nowS: now });
+
+// favorites: the selected stop (plan=0), a stop near it and one farther away (&fav=0 hides them)
+if (q.get('fav') !== '0') api.drawFavorites([st(seq[4]), st(seq[6]), st(seq[Math.min(seq.length - 1, 11)])]);
 
 const board = st(seq[2]), alight = st(seq[7]);
 api.setUser({ lat: board.lat - 0.0016, lon: board.lon - 0.0012, accuracy: 35 });

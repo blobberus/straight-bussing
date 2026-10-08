@@ -11,7 +11,7 @@ Owner: Nathan. Repo: github.com/blobberus/straight-bussing (main). Work on Windo
 - Permission from UChicago Transportation is UNRESOLVED. App must say "unofficial", avoid UChicago names/logos/"UGo", warn when data is stale, link to official app/phone (773.702.8181).
 
 ## Architecture
-Static site, no build step: `web/` v2 ES modules (index.html, js/{core,data,map,ui}, css/, sw.js, data/; contract + file ownership in `docs/ARCHITECTURE.md`). v2 is merged to `main` and live on Pages since 2026-10-08 (v1 = tag `v1-final`); `v2-rewrite` is kept level with `main`. Collector: see `monitoring.md`. Leaflet via CDN. Hosted on GitHub Pages. PWA -> installable on iPhone ("Add to Home Screen"). Later: Capacitor wrap (needs a Mac + Xcode), see `docs/IOS.md`.
+Static site, no build step: `web/` v2 ES modules (index.html, js/{core,data,map,ui}, css/, sw.js, data/; contract + file ownership in `docs/ARCHITECTURE.md`). v2 is merged to `main` and live on Pages since 2026-10-08 (v1 = tag `v1-final`); `v2-rewrite` is kept level with `main`. Collector: see `monitoring.md`. Learning/prediction experiments: see `RouteKnower.md` (plan, test protocol, data tiers, experiment log). Leaflet via CDN. Hosted on GitHub Pages. PWA -> installable on iPhone ("Add to Home Screen"). Later: Capacitor wrap (needs a Mac + Xcode), see `docs/IOS.md`.
 
 ## Directory map
 - `web/` app (deployed as-is)  · `tools/` data scripts  · `.github/workflows/` Pages deploy + daily GTFS refresh  · `docs/` APPSTORE.md (cost/feasibility), IOS.md, RUN.md (how to operate)
@@ -51,7 +51,7 @@ Also every ship: bump the cache name in `web/sw.js` when shell files change; esc
 | Hide/show single routes (persisted) | done | map, arrivals, Nearby honor it |
 | Directions (walk + shuttle, 1 transfer) | done | `web/planner.js`; Photon geocoding; bus legs drawn as straight stop-to-stop lines |
 | Constant ground-truth collection | done | `collect.yml` on main (schedules only run from main): overlapping 70-min runs at :07/:37, `tools/merge_arrivals.py` dedupes into `data` branch `data/ground_truth/arrivals.csv`; `docs/DATA.md` |
-| Ride-time learning (`Predict`) | in progress | `tools/`, `web/predict.js`, `docs/LEARNING.md`; planner uses it when present |
+| Ride-time learning (`Predict`) | in progress | `RouteKnower.md` is the plan + experiment log (E00 pilot done 2026-10-08); live site does NOT deploy `learned.json` yet (RouteKnower §9); ship gate §6.6 |
 | Theme + basemap styling | in progress | `web/theme.js`, `web/mapstyle.js` |
 | Directions: trace route shapes, walking path on streets | next | needs shape clipping / routing |
 | Learned wait/headway (not just ride time) | next | extend data-learning roadmap |
@@ -62,5 +62,6 @@ Also every ship: bump the cache name in `web/sw.js` when shell files change; esc
 | iPhone-sized frame on desktop browsers (393x852) | done | `ui/frame.js`, `css/base.css` |
 | QA on a real iPhone (sheet drag, safe areas, keyboard) | next | headless Edge can't confirm |
 | App Store conversion (Capacitor) | next | wait for owner's prompt |
+| v2.2 (2026-10-08): Nearby tab renamed **Plan Trip** (ids stay `nearby`) with "Where to?" + "Routes to station…"; Edit map order first on Routes; favorite stars on the map; Settings = overlay below the tab bar with Done; place search Illinois-only, UChicago-first; planner counts every walk (1600 m end walks when nothing within 800 m) | done | `docs/ARCHITECTURE.md` (updated contracts); sw cache `sb-v2-6` |
 
 **Data-learning roadmap:** (1) log observed stop-to-stop times from vehiclePositions + tripUpdates (GitHub Action, no server); (2) aggregate to `web/data/segments.json` by route, segment, hour; (3) `Predict.rideMinutes` prefers learned medians when enough samples, else schedule; (4) later: learned headways and delay by time of day.

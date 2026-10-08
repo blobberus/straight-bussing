@@ -1,4 +1,4 @@
-/* map.css: map overlays (route casings, stops, selection, buses, user dot, trip plan, attribution).
+/* map.css: map overlays (route casings, stops, favorites, selection, buses, user dot, trip plan, attribution).
    Owned by map/ (agent C). Theme: map.js toggles .sb-dark on the map element (.sb-map); every overlay
    color below comes from these variables so a theme switch never needs a redraw. */
 .sb-map{
@@ -42,6 +42,31 @@
   font:600 13px/18px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;box-shadow:var(--sb-shadow);white-space:nowrap}
 .sb-map .leaflet-tooltip.sb-sel-label::before{display:none}
 .sb-map.sb-dark .leaflet-tooltip.sb-sel-label{box-shadow:0 0 0 1px rgba(255,255,255,.14),var(--sb-shadow)}
+
+/* favorite stations (map/favorites.js): gold disc, dark star, white casing; static (never pulses).
+   44 px hit area (28 px below z14, where the badge shrinks); the outer 44 px box ignores pointers.
+   A selected favorite gets a wider unfilled accent ring (.sb-sel-fav) around the badge. */
+.sb-map{--sb-fav:#ffb400;--sb-fav-ink:#3a2400}
+.sb-map.sb-dark{--sb-fav:#ffc53d;--sb-fav-ink:#2b1a00}
+.sb-map .leaflet-marker-icon.sb-favicon{pointer-events:none;outline:none}
+.sb-fav-wrap{position:absolute;inset:0;display:grid;place-items:center}
+.sb-fav-hit{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;pointer-events:auto;cursor:pointer}
+.sb-fav{position:relative;box-sizing:border-box;width:22px;height:22px;border-radius:50%;border:2px solid #fff;background:var(--sb-fav);
+  display:grid;place-items:center;box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow);pointer-events:none}
+.sb-fav-star{display:block;width:14px;height:14px;fill:var(--sb-fav-ink)}
+.sb-fav-sm .sb-fav{width:16px;height:16px;border-width:1.5px}
+.sb-fav-sm .sb-fav-star{width:10px;height:10px}
+.sb-fav-sm .sb-fav-hit{width:28px;height:28px;margin:-14px 0 0 -14px}
+.sb-fav-pane.is-dim{opacity:.5}
+.sb-fav-name{position:absolute;left:50%;bottom:calc(50% + 14px);transform:translateX(-50%);display:none;padding:2px 7px;border-radius:7px;
+  background:var(--sb-chrome-solid);color:var(--sb-text);box-shadow:var(--sb-shadow);white-space:nowrap;pointer-events:none;
+  font:600 12px/16px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif}
+.sb-map.sb-dark .sb-fav-name{box-shadow:0 0 0 1px rgba(255,255,255,.14),var(--sb-shadow)}
+@media (hover:hover){.sb-favicon:hover .sb-fav-name{display:block}}
+.sb-favicon:focus-visible .sb-fav-name{display:block}
+.sb-favicon.is-sel .sb-fav-name{display:none}
+.sb-map .leaflet-marker-icon.sb-favicon:focus-visible .sb-fav{outline:2px solid var(--sb-accent);outline-offset:3px}
+.sb-sel.sb-sel-fav{fill:none}
 
 /* user location */
 .sb-me{box-sizing:border-box;width:20px;height:20px;border-radius:50%;background:var(--sb-accent);border:3px solid #fff;
@@ -94,5 +119,5 @@
   .sb-map .leaflet-control-attribution{background:var(--sb-chrome-solid)}
 }
 @media (forced-colors:active){
-  .sb-bus,.sb-me,.sb-pin-end{border:2px solid CanvasText;forced-color-adjust:none}
+  .sb-bus,.sb-me,.sb-pin-end,.sb-fav{border:2px solid CanvasText;forced-color-adjust:none}
 }

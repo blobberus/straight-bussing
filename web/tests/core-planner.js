@@ -2,6 +2,7 @@
 import { test, eq, ok, near } from "./lib.js";
 import { plan, refineWalking, PLANNER } from "../js/core/planner.js";
 import { hav } from "../js/core/geo.js";
+import { walkEstimate } from "../js/core/walk.js";
 
 const T = 1_800_000_000;
 // Loop LOOP: L0 -> L1 -> L2 -> L3 -> L0 (rectangle ~830 m x 1110 m).
@@ -35,8 +36,10 @@ test("loop route wraps (L3 -> L0 -> L1) with headway estimate", () => {
   near(b.wait, cycle / 2, 0.01, "cycle / 1 bus / 2");
   near(b.ride, (hav(stops.L3, stops.L0) + hav(stops.L0, stops.L1)) / 300, 0.01, "distance at 18 km/h");
   eq(b.path.length, 3);
-  eq(o.legs[0].type, "bus", "11 m start walk omitted");
-  near(b.boardT, T + b.wait * 60, 1);
+  const w0 = o.legs[0];
+  eq(w0.type, "walk", "13 m start walk kept as a step");
+  near(w0.min, hav(near_("L3"), stops.L3) * 1.2 / 80, 1e-6, "short walk still costs time");
+  near(b.boardT, T + w0.min * 60 + b.wait * 60, 1, "wait starts when you reach the stop");
   near(b.alightT, b.boardT + b.ride * 60, 1);
   near(o.arrive, T + o.total * 60, 0.01);
   eq(o.totalMin, Math.round(o.total));
@@ -54,10 +57,10 @@ test("one transfer within 150 m (A -> walk -> B)", () => {
   const r = plan({ from: near_("A0"), to: near_("B1", -0.0001), now: T, data: data() });
   const o = r.options.find((x) => x.key === "A>B");
   ok(o, "transfer option: " + JSON.stringify(r.options.map((x) => x.key)));
-  eq(o.legs.map((l) => l.type), ["bus", "walk", "bus"]);
+  eq(o.legs.map((l) => l.type), ["walk", "bus", "walk", "bus", "walk"]);
   const [b1, b2] = busLegs(o);
   eq(b1.board.id, "A0"); eq(b1.alight.id, "A2"); eq(b2.board.id, "B0"); eq(b2.alight.id, "B1");
-  const xw = o.legs[1];
+  const xw = o.legs[2];
   ok(xw.m <= 150 && xw.m > 25, "transfer walk " + xw.m);
   ok(b2.boardT >= b1.alightT + xw.min * 60 - 1, "second bus after transfer walk");
   eq(r.options.length, 1);
@@ -66,7 +69,12 @@ test("one transfer within 150 m (A -> walk -> B)", () => {
 test("no transfer when stops are > 150 m apart", () => {
   const far = { ...stops, B0: { name: "B0", lat: 41.778, lon: -87.6 } }; // ~222 m from A2
   const r = plan({ from: near_("A0"), to: near_("B1", -0.0001), now: T, data: data({ stops: far }) });
-  eq(r.options.length, 0);
+  ok(!r.options.some((o) => o.key === "A>B"), "no A>B: " + JSON.stringify(r.options.map((o) => o.key)));
+  // Only A + a long (> 800 m) walk from A2 remains, and only because it beats walking.
+  for (const o of r.options) {
+    eq(o.key, "A");
+    ok(o.legs[o.legs.length - 1].m > 800 && o.total < r.walkOnly.min, "long end walk counted, still faster");
+  }
 });
 
 test("live: wait from next arrival, ride from same-trip prediction", () => {
@@ -74,7 +82,7 @@ test("live: wait from next arrival, ride from same-trip prediction", () => {
   const r = plan({ from: near_("L3"), to: near_("L1"), now: T, data: data({ trips }) });
   const [b] = busLegs(r.options[0]);
   eq(b.waitLive, true);
-  near(b.wait, 5, 0.01);
+  near(b.wait, 5 - r.options[0].legs[0].min, 1e-6, "wait counted from when you reach the stop");
   eq(b.boardT, T + 300);
   eq(b.alightT, T + 700);
   near(b.ride, 400 / 60, 0.01);
@@ -134,6 +142,73 @@ test("far from any stop -> no options", () => {
   eq(r.options, []);
 });
 
+/* ---------- walking always counted ---------- */
+const sumLegs = (o) => o.legs.reduce((s, l) => s + (l.type === "walk" ? l.min : l.wait + l.ride), 0);
+const walkSum = (o) => o.legs.reduce((s, l) => s + (l.type === "walk" ? l.min : 0), 0);
+
+test("destination 1.2 km from the nearest stop still gets a bus option, walk included", () => {
+  const to = { lat: stops.Y.lat + 0.0108, lon: stops.Y.lon }; // ~1.2 km north of Y
+  ok(hav(to, stops.Y) > 1150 && hav(to, stops.Y) * 1.2 > PLANNER.MAX_WALK, "beyond the 800 m walk limit");
+  const r = plan({ from: near_("X"), to, now: T, data: { stops, routeStops: { P: ["X", "Y"] }, trips: [], buses: [bus("P")] } });
+  eq(r.options.length, 1, "bus + long walk beats walking");
+  const o = r.options[0], last = o.legs[o.legs.length - 1];
+  eq(o.key, "P");
+  eq(last.type, "walk"); eq(last.to.name, "Destination");
+  near(last.m, hav(stops.Y, to) * 1.2, 1);
+  near(last.min, hav(stops.Y, to) * 1.2 / 80, 1e-6);
+  near(o.arrive, busLegs(o)[0].alightT + last.min * 60, 1e-6, "arrive includes the final walk");
+  near(o.total, sumLegs(o), 1e-6, "total == walk + wait + ride + walk");
+  near(o.walkMin, walkSum(o), 1e-9); ok(o.walkM > 1400, "walkM " + o.walkM);
+  ok(o.total < r.walkOnly.min, "ranked honestly vs walking");
+  ok(PLANNER.MAX_WALK_FAR >= 1600);
+});
+
+test("long end walks only when nothing is within 800 m", () => {
+  const r = plan({ from: near_("X"), to: near_("Y"), now: T, data: { stops, routeStops: { P: ["X", "Y"] }, trips: [], buses: [bus("P")] } });
+  ok(r.options[0].legs.every((l) => l.type !== "walk" || l.m <= 800));
+});
+
+test("total == walk + wait + ride + walk; wait starts after the walk to the stop", () => {
+  const from = { lat: stops.L3.lat + 0.004, lon: stops.L3.lon }; // ~445 m
+  const to = { lat: stops.L1.lat - 0.003, lon: stops.L1.lon };
+  const r = plan({ from, to, now: T, data: data() });
+  const o = r.options[0], [b] = busLegs(o), w0 = o.legs[0];
+  near(w0.min, hav(from, stops.L3) * 1.2 / 80, 1e-6);
+  near(b.boardT, T + (w0.min + b.wait) * 60, 1e-6);
+  near(o.total, sumLegs(o), 1e-6);
+  near(o.arrive, T + o.total * 60, 1e-6);
+  near(o.walkMin, walkSum(o), 1e-9);
+  eq(o.walkM, o.legs.filter((l) => l.type === "walk").reduce((s, l) => s + l.m, 0));
+});
+
+test("walk-only and walk legs use the same model as core/walk's estimate", () => {
+  const from = { lat: stops.L3.lat + 0.004, lon: stops.L3.lon }, to = { lat: stops.L1.lat - 0.003, lon: stops.L1.lon };
+  const r = plan({ from, to, now: T, data: data() });
+  near(r.walkOnly.min, walkEstimate(from, to).min, 1e-6);
+  for (const l of r.options[0].legs) if (l.type === "walk") near(l.min, walkEstimate(l.from, l.to).min, 1e-6);
+  eq(PLANNER.DETOUR, 1.2); eq(PLANNER.WALK_M_MIN, 80);
+});
+
+const xferTrips = () => [
+  trip("ta", "A", [["A0", T + 60], ["A1", T + 180], ["A2", T + 300]]),
+  trip("tb1", "B", [["B0", T + 320], ["B1", T + 620]]), // leaves before you can walk over
+  trip("tb2", "B", [["B0", T + 600], ["B1", T + 900]]),
+];
+
+test("transfer: second wait starts after the transfer walk", () => {
+  const r = plan({ from: near_("A0"), to: near_("B1", -0.0001), now: T, data: data({ trips: xferTrips() }) });
+  const o = r.options.find((x) => x.key === "A>B");
+  ok(o, "transfer option: " + JSON.stringify(r.options.map((x) => x.key)));
+  const [b1, b2] = busLegs(o), xw = o.legs[2];
+  eq(xw.type, "walk");
+  eq(b1.boardT, T + 60); eq(b1.alightT, T + 300);
+  ok(b1.alightT + xw.min * 60 > T + 320 + PLANNER.GRACE_S, "tb1 is not catchable");
+  eq(b2.tripId, "tb2"); eq(b2.boardT, T + 600); eq(b2.alightT, T + 900);
+  near(b2.wait, (600 - 300 - xw.min * 60) / 60, 1e-6);
+  near(o.total, sumLegs(o), 1e-6, "total == walk + wait + ride + transfer walk + wait + ride + walk");
+  near(o.arrive, T + 900 + o.legs[4].min * 60, 1e-6);
+});
+
 /* ---------- refineWalking ---------- */
 const fakeWalk = (minByLeg) => async (a, b) => {
   const m = hav(a, b) * 1.3;
@@ -155,6 +230,8 @@ test("refineWalking replaces walk legs and recomputes totals", async () => {
   near(b.boardT, T + walks[0].min * 60 + b.wait * 60, 1, "headway bus re-timed after longer walk");
   near(r.arrive, b.alightT + walks[1].min * 60, 1);
   near(r.total, (r.arrive - T) / 60, 1e-6);
+  near(r.total, sumLegs(r), 1e-6, "every refined leg counted");
+  near(r.walkMin, walks[0].min + walks[1].min, 1e-9, "walkMin recomputed");
   ok(r.total > o.total, "router walk is longer");
   eq(r.refined, true);
   eq(o.legs[0].source, "estimate", "input option not mutated");
@@ -162,7 +239,7 @@ test("refineWalking replaces walk legs and recomputes totals", async () => {
 
 test("refineWalking: missed live bus -> re-plan catches the next one", async () => {
   const from = { lat: stops.L3.lat + 0.0009, lon: stops.L3.lon }; // ~100 m: estimate 1.5 min
-  const to = near_("L1", -0.0001);
+  const to = near_("L1", 0); // at the stop: no end walk
   const trips = [
     trip("t1", "LOOP", [["L3", T + 120], ["L1", T + 520]]),
     trip("t2", "LOOP", [["L3", T + 900], ["L1", T + 1300]]),
@@ -190,6 +267,28 @@ test("refineWalking: missed bus and nothing later -> null (drop)", async () => {
   ok(o, "planned with live trip");
   const r = await refineWalking(o, { walkRoute: fakeWalk(() => 5), now: T, data: d, from, to });
   eq(r, null);
+});
+
+test("refineWalking: router walk is never shorter than the straight line", async () => {
+  const d = data(), from = near_("L3"), to = { lat: stops.L1.lat - 0.002, lon: stops.L1.lon };
+  const o = plan({ from, to, now: T, data: d }).options[0];
+  const r = await refineWalking(o, { walkRoute: async () => ({ m: 0, min: 0, coords: [], source: "router" }), now: T, data: d, from, to });
+  const w0 = r.legs[0];
+  near(w0.min, hav(from, stops.L3) / 80, 1e-6, "13 m start walk floored at crow-flies");
+  ok(r.total > busLegs(r)[0].wait + busLegs(r)[0].ride, "walking still in the total");
+});
+
+test("refineWalking: longer transfer walk misses the live 2nd bus -> re-planned after the walk", async () => {
+  const from = near_("A0"), to = near_("B1", -0.0001), d = data({ trips: xferTrips() });
+  const o = plan({ from, to, now: T, data: d }).options.find((x) => x.key === "A>B");
+  const xfer = (a) => Math.abs(a.lat - stops.A2.lat) < 1e-9 && Math.abs(a.lon - stops.A2.lon) < 1e-9;
+  const r = await refineWalking(o, { walkRoute: fakeWalk((a, b, m) => (xfer(a) ? 6 : m / 80)), now: T, data: d, from, to });
+  ok(r, "re-planned transfer");
+  eq(r.replanned, true);
+  const [b1, b2] = busLegs(r);
+  eq(r.legs[2].min, 6);
+  ok(b2.boardT >= b1.alightT + 6 * 60 - 1, "2nd bus after the 6 min transfer walk");
+  near(r.total, sumLegs(r), 1e-6);
 });
 
 test("refineWalking survives a throwing walkRoute and bad input", async () => {

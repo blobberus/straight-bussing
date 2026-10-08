@@ -8,9 +8,8 @@
  * at most 6 requests in flight, in-memory cache keyed by the rounded endpoints (failures retried
  * after 60 s). Minutes are always meters / 80 (the planner's pace). Never rejects.
  */
-import { hav, walkMin } from "./geo.js";
+import { hav, walkMin, WALK_DETOUR as DETOUR } from "./geo.js";
 
-const DETOUR = 1.2;
 const TIMEOUT_MS = 3000;
 const MAX_PAR = 6;
 const FAIL_TTL_MS = 60000;

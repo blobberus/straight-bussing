@@ -88,7 +88,10 @@ export async function loadStatic(store, {base?, fetch?}?): Promise<{failed:strin
 // data/live.js
 export function startLive(store, {intervalMs=10000, ...}): {stop(), pollNow(), failures(), delay()}   // polls the 3 Passio JSON feeds (BASE https://passio3.com/chicago/passioTransit/gtfs/realtime/<name>.json?_=ts, cache:'no-store'), sets live fields; failure keeps last data and sets failed:true; pause when document.hidden, poll on visible
 // data/geocode.js
-export function searchPlaces(q, {signal}): Promise<{items:[{label, sub, lat, lon}], error?:string}>   // never throws (error: 'aborted'|'timeout'|'network'|'http <status>'|'bad response'); Photon, limit 5, biased lat 41.79 lon -87.60, min 3 chars enforced by caller (<3 -> {items:[]}); 400 ms debounce helper debounce(fn, ms) exported too (.cancel(), .flush())
+export function searchPlaces(q, {signal}): Promise<{items:[{label, sub, lat, lon}], error?:string}>   // never throws (error: 'aborted'|'timeout'|'network'|'http <status>'|'bad response'); <3 chars -> {items:[]} with no request; in-memory cache; 400 ms debounce helper debounce(fn, ms) exported too (.cancel(), .flush())
+// Photon gets only the typed text + fixed constants (never the user's location): bias lat 41.7886 lon -87.5987 (UChicago), zoom=10, location_bias_scale=0.2, Illinois bbox -91.52,36.97,-87.49,42.51, limit=15, lang=en.
+// Client side: keep Illinois only (state Illinois/IL; no state -> point inside the bbox; non-US dropped), re-rank by distance tier from campus (<=3 km, <=20 km, <=80 km, rest of IL) blended with Photon rank, name match and place type; exact city/town name first; merge duplicates; max 5.
+// sub = 'street, city, IL' (Chicago townships shown as Chicago). Also exported: inIllinois, rankPlaces, photonUrl, featureToPlace, HOME, IL_BBOX, PHOTON, clearPlaceCache.
 ```
 `sw.js`: network-first for same-origin GET with `cache:'no-cache'`, cache only `r.ok && r.status===200`, never cache cross-origin; precache index.html + css + js/main.js + manifest + icons; cache name constant `sb-v2-<n>`; serve offline fallback. Also keep the daily GTFS refresh workflow `pages.yml` working (it copies `web/`).
 
@@ -105,12 +108,12 @@ export const predict: { ready: Promise<void>, rideMinutes(rid, fromStopId, toSto
 export async function walkRoute(from, to): Promise<{m, min, coords:[[lat,lon]], source:'router'|'estimate'}>   // FOSSGIS OSRM foot primary, Valhalla fallback, 3 s timeout each, straight*1.2 estimate fallback, cache by 4dp, <=6 concurrent
 // core/planner.js
 export function plan({from, to, now, data:{stops,routes,routeStops,trips,buses}, predict?, walkMins?}): {options:[Option], walkOnly:{m,min}}   // pass predict explicitly (no implicit fallback)
-export async function refineWalking(option, {walkRoute, now, data, from, to, predict?}): Promise<Option|null>   // replaces walk-leg coords/min with router results, recomputes totals/arrive; if the bus would be missed it re-plans (same route, replanned:true) or resolves null (drop it)
-// Option = {key, total:minFloat, totalMin:int, arrive:unixS, legs:[WalkLeg|BusLeg]}
+export async function refineWalking(option, {walkRoute, now, data, from, to, predict?}): Promise<Option|null>   // replaces walk-leg coords/min with router results, recomputes totals/arrive/walkMin/walkM; a router walk is never shorter than the straight line; if the bus would be missed it re-plans (same route, replanned:true) or resolves null (drop it)
+// Option = {key, total:minFloat, totalMin:int, arrive:unixS, t0:unixS, walkMin:minFloat, walkM:int, legs:[WalkLeg|BusLeg]}   // total/arrive include every walk (to the boarding stop, transfers, to the destination); walkMin/walkM = sums over the walk legs
 // WalkLeg = {type:'walk', from:{lat,lon,name}, to:{lat,lon,name}, m, min, coords?:[[lat,lon]], source?:'router'|'estimate'}
 // BusLeg  = {type:'bus', rid, board:{id,name,lat,lon}, alight:{id,name,lat,lon}, path:[{lat,lon}], stopsPassed, wait, waitLive, ride, source:'live'|'learned'|'schedule'|'estimate', conf, boardT, alightT}
 ```
-Planner rules (port from v1, keep behaviors): walk 80 m/min x1.2 detour estimate, max walk 800 m each end, direct + one transfer (transfer walk <= 150 m), loop routes wrap, ride time prefers same-trip live prediction (tripUpdates at alight stop minus at board stop), then `predict.rideMinutes`, then distance/18 km/h; wait = live next arrival at board stop after you arrive, else headway estimate; discard options absurdly longer than walking; rank by total; max 3 options; every number is an estimate.
+Planner rules (port from v1, keep behaviors): walk 80 m/min x1.2 detour estimate (WALK_M_PER_MIN, WALK_DETOUR in core/geo.js), max walk 800 m each end, widened to 1600 m (MAX_WALK_FAR) when no option exists within 800 m; every walk costs m/80 min however short (only walks under 1 m get no step); wait counts from when you reach the stop (t0 + walk), and for the second bus from after the transfer walk; direct + one transfer (transfer walk <= 150 m), loop routes wrap, ride time prefers same-trip live prediction (tripUpdates at alight stop minus at board stop), then `predict.rideMinutes`, then distance/18 km/h; wait = live next arrival at board stop after you arrive, else headway estimate; discard options absurdly longer than walking; rank by total; max 3 options; every number is an estimate.
 
 ## Map layer (C)
 ```js
@@ -124,6 +127,7 @@ drawBuses(buses, {routes, hidden, focus, nowS})   // rounded-square badge in rou
 setSelectedStop(stop|null)       // {id,lat,lon}
 setUser(pos|null)                // blue dot
 highlightStops(items|null, {onPick})   // items [{id,lat,lon}] ring highlights; null clears
+drawFavorites(stops|null)        // [{id,name?,lat,lon}] gold star badges (map/favorites.js), pane z422 (above stops, below highlights/selection/buses), all zooms (smaller <z14), taps -> onStopTap; selected favorite gets a wider unfilled ring; faded while a plan is drawn
 drawPlan(option|null, {routes, shapes, routeStops})  // bus legs follow road shapes (geometry.alongShape); walk legs dashed along leg.coords else straight; start/end pins
 fitTo(points|bounds, {maxZoom})  flyTo({lat,lon}, zoom)
 onStopTap(fn) onBusTap(fn) onUserMove(fn)
@@ -150,10 +154,10 @@ export const routeChip(rid, routes), etaBlock(unixS, {stale}), arrivalRow(a, sta
 Rendering loop (D1 `main.js`): on store change -> current view `render(state)` -> set `content.innerHTML` only if string differs from last (preserve scrollTop; never rebuild while a text input inside content has focus). Views with `mount` render once on entry and then **own their DOM**: they subscribe to the store and patch regions in place; main.js never rebuilds them (that would replace a button between pointerdown and click) and calls `refresh()` every 15 s so countdowns tick.
 
 Views (D2) and required behavior (all ported from v1, improved):
-- **nearby**: next bus at the nearest stop in one glance; with location -> 3 nearest stops with up to 3 arrivals; without -> "Use my location" + "Arriving soon" list + search stations field + "Type an address or place"; never dead-ends; location denied is a first-class state.
+- **nearby** (tab label and title **Plan Trip**; ids stay `nearby`): top row = "Where to?" (`dir:open`, focuses Destination) + "Routes to station…" (`pick:open`), the only entries for those flows; with a real location each arrival row adds "Leave now / Leave in N min, est." and marks buses you cannot walk to in time (`pt-miss`, text + strike, never color alone); then next bus at the nearest stop in one glance; with location -> 3 nearest stops with up to 3 arrivals; without -> "Use my location" + "Arriving soon" list + search stations field + "Type an address or place"; never dead-ends; location denied is a first-class state.
 - **stop**: arrivals list (route chip, route name, Live dot, ETA numeral, "Now"), route chips serving it, address line from `addresses`, "Updated Ns ago", Directions-from-here / to-here buttons.
-- **routes**: top actions `Routes to station…` and `Directions`; Running / Not running / Hidden groups; per-route eye toggle (persisted `hiddenRoutes`) honored on map, arrivals, Nearby; filter chip "Routes to <station> x".
-- **pick** (Routes to station…): dialog asks **Use current location / Select a station / Type an address or place**; NOTHING is highlighted until the user chooses; then nearest stops (<=1.5 km) are highlighted on the map and listed; tapping a station sets `routeFilter` and shows only routes that serve it on list+map; works with no location permission via the other two options.
+- **routes**: first control "Edit map order" (`routes:order-edit`); then custom-route / journey bar, filter chip, Show all / Hide all; Running / Not running / Hidden groups; per-route eye toggle (persisted `hiddenRoutes`) honored on map, arrivals, Nearby; filter chip "Routes to <station> x".
+- **pick** (Routes to station…, parent/tab `nearby`): dialog asks **Use current location / Select a station / Type an address or place**; NOTHING is highlighted until the user chooses; then nearest stops (<=1.5 km) are highlighted on the map and listed; tapping a station sets `routeFilter` and shows only routes that serve it on list+map; works with no location permission via the other two options.
 - **route**: stop timeline with next ETA per stop, buses running, map focus on that route.
 - **alerts**: active alerts, count badge on the tab; **about**: unofficial notice, official phone/link, privacy statements (Photon + walking router hosts), theme control, data credits/attribution, version.
 - **directions**: Start/Destination fields (station autocomplete + Photon places, "My location" default if granted), swap, up to 3 option cards (total min, arrive clock, summary chips), tap card -> `map.drawPlan`, step list with `Bus arrives at <stop> <clock>`, wait, ride, source tags, walking legs on sidewalks (via `refineWalking`, async, shows "sidewalk route"/"estimate"), note "Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.", walk-only fallback, no-service empty state.
@@ -228,12 +232,12 @@ isScheduledNow(service, rid, unixS): boolean|null
 ### Ownership for v2.1 (in addition to the table above; never edit files you do not own)
 | Agent | Owns |
 |---|---|
-| SHELL | index.html, main.js, ui/router.js, ui/components.js, ui/sheet.js, ui/actions.js, css/tokens.css base.css sheet.css components.css, ui/views/nearby.js, ui/views/alerts.js, ui/views/about.js, tests/ui-shell-*, tests/e2e* |
-| MAP | map/*.js, css/map.css, tests/map-* |
+| SHELL | index.html, main.js, ui/router.js, ui/components.js, ui/sheet.js, ui/actions.js, css/tokens.css base.css sheet.css components.css, ui/views/alerts.js, ui/views/about.js, tests/ui-shell-*, tests/e2e* |
+| MAP | map/*.js (incl. map/favorites.js), css/map.css, tests/map-* |
 | ROUTE | tools/build_gtfs.py, web/data/service.json, data/static.js, core/schedule.js, ui/views/route.js, css/route.css, tests/data-static.js, tests/route-* + route.test.html |
 | ROUTES | ui/views/routes.js, css/routes.css, tests/routes-* + routes.test.html |
 | MYROUTES | ui/views/myroutes.js, ui/views/stop.js, css/myroutes.css, tests/myroutes-* + myroutes.test.html |
-| JOURNEY | ui/views/directions.js, ui/views/pick.js, css/journey.css, tests/journey-* + journey.test.html |
+| JOURNEY | ui/views/directions.js, ui/views/pick.js, ui/views/nearby.js, ui/views/tripinfo.js (trip-timing helpers, not a view), css/journey.css, tests/journey-* + journey.test.html |
 | MONITOR | monitoring.md, tools/monitor.py |
 | lead | state.js, core/visibility.js, core/custom.js, sw.js, docs/ARCHITECTURE.md, css/views.css (frozen: override in your own css file) |
 New view files must be added to main.js VIEW_IDS and sw.js PRECACHE: ask the lead in your report.
@@ -246,6 +250,6 @@ stopsAway(state, stopId, rid?): [{rid, tripId, vehicleId, stopsAway:int, etaS:un
 dueAlerts(state, prevFired:Set<string>, nowS): {alerts:[{key, kind:'twoStops'|'oneStop'|'minutes', title, body}], fired:Set}   // dedup per trip+kind
 liveStatus(state, nowS): {title, minutes, nextStop, stopsAway}|null   // what a lock-screen Live Activity would show
 ```
-Web: `ui/notifier.js` (SETTINGS) watches the store while the page is open and shows in-app banners (bus 'toast') and, if the user granted it, a browser Notification; it never claims to work in the background. Settings view id `settings` (sub view, parent nearby, opened by a small top-right gear button in the sheet header that SHELL adds; action `settings:open`).
-| SETTINGS | ui/views/settings.js, ui/notifier.js, core/notify.js, css/settings.css, tests/settings-* + settings.test.html |
+Web: `ui/notifier.js` (SETTINGS) watches the store while the page is open and shows in-app banners (bus 'toast') and, if the user granted it, a browser Notification; it never claims to work in the background. Settings is a modal overlay (`ui/settings-overlay.js`, SETTINGS) opened and toggled by the top-right gear (action `settings:open`): it lifts the sheet to "full", covers everything below `#tabs` (tab bar stays visible; tapping a tab closes it), has "Done" top right, closes on Escape / navigation / dragging the sheet down, traps focus and restores the previous detent. View id `settings` is a compatibility shim only.
+| SETTINGS | ui/views/settings.js, ui/settings-overlay.js, ui/notifier.js, core/notify.js, css/settings.css, tests/settings-* + settings.test.html |
 | IPHONE | `conversion to appstore.md`, docs/IOS.md, docs/APPSTORE.md |

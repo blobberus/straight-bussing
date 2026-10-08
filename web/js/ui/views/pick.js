@@ -3,7 +3,8 @@
  * "Routes to station..." flow. A dialog asks how to find the station (current location, select a
  * station by name, or type an address/place). Nothing is highlighted until the user chooses.
  * Then nearby stops (<= 1.5 km) are listed and ring-highlighted on the map; choosing one sets
- * store.routeFilter {ids, label} and returns to the Routes view. Works without location permission.
+ * store.routeFilter {ids, label} and goes to the Routes view. Works without location permission.
+ * The picker belongs to the Plan Trip tab (view id 'nearby'; opened by its "Routes to station…" button).
  * Once a mode is chosen, a switch "Only show the chosen station's routes" (off by default, remembered
  * for the session) also starts a station journey (store.journey, see ./journey.js) on choosing.
  * Also exports small helpers shared by the other D2 views (station matching, place search, official links).
@@ -352,9 +353,9 @@ export function unmountPick() {
 
 registerView("pick", {
   title: () => "Routes to station",
-  parent: "routes",
+  parent: "nearby",
   detent: "half",
-  tab: "routes",
+  tab: "nearby",
   render: (state) => renderPick(state),
   mount: (root, ctx) => mountPick(root, ctx),
   unmount: () => unmountPick(),

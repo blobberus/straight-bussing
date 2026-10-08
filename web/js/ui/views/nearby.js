@@ -1,12 +1,16 @@
 /**
  * @module ui/views/nearby
- * Home screen. One glance: the next bus at the nearest stop. With location: the 3 nearest stops
+ * Plan Trip tab (view id stays 'nearby'; routing, tests and persisted state use it). Top: the
+ * "Where to?" entry (dir:open, focuses Directions' destination) and "Routes to station…" (pick:open).
+ * Below it, one glance: the next bus at the nearest stop. With location: the 3 nearest stops
  * (up to 3 arrivals at the nearest, 1 at the others). Without location (unknown, asking, denied):
  * "Use my location", a station search, "Type an address or place" (stops near that place),
  * and an "Arriving soon" list. Never a dead end; denied location is a first-class state.
  * Above everything: the service-alert banner (alerts are a sub view, not a tab). Above the nearby
  * stops: a Favorites card (state.favStops, next visible arrival each). Visibility follows
  * core/visibility.js effectiveHidden (journey > hidden routes / applied custom route).
+ * With real location, each arrival says "Leave now" / "Leave in N min" or that it leaves before you
+ * could walk to the stop (walking estimate, ./tripinfo.js catchNote; labeled est.).
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -17,6 +21,9 @@ import { routeChip, etaBlock, arrivalRow, emptyState, skeleton } from "../compon
 import { stopsNear, matchStations, createPlaceSearch, placeRows, walkText, OFFICIAL_HTML, ICONS } from "./pick.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { alertBanner } from "./alerts.js";
+import { catchNote, stopWalkMin } from "./tripinfo.js";
+
+const NAV_IC = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>';
 
 /** Favorites shown on Nearby (the rest are in My Routes). */
 export const FAV_MAX = 3;
@@ -46,14 +53,45 @@ function noService(state) {
   return emptyState("No shuttles running right now", "Check the official schedule for service hours.") + OFFICIAL_HTML;
 }
 
-function stopCard(state, s, now, max, hero) {
+/**
+ * Arrival row with walking guidance: catchable rows say when to leave, uncatchable ones are marked
+ * (class pt-miss + text + aria, never color alone). The note goes into the row's aria-label too.
+ * @param {object} a arrival {rid, t, bus, tripId}
+ * @param {object} state
+ * @param {number} now
+ * @param {number} walkM walking minutes to the stop (estimate)
+ * @returns {string}
+ */
+export function guidedRow(a, state, now, walkM) {
+  const c = catchNote(a.t, walkM, now);
+  return arrivalRow(a, state, { now, action: "route:open", sub: c.text })
+    .replace('class="row arr"', `class="row arr pt-arr pt-${c.kind}"`)
+    .replace(/aria-label="([^"]*)"/, (m0, l) => `aria-label="${l}, ${esc(c.aria)}"`);
+}
+
+/**
+ * Arrivals to list at a stop: the first `max`, plus one more when none of those can be caught on foot.
+ * @param {object[]} all sorted arrivals
+ * @param {number} max
+ * @param {number|null} walkM walking minutes (null: no guidance)
+ * @param {number} now
+ * @returns {object[]}
+ */
+export function pickArrivals(all, max, walkM, now) {
+  const list = all.slice(0, max);
+  if (walkM != null && list.length && all.length > max && list.every((a) => catchNote(a.t, walkM, now).kind === "miss")) list.push(all[max]);
+  return list;
+}
+
+function stopCard(state, s, now, max, hero, guide) {
   const hidden = effectiveHidden(state);
-  const arr = state.liveLoaded ? arrivalsFor(state, s.id, { hidden, nowS: now }).slice(0, max) : null;
+  const walkM = guide ? stopWalkMin(s.d) : null;
+  const arr = state.liveLoaded ? pickArrivals(arrivalsFor(state, s.id, { hidden, nowS: now }), max, walkM, now) : null;
   const rs = (state.stopRoutes?.[s.id] || []).filter((r) => !hidden.includes(r));
   const head = `<button type="button" class="v-row v-cardhead" data-action="stop:open" data-id="${esc(s.id)}"><span class="v-grow"><span class="${hero ? "v-title" : "v-prim"}">${esc(s.name)}</span><span class="v-sec">${esc(walkText(s.d))}</span></span><span class="v-chev" aria-hidden="true">${ICONS.chev}</span></button>`;
   let body;
   if (!arr) body = skeleton(1);
-  else if (arr.length) body = arr.map((a) => arrivalRow(a, state, { now, action: "route:open" })).join("");
+  else if (arr.length) body = arr.map((a) => (guide ? guidedRow(a, state, now, walkM) : arrivalRow(a, state, { now, action: "route:open" }))).join("");
   else body = `<div class="v-none"><span class="v-sec">No upcoming arrivals</span><span class="v-chips">${rs.map((r) => routeChip(r, state.routes)).join("")}</span></div>`;
   return `<section class="v-card${hero ? " v-hero" : ""}">${head}${body}</section>`;
 }
@@ -81,11 +119,12 @@ export function favoritesHTML(state, now = nowS()) {
   return `<div class="v-favhead"><h3 class="v-h">Favorites</h3>${more}</div><section class="v-card v-favs" aria-label="Favorite stations">${rows}</section>`;
 }
 
-function nearList(state, point, now) {
+function nearList(state, point, now, guide) {
   const near = stopsNear(state, point, { maxM: NEARBY_MAX_M, max: 3, hidden: effectiveHidden(state) });
   if (!near.length) return null;
-  let h = stopCard(state, near[0], now, 3, true);
-  if (near.length > 1) h += '<h3 class="v-h">Also nearby</h3>' + near.slice(1).map((s) => stopCard(state, s, now, 1, false)).join("");
+  let h = stopCard(state, near[0], now, 3, true, guide);
+  if (near.length > 1) h += '<h3 class="v-h">Also nearby</h3>' + near.slice(1).map((s) => stopCard(state, s, now, 1, false, guide)).join("");
+  if (guide) h += '<p class="v-fine pt-walknote">Leave times use a walking estimate (80 m a minute) and live bus times. Allow extra time.</p>';
   return h;
 }
 
@@ -116,13 +155,13 @@ export function bodyHTML(state, now = nowS()) {
 
 function placesHTML(state, now) {
   if (state.user) {
-    const h = nearList(state, state.user, now);
+    const h = nearList(state, state.user, now, true);
     if (h) return h;
     return '<div class="v-empty"><b>No stops near you</b><span>You seem to be more than 5 km from the shuttle network. Search a station or place above.</span></div>' + soonList(state, now);
   }
   let h = "";
   if (N.anchor) {
-    const list = nearList(state, N.anchor, now);
+    const list = nearList(state, N.anchor, now, false);
     h += `<div class="v-anchor"><span class="v-grow"><span class="v-sec">Showing stops near</span><span class="v-prim">${esc(N.anchor.label)}</span></span><button type="button" class="v-btn v-btn--quiet" data-action="nearby:clear-place" aria-label="Clear place ${esc(N.anchor.label)}">Clear</button></div>`;
     return h + (list || '<div class="v-empty"><b>No stops within 5 km of this place</b><span>Try another place or search a station.</span></div>');
   }
@@ -155,7 +194,18 @@ function regionHTML(state, now) {
 }
 
 /**
- * Render the Nearby view.
+ * Plan Trip entry points: "Where to?" (primary, opens Directions with Destination focused) and
+ * "Routes to station…" (secondary). One entry for each feature in the app.
+ * @returns {string}
+ */
+export function entryHTML() {
+  return '<div class="pt-top">'
+    + `<button type="button" class="pt-where" data-action="dir:open" data-focus="to" aria-label="Where to? Directions"><span class="pt-whereic" aria-hidden="true">${NAV_IC}</span><span class="pt-wheret">Where to?</span></button>`
+    + '<button type="button" class="v-btn v-btn--secondary pt-pick" data-action="pick:open">Routes to station&hellip;</button></div>';
+}
+
+/**
+ * Render the Plan Trip (id 'nearby') view.
  * @param {object} state store state
  * @param {number} [now] unix seconds
  * @returns {string}
@@ -166,8 +216,8 @@ export function renderNearby(state, now = nowS()) {
   const search = `<label class="v-search"><span class="v-ic" aria-hidden="true">${ICONS.search}</span><span class="v-sr">${place ? "Address or place" : "Search stations"}</span><input type="search" data-input="nearby-q" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${place ? "Address, building or place" : "Search stations"}" value="${esc(N.q)}"></label>`;
   const toggle = place
     ? '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="station">Search stations instead</button></div><p class="v-fine">Only the text you type is sent to photon.komoot.io to find the place.</p>'
-    : '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="place">Type an address or place</button><button type="button" class="v-link" data-action="dir:open">Directions</button></div>';
-  return `<div class="v-nearby"><div data-region="nearby-alert">${alertBanner(state, now)}</div><div data-region="nearby-loc">${locHTML(state)}</div>${search}${toggle}<div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
+    : '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="place">Type an address or place</button></div>';
+  return `<div class="v-nearby"><div data-region="nearby-alert">${alertBanner(state, now)}</div>${entryHTML()}<div data-region="nearby-loc">${locHTML(state)}</div>${search}${toggle}<div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
 }
 
 /**
@@ -281,7 +331,7 @@ export function unmountNearby() {
 export const _places = places;
 
 registerView("nearby", {
-  title: () => "Nearby",
+  title: () => "Plan Trip",
   detent: "half",
   tab: "nearby",
   render: (state) => renderNearby(state),

@@ -1,14 +1,15 @@
 /**
  * @module ui/views/routes
- * Routes list: top actions "Routes to station..." (primary) and "Directions"; optional filter chip
- * "Routes to <station> x"; Running / Not running / Hidden groups; per-route eye toggle that writes
- * store.hiddenRoutes (persisted by state.js; honored by map, arrivals and Nearby).
+ * Routes list. Top to bottom: a quiet "Edit map order" button (the first control on the tab), the
+ * custom-route / journey bar, the optional filter chip "Routes to <station> x" (set from the Plan Trip
+ * tab's station picker), Show all / Hide all, then Running / Not running / Hidden groups with a
+ * per-route eye toggle that writes store.hiddenRoutes (persisted by state.js; honored by map,
+ * arrivals and Nearby). "Routes to station..." and "Directions" live on the Plan Trip tab, not here.
  *
  * v2.1: a custom-route bar ("Make this a custom route" with an inline name field, or "Showing <name>"
  * with Clear / Update / Save as new), a journey note ("Only showing routes for <label>"), and an
  * "Edit map order" mode: drag a row by its grip (routes-drag.js) or use Move up / Move down
- * (store.routeOrder, drawn top-first). Show all / Hide all above the groups; the official service
- * phone and page always sit at the bottom of the list.
+ * (store.routeOrder, drawn top-first). The official service phone and page always sit at the bottom.
  *
  * The view mounts and owns its DOM: two regions are patched in place on store changes
  * ([data-region="routes-top"], [data-region="routes-body"]); the top region is never touched while
@@ -29,6 +30,7 @@ const EYE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke=
 const EYEOFF = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z" opacity=".45"/><circle cx="12" cy="12" r="3" opacity=".45"/><path d="M3 3l18 18"/></svg>';
 const UP = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>';
 const GRIP = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"/></svg>';
+const LAYERS = '<svg class="v-ic rt-toolic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>';
 const DOWN = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 
 /** View-local UI state (not in the store). mode: 'list' | 'order'. */
@@ -163,15 +165,24 @@ export function bulkHTML(state, g) {
 }
 
 /**
+ * "Edit map order" entry: the first control on the tab ('' until routes load, or with no routes).
+ * @param {object} state
+ * @returns {string}
+ */
+export function toolsHTML(state) {
+  if (!state.staticLoaded || !Object.keys(state.routes || {}).length) return "";
+  return `<div class="rt-tools"><button type="button" class="v-btn v-btn--quiet rt-orderbtn" data-action="routes:order-edit">${LAYERS}Edit map order</button></div>`;
+}
+
+/**
  * The list body (normal mode).
  * @param {object} state
  * @returns {string}
  */
 export function listHTML(state) {
-  const top = '<div class="v-actions"><button type="button" class="v-btn v-btn--primary" data-action="pick:open">Routes to station&hellip;</button><button type="button" class="v-btn v-btn--secondary" data-action="dir:open">Directions</button></div>';
-  if (!state.staticLoaded) return top + skeleton(5);
+  if (!state.staticLoaded) return skeleton(5);
   const g = groupRoutes(state);
-  let h = top + filterChipHTML(state);
+  let h = filterChipHTML(state);
   const total = g.running.length + g.idle.length + g.hidden.length;
   if (!total) {
     return h + (state.routeFilter ? emptyState("No routes at this station", "Clear the filter to see every route.") : emptyState("No routes", "The schedule data did not load. Reload the app.") + OFFICIAL_HTML);
@@ -182,11 +193,11 @@ export function listHTML(state) {
   h += group("Running", g.running, false, "");
   h += group("Not running", g.idle, false, state.liveLoaded && !(state.buses || []).length ? "is-dim" : "");
   h += group(state.journey ? "Not on this trip" : "Hidden", g.hidden, true, "");
-  h += `<div class="rt-tools"><button type="button" class="v-btn v-btn--quiet" data-action="routes:order-edit">Edit map order</button></div>`;
   return h + `<div class="rt-official">${OFFICIAL_HTML}</div>`;
 }
 
-function topRegion(state) { return R.mode === "order" ? "" : topBarHTML(state); }
+/** Top region: Edit map order first, then the custom-route / journey bar (empty in order mode). */
+function topRegion(state) { return R.mode === "order" ? "" : toolsHTML(state) + topBarHTML(state); }
 function bodyRegion(state) { return R.mode === "order" && state.staticLoaded ? orderHTML(state) : listHTML(state); }
 
 /**

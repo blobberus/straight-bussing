@@ -51,9 +51,56 @@
 .st-status .v-grow > span { display: block; }
 .st-ok { vertical-align: -3px; color: var(--live); }
 
+/* Settings overlay (ui/settings-overlay.js): modal panel below the sheet's tab bar. JS sets top/left/
+   width/bottom in #app layout px. z: above the sheet (1000) and floating chrome (1100), below the
+   scrim (1200) and toasts (1300). */
+.sto {
+  position: fixed; z-index: 1150; left: 0; right: 0; bottom: 0; top: 30%;
+  display: flex; flex-direction: column;
+  background: var(--bg-solid); color: var(--text);
+  border-top: 1px solid var(--hairline);
+  box-shadow: 0 -1px 0 var(--hairline);
+  /* --sto-from (set by JS): how far below its place it starts, = the distance the sheet travels */
+  transform: translate3d(0, var(--sto-from, 100%), 0);
+  transition: transform var(--d-sheet) var(--ease-spring), opacity var(--d-sheet) var(--ease-exit);
+  will-change: transform;
+}
+.sto.is-in { transform: none; }
+.sto[data-state="closed"] { opacity: 0; }
+.sto--float { border-radius: 0 0 var(--r-sheet) var(--r-sheet); border: 1px solid var(--hairline); }
+.sto-head {
+  flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  min-height: 52px; padding: 0 var(--s2) 0 var(--s4);
+  border-bottom: 1px solid var(--hairline);
+}
+.sto-side { display: flex; min-width: 0; }
+.sto-side--end { justify-content: flex-end; }
+.sto-title { margin: 0; font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 600; text-align: center; white-space: nowrap; }
+.sto-done {
+  min-width: var(--tap); min-height: var(--tap); padding: 0 var(--s2); border-radius: var(--r-control);
+  color: var(--accent); font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 600;
+}
+.sto-done:active { background: var(--surface); }
+.sto-body {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  padding: 0 var(--s4) max(16px, var(--safe-b));
+}
+.sto-body > .st > .v-h:first-child { margin-top: var(--s3); }
+
 @media (prefers-reduced-motion: reduce) {
   .st-knob, .st-knob::after { transition: none; }
+  /* no slide: a short fade only */
+  .sto { transform: none; opacity: 0; transition: opacity var(--d-press) linear; will-change: auto; }
+  .sto.is-in { opacity: 1; }
 }
 @media (prefers-contrast: more) {
   .st-knob { outline: 1px solid currentColor; }
+  .sto { border-top: 2px solid var(--text); }
+  .sto-head { border-bottom-color: var(--text); }
+  .sto-done { text-decoration: underline; text-underline-offset: 3px; }
+}
+@media (forced-colors: active) {
+  .sto { border: 1px solid CanvasText; }
+  .sto-done { border: 1px solid ButtonText; }
 }
