@@ -92,7 +92,7 @@
 .tp-buspill { align-self: auto; margin-top: 0; }
 .tp-buspill.is-stale { opacity: .6; }
 .tp-eta { flex: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
-.tp-eta.is-now { color: var(--live); }
+.tp-eta.is-now { color: var(--live-text, var(--live)); }
 .tp-eta.is-passed { font-size: var(--fs-cap); font-weight: 500; }
 
 /* the followed bus: chip on the line (track = full segment height, moved by transform only) */

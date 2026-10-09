@@ -15,7 +15,9 @@
   --accent-fill: #0071e3;     /* accent used as a fill (buttons, location dot); white text 4.7:1 */
   --on-accent: #ffffff;
   --live: #1e9e4a;
-  --warn: #b25e00;
+  --live-text: #17803b;      /* --live as small text: 5:1 on white (--live is 3.4:1, fills only) */
+  --est-bg: rgba(60, 60, 67, .10);   /* "est." tag fill: --text-2 on it stays >= 4.5:1 */
+  --warn: #a35400;          /* 4.5:1+ as small text on --warn-bg */
   --warn-bg: #fff4e0;
   --danger: #c4291c;
   --danger-bg: #fdeceb;
@@ -120,6 +122,8 @@
     --accent-fill: #0071e3;
     --on-accent: #ffffff;
     --live: #32d74b;
+    --live-text: #32d74b;
+    --est-bg: rgba(84, 84, 88, .25);
     --warn: #ffb340;
     --warn-bg: #3a2a10;
     --danger: #ff6961;
@@ -147,6 +151,8 @@
   --accent-fill: #0071e3;
   --on-accent: #ffffff;
   --live: #32d74b;
+  --live-text: #32d74b;
+  --est-bg: rgba(84, 84, 88, .25);
   --warn: #ffb340;
   --warn-bg: #3a2a10;
   --danger: #ff6961;

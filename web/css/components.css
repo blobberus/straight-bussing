@@ -126,7 +126,7 @@ button.row:active { background: var(--surface-press); transform: scale(.98); }
   display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 0 10px; border-radius: var(--r-chip);
   font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 600; background: var(--surface); color: var(--text-2);
 }
-.pill-live { color: var(--live); }
+.pill-live { color: var(--live-text, var(--live)); }
 .pill-warn { background: var(--warn-bg); color: var(--warn); }
 .pill-err { background: var(--danger-bg); color: var(--danger); }
 .pill-info { background: var(--surface); color: var(--text); }

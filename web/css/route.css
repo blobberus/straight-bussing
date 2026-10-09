@@ -4,7 +4,7 @@
 .r-today { margin: -4px 0 var(--s2); }
 .r-k { font-weight: 600; color: var(--text); margin-right: 4px; }
 .r-sched { font-weight: 600; color: var(--text-2); }
-.r-sched.is-on { color: var(--live); }
+.r-sched.is-on { color: var(--live-text, var(--live)); }
 .r-sched.is-on::before { content: "\25CF "; }            /* dot + words: state not by color alone */
 
 /* where the buses are (text, also the accessible description of the rail) */

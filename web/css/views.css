@@ -112,7 +112,7 @@ button.v-row:active { transform: scale(.98); opacity: .8; }
 .v-tlbtn:active { opacity: .7; }
 .v-tlbus { align-self: flex-start; margin-top: 2px; padding: 1px 8px; border-radius: var(--r-chip); font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 600; }
 .v-tleta { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
-.v-tleta.is-now { color: var(--live); }
+.v-tleta.is-now { color: var(--live-text, var(--live)); }
 
 /* ---------- alerts ---------- */
 .v-alertlist { list-style: none; margin: 0; padding: 0; }
@@ -146,7 +146,7 @@ button.v-row:active { transform: scale(.98); opacity: .8; }
 .v-sugs { margin-top: 0; }
 .v-sugs .v-row { min-height: 52px; }
 .v-sugs .v-prim { font-size: 1rem; }
-.v-est { display: inline-block; padding: 0 6px; border-radius: 6px; background: var(--hairline); color: var(--text-2); font-size: 11px; line-height: 16px; font-weight: 600; vertical-align: 2px; white-space: nowrap; }
+.v-est { display: inline-block; padding: 0 6px; border-radius: 6px; background: var(--est-bg, var(--hairline)); color: var(--text-2); font-size: 11px; line-height: 16px; font-weight: 600; vertical-align: 2px; white-space: nowrap; }
 .v-opt { margin: var(--s2) 0; padding: 0 var(--s4) var(--s1); border-radius: var(--r-card); background: var(--surface); border: 2px solid transparent; }
 .v-opt.is-on { border-color: var(--accent-fill); }
 .v-optmain { display: flex; flex-direction: column; gap: 6px; width: 100%; min-height: 56px; padding: var(--s3) 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
