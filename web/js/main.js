@@ -20,6 +20,7 @@ import { initTheme, isDark, onChange as onThemeChange } from "./ui/theme.js";
 import { emptyState, OFFICIAL_PHONE } from "./ui/components.js";
 import { registerContextActions, mountContextBar } from "./ui/contextbar.js";
 import { initFrame } from "./ui/frame.js";
+import { isSettingsOpen, closeSettingsOverlay } from "./ui/settings-overlay.js";
 
 /** Every view module; each calls registerView() at import time. */
 export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes", "settings"]);
@@ -265,10 +266,10 @@ function render() {
   el.content.scrollTop = keyChanged ? 0 : top;
 }
 
-/* ---------------- browser back (one history entry while in a sub view) ---------------- */
+/* ---------------- browser back (one history entry while in a sub view or while Settings is open) ---------------- */
 let pushed = false, ignorePop = false;
 function syncHistory() {
-  const sub = canGoBack();
+  const sub = canGoBack() || isSettingsOpen();
   try {
     if (sub && !pushed) { history.pushState({ sb: 1 }, ""); pushed = true; }
     else if (!sub && pushed) { pushed = false; ignorePop = true; history.back(); }
@@ -277,6 +278,7 @@ function syncHistory() {
 window.addEventListener("popstate", () => {
   if (ignorePop) return void (ignorePop = false);
   pushed = false;
+  if (isSettingsOpen()) { closeSettingsOverlay(); syncHistory(); return; }   // back closes Settings, not the screen under it
   if (canGoBack()) back();
 });
 
@@ -343,6 +345,7 @@ async function boot() {
   // the map is visible above the sheet AND the bottom navigation bar under it (phone layouts only)
   bus.on("sheet:inset", (p) => mapCall("setBottomInset", ((p && p.px) || 0) + (p && p.px && !sheet?.isPanel?.() ? el.tabs.offsetHeight || 0 : 0)));
   bus.on("toast", (p) => toast(p && p.text));
+  bus.on("settings:toggle", () => syncHistory());   // Settings overlay opened / closed (ui/settings-overlay.js)
   watchPillHeight();
   sheet = createSheet({ sheetEl: el.sheet, contentEl: el.content, headEl: el.head, grabEl: el.grab });
   initRouter({ store, setDetent: sheet.setDetent, getDetent: sheet.getDetent });
@@ -368,8 +371,7 @@ async function boot() {
   store.subscribe((s, changed) => { syncMap(s, changed); scheduleRender(); syncHistory(); });
   render();
   syncMap(store.get(), null);
-  // bus-near alerts while the page is open (SETTINGS owns ui/notifier.js; optional until it ships)
-  import("./ui/notifier.js").then((m) => m.startNotifier?.(store, { toast })).catch(() => {});
+  import("./ui/notifier.js").then((m) => m.startNotifier?.(store, { toast })).catch(() => {});   // bus-near alerts while the page is open
 
   loadStatic(store).catch((e) => { console.error("static data", e); toast("Couldn't load stops and routes. Check your connection."); });
   live = startLive(store, { intervalMs: 10000 });
@@ -389,8 +391,7 @@ async function boot() {
     }
   } catch (e) { /* permissions API unsupported */ }
 
-  const h = location.hostname;
-  if ("serviceWorker" in navigator && (location.protocol === "https:" || h === "localhost" || h === "127.0.0.1")) {
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || /^(localhost|127\.0\.0\.1)$/.test(location.hostname))) {
     import("./ui/update.js").then((m) => m.startUpdates()).catch((e) => console.warn("service worker", e));   // register + update on foreground
   }
 }

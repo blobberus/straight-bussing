@@ -82,6 +82,37 @@ export function shellE2E(h, which) {
     eq(btn.getAttribute("aria-expanded"), "false", "second tap collapses");
   });
 
+  test("browser back closes Settings (not the screen under it); Done drops the history entry (QA 2026-10-09)", async () => {
+    const log = h.W().__e2e.log, n = (k) => log.filter((x) => x === k).length, open = () => { const o = $("#settingsOverlay"); return !!o && o.dataset.state === "open"; };
+    h.tab("nearby");
+    await waitFor(() => h.store().get().view === "nearby", "Current trip");
+    let p = n("pushState");
+    h.click($("#settingsBtn"), "gear");
+    await waitFor(() => open() || null, "Settings open");
+    eq(n("pushState"), p + 1, "opening Settings adds one history entry");
+    h.W().history.back();                                    // the browser's back button
+    await waitFor(() => !open() || null, "back closed Settings");
+    eq(h.store().get().view, "nearby", "still on Current trip (the app was not left)");
+    h.click($("#settingsBtn"), "gear");
+    await waitFor(() => open() || null, "Settings open again");
+    const b = n("back");
+    h.click($(".sto-done"), "Done");
+    await waitFor(() => (!open() && n("back") === b + 1) || null, "Done removes the entry");
+    h.tab("routes");
+    h.click(await waitFor(() => $('#content [data-action="route:open"]'), "a route"), "route");
+    await waitFor(() => h.store().get().view === "route", "route detail");
+    p = n("pushState");
+    h.click($("#settingsBtn"), "gear");
+    await waitFor(() => open() || null, "Settings open over the route");
+    eq(n("pushState"), p, "a sub view's history entry is shared");
+    h.W().history.back();
+    await waitFor(() => !open() || null, "back closed Settings");
+    eq(h.store().get().view, "route", "back closed Settings only, the route stays");
+    h.W().history.back();
+    await waitFor(() => h.store().get().view === "routes" || null, "second back leaves the route");
+    h.tab("nearby");
+  });
+
   test("About credits: OpenStreetMap (ODbL), OpenMapTiles, OpenFreeMap, no copyright sign", async () => {
     h.tab("myroutes");
     h.click(await waitFor(() => h.store().get().view === "myroutes" && $('#content [data-action="about:open"]'), "About row"), "About row");

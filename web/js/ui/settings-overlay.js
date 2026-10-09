@@ -6,7 +6,7 @@
  * scrim dims whatever is still visible behind it (map strip, floating buttons, context bar), and
  * the covered sheet header and content are inert. Closing restores the previous detent.
  * Closes on Done, Escape, a tap on the scrim, the gear (programmatic toggle), any navigation (e.g.
- * About) and if the sheet leaves "full". Accessible modal: role="dialog" aria-modal="true", focus
+ * About), the browser's back (main.js keeps a history entry while it is open; bus 'settings:toggle') and if the sheet leaves "full". Accessible modal: role="dialog" aria-modal="true", focus
  * moves to the heading, Tab is trapped inside, focus returns to the opener (the gear) on close.
  *
  * The DOM is created from JS and appended to #app, so on desktop it lives inside the scaled iPhone
@@ -14,6 +14,7 @@
  * Content is supplied by the caller (ui/views/settings.js): {render(state), mount(root, ctx), unmount(), refresh()}.
  */
 import { bindActions } from "./actions.js";
+import { bus } from "../core/events.js";
 
 /** Id of the overlay root element. */
 export const OVERLAY_ID = "settingsOverlay";
@@ -232,6 +233,7 @@ export function openSettingsOverlay(ctx, content, opts = {}) {
   sess.offs.push(() => clearInterval(timer));
 
   heading.focus({ preventScroll: true });
+  bus.emit("settings:toggle", { open: true });   // main.js: one history entry, so browser back closes Settings
   return el;
 }
 
@@ -265,5 +267,6 @@ export function closeSettingsOverlay(opts = {}) {
   clearTimeout(hideTimer);
   const hide = () => { if (sess) return; el.hidden = true; scrim.hidden = true; body.innerHTML = ""; };
   if (reducedMotion()) hide(); else hideTimer = setTimeout(hide, HIDE_MS);
+  bus.emit("settings:toggle", { open: false });
   return true;
 }
