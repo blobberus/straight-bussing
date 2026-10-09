@@ -24,7 +24,8 @@ import { createPlaceSearch, placeListHTML, setHTMLKeepFocus, focusNote } from ".
 import { effectiveHidden } from "../../core/visibility.js";
 import { alertBanner } from "./alerts.js";
 import { catchNote, stopWalkMin } from "./tripinfo.js";
-import { isPlanJourney, tripBarHTML } from "./journey.js";
+import { isPlanJourney } from "./journey.js";
+import { tripProgressHTML } from "./tripprogress.js";
 
 /** Favorites shown on Nearby (the rest are in My Routes). */
 export const FAV_MAX = 3;
@@ -196,12 +197,10 @@ function regionHTML(state, now) {
  * @param {object} state
  * @returns {string}
  */
-export function entryHTML(state) {
+export function entryHTML(state, now = nowS()) {
   const pick = '<button type="button" class="v-btn v-btn--secondary v-btn--block pt-pick" data-action="pick:open">Routes to station&hellip;</button>';
-  if (isPlanJourney(state)) {
-    return tripBarHTML(state) + '<div class="pt-top pt-tripact">'
-      + '<button type="button" class="v-btn v-btn--primary pt-steps" data-action="nav" data-view="directions">Trip steps</button>' + pick + "</div>";
-  }
+  // a started trip: the live Google-Maps-style progress timeline (ui/views/tripprogress.js)
+  if (isPlanJourney(state)) return tripProgressHTML(state, now, { actionsHTML: pick });
   return '<div class="pt-notrip"><span class="v-prim">No trip in progress</span>'
     + '<span class="v-sec">Search for a destination above, choose a route and tap Start.</span></div>'
     + `<div class="pt-top">${pick}</div>`;
@@ -220,7 +219,7 @@ export function renderNearby(state, now = nowS()) {
   const toggle = place
     ? '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="station">Search stations instead</button></div><p class="v-fine">Places near campus are searched on your device; otherwise only the text you type (or its spelling fix) is sent to photon.komoot.io.</p>'
     : '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="place">Type an address or place</button></div>';
-  return `<div class="v-nearby"><div data-region="nearby-alert">${alertBanner(state, now)}</div><div data-region="nearby-trip">${entryHTML(state)}</div><div data-region="nearby-loc">${locHTML(state)}</div>${search}${toggle}<div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
+  return `<div class="v-nearby"><div data-region="nearby-alert">${alertBanner(state, now)}</div><div data-region="nearby-trip">${entryHTML(state, now)}</div><div data-region="nearby-loc">${locHTML(state)}</div>${search}${toggle}<div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
 }
 
 /**
@@ -263,7 +262,7 @@ let lastLoc = null, lastAlert = null, lastTrip = null;
 function patchResults() {
   const al = rootRef?.querySelector?.('[data-region="nearby-alert"]'), ah = alertBanner(curState(), ctxRef?.now ? ctxRef.now() : nowS());
   if (al && ah !== lastAlert) { al.innerHTML = ah; lastAlert = ah; }
-  const tr = rootRef?.querySelector?.('[data-region="nearby-trip"]'), th = entryHTML(curState());
+  const tr = rootRef?.querySelector?.('[data-region="nearby-trip"]'), th = entryHTML(curState(), ctxRef?.now ? ctxRef.now() : nowS());
   if (tr && th !== lastTrip) { tr.innerHTML = th; lastTrip = th; }
   const loc = rootRef?.querySelector?.('[data-region="nearby-loc"]'), lh = locHTML(curState());
   if (loc && lh !== lastLoc) { loc.innerHTML = lh; lastLoc = lh; }
