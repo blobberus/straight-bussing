@@ -67,7 +67,7 @@ export function createStore(initial): { get(), set(patch), subscribe(fn)->off } 
   routeStops:{rid:[stopId,...]}  /* first==last means loop */, stopRoutes:{stopId:[rid]}, addresses:{stopId:{address}},
   staticLoaded:false,
   // live (data/live.js fills every 10 s)
-  buses:[{vehicle:{id,label}, position:{latitude,longitude,bearing,speed}, trip:{trip_id,route_id}, timestamp, stop_id, current_stop_sequence}],
+  buses:[{vehicle:{id,label}, position:{latitude,longitude,bearing,speed}, trip:{trip_id,route_id}, timestamp, stop_id, current_stop_sequence}],   // OPERATING vehicles only (core/operating.js, applied in data/live.js)
   trips:[{trip:{trip_id,route_id}, vehicle:{id,label}, stop_time_update:[{stop_id, arrival:{time}, departure:{time}}]}],
   alerts:[{header_text, description_text, active_period, informed_entity}],
   feedTs:0, lastOk:0, failed:false, liveLoaded:false,
@@ -96,6 +96,12 @@ export function searchPlaces(q, {signal}): Promise<{items:[{label, sub, lat, lon
 `sw.js`: network-first for same-origin GET with `cache:'no-cache'`, cache only `r.ok && r.status===200`, never cache cross-origin; precache index.html + css + js/main.js + manifest + icons; cache name constant `sb-v2-<n>`; serve offline fallback. Also keep the daily GTFS refresh workflow `pages.yml` working (it copies `web/`).
 
 ## Core logic (A)
+```js
+// core/operating.js (2026-10-08): owner rule "a bus that is not operating is not displayed" (map, route station list, counts, alerts, planner)
+export const STALE_S = 300
+export function isOperating(bus, {routes, service, trips, feedTs, nowS, staticLoaded}): boolean   // fresh (<= 5 min older than the FEED), known route, and route scheduled now OR trip has a live prediction >= now-60
+export function operatingBuses(buses, ctx): bus[]   // data/live.js filters store.buses with it (opts.now injectable for tests)
+```
 ```js
 // core/arrivals.js  (pure, takes state slices)
 export function arrivalsFor({trips}, stopId, {routeId, hidden=[], nowS}): [{rid, t, bus, tripId}]   // sorted, t > now-30
@@ -248,7 +254,7 @@ isScheduledNow(service, rid, unixS): boolean|null
 | MAP | map/*.js (incl. map/favorites.js), css/map.css, tests/map-* |
 | ROUTE | tools/build_gtfs.py, web/data/service.json, data/static.js, core/schedule.js, ui/views/route.js, css/route.css, tests/data-static.js, tests/route-* + route.test.html |
 | ROUTES | ui/views/routes.js, css/routes.css, tests/routes-* + routes.test.html |
-| MYROUTES | ui/views/myroutes.js, ui/views/stop.js, css/myroutes.css, tests/myroutes-* + myroutes.test.html |
+| MYROUTES | ui/views/myroutes.js, ui/views/myroutes-swipe.js (swipe-left action tray: Details / Edit / Delete; a full swipe never runs an action), ui/views/stop.js, css/myroutes.css, tests/myroutes-* + myroutes.test.html |
 | JOURNEY | ui/views/directions.js, ui/views/pick.js, ui/views/nearby.js, ui/views/tripinfo.js (trip-timing helpers, not a view), css/journey.css, tests/journey-* + journey.test.html |
 | MONITOR | monitoring.md, tools/monitor.py |
 | lead | state.js, core/visibility.js, core/custom.js, sw.js, docs/ARCHITECTURE.md, css/views.css (frozen: override in your own css file) |
@@ -265,3 +271,9 @@ liveStatus(state, nowS): {title, minutes, nextStop, stopsAway}|null   // what a 
 Web: `ui/notifier.js` (SETTINGS) watches the store while the page is open and shows in-app banners (bus 'toast') and, if the user granted it, a browser Notification; it never claims to work in the background. Settings is a modal overlay (`ui/settings-overlay.js`, SETTINGS) opened and toggled by the top-right gear (action `settings:open`): it lifts the sheet to "full" and covers the WHOLE sheet (grab, title, tabs: owner wants nothing of Plan Trip to look like part of Settings), a scrim (`.sto-scrim`) dims what is still visible behind it and closes Settings on tap, the sheet header and content are inert; "Done" top right; also covers the bottom navigation (`#tabs` inert, `navBottom` in `overlayBox`); closes on Escape / navigation / the sheet leaving full, traps focus and restores the previous detent. View id `settings` is a compatibility shim only.
 | SETTINGS | ui/views/settings.js, ui/settings-overlay.js, ui/notifier.js, core/notify.js, css/settings.css, tests/settings-* + settings.test.html |
 | IPHONE | `conversion to appstore.md`, docs/IOS.md, docs/APPSTORE.md |
+
+### Custom routes interaction (2026-10-08)
+Tap a custom route row = show it on the map / stop showing (`mr:toggle`, no navigation). Swipe left (or the row's "More" button,
+`mr:swipe`) = action tray Details (`mr:details`, no apply) / Edit / Delete. Every delete goes through `ui/confirm.js`
+`confirmDialog({title, body, confirmLabel, danger})` -> Promise<boolean> (native `<dialog role="alertdialog">`, Cancel focused,
+Escape / backdrop cancel; settles from the button itself, not the async close event).
