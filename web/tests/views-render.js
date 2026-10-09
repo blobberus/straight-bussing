@@ -6,7 +6,7 @@ import { runAction } from "../js/ui/actions.js";
 import { renderNearby, resultsHTML, metaNearby, N, guidedRow, pickArrivals } from "../js/ui/views/nearby.js";
 import { catchNote, stopWalkMin } from "../js/ui/views/tripinfo.js";
 import { rootOf } from "../js/ui/router.js";
-import { renderStop } from "../js/ui/views/stop.js";
+import { renderStop, openStop } from "../js/ui/views/stop.js";
 import { renderRoutes, groupRoutes } from "../js/ui/views/routes.js";
 import { renderRoute, stopOrder } from "../js/ui/views/route.js";
 import { renderAlerts } from "../js/ui/views/alerts.js";
@@ -233,4 +233,19 @@ test("about: unofficial, official contact, privacy hosts, version, theme control
   mountAbout(el, makeCtx());
   ok(el.querySelector('[data-region="theme"]').childElementCount > 0, "theme control mounted");
   el.remove();
+});
+
+test("map view: opening a stop selects it without moving the map; choosing a route frames it (owner 2026-10-09)", () => {
+  const ctx = makeCtx();
+  let sel = null;
+  ctx.map.setSelectedStop = (st) => { sel = st; };
+  openStop("S1", ctx);
+  eq(ctx.store.get().view, "stop");
+  eq(sel && sel.id, "S1", "stop selected on the map");
+  eq(ctx.calls.flyTo.length + ctx.calls.fitTo.length, 0, "no fly / fit for a stop");
+  runAction("stop:open", { id: "S1" }, null, ctx);
+  eq(ctx.calls.flyTo.length + ctx.calls.fitTo.length, 0, "stop:open action: no camera move");
+  runAction("route:open", { id: "R1" }, null, ctx);
+  eq(ctx.store.get().view, "route");
+  eq(ctx.calls.fitTo.length, 1, "choosing a route frames it");
 });

@@ -90,7 +90,7 @@ export function renderStop(state, now = nowS()) {
 }
 
 /**
- * Open a stop: navigate, select it on the map and fly there.
+ * Open a stop: navigate and select it on the map. The map view stays put (only choosing a route moves it).
  * @param {string} id
  * @param {object} ctx
  */
@@ -98,7 +98,7 @@ export function openStop(id, ctx) {
   const st = ctx?.store?.get?.().stops?.[id];
   if (!st) return;
   ctx.navigate("stop", { stopId: id });
-  try { ctx.map?.setSelectedStop?.({ id, lat: st.lat, lon: st.lon }); ctx.map?.flyTo?.({ lat: st.lat, lon: st.lon }, 16); } catch (e) { /* map optional */ }
+  try { ctx.map?.setSelectedStop?.({ id, lat: st.lat, lon: st.lon }); } catch (e) { /* map optional */ }
 }
 
 registerView("stop", {

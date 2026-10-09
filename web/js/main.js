@@ -316,15 +316,15 @@ function registerCoreActions() {
   registerAction("retry", () => (live ? live.pollNow() : undefined), fb);
   registerAction("detent", (ds) => sheet.setDetent(ds.id), fb);
 }
-/* Open a stop / route and frame it on the map (the sheet goes to the view's detent). */
+/* Open a stop / route (the sheet goes to the view's detent). Only choosing a route frames the map: stop and
+   bus taps keep the user's map view (owner request 2026-10-09). */
 function openStop(id) {
-  const st = id && store.get().stops[id];
-  if (st && navigate("stop", { stopId: String(id) })) mapCall("flyTo", { lat: st.lat, lon: st.lon }, 16);
+  if (id && store.get().stops[id]) navigate("stop", { stopId: String(id) });
 }
-function openRoute(rid) {
+function openRoute(rid, fit = true) {
   const s = store.get();
   if (!rid || !s.routes[rid] || !navigate("route", { routeId: String(rid) })) return;
-  const pts = (s.shapes[rid] || []).flat();
+  const pts = fit ? (s.shapes[rid] || []).flat() : [];
   if (pts.length) mapCall("fitTo", pts, { maxZoom: 16 });
 }
 
@@ -358,7 +358,7 @@ async function boot() {
     if (def && typeof def.onStopTap === "function" && safe(() => def.onStopTap(String(id), ctx), false)) return;
     openStop(id);
   });
-  mapCall("onBusTap", (x) => openRoute(x && typeof x === "object" ? x.rid || x.routeId || (x.trip && x.trip.route_id) : x));
+  mapCall("onBusTap", (x) => openRoute(x && typeof x === "object" ? x.rid || x.routeId || (x.trip && x.trip.route_id) : x, false));
   mapCall("onMapTap", () => { if (!sheet.isPanel() && sheet.getDetent() !== "peek") sheet.setDetent("peek"); });   // tap outside the sheet: back to the map
   onThemeChange((d) => { mapCall("setTheme", d); syncMap(store.get(), null); });
 

@@ -360,13 +360,34 @@ test("tap outside the sheet: empty map collapses it to peek; stops and buses sti
   ok(det() !== "peek", "sheet open before the tap: " + det());
   tapMap();
   await waitFor(() => det() === "peek" || null, "collapsed to peek after a tap on empty map");
-  const halo = $("#map .sb-halo");
-  if (halo) {
+  // stop / bus taps keep the map view (owner 2026-10-09): no camera call, and the camera stays put
+  const halo = $("#map .sb-halo"), lm = SB.map, moves = [];
+  const cam = () => [lm.getCenter().lat.toFixed(7), lm.getCenter().lng.toFixed(7), lm.getZoom()].join();
+  const still = async () => { for (let i = 0; i < 100 && lm.__moving; i++) await sleep(100); await sleep(100); return cam(); };
+  if (lm) for (const k of ["flyTo", "flyToBounds", "fitBounds", "setView"]) { const f = lm[k].bind(lm); lm[k] = (...a) => { moves.push(k); return f(...a); }; }
+  if (halo && lm) {
+    const before = await still();   // let any earlier glide finish first (virtual time slows Leaflet animations)
+    moves.length = 0;
     halo.dispatchEvent(new W.MouseEvent("click", { bubbles: true, cancelable: true }));
     await waitFor(() => state().view === "stop" || null, "a stop tap still opens the stop");
     ok(det() !== "peek", "the stop tap did not collapse the sheet");
+    eq(moves, [], "a stop tap moves no camera");
+    eq(await still(), before, "a stop tap keeps the map view");
     click($("#back"), "back");
     await waitFor(() => state().view === "nearby", "back to Current trip");
+  }
+  const bus = $("#map .sb-busicon");
+  if (bus && lm) {
+    const before = await still();
+    moves.length = 0;
+    bus.dispatchEvent(new W.MouseEvent("click", { bubbles: true, cancelable: true }));
+    await waitFor(() => state().view === "route" || null, "a bus tap opens its route");
+    eq(moves, [], "a bus tap moves no camera");
+    eq(await still(), before, "a bus tap keeps the map view");
+    click($("#back"), "back");
+    await waitFor(() => state().view !== "route" || null, "back from the route");
+    tab("nearby");
+    await waitFor(() => state().view === "nearby" || null, "back to Current trip");
   }
 });
 

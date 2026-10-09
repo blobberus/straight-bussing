@@ -169,8 +169,8 @@ final class AppModel {
         paths[tab, default: []].append(p)
         switch p {
         case .directions, .about, .editCustom: detent = .full
-        case .route(let rid): detent = .half; fitRoute(rid)
-        case .stop(let id): if detent == .peek { detent = .half }; flyTo(staticData.stops[id]?.coord)
+        case .route(let rid): detent = .half; fitRoute(rid)   // only choosing a route moves the map (web main.js openRoute)
+        case .stop: if detent == .peek { detent = .half }     // stop taps keep the user's map view
         case .customRoute: detent = .half
         }
         syncMapFocus()

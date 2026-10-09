@@ -25,3 +25,9 @@ dirDeps.walkRoute = async (from, to) => {
 };
 
 window.__sb = { store, placeDeps, dirDeps };
+// the app's Leaflet map (runs before js/main.js creates it): camera checks (stop / bus taps keep the view)
+window.L?.Map?.addInitHook(function () {
+  window.__sb.map = this;
+  this.__moving = false;   // true from movestart to moveend (glides crawl under virtual time)
+  this.on('movestart', () => { this.__moving = true; }).on('moveend', () => { this.__moving = false; });
+});
