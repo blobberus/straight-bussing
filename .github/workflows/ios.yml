@@ -6,7 +6,9 @@ on:
     paths: ["ios/**", "web/data/**", ".github/workflows/ios.yml"]
   workflow_dispatch:
 permissions: { contents: read }
-concurrency: { group: ios-${{ github.ref }}, cancel-in-progress: true }
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   kit:
