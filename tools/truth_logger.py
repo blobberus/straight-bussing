@@ -37,6 +37,20 @@ def reports(feed):
                "q": v.get("current_stop_sequence"), "stop_id": v.get("stop_id"), "vt": v.get("timestamp")}
 
 
+def feed_summary(feed):
+    """Vehicles in a vehiclePositions feed: with a position, on a trip, reported in the last 5 min (feed clock).
+    Logged with each status line so a quiet night can be told apart from a detector problem."""
+    ents = [e.get("vehicle") or {} for e in feed.get("entity", [])]
+    pos = [v for v in ents if "latitude" in (v.get("position") or {})]
+    head = (feed.get("header") or {}).get("timestamp") or 0
+    try:
+        head = int(head)
+    except (TypeError, ValueError):
+        head = 0
+    fresh = [v for v in pos if head and head - int(v.get("timestamp") or 0) <= 300]
+    return {"veh": len(pos), "trip": sum(1 for v in pos if (v.get("trip") or {}).get("trip_id")), "fresh": len(fresh)}
+
+
 def store_predictions(tr, feed, now):
     for e in feed.get("entity", []):
         u = e.get("trip_update") or {}
@@ -103,7 +117,7 @@ def main():
     tr, w = Tracker(st), Writer(a.out, st)
     tr.seed(L.read_tail(a.seed or a.out), int(time.time()))
     end = time.time() + a.duration if a.duration else None
-    polls = 0
+    polls, summary = 0, {}
     try:
         while True:
             t0 = time.time()
@@ -118,12 +132,14 @@ def main():
                     fn(feed)
                 else:
                     ev = []
+                    summary = feed_summary(feed)
                     for rep in reports(feed):
                         ev += tr.update(rep, now)
                     w.write(ev + tr.drain(now))
             polls += 1
             if polls % 6 == 0:
-                print(f"{datetime.now():%H:%M:%S} polls={polls} rows={w.n}", flush=True)
+                feed_txt = " ".join(f"{k}={v}" for k, v in summary.items())
+                print(f"{datetime.now():%H:%M:%S} polls={polls} rows={w.n} {feed_txt}".rstrip(), flush=True)
             if a.once or (end and time.time() + a.interval > end):
                 break
             time.sleep(max(0.5, a.interval - (time.time() - t0)))
