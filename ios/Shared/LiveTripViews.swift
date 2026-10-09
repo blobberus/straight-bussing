@@ -116,7 +116,7 @@ struct LiveTripLockScreenView: View {
                 Text("Unofficial")
             }
             .font(.caption2)
-            .foregroundStyle(isStale ? .orange : .secondary)
+            .foregroundStyle(isStale ? Color.orange : Color.secondary)
         }
         .opacity(isStale ? 0.75 : 1)
     }

@@ -77,19 +77,21 @@ struct MapScreen: View {
                     StopDot(isFav: model.isFav(s.id)) { model.push(.stop(s.id)) }
                         .accessibilityLabel("Stop \(s.name)")
                 }
+                .annotationTitles(.hidden)
             }
             ForEach(buses, id: \.vehicle.id) { b in
                 Annotation(b.displayLabel, coordinate: b.coord.cl, anchor: .center) {
                     BusMarker(route: model.route(b.trip.routeId ?? ""), bearing: b.bearing,
                               stale: b.timestamp > 0 && model.now - b.timestamp > 60)
                 }
+                .annotationTitles(.hidden)
             }
             if let u = model.user {
                 Annotation("My location", coordinate: u.cl, anchor: .center) { UserDot() }
+                    .annotationTitles(.hidden)
             }
         }
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
-        .annotationTitles(.hidden)
         .mapControls { MapCompass() }
         .safeAreaPadding(.bottom, bottomInset)
         .accessibilityLabel("Shuttle map")

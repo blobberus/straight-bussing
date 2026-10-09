@@ -11,6 +11,8 @@ extension AppModel {
             staticData = loaded.data
             staticFailed = loaded.failed
             places = StaticLoader.loadPlaces(from: dir)
+        } else {
+            staticFailed = ["data (bundle folder missing)"]
         }
         predictor = SchedulePredictor(segments: staticData.segments, routeStops: staticData.routeStops)
         loadPrefs()
@@ -35,7 +37,7 @@ extension AppModel {
     // MARK: Polling
 
     func resumePolling() {
-        guard pollTask == nil else { return }
+        guard pollTask == nil, !staticData.isEmpty || !staticFailed.isEmpty else { return }   // after start()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
