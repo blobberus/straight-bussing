@@ -30,3 +30,11 @@ test("self-update: reloads in the background, but not while a trip is in progres
     store.set({ journey: prevJourney });
   }
 });
+
+test("boot: stops, routes and the live feed start loading before the view modules are awaited (QA 2026-10-09)", async () => {
+  // main.js used to fetch data only after ALL ten view modules (Directions, Settings, My Routes, ...) had
+  // downloaded, so on a slow phone network the next bus showed seconds later than needed.
+  const src = await fetch("../js/main.js").then((r) => r.text());
+  const views = src.indexOf("await Promise.allSettled(VIEW_IDS"), stat = src.indexOf("loadStatic(store)"), live = src.indexOf("startLive(store");
+  eq([views > 0, stat > 0 && stat < views, live > 0 && live < views], [true, true, true]);
+});

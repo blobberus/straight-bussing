@@ -362,6 +362,9 @@ async function boot() {
   mapCall("onMapTap", () => { if (!sheet.isPanel() && sheet.getDetent() !== "peek") sheet.setDetent("peek"); });   // tap outside the sheet: back to the map
   onThemeChange((d) => { mapCall("setTheme", d); syncMap(store.get(), null); });
 
+  // data first: stops, routes and the live feed load while the view modules download (slow 4G: next bus ~3 s sooner)
+  loadStatic(store).catch((e) => { console.error("static data", e); toast("Couldn't load stops and routes. Check your connection."); });
+  live = startLive(store, { intervalMs: 10000 });
   const results = await Promise.allSettled(VIEW_IDS.map((v) => import(`./ui/views/${v}.js`)));
   results.forEach((r, i) => r.status === "rejected" && (OPTIONAL_VIEWS.has(VIEW_IDS[i]) ? console.warn : console.error)("view " + VIEW_IDS[i] + " failed to load", r.reason));
   registerCoreActions();
@@ -372,9 +375,6 @@ async function boot() {
   render();
   syncMap(store.get(), null);
   import("./ui/notifier.js").then((m) => m.startNotifier?.(store, { toast })).catch(() => {});   // bus-near alerts while the page is open
-
-  loadStatic(store).catch((e) => { console.error("static data", e); toast("Couldn't load stops and routes. Check your connection."); });
-  live = startLive(store, { intervalMs: 10000 });
 
   setInterval(() => {
     if (document.hidden) return;
