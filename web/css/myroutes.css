@@ -35,8 +35,9 @@
 .mr-hl { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 12px; border: 1px solid var(--hairline-strong); border-radius: 999px; background: none; color: var(--accent); font: inherit; font-size: var(--fs-cap); font-weight: 650; cursor: pointer; position: relative; }
 .mr-hl::after { content: ""; position: absolute; inset: -4px 0; } /* 44px tap target */
 .mr-hl.is-on { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
-.mr-hltick { flex: none; display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--accent); color: transparent; }
-.mr-hltick .ic { width: 11px; height: 11px; stroke-width: 3; }
+.mr-hltick { flex: none; display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); }
+.mr-hltick .ic { width: 11px; height: 11px; stroke-width: 3; opacity: 0; }
+.mr-hl.is-on .mr-hltick .ic { opacity: 1; }
 .mr-hl.is-on .mr-hltick { box-shadow: none; background: var(--on-accent); color: var(--accent-fill); }   /* same size on / off: no shift */
 .mr-confirm { flex-wrap: wrap; }
 
@@ -83,8 +84,9 @@
 .mr-crow:active { background: var(--surface-press); }
 .mr-swipe.is-drag .mr-crow:active { background: none; }
 .mr-crow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; }
-.mr-tick { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--hairline-strong); color: transparent; }
-.mr-tick .ic { width: 14px; height: 14px; stroke-width: 3; }
+.mr-tick { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--hairline-strong); color: var(--text); }
+.mr-tick .ic { width: 14px; height: 14px; stroke-width: 3; opacity: 0; }   /* opacity, not color: forced colors repaint a transparent check */
+.mr-crow.is-on .mr-tick .ic { opacity: 1; }
 .mr-crow.is-on .mr-tick { background: var(--accent-fill); box-shadow: none; color: var(--on-accent); }
 .mr-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .mr-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 590; color: var(--text); }

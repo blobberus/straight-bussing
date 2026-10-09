@@ -48,3 +48,21 @@ test("contrast: small status text and est. tags are >= 4.5:1 in light and dark (
   f.remove();
   ok(!bad.length, bad.join("; "));
 });
+
+test("high contrast / forced colors: on-off state of check circles and segments stays visible (QA 2026-10-09)", async () => {
+  // prefers-contrast: more sets --hairline-strong to currentColor, so a check circle colored `transparent` lost its
+  // ring; forced colors repaint a `transparent` check, so OFF rows showed a check. Off checks now hide by opacity.
+  const f = await frame(), win = f.contentWindow, doc = f.contentDocument;
+  const link = doc.createElement("link"); link.rel = "stylesheet"; link.href = "../css/myroutes.css";
+  await new Promise((r) => { link.onload = r; link.onerror = r; doc.head.appendChild(link); });
+  doc.body.insertAdjacentHTML("beforeend", '<button class="mr-crow"><span class="mr-tick"><svg class="ic"></svg></span></button><button class="mr-crow is-on"><span class="mr-tick"><svg class="ic"></svg></span></button>'
+    + '<button class="mr-hl"><span class="mr-hltick"><svg class="ic"></svg></span></button><button class="mr-hl is-on"><span class="mr-hltick"><svg class="ic"></svg></span></button>');
+  const [offT, onT] = doc.querySelectorAll(".mr-tick"), [offH, onH] = doc.querySelectorAll(".mr-hltick"), cs = (e) => win.getComputedStyle(e);
+  ok(rgba(cs(offT).color).a > 0, "off circle keeps a real color (its ring is currentColor in high contrast)");
+  ok(cs(offT.querySelector(".ic")).opacity === "0" && cs(onT.querySelector(".ic")).opacity === "1", "check hidden by opacity when off");
+  ok(cs(offH.querySelector(".ic")).opacity === "0" && cs(onH.querySelector(".ic")).opacity === "1", "highlight tick hidden by opacity when off");
+  f.remove();
+  const comp = await fetch("../css/components.css").then((r) => r.text());
+  const forced = comp.slice(comp.indexOf("@media (forced-colors: active)"));
+  ok(/\.themeseg button\[aria-checked="true"\][^{]*\{[^}]*Highlight/.test(forced), "selected theme segment marked with Highlight in forced colors");
+});

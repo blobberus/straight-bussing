@@ -173,7 +173,10 @@ input::placeholder { color: var(--text-2); opacity: 1; }
 @media (min-width: 768px) and (max-height: 559px) { .scrim { align-items: center; } }
 
 @media (forced-colors: active) {
-  .chip, .card, .cta, .seg button, .badge, .pill, .est { border: 1px solid CanvasText; }
+  .chip, .card, .cta, .seg button, .themeseg button, .badge, .pill, .est { border: 1px solid CanvasText; }
+  /* the selected segment is a fill + shadow normally, which forced colors flatten: mark it with Highlight */
+  .seg button.on, .seg button[aria-current="page"], .seg button[aria-pressed="true"],
+  .themeseg button.on, .themeseg button[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; border-color: Highlight; }
   .dot-live, .dot-off { forced-color-adjust: none; }
 }
 @media (prefers-contrast: more) {
