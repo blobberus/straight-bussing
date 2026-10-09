@@ -65,7 +65,8 @@ public struct TripProgress: Hashable, Sendable {
     public var detail: String
     public var now: Double
 
-    public static let maxApproach = 4
+    /// Stops listed before the boarding stop while the bus is still coming (web core/tripprogress.js TRIP.BEFORE).
+    public static let maxApproach = 3
 
     public var segments: [BusSegment] { steps.compactMap { if case .bus(let s) = $0 { return s } else { return nil } } }
     /// The segment the rider is on or waiting for (nil on walk-only trips).

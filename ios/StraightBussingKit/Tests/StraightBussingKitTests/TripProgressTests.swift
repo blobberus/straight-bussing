@@ -110,8 +110,8 @@ final class TripProgressTests: XCTestCase, PlannerFixture {
         var l = LiveState(); l.buses = data.buses; l.trips = data.trips; l.lastOk = T; l.feedTs = T
         let seg = try XCTUnwrap(TripProgress.compute(option: o, staticData: S2, live: l, now: T).currentSegment)
         XCTAssertEqual(seg.stopsAway, 5)
-        XCTAssertEqual(seg.hiddenBefore, 1)
-        XCTAssertEqual(seg.rows.prefix(4).map(\.stopId), ["S2", "S3", "S4", "S5"])
+        XCTAssertEqual(seg.hiddenBefore, 2)
+        XCTAssertEqual(seg.rows.prefix(4).map(\.stopId), ["S3", "S4", "S5", "S6"], "3 approach stops (web TRIP.BEFORE), then the boarding stop")
         XCTAssertEqual(seg.busRow, 0)
         XCTAssertEqual(seg.busFrac, 0)
     }

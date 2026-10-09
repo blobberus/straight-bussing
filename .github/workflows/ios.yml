@@ -61,7 +61,7 @@ jobs:
           xcodebuild -version
       - name: Generate Xcode project (XcodeGen) and app icon
         working-directory: ios
-        run: scripts/bootstrap.sh
+        run: bash scripts/bootstrap.sh
       - name: Pick simulator
         id: sim
         run: |
