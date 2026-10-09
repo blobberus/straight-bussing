@@ -37,6 +37,7 @@ export const TRIP = Object.freeze({
   BUS_STALE_S: 60,   // a vehicle report older than this is labeled with its age
   GRACE_S: 60,       // a planned time counts as passed this long after it is due
   LATE_DONE_S: 900,  // planned trip gone this long after its planned arrival -> that ride is over
+  STOP_S: 90,        // rough seconds per stop when the plan has no ride time (only to skip buses you cannot reach)
 });
 
 const num = (x) => (typeof x === "number" && isFinite(x) ? x : null);
@@ -106,12 +107,16 @@ function locate(W, w, nextId, preferBehind) {
   return { idx: w.length, beyond: fromLast };
 }
 
-/** Vehicle record for a bus along the window w (null when it is not on this route). */
-function vehicleAt(S, W, w, bus, how, now, preferBehind) {
-  const tu = tripUpdate(S.trips, bus.trip && bus.trip.trip_id, bus.vehicle && bus.vehicle.id);
+/**
+ * Vehicle record for a bus along the window w (null when it is not on this route). tuFor: the trip update
+ * whose predictions to use (the trip you will ride; a vehicle can still be finishing an earlier trip),
+ * default the vehicle's current trip. The position always comes from the vehicle's current trip.
+ */
+function vehicleAt(S, W, w, bus, how, now, preferBehind, tuFor) {
+  const cur = tripUpdate(S.trips, bus.trip && bus.trip.trip_id, bus.vehicle && bus.vehicle.id), tu = tuFor || cur;
   let nextId = bus.stop_id != null ? String(bus.stop_id) : null;
   if (!nextId || !W.order.includes(nextId)) {
-    const up = ((tu && tu.stop_time_update) || []).filter((u) => timeOf(u) > now - 30).sort((a, b) => timeOf(a) - timeOf(b))[0];
+    const up = (((cur || tu) && (cur || tu).stop_time_update) || []).filter((u) => timeOf(u) > now - 30).sort((a, b) => timeOf(a) - timeOf(b))[0];
     nextId = up && up.stop_id != null ? String(up.stop_id) : null;
   }
   const loc = nextId ? locate(W, w, nextId, preferBehind) : null;
@@ -182,15 +187,23 @@ function evalBus(l, S, now, ctx) {
 
   // vehicle choice
   let V = null;
-  const place = (bus, how, behind) => (W && bus && bus.position ? vehicleAt(S, W, w, bus, how, now, behind) : null);
+  const place = (bus, how, behind, tu) => (W && bus && bus.position ? vehicleAt(S, W, w, bus, how, now, behind, tu) : null);
   const routeBuses = (S.buses || []).filter((b) => same(b && b.trip && b.trip.route_id, rid));
+  // Still walking to the boarding stop: a "next" bus that passes it before you can get there is not your
+  // bus (it would say "1 stop away" while you are 15 min out). reachT = when you get there (estimate).
+  const walking = ctx.active && !!ctx.prevWalk && !(nearBoard != null && nearBoard <= TRIP.AT_USER_M)
+    && !(nearBoard == null && ctx.walkStart != null && now >= ctx.walkStart + (Number(ctx.prevWalk.min) || 0) * 60);
+  const reachT = !walking ? now : now + 60 * (nearBoard != null ? walkMinM(nearBoard)
+    : ctx.walkStart != null ? Math.max(0, (ctx.walkStart - now) / 60 + (Number(ctx.prevWalk.min) || 0)) : Number(ctx.prevWalk.min) || 0);
+  // seconds per stop, only to judge whether a bus WITHOUT a prediction gets there first (never displayed)
+  const perStopS = rideS != null && W ? rideS / Math.max(1, W.path.length - 1) : TRIP.STOP_S;
   const approaching = (skip) => {
-    const minT = ctx.active ? now - 30 : ctx.readyT - 15;
+    const minT = ctx.active ? Math.max(now - 30, reachT - TRIP.GRACE_S) : ctx.readyT - 15;
     for (const a of arrivalsFor(S, bId, { routeId: rid, nowS: now })) {
       if (a.t < minT) continue;
       const b = busForTrip(S, rid, a.tripId);
       if (!b || (skip && same(b.vehicle && b.vehicle.id, skip))) continue;
-      const v = place(b, "next", true);
+      const v = place(b, "next", true, tripUpdate(S.trips, a.tripId, null));   // that arrival's trip (may be the vehicle's next one)
       if (v && v.idx <= bpos) return v;
     }
     let best = null;
@@ -199,6 +212,7 @@ function evalBus(l, S, now, ctx) {
       const v = place(b, "next", true);
       if (!v || v.idx > bpos) continue;
       const away = v.idx < 0 ? v.behind + bpos : bpos - v.idx;
+      if (walking && now + away * perStopS < reachT - TRIP.GRACE_S) continue;   // gone before you get there
       if (!best || away < best.away) best = { v, away };
     }
     return best ? best.v : null;
@@ -207,10 +221,15 @@ function evalBus(l, S, now, ctx) {
   const nearAlight = userTo(S, aId);
   const planned = busForTrip(S, rid, l.tripId);
   if (planned) {
-    // coming to the boarding stop = its trip still predicts it there and you are not past the planned boarding
-    const tu = tripUpdate(S.trips, planned.trip && planned.trip.trip_id, planned.vehicle && planned.vehicle.id);
-    const coming = !!tu && (tu.stop_time_update || []).some((u) => String(u.stop_id) === bId && timeOf(u) > now - 30);
-    V = place(planned, "trip", coming && !(ctx.active && pB != null && now > pB + TRIP.GRACE_S && !stillAtBoard));
+    // The vehicle may still be finishing an EARLIER trip (your trip is its next one, found via the trip
+    // update's vehicle): then it has not started your trip yet, so it is coming (never "past your stop"),
+    // and the predictions are those of YOUR trip, not of the one it is on now.
+    const onPlanned = same(planned.trip && planned.trip.trip_id, l.tripId);
+    const tu = tripUpdate(S.trips, l.tripId, onPlanned && planned.vehicle ? planned.vehicle.id : null);
+    // coming to the boarding stop = your trip still predicts it there and you are not past the planned boarding
+    const coming = !onPlanned || (!!tu && (tu.stop_time_update || []).some((u) => String(u.stop_id) === bId && timeOf(u) > now - 30));
+    V = place(planned, "trip", coming && (!onPlanned || !(ctx.active && pB != null && now > pB + TRIP.GRACE_S && !stillAtBoard)), tu);
+    if (V && !onPlanned && V.idx > bpos) V = null;   // line route: where it is on its earlier trip says nothing about yours
   }
   // the planned trip is gone: long past its planned arrival, or you are at the alighting stop -> leg done
   const lateDone = ctx.active && !stillAtBoard && ((nearAlight != null && nearAlight <= TRIP.AT_USER_M)

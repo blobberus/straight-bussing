@@ -105,6 +105,42 @@ test("no trip id: follows the next OPERATING bus arriving at the boarding stop (
   eq([n.vehicle.label, n.vehicle.how, n.stopsAway, n.boardEta], ["7", "next", 1, null], "no predictions: nearest bus before the stop, no invented time");
 });
 
+test("walking to the stop: a bus that passes it before you can get there is not followed (QA 2026-10-09)", () => {
+  // you are ~1.2 km (about 18 min) from the boarding stop A4; the planned bus is a schedule estimate in 25 min
+  const far = { lat: stops.A4.lat - 0.0108, lon: stops.A4.lon };
+  const j = journeyR({ t0: NOW - 30, tripId: null, boardT: NOW + 1500, alightT: NOW + 1800, walk: 18 });
+  // no predictions at all: the bus 1 stop away would be gone long before you arrive
+  const s = baseState({ journey: j, user: far, buses: [bus("v7", "7", "R", "t7", "A2", "A3", 0.5)], trips: [] });
+  let b = busLeg(prog(s));
+  eq(prog(s).phase, "walk-to-stop");
+  eq([b.vehicle, b.byTime, b.boardEta, b.boardLive], [null, true, NOW + 1500, false], "the plan's (estimated) time, not a bus you cannot reach");
+  // live predictions: skip the one arriving in 2 min, follow the one you can catch
+  s.buses = [bus("v7", "7", "R", "t7", "A2", "A3", 0.5), bus("v8", "8", "R", "t8", "A0", "A1", 0.2)];
+  s.trips = [trip("t7", "R", "v7", "7", [["A3", 40], ["A4", 120]]), trip("t8", "R", "v8", "8", [["A1", 700], ["A4", 1300], ["A7", 1700]])];
+  b = busLeg(prog(s));
+  eq([b.vehicle.label, b.boardEta, b.boardLive], ["8", NOW + 1300, true]);
+  eq(b.canCatch, true, "the followed bus is catchable on foot");
+  // at the stop you can take the bus that is 1 stop away (unchanged)
+  const at = busLeg(prog({ ...s, user: { lat: stops.A4.lat, lon: stops.A4.lon } }));
+  eq(at.vehicle.label, "7");
+});
+
+test("planned trip is the vehicle's NEXT trip: it is coming, not 'past your stop' (no instant 'arrived', QA 2026-10-09)", () => {
+  // loop L = A0..A8 -> A0; you ride A4 -> A6 on trip next1; vehicle v9 is still on trip prev1, heading to A7
+  const L = ["A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A0"];
+  const j = { kind: "plan", rids: ["L"], label: "To X", to: "X", t0: NOW - 30, legs: [
+    { type: "walk", min: 1, toName: "Ratner Center" },
+    { type: "bus", rid: "L", board: { id: "A4", name: "Ratner Center" }, alight: { id: "A6", name: "59th & Ellis" }, tripId: "next1", boardT: NOW + 500, alightT: NOW + 620, source: "live", waitLive: true },
+    { type: "walk", min: 2, toName: "X" }] };
+  const s = baseState({ journey: j, routes: { ...baseState().routes, L: { short: "L", long: "Loop", color: "#0A84FF" } }, routeStops: { ...baseState().routeStops, L },
+    user: { lat: stops.A4.lat, lon: stops.A4.lon }, buses: [bus("v9", "9", "L", "prev1", "A6", "A7", 0.5)],
+    trips: [trip("prev1", "L", "v9", "9", [["A7", 30], ["A8", 90]]), trip("next1", "L", "v9", "9", [["A0", 200], ["A1", 260], ["A2", 330], ["A3", 400], ["A4", 500], ["A5", 560], ["A6", 620]])] });
+  const p = prog(s), b = busLeg(p);
+  eq(p.phase, "waiting", "not arrived the moment the trip starts");
+  eq([b.vehicle.label, b.vehicle.how, b.vehicle.idx], ["9", "trip", -1], "coming round the loop");
+  eq([b.boardEta, b.boardLive, b.alightEta], [NOW + 500, true, NOW + 620], "ETAs from YOUR trip's predictions");
+});
+
 test("missed: you are still at the stop after the planned bus left -> next bus followed", () => {
   const p = prog(scene("missed")), b = busLeg(p);
   eq(p.phase, "waiting"); eq(b.missed, true);
