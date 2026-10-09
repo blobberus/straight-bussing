@@ -141,14 +141,14 @@ extension AppModel {
         guard n.count >= 2 else { return out }
         let stops = staticData.stops.values.filter { PlaceIndex.norm($0.name).contains(n) }.sorted { $0.name < $1.name }.prefix(4)
         out += stops.map { Endpoint(label: $0.name, coord: $0.coord, stopId: $0.id) }
-        out += (places?.search(q) ?? []).map { Endpoint(label: $0.label, coord: $0.coord) }
+        out += (places?.search(q) ?? []).map { Endpoint(label: $0.label, coord: $0.coord, sub: $0.sub) }
         return out
     }
 
     func placeSubtitle(_ e: Endpoint) -> String {
         if e.isMe { return "Current location" }
         if let id = e.stopId { return "Shuttle stop" + (staticData.addresses[id].map { " · " + $0.address } ?? "") }
-        return places?.search(e.label, limit: 1).first?.sub ?? "Place"
+        return e.sub ?? "Place"
     }
 
     // MARK: Trip
@@ -194,7 +194,7 @@ extension AppModel {
 
     var demoDestination: Endpoint {
         let hit = places?.search(DemoConfig.destinationLabel).first { abs($0.lat - DemoConfig.destination.lat) < 0.002 }
-        return Endpoint(label: hit?.label ?? DemoConfig.destinationLabel, coord: hit?.coord ?? DemoConfig.destination)
+        return Endpoint(label: hit?.label ?? DemoConfig.destinationLabel, coord: hit?.coord ?? DemoConfig.destination, sub: hit?.sub)
     }
 
     /// Open the screen named by `-screen` (simulator screenshots).

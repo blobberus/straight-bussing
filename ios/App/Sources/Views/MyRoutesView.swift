@@ -18,11 +18,12 @@ struct MyRoutesView: View {
                     CustomRouteRow(c: c, active: s.activeCustom == c.id)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             // Trailing edge: first button sits at the edge -> reads Details | Edit | Delete.
-                            Button { model.confirmDelete = c } label: { Label("Delete", systemImage: "trash") }
+                            // Words, not icons, like the web tray (Details / Edit / Delete).
+                            Button { model.confirmDelete = c } label: { Text("Delete") }
                                 .tint(.red)
-                            Button { model.push(.editCustom(c.id)) } label: { Label("Edit", systemImage: "pencil") }
+                            Button { model.push(.editCustom(c.id)) } label: { Text("Edit") }
                                 .tint(.orange)
-                            Button { model.push(.customRoute(c.id)) } label: { Label("Details", systemImage: "info.circle") }
+                            Button { model.push(.customRoute(c.id)) } label: { Text("Details") }
                                 .tint(.gray)
                         }
                 }

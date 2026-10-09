@@ -2,6 +2,17 @@
 
 Use this when the owner says "turn this website into an App Store-level app". It is the **single iPhone plan**: `docs/IOS.md` only points here, `docs/APPSTORE.md` holds costs, the 4.2 analysis and the timeline (don't repeat them here). Read `CLAUDE.md` and `docs/ARCHITECTURE.md` (v2 module contract) first. The owner works on Windows with no Node and no Mac, so every Mac/Xcode step needs CI or a cloud Mac.
 
+## Status (2026-10-09)
+The owner asked to begin the transition. Started as a **native SwiftUI draft** (not the Capacitor wrap below; lower
+Guideline 4.2 risk, MapKit feel) in `ios/`: details, module map, Mac build steps, done-vs-stub table and the App Store
+checklist are in **`ios/README.md`**. `ios/StraightBussingKit` ports `web/js/core` + `web/js/data` to Swift with
+XCTest suites that mirror `web/tests`; `ios/App` is the SwiftUI app (map, sheet + tab bar, Directions, trip timeline,
+Routes, My Routes, Settings, About); `ios/Widget` holds the trip Live Activity (Lock Screen + Dynamic Island, option A
+of section 6). XcodeGen (`ios/project.yml`) generates the project on GitHub's free macOS runners
+(`.github/workflows/ios.yml`): Kit tests, app + extension build, UI tests, then simulator screenshots and recordings
+published at https://blobberus.github.io/straight-bussing/ios/ . Still open: push server (P2/P7), notifications
+delivery (P6), widget (P8), signing/TestFlight (P4/P11), UChicago/Passio permission (P0).
+
 **Web vs iPhone rule:** iPhone-only capabilities (Live Activities, Dynamic Island, background bus alerts, widgets, time-sensitive notifications) are built in the native layer and are **not shipped to the GitHub Pages site**. The web app only stores the preferences (`state.notify`) and alerts while the page is open. Keep shared logic in plain JS (`web/js/core/*`) so both targets use the same rules.
 
 ## 1. Goal and decision summary

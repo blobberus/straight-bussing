@@ -36,6 +36,8 @@ struct Endpoint: Hashable {
     var coord: LatLon
     var stopId: String? = nil
     var isMe = false
+    /// Subtitle shown in suggestions (place kind · address · walk to the nearest stop).
+    var sub: String? = nil
 }
 
 struct DirectionsState {

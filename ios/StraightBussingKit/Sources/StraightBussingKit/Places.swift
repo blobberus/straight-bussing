@@ -14,7 +14,8 @@ public struct PlaceHit: Hashable, Sendable, Identifiable {
     public var coord: LatLon { LatLon(lat: lat, lon: lon) }
 }
 
-/// One entry of places.json `p`: [name, kind, address, lat, lon, stop index, walk minutes, search terms].
+/// One entry of places.json `p`: [name, kind, address, lat, lon, stop index, walk minutes, search terms,
+/// other names?] (v2: nicknames / OSM alt names, e.g. "Bart Mart" for Bartlett Dining Commons).
 public struct PlaceRecord: Hashable, Sendable {
     public var name: String
     public var kind: String
@@ -24,9 +25,11 @@ public struct PlaceRecord: Hashable, Sendable {
     public var stopIndex: Int
     public var walk: Int
     public var terms: String
-    public init(_ name: String, _ kind: String, _ address: String, _ lat: Double, _ lon: Double, _ stopIndex: Int, _ walk: Int, _ terms: String) {
+    public var aliases: [String]
+    public init(_ name: String, _ kind: String, _ address: String, _ lat: Double, _ lon: Double, _ stopIndex: Int, _ walk: Int,
+                _ terms: String, _ aliases: [String] = []) {
         self.name = name; self.kind = kind; self.address = address; self.lat = lat; self.lon = lon
-        self.stopIndex = stopIndex; self.walk = walk; self.terms = terms
+        self.stopIndex = stopIndex; self.walk = walk; self.terms = terms; self.aliases = aliases
     }
 }
 
@@ -51,8 +54,10 @@ public struct PlacesData: Decodable, Sendable {
                 return .nan
             }
             let name = s(), kind = s(), addr = s(), lat = d(), lon = d(), si = d(), walk = d(), terms = u.isAtEnd ? "" : s()
+            var aliases: [String] = []
+            if !u.isAtEnd { aliases = (try? u.decode([String].self)) ?? [] }
             value = name.isEmpty || !lat.isFinite || !lon.isFinite ? nil
-                : PlaceRecord(name, kind, addr, lat, lon, si.isFinite ? Int(si) : -1, walk.isFinite ? Int(walk) : 0, terms)
+                : PlaceRecord(name, kind, addr, lat, lon, si.isFinite ? Int(si) : -1, walk.isFinite ? Int(walk) : 0, terms, aliases)
         }
     }
     enum CodingKeys: String, CodingKey { case stops, p }
@@ -80,16 +85,29 @@ public struct PlaceIndex: Sendable {
         "bank": ["bank"], "hotel": ["hotel"],
     ]
 
-    struct Entry: Sendable { var p: PlaceRecord; var words: [String]; var sq: String; var extra: [String] }
+    /// A searchable form of the name: the real name first, then nicknames.
+    struct Form: Sendable { var words: [String]; var sq: String }
+    struct Entry: Sendable { var p: PlaceRecord; var forms: [Form]; var all: [String] }
+    /// A nickname match ranks just below the same exact / prefix match on the real name.
+    static let aliasPenalty = 0.5
+    /// Per name word the query does not mention (max 3): "univ of chicago" prefers the shorter name.
+    static let unmatchedPenalty = 0.5
     let data: PlacesData
     let index: [Entry]
 
     public init(_ data: PlacesData) {
         self.data = data
         index = data.p.map { p in
-            let n = Self.norm(p.name)
-            return Entry(p: p, words: n.split(separator: " ").map(String.init), sq: n.replacingOccurrences(of: " ", with: ""),
-                         extra: Self.norm([p.kind, p.address, p.terms].joined(separator: " ")).split(separator: " ").map(String.init))
+            var seen = Set<String>()
+            var forms: [Form] = []
+            for text in [p.name] + p.aliases {
+                let n = Self.norm(text)
+                if !n.isEmpty && seen.insert(n).inserted {
+                    forms.append(Form(words: n.split(separator: " ").map(String.init), sq: n.replacingOccurrences(of: " ", with: "")))
+                }
+            }
+            let extra = Self.norm([p.kind, p.address, p.terms].joined(separator: " ")).split(separator: " ").map(String.init)
+            return Entry(p: p, forms: forms, all: forms.flatMap(\.words) + extra)
         }
     }
 
@@ -132,28 +150,39 @@ public struct PlaceIndex: Sendable {
     }
 
     /// Best weight of one query word against words: 1 exact, .85 prefix, .7 one typo, 0 none.
-    static func wordWeight(_ q: String, _ words: [String]) -> Double {
+    static func wordWeight(_ q: String, _ words: [String], fuzzy: Bool = true) -> Double {
         var best = 0.0
         let qb = Array(q.utf8)
         for w in words {
             if w == q { return 1 }
             if q.count >= 2 && w.hasPrefix(q) { best = max(best, 0.85) }
-            else if q.count >= 5 && w.count >= 4 && near1(qb, Array(w.utf8)) { best = max(best, 0.7) }
+            else if fuzzy && q.count >= 5 && w.count >= 4 && near1(qb, Array(w.utf8)) { best = max(best, 0.7) }
         }
         return best
     }
 
-    /// Score one place for a query (0 = no match). Name matches beat category / address matches.
+    /// Score one place for a query (0 = no match). Name and nickname matches beat category / address matches.
     static func scorePlace(_ e: Entry, _ qw: [String], _ qsq: String) -> Double {
-        if e.sq == qsq { return 100 }
-        if qsq.count >= 3 && e.sq.hasPrefix(qsq) { return 92 }
-        let ws = qw.map { wordWeight($0, e.words) }
-        if ws.allSatisfy({ $0 > 0 }) {
-            return 60 + 25 * (ws.reduce(0, +) / Double(ws.count)) + (ws[0] == 1 && e.words.first == qw[0] ? 3 : 0)
+        var best = 0.0
+        for (k, f) in e.forms.enumerated() {
+            let alias = k > 0 ? aliasPenalty : 0
+            var s = 0.0
+            if f.sq == qsq { s = 100 - alias }
+            else if qsq.count >= 3 && f.sq.hasPrefix(qsq) { s = 92 - alias }
+            else {
+                let ws = qw.map { wordWeight($0, f.words) }
+                if ws.allSatisfy({ $0 > 0 }) {
+                    let rest = f.words.filter { w in !qw.contains { w.hasPrefix($0) } }.count
+                    s = 60 + 25 * (ws.reduce(0, +) / Double(ws.count)) + (ws[0] == 1 && f.words.first == qw[0] ? 3 : 0)
+                        - unmatchedPenalty * Double(min(3, rest))
+                } else if qsq.count >= 4 && f.sq.contains(qsq) {
+                    s = 70
+                }
+            }
+            best = max(best, s)
         }
-        if qsq.count >= 4 && e.sq.contains(qsq) { return 70 }
-        let all = e.words + e.extra
-        let xs = qw.map { q in ([q] + (synonyms[q] ?? [])).map { wordWeight($0, all) }.max() ?? 0 }
+        if best > 0 { return best }
+        let xs = qw.map { q in max(wordWeight(q, e.all), (synonyms[q] ?? []).map { wordWeight($0, e.all, fuzzy: false) }.max() ?? 0) }
         if xs.allSatisfy({ $0 > 0 }) { return 45 + 20 * (xs.reduce(0, +) / Double(xs.count)) }
         return 0
     }

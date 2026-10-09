@@ -42,6 +42,17 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(idx.search("a"), [], "under 2 characters")
     }
 
+    func testNicknamesRankJustBelowTheRealName() {
+        let d = PlacesData(stops: ["Reynolds Club"], p: [
+            PlaceRecord("Bartlett Dining Commons", "Dining hall", "5640 S University Ave", 41.792, -87.5985, 0, 1, "fast food", ["Bart Mart", "Bartlett"]),
+            PlaceRecord("Bart's Bikes", "Shop", "1 Test St", 41.79, -87.6, 0, 3, "bicycle"),
+        ])
+        let i = PlaceIndex(d)
+        XCTAssertEqual(i.search("bart mart").first?.label, "Bartlett Dining Commons", "nickname")
+        XCTAssertEqual(i.search("bart mart").first?.score, 100, "exact nickname = 99.5, rounded")
+        XCTAssertEqual(i.search("bartlett").first?.label, "Bartlett Dining Commons")
+    }
+
     func testRealPlacesJsonFindsCampusExamples() throws {
         let real = try XCTUnwrap(StaticLoader.loadPlaces(from: TS.webData), "data/places.json loaded")
         XCTAssertGreaterThan(real.count, 500)

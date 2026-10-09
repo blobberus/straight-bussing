@@ -106,6 +106,7 @@ struct BusSegmentView: View {
     @Environment(AppModel.self) private var model
     let seg: TripProgress.BusSegment
     static let rowH: CGFloat = 46
+    static let markerH: CGFloat = 24
 
     var body: some View {
         let route = model.route(seg.rid)
@@ -130,10 +131,13 @@ struct BusSegmentView: View {
                             .frame(height: Self.rowH)
                     }
                 }
+                .padding(.top, Self.markerH / 2)   // room for the bus above the first stop
                 if let r = seg.busRow {
+                    // Marker center (rows start at markerH/2): between the row above `r` and row `r`.
                     let y = max(0, (CGFloat(r) - 1 + CGFloat(seg.busFrac)) * Self.rowH + Self.rowH / 2)
                     BusRailMarker(route: route, label: seg.vehicleLabel)
-                        .offset(x: 3, y: y - 12)
+                        .frame(height: Self.markerH)
+                        .offset(x: 3, y: y)
                         .animation(.easeInOut(duration: 0.8), value: y)
                 }
             }
