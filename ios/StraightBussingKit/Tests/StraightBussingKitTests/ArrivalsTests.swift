@@ -30,6 +30,35 @@ final class ArrivalsTests: XCTestCase {
         XCTAssertEqual(Arrivals.arrivalsFor(trips: [], stopId: "S", now: T), [])
     }
 
+    /// The per-poll stop index the app reads gives exactly what arrivalsFor gives (any stop, time, filter).
+    func testIndexEqualsArrivalsFor() throws {
+        func check(_ trips: [TripUpdate], stops: [String], times: [Double], routes: [String], file: StaticString = #filePath, line: UInt = #line) {
+            let idx = Arrivals.index(trips: trips)
+            for stop in stops {
+                for now in times {
+                    XCTAssertEqual(Arrivals.arrivals(in: idx, stopId: stop, now: now),
+                                   Arrivals.arrivalsFor(trips: trips, stopId: stop, now: now), "\(stop) @\(now)", file: file, line: line)
+                    for r in routes {
+                        XCTAssertEqual(Arrivals.arrivals(in: idx, stopId: stop, hidden: [r], now: now),
+                                       Arrivals.arrivalsFor(trips: trips, stopId: stop, hidden: [r], now: now), "\(stop) hide \(r)", file: file, line: line)
+                        XCTAssertEqual(Arrivals.arrivals(in: idx, stopId: stop, routeId: r, hidden: [r], now: now),
+                                       Arrivals.arrivalsFor(trips: trips, stopId: stop, routeId: r, hidden: [r], now: now), "\(stop) only \(r)", file: file, line: line)
+                    }
+                }
+            }
+        }
+        check(trips, stops: ["S", "X", "nope"], times: [T - 100, T, T + 100, T + 650, T + 5000], routes: ["R1", "R2", "R3"])
+        let atS = Arrivals.index(trips: trips)["S"] ?? []
+        XCTAssertFalse(atS.contains(where: { $0.t == T + 5 }), "trips without a route id are skipped")
+        XCTAssertEqual(atS.map { $0.t - T }, [-31, -20, 120, 600, 1800], "the index keeps past times; the lookup filters them")
+
+        let feed = try FeedParser.tripUpdates(TS.fixture("tripUpdates"))
+        let stops = Array(Set(feed.entities.flatMap { $0.stopTimeUpdates.compactMap(\.stopId) })).sorted()
+        let routes = Array(Set(feed.entities.compactMap(\.trip.routeId))).sorted()
+        XCTAssertFalse(stops.isEmpty)
+        check(feed.entities, stops: stops, times: [feed.timestamp - 600, feed.timestamp, feed.timestamp + 900], routes: routes)
+    }
+
     func testStaleLevels() {
         func lv(_ lastOk: Double, _ failed: Bool, _ feedTs: Double) -> StaleLevel {
             Arrivals.staleLevel(lastOk: lastOk, failed: failed, feedTs: feedTs, now: T)

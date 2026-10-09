@@ -50,7 +50,36 @@ public enum Arrivals {
                 }
             }
         }
-        return out.stableSorted { $0.t < $1.t || ($0.t == $1.t && $0.rid < $1.rid) }
+        return out.stableSorted(by: arrivalOrder)
+    }
+
+    static func arrivalOrder(_ a: Arrival, _ b: Arrival) -> Bool { a.t < b.t || (a.t == b.t && a.rid < b.rid) }
+
+    /// Every live arrival (time != 0) per stop id, sorted like `arrivalsFor`. Build it once per poll and read
+    /// it with `arrivals(in:stopId:routeId:hidden:now:)` instead of rescanning every trip for every stop.
+    public static func index(trips: [TripUpdate]) -> [String: [Arrival]] {
+        var out: [String: [Arrival]] = [:]
+        for tu in trips {
+            guard let rid = tu.trip.routeId else { continue }
+            for u in tu.stopTimeUpdates {
+                guard let sid = u.stopId else { continue }
+                let t = u.time
+                if t != 0 { out[sid, default: []].append(Arrival(rid: rid, t: t, bus: tu.vehicle.label, tripId: tu.trip.tripId)) }
+            }
+        }
+        for sid in Array(out.keys) { out[sid] = out[sid]?.stableSorted(by: arrivalOrder) }
+        return out
+    }
+
+    /// `arrivalsFor` read from an `index(trips:)`: same result for the same trips, without the scan.
+    public static func arrivals(in index: [String: [Arrival]], stopId: String, routeId: String? = nil,
+                                hidden: Set<String> = [], now: Double) -> [Arrival] {
+        guard let list = index[stopId] else { return [] }
+        return list.filter { a in
+            guard a.t > now - 30 else { return false }
+            if let routeId { return a.rid == routeId }
+            return !hidden.contains(a.rid)
+        }
     }
 
     /// Freshness of live data.
@@ -85,11 +114,33 @@ public enum TimeFmt {
     /// '4:12 PM' in the device's locale and time zone ('' for invalid input).
     public static func clock(_ t: Double, timeZone: TimeZone = .current, locale: Locale = .current) -> String {
         guard t.isFinite, t > 0 else { return "" }
-        let f = DateFormatter()
-        f.locale = locale
-        f.timeZone = timeZone
-        f.setLocalizedDateFormatFromTemplate("jmm")
-        return f.string(from: Date(timeIntervalSince1970: t))
+        return clockFormatters.string(Date(timeIntervalSince1970: t), timeZone: timeZone, locale: locale)
+    }
+
+    /// One cached "jmm" formatter per time zone + locale (a DateFormatter is expensive to create and `clock`
+    /// runs for every row of every list).
+    static let clockFormatters = ClockFormatterCache()
+
+    final class ClockFormatterCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cache: [String: DateFormatter] = [:]
+
+        func string(_ date: Date, timeZone: TimeZone, locale: Locale) -> String {
+            let key = timeZone.identifier + "|" + locale.identifier
+            lock.lock()
+            defer { lock.unlock() }
+            let f: DateFormatter
+            if let cached = cache[key] {
+                f = cached
+            } else {
+                f = DateFormatter()
+                f.locale = locale
+                f.timeZone = timeZone
+                f.setLocalizedDateFormatFromTemplate("jmm")
+                cache[key] = f
+            }
+            return f.string(from: date)
+        }
     }
 
     /// '8s ago', '3 min ago', '2 h ago', '3 d ago'; future/now 'just now'; invalid 'never'.

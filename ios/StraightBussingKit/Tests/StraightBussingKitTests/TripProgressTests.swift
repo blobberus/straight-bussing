@@ -55,7 +55,30 @@ final class TripProgressTests: XCTestCase, PlannerFixture {
         XCTAssertEqual(snap.stopNames, ["L2", "L3", "L0", "L1"])
         XCTAssertEqual(snap.boardIndex, 1)
         XCTAssertEqual(snap.compactText(now: T), "1 stop · 5 min")
+        XCTAssertEqual(snap.compactPrefix, "1 stop")
+        XCTAssertNil(snap.headlineLead, "stop-based headline has no minutes to tick")
         XCTAssertTrue(snap.live)
+    }
+
+    /// The Live Activity is only re-sent when what it shows changes (asOf alone never counts).
+    func testSnapshotSameContent() throws {
+        let o = try startedOption()
+        let a = try XCTUnwrap(TripProgress.compute(option: o, staticData: S, live: live([bus1], [t1], at: T), now: T).snapshot(staticData: S))
+        let later = try XCTUnwrap(TripProgress.compute(option: o, staticData: S, live: live([bus1], [t1], at: T + 2), now: T + 2).snapshot(staticData: S))
+        XCTAssertNotEqual(a.asOf, later.asOf)
+        XCTAssertTrue(a.sameContent(as: later), "only asOf differs")
+        var b = a
+        b.target += 15
+        XCTAssertTrue(a.sameContent(as: b), "a prediction moving 15 s is not worth an update")
+        b.target += 30
+        XCTAssertFalse(a.sameContent(as: b), "45 s is")
+        b = a; b.stopsAway = 0
+        XCTAssertFalse(a.sameContent(as: b))
+        b = a; b.busPosition = (a.busPosition ?? 0) + 0.5
+        XCTAssertFalse(a.sameContent(as: b), "the bus moved on the progress bar")
+        b = a; b.headline = "Bus t1v is arriving at L3"
+        XCTAssertFalse(a.sameContent(as: b))
+        XCTAssertTrue(a.sameContent(as: a))
     }
 
     func testOnBoardShowsPassedNextUpcomingAndStopsLeft() throws {
@@ -135,6 +158,9 @@ final class TripProgressTests: XCTestCase, PlannerFixture {
         XCTAssertEqual(seg.rows.count, 3, "no approach rows without a located bus")
         XCTAssertEqual(seg.boardEta, o.busLegs[0].boardT)
         XCTAssertTrue(p.headline.hasPrefix("Next LP at L3"))
+        let snap = try XCTUnwrap(p.snapshot(staticData: S))
+        XCTAssertEqual(snap.headlineLead, "Next LP at L3", "the widget adds a ticking timer to this")
+        XCTAssertTrue(snap.headline.hasPrefix("Next LP at L3 in about "))
     }
 }
 

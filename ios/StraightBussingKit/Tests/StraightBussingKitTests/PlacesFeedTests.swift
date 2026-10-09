@@ -60,6 +60,14 @@ final class PlacesTests: XCTestCase {
         XCTAssertTrue(chip.sub.contains("53rd"), "Hyde Park Chipotle: \(chip)")
         XCTAssertTrue(real.search("medici").contains { $0.label == "Medici on 57th" })
     }
+
+    /// Search cost per keystroke on the real index (the app runs it off the main thread, debounced).
+    func testRealSearchPerformance() throws {
+        let real = try XCTUnwrap(StaticLoader.loadPlaces(from: TS.webData))
+        measure {
+            for q in ["ch", "chipotle", "coffee", "medici", "regenstein", "harper"] { _ = real.search(q) }
+        }
+    }
 }
 
 /// GTFS-realtime JSON parsing (data/live.js parseBuses/parseTrips/parseAlerts) and the feed client.
@@ -106,9 +114,11 @@ final class FeedTests: XCTestCase {
 
     struct StubLoader: HTTPDataLoader {
         var failing: Set<String> = []
+        var forbidden: Set<String> = []
         func fetchData(for request: URLRequest) async throws -> (Data, URLResponse) {
             let url = request.url!
             let name = FeedClient.feeds.first { url.path.contains($0) }!
+            XCTAssertFalse(forbidden.contains(name), "\(name) must not be fetched")
             XCTAssertTrue(url.query?.contains("_=") ?? false, "cache buster")
             XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalAndRemoteCacheData)
             if failing.contains(name) {
@@ -135,6 +145,20 @@ final class FeedTests: XCTestCase {
         XCTAssertEqual(s.lastOk, now, "lastOk only moves on success")
         XCTAssertEqual(s.staleLevel(now: now + 10), .err)
         if case .failure(let e) = bad.trips { XCTAssertEqual(e as? FeedError, .http(503)) } else { XCTFail("expected failure") }
+    }
+
+    /// Service alerts are polled every 60 s, not every 10 s: a poll without them still succeeds and keeps the
+    /// last alerts.
+    func testPollWithoutAlertsKeepsLastAlerts() async throws {
+        let now = try FeedParser.vehicles(TS.fixture("vehiclePositions")).timestamp + 5
+        var s = LiveState().applying(await FeedClient(loader: StubLoader()).poll(), staticData: nil, now: now)
+        XCTAssertEqual(s.alerts.count, 1)
+        let lite = await FeedClient(loader: StubLoader(forbidden: ["serviceAlerts"])).poll(alerts: false)
+        if case .failure(let e) = lite.alerts { XCTAssertEqual(e as? FeedError, .skipped) } else { XCTFail("alerts skipped") }
+        s = s.applying(lite, staticData: nil, now: now + 10)
+        XCTAssertFalse(s.failed)
+        XCTAssertEqual(s.lastOk, now + 10)
+        XCTAssertEqual(s.alerts.count, 1, "last alerts kept")
     }
 
     func testURLShape() {

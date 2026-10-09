@@ -14,6 +14,8 @@ extension URLSession: HTTPDataLoader {
 public enum FeedError: Error, Equatable, Sendable {
     case http(Int)
     case badJSON(String)
+    /// Not fetched on this poll (service alerts are polled less often); the merge keeps the last alerts.
+    case skipped
 }
 
 /// Live data as the web store holds it (buses, trips, alerts, feedTs, lastOk, failed, liveLoaded).
@@ -102,10 +104,15 @@ public struct FeedClient: Sendable {
         return data
     }
 
-    /// Fetch the three feeds in parallel. Never throws: each feed's outcome is in the result.
-    public func poll() async -> FeedPoll {
+    /// Fetch the feeds in parallel. Never throws: each feed's outcome is in the result.
+    /// - Parameter alerts: also fetch serviceAlerts (they change rarely; the app asks every 60 s, not every
+    ///   10 s). When false, `alerts` is `.failure(FeedError.skipped)` and `LiveState.applying` keeps the old ones.
+    public func poll(alerts: Bool = true) async -> FeedPoll {
         async let vp: Result<Feed<VehiclePosition>, Error> = Self.capture { try FeedParser.vehicles(try await get("vehiclePositions")) }
         async let tu: Result<Feed<TripUpdate>, Error> = Self.capture { try FeedParser.tripUpdates(try await get("tripUpdates")) }
+        if !alerts {
+            return await FeedPoll(vehicles: vp, trips: tu, alerts: .failure(FeedError.skipped))
+        }
         async let sa: Result<Feed<ServiceAlert>, Error> = Self.capture { try FeedParser.alerts(try await get("serviceAlerts")) }
         return await FeedPoll(vehicles: vp, trips: tu, alerts: sa)
     }
