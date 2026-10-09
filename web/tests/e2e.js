@@ -347,6 +347,29 @@ test("settings gear: top-right, labeled, 44px target, clear of the locate button
 
 shellE2E(shellHelpers, "credit");
 
+test("tap outside the sheet: empty map collapses it to peek; stops and buses still open", async () => {
+  tab("nearby");
+  await waitFor(() => title() === "Current trip", "Current trip");
+  const sh = $("#sheet");
+  const det = () => sh.dataset.detent;
+  // drive the Leaflet map the way a real tap does: a click on the map pane, not on a layer
+  const tapMap = () => { const mp = $("#map .leaflet-map-pane") || $("#map"); mp.dispatchEvent(new W.MouseEvent("click", { bubbles: true, cancelable: true, clientX: 200, clientY: 200 })); };
+  click($("#grab"), "grab");                                  // open it up first if it was low
+  await sleep(50);
+  if (det() === "peek") { $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })); await sleep(50); }
+  ok(det() !== "peek", "sheet open before the tap: " + det());
+  tapMap();
+  await waitFor(() => det() === "peek" || null, "collapsed to peek after a tap on empty map");
+  const halo = $("#map .sb-halo");
+  if (halo) {
+    halo.dispatchEvent(new W.MouseEvent("click", { bubbles: true, cancelable: true }));
+    await waitFor(() => state().view === "stop" || null, "a stop tap still opens the stop");
+    ok(det() !== "peek", "the stop tap did not collapse the sheet");
+    click($("#back"), "back");
+    await waitFor(() => state().view === "nearby", "back to Current trip");
+  }
+});
+
 test("no console errors or uncaught exceptions in the app", () => {
   eq(T.errors, []);
 });

@@ -42,7 +42,7 @@ function planSig(o) {
  * Create the map inside element `elId`.
  * @param {string} elId
  * @returns {object} MapApi: setTheme, setBottomInset, drawNetwork, drawBuses, setSelectedStop, drawFavorites,
- *   setUser, highlightStops, drawPlan, fitTo, flyTo, onStopTap, onBusTap, onUserMove (+ `leaflet` escape hatch)
+ *   setUser, highlightStops, drawPlan, fitTo, flyTo, onStopTap, onBusTap, onUserMove, onMapTap (+ `leaflet` escape hatch)
  */
 export function createMap(elId) {
   const L = window.L;
@@ -54,7 +54,7 @@ export function createMap(elId) {
   for (const [name, z] of Object.entries(PANES)) map.createPane(name).style.zIndex = String(z);
 
   let dark = false, inset = 0, progUntil = 0, lastNet = null, planActive = false;
-  const stopTap = hub(), busTap = hub(), userMove = hub();
+  const stopTap = hub(), busTap = hub(), userMove = hub(), mapTap = hub();
   const basemap = createBasemap(map, dark);
   const credits = createCredits(map, { html: basemap.attribution });
   const network = createNetworkLayer(map, { onStopTap: (id) => stopTap.emit(id) });
@@ -89,6 +89,12 @@ export function createMap(elId) {
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('sb-zooming')));
   });
   map.on('dragstart', () => userMove.emit(center()));
+  // A tap on empty map (not a stop, bus, highlight, plan pin or control; Leaflet sends no click after a drag)
+  map.on('click', (e) => {
+    const t = e.originalEvent && e.originalEvent.target;
+    if (t && t.closest && t.closest('.leaflet-interactive, .leaflet-marker-icon, .leaflet-control, .sb-credits, button, a')) return;
+    mapTap.emit({ lat: e.latlng.lat, lon: e.latlng.lng });
+  });
 
   function center() { const c = map.getCenter(); return { lat: c.lat, lon: c.lng, zoom: map.getZoom() }; }
   const visibleH = () => Math.max(120, map.getSize().y - inset);
@@ -259,6 +265,8 @@ export function createMap(elId) {
     onBusTap: (fn) => busTap.on(fn),
     /** Fired when the user drags or zooms the map (not for API fits/flies). @param {(c:{lat, lon, zoom})=>void} fn @returns {()=>void} off */
     onUserMove: (fn) => userMove.on(fn),
+    /** Fired for a tap on empty map (main.js collapses the sheet). @param {(p:{lat, lon})=>void} fn @returns {()=>void} off */
+    onMapTap: (fn) => mapTap.on(fn),
   };
   return api;
 }

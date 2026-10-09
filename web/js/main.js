@@ -28,7 +28,7 @@ const OPTIONAL_VIEWS = new Set(["settings"]);
 const RENDER_TICK_MS = 15000;
 const FIRST_POLL_GRACE_S = 20;
 const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "setSelectedStop", "setUser",
-  "highlightStops", "drawPlan", "drawFavorites", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove"];
+  "highlightStops", "drawPlan", "drawFavorites", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove", "onMapTap"];
 const VIS_KEYS = ["hiddenRoutes", "routeFilter", "view", "routeId", "routeOrder", "journey", "activeCustom", "customRoutes"];
 const NET_KEYS = ["routes", "shapes", "routeStops", "stopRoutes", "stops", "theme", ...VIS_KEYS];
 const BUS_KEYS = ["buses", "feedTs", "routes", ...VIS_KEYS];
@@ -356,6 +356,7 @@ async function boot() {
     openStop(id);
   });
   mapCall("onBusTap", (x) => openRoute(x && typeof x === "object" ? x.rid || x.routeId || (x.trip && x.trip.route_id) : x));
+  mapCall("onMapTap", () => { if (!sheet.isPanel() && sheet.getDetent() !== "peek") sheet.setDetent("peek"); });   // tap outside the sheet: back to the map
   onThemeChange((d) => { mapCall("setTheme", d); syncMap(store.get(), null); });
 
   const results = await Promise.allSettled(VIEW_IDS.map((v) => import(`./ui/views/${v}.js`)));
