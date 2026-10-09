@@ -22,7 +22,8 @@ final class LiveActivityController {
         }
     }
 
-    /// Push new content (called on every live poll while the trip runs).
+    /// Push new content. AppModel.pushLiveActivity throttles it: only when the content changes, at least every
+    /// 60 s while the app runs, and once when the app goes to the background.
     func update(_ state: LiveTripSnapshot) {
         guard let activity else { return }
         let content = ActivityContent(state: state, staleDate: Date(timeIntervalSince1970: state.asOf + 120))

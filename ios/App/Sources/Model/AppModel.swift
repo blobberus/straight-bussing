@@ -116,6 +116,8 @@ final class AppModel {
     @ObservationIgnored var failures = 0
     @ObservationIgnored var booted = false
     @ObservationIgnored var lastAlertsPoll: Double = 0
+    /// Last content sent to the Live Activity (ActivityKit updates are throttled; see `pushLiveActivity`).
+    @ObservationIgnored var lastActivityPush: (snap: LiveTripSnapshot, at: Double)?
     /// The merged feed state (`LiveState.applying` works on it). Views read the observed slices below.
     @ObservationIgnored var liveState = LiveState()
 

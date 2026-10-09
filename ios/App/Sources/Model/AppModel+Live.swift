@@ -243,6 +243,7 @@ extension AppModel {
         refreshTrip()
         if notify.liveActivity, let snap = tripProgress?.snapshot(staticData: staticData) {
             liveActivity.start(title: "To \(label)", state: snap)
+            lastActivityPush = (snap: snap, at: Date().timeIntervalSince1970)
         }
         fit(planPoints(o))
     }
@@ -251,15 +252,39 @@ extension AppModel {
         if let snap = tripProgress?.snapshot(staticData: staticData) { liveActivity.end(final: snap) } else { liveActivity.end() }
         activeTrip = nil
         tripProgress = nil
+        lastActivityPush = nil
         routeState.journey = nil
         location.setTripMode(false)
     }
 
-    func refreshTrip() {
+    func refreshTrip(forceActivity: Bool = false) {
         guard let trip = activeTrip else { return }
         let p = TripProgress.compute(option: trip.option, staticData: staticData, live: liveState, now: now)
         tripProgress = p
-        if let snap = p.snapshot(staticData: staticData) { liveActivity.update(snap) }
+        if let snap = p.snapshot(staticData: staticData) { pushLiveActivity(snap, force: forceActivity) }
+    }
+
+    /// The Live Activity refresh interval when nothing visible changed (it marks itself stale 120 s after the
+    /// last update, so this keeps it fresh while the app runs).
+    static let activityRefreshS = 60.0
+
+    /// Send `snap` to the Live Activity only when what it shows changed (asOf ignored, countdown targets within
+    /// 20 s count as equal) or the last update is `activityRefreshS` old. ActivityKit updates cost battery
+    /// and the system budgets them; the countdown ticks on its own in between.
+    func pushLiveActivity(_ snap: LiveTripSnapshot, force: Bool = false) {
+        guard liveActivity.isRunning else { return }
+        let t = Date().timeIntervalSince1970
+        if !force, let last = lastActivityPush, last.snap.sameContent(as: snap), t - last.at < Self.activityRefreshS { return }
+        liveActivity.update(snap)
+        lastActivityPush = (snap: snap, at: t)
+    }
+
+    /// Going to the background: one fresh update so the Lock Screen starts from current numbers (its stale
+    /// mark then appears 120 s later if no push server takes over).
+    func flushLiveActivity() {
+        guard activeTrip != nil else { return }
+        now = Date().timeIntervalSince1970
+        refreshTrip(forceActivity: true)
     }
 
     // MARK: Demo

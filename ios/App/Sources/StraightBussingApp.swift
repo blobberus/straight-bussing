@@ -18,8 +18,14 @@ struct StraightBussingApp: App {
                 }
         }
         .onChange(of: scenePhase) { _, phase in
-            // Never poll in the background: live data is only fetched while the app is open.
-            if phase == .active { model.resumePolling() } else if phase == .background { model.pausePolling() }
+            // Never poll in the background: live data is only fetched while the app is open. On the way out,
+            // one forced Live Activity update so the Lock Screen starts from fresh numbers.
+            if phase == .active {
+                model.resumePolling()
+            } else if phase == .background {
+                model.flushLiveActivity()
+                model.pausePolling()
+            }
         }
     }
 }

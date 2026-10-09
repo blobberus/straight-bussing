@@ -34,7 +34,7 @@ struct LiveActivityPreviewView: View {
                         HStack(spacing: 8) {
                             LiveRouteChip(state: s, compact: true)
                             Spacer(minLength: 60)
-                            Text(s.compactText(now: model.now)).font(.caption2.weight(.semibold)).monospacedDigit().foregroundStyle(.white)
+                            LiveCompactTrailing(state: s).foregroundStyle(.white)
                         }
                         .padding(.horizontal, 12)
                         .frame(width: 300, height: 36)
@@ -52,7 +52,7 @@ struct LiveActivityPreviewView: View {
                         }
                         TripProgressBar(state: s)
                         HStack {
-                            Text(s.headline).lineLimit(1)
+                            LiveHeadline(state: s).lineLimit(1)
                             Spacer()
                             Text("est. · Unofficial")
                         }

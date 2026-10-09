@@ -36,6 +36,54 @@ struct LiveCountdown: View {
     }
 }
 
+/// Dynamic Island compact trailing: "3 stops 4:12" with a timer the system ticks itself, so the minutes never
+/// freeze while the app is in the background (they used to be baked into the text at update time). Stale
+/// content (no update for 120 s) is dimmed and marked "~", like stale times everywhere else in the app.
+struct LiveCompactTrailing: View {
+    let state: LiveTripSnapshot
+    var isStale = false
+    var body: some View {
+        let now = Date()
+        let target = Date(timeIntervalSince1970: state.target)
+        HStack(spacing: 3) {
+            if !state.compactPrefix.isEmpty { Text(state.compactPrefix) }
+            if isStale { Text("~") }
+            if target > now {
+                Text(timerInterval: now...target, countsDown: true, showsHours: false)
+                    .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
+                    .frame(minWidth: 24, maxWidth: 40, alignment: .trailing)
+            } else {
+                Text("now")
+            }
+        }
+        .font(.caption2.weight(.semibold))
+        .lineLimit(1)
+        .opacity(isStale ? 0.6 : 1)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The trip headline without frozen numbers: a time-based headline ("Next 53RD at Reynolds Club in about
+/// 4 min") is shown as its words plus a self-ticking timer; stop-based headlines have no minutes and stay text.
+struct LiveHeadline: View {
+    let state: LiveTripSnapshot
+    var isStale = false
+    var body: some View {
+        let now = Date()
+        let target = Date(timeIntervalSince1970: state.target)
+        if let lead = state.headlineLead {
+            if target > now && !isStale {
+                Text(verbatim: lead + " in ") + Text(timerInterval: now...target, countsDown: true, showsHours: false)
+            } else {
+                Text(lead)
+            }
+        } else {
+            Text(state.headline)
+        }
+    }
+}
+
 /// The next stops as dots on a line with the bus between them (Google-Maps-style, horizontal).
 struct TripProgressBar: View {
     let state: LiveTripSnapshot
@@ -104,7 +152,7 @@ struct LiveTripLockScreenView: View {
                 LiveRouteChip(state: state)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    Text(state.headline).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    LiveHeadline(state: state, isStale: isStale).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 4)
                 LiveCountdown(state: state)
