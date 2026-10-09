@@ -1,11 +1,13 @@
 /* Bottom sheet: 3 detents on phones and in the desktop phone frame; floating left panel only on wide,
    short screens (phone landscape): (min-width: 768px) and (max-height: 559px), must match ui/sheet.js PANEL_MEDIA. Owner: D1.
-   Geometry: the sheet is always --v-full tall and slides with translateY so only --vis px show. It sits on
-   top of the bottom navigation (#tabs.bottomnav, --nav-h); the search bar floats above it (base.css).
+   Geometry: the sheet is always --v-max tall (tokens.css) and slides with translateY so only --vis px
+   show. Its height never changes, so the status pill appearing (which shortens --v-full) only moves the
+   full detent, with the normal transform transition, and never makes the sheet jump at peek / half.
+   It sits on top of the bottom navigation (#tabs.bottomnav, --nav-h); the search bar floats above it.
    ui/sheet.js sets data-detent (peek|half|full) and --drag (px, live finger offset) on .sheet. */
 .sheet {
   position: fixed; z-index: 1000; left: 0; right: 0; bottom: var(--nav-h);
-  height: var(--v-full);
+  height: var(--v-max);
   display: flex; flex-direction: column;
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
   background: var(--bg);
@@ -13,7 +15,7 @@
   box-shadow: var(--shadow-sheet);
   --vis: var(--v-half);
   --drag: 0px;
-  transform: translate3d(0, calc(var(--v-full) - var(--vis) + var(--drag)), 0);
+  transform: translate3d(0, calc(var(--v-max) - var(--vis) + var(--drag)), 0);
   transition: transform var(--d-sheet) var(--ease-spring);
   will-change: transform;
 }
@@ -59,19 +61,19 @@
   color: var(--text-2); font-weight: 600;
 }
 
-/* full detent stops below the floating chips too: the context chip (40px) and the status pill (52px,
-   always visible for safety) must never cover the sheet's grab handle */
-#app:has(#ctxbar:not([hidden])) { --v-full: calc(var(--app-h) - var(--nav-h) - var(--chip-top) - 40px); }
-#app:has(#pill:not([hidden])) { --v-full: calc(var(--app-h) - var(--nav-h) - var(--chip-top) - 52px); }
-#app:has(#pill:not([hidden])):has(#ctxbar:not([hidden])) { --v-full: calc(var(--app-h) - var(--nav-h) - var(--chip-top) - 92px); }
+/* full detent stops below the status pill (always visible for safety; main.js keeps --pill-h = its
+   measured height), so the pill never covers the grab handle. The context chip does NOT change the
+   detent: it hides at the full detent instead (base.css), so showing / clearing a custom route or a
+   journey never moves the sheet or its content. */
+#app:has(#pill:not([hidden])) { --v-full: calc(var(--v-max) - var(--pill-h, 44px) - 8px); }
 
-/* scrolling content: bottom padding equals the part of the sheet hidden below the screen,
-   so the last row can always be scrolled into view in every detent */
+/* scrolling content: bottom padding equals the part of the sheet hidden below the screen / behind the
+   bottom navigation, so the last row can always be scrolled into view in every detent */
 .sheet-content {
   flex: 1; min-height: 0;
   overflow-y: auto; overflow-x: hidden;
   overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
-  padding: var(--s1) var(--s4) calc(var(--v-full) - var(--vis) + 16px);   /* the bottom bar handles the safe area */
+  padding: var(--s1) var(--s4) calc(var(--v-max) - var(--vis) + 16px);   /* the bottom bar handles the safe area */
   touch-action: pan-y;
   outline: none;
 }

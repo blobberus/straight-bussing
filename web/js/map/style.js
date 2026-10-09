@@ -27,10 +27,18 @@
  */
 
 const BASE = 'https://tiles.openfreemap.org/styles/';
-const ATTR = '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> '
-  + '&copy; <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> '
-  + '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
-const RASTER_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+const link = (href, name) => `<a href="${href}" target="_blank" rel="noopener">${name}</a>`;
+const DOT = ' <span aria-hidden="true">\u00b7</span> ';
+/**
+ * Map credit markup (map/credits.js shows it). No copyright sign: the OSMF attribution guidelines only
+ * require crediting "OpenStreetMap" (linked to its copyright page); OpenMapTiles asks for a visible
+ * "OpenMapTiles" credit; OpenFreeMap serves the tiles.
+ */
+export const ATTRIBUTION = link('https://openfreemap.org', 'OpenFreeMap') + DOT + link('https://openmaptiles.org/', 'OpenMapTiles')
+  + DOT + link('https://www.openstreetmap.org/copyright', 'OpenStreetMap');
+/** Credit for the OSM raster fallback. */
+export const RASTER_ATTRIBUTION = link('https://www.openstreetmap.org/copyright', 'OpenStreetMap');
+const COPY = /(&copy;|\u00a9)\s*/g;
 
 /** Basemap palettes. Street text vs road fill: light 12.9:1, dark 9.6:1. */
 export const PALETTE = {
@@ -136,6 +144,11 @@ export function patchStyle(styleJson, isDark) {
   }
   out.splice(namesAt < 0 ? out.length : namesAt, 0, ...addedSymbols(P));
   s.layers = out;
+  // source credits carry "&copy;" too; nothing shows them today (the GL map has no attribution
+  // control), but keep them sign-free so no copyright sign can surface
+  for (const src of Object.values(s.sources || {})) {
+    if (src && typeof src.attribution === 'string') src.attribution = src.attribution.replace(COPY, '').replace(/\s{2,}/g, ' ').trim();
+  }
   return s;
 }
 
@@ -171,15 +184,15 @@ function hasWebGL() {
  * Create and add the basemap layer to a Leaflet map.
  * @param {L.Map} map
  * @param {boolean} isDark
- * @returns {{kind:'vector'|'raster', layer:L.Layer, setDark(isDark:boolean):void}}
+ * @returns {{kind:'vector'|'raster', layer:L.Layer, attribution:string, setDark(isDark:boolean):void}} attribution: credit markup
  */
 export function createBasemap(map, isDark) {
   const L = window.L;
   let dark = !!isDark;
   if (window.maplibregl && L.maplibreGL && hasWebGL()) {
     try {
-      // the plugin reads attribution from options.attributionControl.customAttribution
-      const layer = L.maplibreGL({ style: emptyStyle(dark), attributionControl: { customAttribution: ATTR }, interactive: false });
+      // the plugin reads attribution from options.attributionControl.customAttribution (getAttribution())
+      const layer = L.maplibreGL({ style: emptyStyle(dark), attributionControl: { customAttribution: ATTRIBUTION }, interactive: false });
       layer.addTo(map);
       let token = 0;
       const apply = () => {
@@ -191,10 +204,10 @@ export function createBasemap(map, isDark) {
       };
       apply();
       window.addEventListener('online', apply);
-      return { kind: 'vector', layer, setDark(d) { if (!!d === dark) return; dark = !!d; apply(); } };
+      return { kind: 'vector', layer, attribution: ATTRIBUTION, setDark(d) { if (!!d === dark) return; dark = !!d; apply(); } };
     } catch (e) { /* fall through to raster */ }
   }
-  const layer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: RASTER_ATTR, className: 'sb-raster' });
+  const layer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: RASTER_ATTRIBUTION, className: 'sb-raster' });
   layer.addTo(map);
-  return { kind: 'raster', layer, setDark(d) { dark = !!d; /* .sb-dark .sb-raster in map.css inverts */ } };
+  return { kind: 'raster', layer, attribution: RASTER_ATTRIBUTION, setDark(d) { dark = !!d; /* .sb-dark .sb-raster in map.css inverts */ } };
 }

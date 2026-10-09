@@ -5,6 +5,7 @@
  * Tests run in order and share the one app instance, like a user session.
  */
 import { test, eq, ok, near, holdRun, run } from "./lib.js";
+import { shellE2E } from "./ui-shell-e2e.js";
 
 holdRun();
 
@@ -145,6 +146,9 @@ test("context bar: an applied custom route shows its name and Clear restores the
   await waitFor(() => state().activeCustom === null && state().hiddenRoutes.length === 0 && $("#ctxbar").hidden, "custom route cleared");
   SB.store.set({ customRoutes: [] });
 });
+
+const shellHelpers = { test, ok, eq, waitFor, $, txt, click, tab, W: () => W, store: () => SB.store };
+shellE2E(shellHelpers, "chip");
 
 test("stop view: arrivals, directions buttons, back returns to Nearby", async () => {
   const row = $('[data-region="nearby-results"] [data-action="stop:open"]');
@@ -340,6 +344,8 @@ test("settings gear: top-right, labeled, 44px target, clear of the locate button
   click(done, "Done");
   await waitFor(() => o.dataset.state === "closed", "Done closes Settings");
 });
+
+shellE2E(shellHelpers, "credit");
 
 test("no console errors or uncaught exceptions in the app", () => {
   eq(T.errors, []);

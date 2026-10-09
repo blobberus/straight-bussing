@@ -83,10 +83,19 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 .fab:active { transform: scale(.94); }
 .fab:focus-visible { outline-offset: 3px; }
 .fab[aria-busy="true"] svg { opacity: .45; }
-/* full detent (bottom-sheet layouts only): the sheet covers the map and its title row would sit under
-   the locate button, so hide it until the sheet comes down again */
+/* full detent (bottom-sheet layouts only): the sheet covers the map, so the map-only chrome steps aside
+   until the sheet comes down again: the locate button (the title row would sit under it) and the map
+   context chip (it explains the map, which is hidden now; the views that manage journeys / custom
+   routes show the same info in the sheet). Hiding the chip, instead of making the full detent stop
+   below it, means showing / clearing a route never moves the sheet. The status pill always stays. */
+#ctxbar { transition: opacity var(--d-swap) var(--ease-enter), visibility 0s linear 0s; }
+#locateBtn { transition: transform var(--d-press) var(--ease-enter), opacity var(--d-swap) var(--ease-enter), visibility 0s linear 0s; }
 @media not all and (min-width: 768px) and (max-height: 559px) {
-  #app:has(.sheet[data-detent="full"]) #locateBtn { visibility: hidden; opacity: 0; pointer-events: none; }
+  #app:has(.sheet[data-detent="full"]) #locateBtn,
+  #app:has(.sheet[data-detent="full"]) #ctxbar {
+    visibility: hidden; opacity: 0; pointer-events: none;
+    transition: opacity var(--d-swap) var(--ease-exit), visibility 0s linear var(--d-swap);
+  }
 }
 
 /* status pill: stale / error / no service. Never color alone: always text. */
@@ -114,14 +123,14 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 .ctxbar {
   position: fixed; z-index: 1090;
   top: var(--chip-top); left: calc(var(--safe-l) + 12px); right: calc(var(--safe-r) + 68px);
-  /* one slim 32px chip under the search bar; the full-detent sheet stops below it (sheet.css), and the
+  /* one slim 32px chip under the search bar; hidden at the full detent (above), and the
      Clear / Show all button keeps a 44px hit area via ::after */
   display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
   min-height: 32px; padding: 3px 3px 3px 12px; border-radius: 10px;
   font-size: .8125rem; line-height: 1rem;
   background: var(--bg-solid); color: var(--text); box-shadow: var(--shadow-float);
 }
-.statuspill:not([hidden]) ~ .ctxbar { top: calc(var(--chip-top) + 52px); }
+.statuspill:not([hidden]) ~ .ctxbar { top: calc(var(--chip-top) + var(--pill-h, 44px) + 8px); }   /* --pill-h: main.js */
 .ctxbar[hidden] { display: none; }
 .ctxbar .ctx-text { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctxbar .ctx-k { color: var(--text-2); }
@@ -149,13 +158,10 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
   pointer-events: none;
 }
 .toast.hide { opacity: 0; transform: translate(-50%, -8px); }
+/* never on top of the status pill (stale / failed data must stay readable) */
+.statuspill:not([hidden]) ~ .toast { top: calc(var(--chip-top) + var(--pill-h, 44px) + 8px); }
 
-/* Leaflet chrome adjustments (map.css owns the rest) */
-.leaflet-control-attribution {
-  font-size: 10px !important; background: var(--bg) !important; color: var(--text-2);
-  border-radius: 6px; max-width: calc(var(--app-w) * .6);
-}
-.leaflet-control-attribution a { color: var(--text-2); }
+/* Leaflet chrome adjustments (map.css owns the rest, incl. the map credit) */
 .leaflet-container { font-family: var(--font); background: var(--surface); }
 
 /* boot fallback when Leaflet/CDN failed */
@@ -204,9 +210,6 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
   .app::after, .app::before { content: ""; position: absolute; z-index: 5000; left: 50%; pointer-events: none; }
   .app::after { top: 11px; width: 124px; height: 36px; margin-left: -62px; border-radius: 18px; background: #000; }
   .app::before { bottom: 8px; width: 134px; height: 5px; margin-left: -67px; border-radius: 3px; background: rgba(0, 0, 0, .8); }
-  .app .sb-map .leaflet-top.leaflet-left .leaflet-control-attribution {
-    margin-top: calc(var(--top-clear) + 2px); margin-left: 14px; max-width: calc(var(--app-w) - 84px);
-  }
 }
 @media (min-width: 521px) and (min-height: 560px) and (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) body { background: #0c0c0d; }

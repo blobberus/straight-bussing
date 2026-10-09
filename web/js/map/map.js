@@ -1,7 +1,8 @@
 /**
  * map/map.js: the MapApi (see docs/ARCHITECTURE.md "Map layer"). Leaflet map with a patched
  * OpenFreeMap basemap (map/style.js), route network + buses (map/layers.js), favorite stations
- * (map/favorites.js), selected stop, user dot,
+ * (map/favorites.js), the collapsible map credit (map/credits.js, kept just above the sheet by
+ * setBottomInset), selected stop, user dot,
  * stop highlights and trip plans. Every method is idempotent and cheap to call on each poll: layers
  * redraw only when their signature changes. Theme colors for overlays come from CSS (css/map.css)
  * keyed on the `.sb-dark` class this module toggles on the map element.
@@ -9,12 +10,15 @@
 import { createBasemap } from './style.js';
 import { createNetworkLayer, createBusLayer, sig } from './layers.js';
 import { createFavoritesLayer } from './favorites.js';
+import { createCredits } from './credits.js';
 import { alongShape, normLatLngs, toLatLng } from './geometry.js';
 import { safeColor } from '../core/esc.js';
 
 const CAMPUS = [41.7897, -87.5997];
 const PAD = 24;           // side padding for fits
-const TOP_PAD = 132;      // clears the floating search bar, the attribution line and the locate button / chips
+const TOP_PAD = 132;      // clears the floating search bar and the locate button / chips
+const FIT_S = 0.6;        // fitTo glide (s). flyToBounds, not fitBounds: Leaflet's CSS zoom animation scales the
+                          // vector basemap canvas down on zoom-out, leaving blank margins for ~250 ms
 const PANES = { sbCasing: 380, sbLines: 390, sbFocusCasing: 392, sbFocusLines: 394, sbPlanCasing: 400, sbPlan: 402,
   sbStops: 420, sbPlanStops: 425, sbHighlight: 430, sbSel: 440 };
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -44,14 +48,15 @@ export function createMap(elId) {
   const L = window.L;
   const el = document.getElementById(elId);
   el.classList.add('sb-map');
+  // no Leaflet attribution control: map/credits.js shows the credit (collapses to an "(i)" button)
   const map = L.map(el, { zoomControl: false, attributionControl: false, minZoom: 11, maxZoom: 18, zoomSnap: 0.25,
     zoomDelta: 0.5, wheelPxPerZoomLevel: 90, tapTolerance: 15 }).setView(CAMPUS, 15);
-  map.attributionControl = L.control.attribution({ position: 'topleft', prefix: false }).addTo(map);
   for (const [name, z] of Object.entries(PANES)) map.createPane(name).style.zIndex = String(z);
 
   let dark = false, inset = 0, progUntil = 0, lastNet = null, planActive = false;
   const stopTap = hub(), busTap = hub(), userMove = hub();
   const basemap = createBasemap(map, dark);
+  const credits = createCredits(map, { html: basemap.attribution });
   const network = createNetworkLayer(map, { onStopTap: (id) => stopTap.emit(id) });
   const buses = createBusLayer(map, { onBusTap: (info) => busTap.emit(info) });
   const favs = createFavoritesLayer(map, { onStopTap: (id) => stopTap.emit(id) });
@@ -101,10 +106,14 @@ export function createMap(elId) {
       basemap.setDark(d);
     },
 
-    /** Height in px of the sheet covering the bottom of the map; fits/flies keep targets above it. @param {number} px */
+    /**
+     * Height in px of the sheet covering the bottom of the map; fits/flies keep targets above it and the
+     * map credit sits just above it (hidden when almost no map shows). @param {number} px
+     */
     setBottomInset(px) {
-      const v = Math.max(0, Math.round(+px || 0));
-      inset = Math.min(v, Math.max(0, map.getSize().y - 160));
+      const v = Math.max(0, Math.round(+px || 0)), h = map.getSize().y;
+      inset = Math.min(v, Math.max(0, h - 160));
+      credits.place(v, h);
     },
 
     /**
@@ -222,8 +231,9 @@ export function createMap(elId) {
       progUntil = performance.now() + 1500;
       // sheet (nearly) full: almost no map shows, so frame for the half detent the user will drag back to
       const size = map.getSize().y, bottom = size - inset - TOP_PAD < 200 ? Math.round(size * 0.5) : inset;
-      map.fitBounds(b, { paddingTopLeft: [PAD, TOP_PAD], paddingBottomRight: [PAD, bottom + PAD], maxZoom,
-        animate: o.animate ?? !reducedMotion() });
+      const pad = { paddingTopLeft: [PAD, TOP_PAD], paddingBottomRight: [PAD, bottom + PAD], maxZoom };
+      if (o.animate ?? !reducedMotion()) map.flyToBounds(b, { ...pad, duration: FIT_S });
+      else map.fitBounds(b, { ...pad, animate: false });
     },
 
     /**

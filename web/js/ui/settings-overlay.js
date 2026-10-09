@@ -32,13 +32,13 @@ const navKey = (s) => `${s?.view || ""}|${s?.stopId || ""}|${s?.routeId || ""}`;
 
 /**
  * Where the overlay goes, in the containing block's layout px (pure; unit-tested): exactly over the
- * sheet at its "full" detent. The sheet may be mid-transition: subtracting its current translateY
- * gives its top edge at "full" (translateY 0), so the overlay lands where the sheet will settle.
+ * sheet at its "full" detent. The sheet may be mid-transition: subtracting how far it still is below
+ * its "full" position (ty) gives its top edge at "full", so the overlay lands where the sheet will settle.
  * @param {{sheet:{top:number, left:number, width:number, bottom:number}, origin:{left:number, top:number},
  *          k?:number, ty?:number, height:number, navBottom?:number|null}} g
  *   sheet: bounding rect (screen px); origin: containing block's top-left (screen px);
  *   navBottom: bottom of the navigation bar under the sheet (screen px), so the overlay covers it too;
- *   k: frame scale (screen px per layout px); ty: sheet's current translateY (layout px); height: containing block height (layout px)
+ *   k: frame scale (screen px per layout px); ty: sheet's current translateY minus its translateY at "full" (layout px, sheetTy()); height: containing block height (layout px)
  * @returns {{top:number, left:number, width:number, bottom:number}}
  */
 export function overlayBox({ sheet, origin, k = 1, ty = 0, height, navBottom = null }) {
@@ -53,12 +53,21 @@ export function overlayBox({ sheet, origin, k = 1, ty = 0, height, navBottom = n
   };
 }
 
-/** The sheet's current (possibly mid-transition) translateY in layout px; 0 without a transform. */
+/**
+ * How far (layout px) the sheet's top currently sits below where it settles at "full": its current
+ * (possibly mid-transition) translateY minus the full detent's own translateY. The sheet element is
+ * always --v-max tall (css/sheet.css), so at "full" it is still shifted down by --v-max - --v-full
+ * while the status pill shows; ui/sheet.js's [data-sheet-probe="full"] is --v-full tall.
+ * 0 without a transform (panel layout).
+ */
 function sheetTy() {
   const sheet = $("sheet");
   try {
     const t = sheet && getComputedStyle(sheet).transform;
-    return t && t !== "none" ? new DOMMatrixReadOnly(t).m42 || 0 : 0;
+    if (!t || t === "none") return 0;
+    const probe = document.querySelector('[data-sheet-probe="full"]');
+    const fullTy = probe && probe.offsetHeight ? Math.max(0, sheet.offsetHeight - probe.offsetHeight) : 0;
+    return (new DOMMatrixReadOnly(t).m42 || 0) - fullTy;
   } catch (e) { return 0; }
 }
 
@@ -186,7 +195,7 @@ export function openSettingsOverlay(ctx, content, opts = {}) {
     body.innerHTML = '<p class="v-sec">Couldn\'t show Settings. Official service: 773.702.8181.</p>';
   }
   // Slide up together with the sheet: start as far below as the sheet still has to travel
-  // (it was just told to go "full", where its translateY is 0), or from off-screen when it does not move.
+  // (it was just told to go "full"; sheetTy() is its distance to that position), or from off-screen when it does not move.
   // Set before un-hiding, so the first computed style is already the start position.
   sess.from = tyBefore > 24 ? tyBefore : 0;
   el.style.setProperty("--sto-from", sess.from ? sess.from + "px" : "100%");

@@ -1,4 +1,4 @@
-/* map.css: map overlays (route casings, stops, favorites, selection, buses, user dot, trip plan, attribution).
+/* map.css: map overlays (route casings, stops, favorites, selection, buses, user dot, trip plan, map credit).
    Owned by map/ (agent C). Theme: map.js toggles .sb-dark on the map element (.sb-map); every overlay
    color below comes from these variables so a theme switch never needs a redraw. */
 .sb-map{
@@ -14,16 +14,34 @@
 }
 .sb-map .maplibregl-canvas{outline:none}
 
-/* attribution: small, readable, top-left just under the floating search bar (--top-clear, tokens.css) */
-.sb-map .leaflet-top.leaflet-left .leaflet-control-attribution{
-  margin:calc(var(--top-clear,calc(env(safe-area-inset-top,0px) + 66px)) + 2px) 0 0 14px;padding:2px 7px;border-radius:7px;
-  font:500 10.5px/15px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
-  color:var(--sb-text2);background:var(--sb-chrome);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
-  max-width:calc(100vw - 84px);white-space:normal;box-shadow:none}
-.sb-map .leaflet-control-attribution a{color:var(--sb-text2);text-decoration:none}
-.sb-map .leaflet-control-attribution a:hover,.sb-map .leaflet-control-attribution a:focus-visible{text-decoration:underline}
-.sb-map .leaflet-control-attribution a:focus-visible{outline:2px solid var(--sb-accent);outline-offset:1px;border-radius:3px}
-@media (min-width:768px){.sb-map .leaflet-top.leaflet-left .leaflet-control-attribution{margin-left:404px;max-width:calc(100vw - 480px)}}
+/* map credit (map/credits.js): bottom-left of the VISIBLE map, just above the sheet: --sb-credit-y = sheet +
+   navigation height, set by MapApi.setBottomInset; glides with the sheet (same duration + easing), hidden at
+   the full detent (.is-off). Expanded: (i) + "OpenFreeMap / OpenMapTiles / OpenStreetMap" (no copyright sign);
+   collapsed: only the (i) button, 44 px target around a 28 px disc. The container ignores pointers. */
+.sb-credits{position:absolute;z-index:1000;left:4px;bottom:10px;display:flex;align-items:center;max-width:calc(100% - 12px);
+  transform:translate3d(0,calc(-1 * var(--sb-credit-y,0px)),0);pointer-events:none;
+  transition:transform var(--d-sheet,320ms) var(--ease-spring,cubic-bezier(.32,.72,0,1)),opacity .2s ease,visibility 0s linear 0s;
+  font:500 11px/16px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif}
+.sb-credits.no-anim{transition:none}
+.sb-credits.is-off{opacity:0;visibility:hidden;transition:none}   /* the full sheet slides over it anyway */
+.sb-credits-btn{flex:none;width:44px;height:44px;margin:0;padding:0;border:0;background:none;display:grid;place-items:center;
+  color:var(--sb-text2);cursor:pointer;pointer-events:auto;-webkit-tap-highlight-color:transparent}
+.sb-credits-ic{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--sb-chrome);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:var(--sb-shadow);transition:transform .12s ease}
+.sb-credits-ic svg{display:block;width:20px;height:20px}
+.sb-credits-btn:active .sb-credits-ic{transform:scale(.9)}
+.sb-credits-btn:focus{outline:none}
+.sb-credits-btn:focus-visible .sb-credits-ic{outline:2px solid var(--sb-accent);outline-offset:2px}
+.sb-credits-text{min-width:0;margin-left:-4px;padding:5px 10px;border-radius:9px;background:var(--sb-chrome);color:var(--sb-text2);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:var(--sb-shadow);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:auto;animation:sb-credits-in .2s ease-out}
+.sb-credits-text[hidden]{display:none}
+.sb-credits-text a{display:inline-block;padding:4px 0;margin:-4px 0;color:var(--sb-text2);text-decoration:none}   /* 24px tall link targets */
+.sb-credits-text a:hover,.sb-credits-text a:focus-visible{text-decoration:underline}
+.sb-credits-text a:focus-visible{outline:2px solid var(--sb-accent);outline-offset:1px;border-radius:3px}
+@keyframes sb-credits-in{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+/* phone landscape (left panel, must match ui/sheet.js PANEL_MEDIA): right of the panel, at the map bottom */
+@media (min-width:768px) and (max-height:559px){.sb-credits{left:calc(var(--panel-w,380px) + 20px);bottom:6px}}
 
 /* route network (CSS beats Leaflet's stroke/fill attributes) */
 .sb-casing,.sb-plan-casing{stroke:var(--sb-casing)}
@@ -113,11 +131,14 @@
 @media (prefers-reduced-motion:reduce){
   .sb-map .leaflet-marker-icon.sb-busicon,.sb-bus,.sb-bus-hd{transition:none!important}
   .sb-bus.sb-pulse::after{animation:none}
+  .sb-credits{transition:opacity .12s linear,visibility 0s}
+  .sb-credits-text{animation:none}
 }
 @media (prefers-contrast:more){
   .sb-map{--sb-ring:#000;--sb-text2:var(--sb-text)}
-  .sb-map .leaflet-control-attribution{background:var(--sb-chrome-solid)}
+  .sb-credits-ic,.sb-credits-text{background:var(--sb-chrome-solid);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 0 0 1px var(--sb-text)}
 }
 @media (forced-colors:active){
   .sb-bus,.sb-me,.sb-pin-end,.sb-fav{border:2px solid CanvasText;forced-color-adjust:none}
+  .sb-credits-ic,.sb-credits-text{border:1px solid CanvasText}
 }

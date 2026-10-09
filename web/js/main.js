@@ -173,6 +173,11 @@ function renderPill(s, now) {
   el.pillText.textContent = msg;
   el.pillRetry.hidden = !retry;
 }
+/* --pill-h on #app = the pill's real height (text can wrap); the full detent and the chip sit below it (sheet.css, base.css) */
+function watchPillHeight() {
+  if (el.app && typeof ResizeObserver === "function") new ResizeObserver(() => { const v = el.pill.offsetHeight + "px";   // before paint
+    if (v !== "0px" && el.app.style.getPropertyValue("--pill-h") !== v) el.app.style.setProperty("--pill-h", v); }).observe(el.pill);
+}
 
 /* ---------------- header ---------------- */
 function safe(fn, fallback) {
@@ -183,13 +188,14 @@ function renderHeader(s, id, def) {
   if (el.title.textContent !== title) el.title.textContent = title;
   if (el.app && el.app.dataset.view !== id) el.app.dataset.view = id || "";   // css: hide the search bar in Directions
   el.title.classList.toggle("sm", !TABS.includes(id));
-  el.back.hidden = !canGoBack();
+  if (el.back.hidden !== !canGoBack()) el.back.hidden = !canGoBack();   // render() runs on every store change: write only changes
   const metaFn = def && (def.meta || def.peek);
   const right = metaFn ? String(safe(() => metaFn(s), "")) : "";
   if (el.right.textContent !== right) el.right.textContent = right;
   const tab = activeTab(s);
   for (const b of el.tabs.querySelectorAll("button[data-tab]")) {
     const on = b.dataset.tab === tab;
+    if (on === (b.getAttribute("aria-current") === "page") && on === b.classList.contains("on")) continue;
     if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     b.classList.toggle("on", on);
   }
@@ -337,6 +343,7 @@ async function boot() {
   // the map is visible above the sheet AND the bottom navigation bar under it (phone layouts only)
   bus.on("sheet:inset", (p) => mapCall("setBottomInset", ((p && p.px) || 0) + (p && p.px && !sheet?.isPanel?.() ? el.tabs.offsetHeight || 0 : 0)));
   bus.on("toast", (p) => toast(p && p.text));
+  watchPillHeight();
   sheet = createSheet({ sheetEl: el.sheet, contentEl: el.content, headEl: el.head, grabEl: el.grab });
   initRouter({ store, setDetent: sheet.setDetent, getDetent: sheet.getDetent });
   ctx = { store, map, navigate, back, setDetent: (d) => sheet.setDetent(d), toast, now: nowS, locate };

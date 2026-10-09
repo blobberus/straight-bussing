@@ -73,6 +73,20 @@ test("gear opens an accessible modal overlay over the whole sheet; sheet goes fu
   } finally { t.done(); }
 });
 
+test("status pill showing: the sheet sits translated at full (it is --v-max tall), the overlay still lands on its top", async () => {
+  const t = shell();
+  // like css/sheet.css: element 500 px tall, the full detent (ui/sheet.js probe) 448 px, so at "full" translateY = 52
+  t.sheet.style.transform = "translate3d(0, 52px, 0)";
+  const probe = document.createElement("div");
+  probe.dataset.sheetProbe = "full";
+  probe.style.cssText = "position:fixed;left:-9px;top:0;width:1px;height:448px;visibility:hidden";
+  t.app.appendChild(probe);
+  try {
+    click(t.gear);
+    near(parseFloat(t.ov().style.top), t.sheet.getBoundingClientRect().top, 1, "not 52 px higher (that would cover the status pill)");
+  } finally { t.done(); }
+});
+
 test("Escape closes, restores the detent, returns focus to the gear; main.js Escape not triggered", async () => {
   const t = shell({ detent: "half" });
   let leaked = 0;

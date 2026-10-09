@@ -9,8 +9,10 @@
  * the ends. Tap on the header at peek -> half. Grabber: Enter/Space cycles, arrows step.
  * Emits bus 'sheet:inset' {px} (visible sheet height over the map; 0 in panel mode) on every settle.
  *
- * Geometry lives in css/sheet.css (--v-peek/--v-half/--v-full); this module measures it with
- * hidden probes and only sets data-detent and the --drag offset (transform only, no layout).
+ * Geometry lives in css/sheet.css (--v-peek/--v-half/--v-full; the element itself is always --v-max
+ * tall, so at "full" its translateY is --v-max - --v-full, not 0, while the status pill shows); this
+ * module measures it with hidden probes (data-sheet-probe="peek|half|full", read by
+ * ui/settings-overlay.js too) and only sets data-detent and the --drag offset (transform only, no layout).
  */
 import { bus } from "../core/events.js";
 
@@ -101,6 +103,7 @@ export const PANEL_MEDIA = "(min-width: 768px) and (max-height: 559px)";
 function makeProbe(varName, host) {
   const p = document.createElement("div");
   p.setAttribute("aria-hidden", "true");
+  p.dataset.sheetProbe = varName.replace("--v-", "");
   p.style.cssText = `position:fixed;left:-9px;top:0;width:1px;visibility:hidden;pointer-events:none;height:var(${varName})`;
   (host || document.body).appendChild(p);   // next to the sheet, so per-#app overrides of --v-* apply
   return p;

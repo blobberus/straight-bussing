@@ -84,11 +84,14 @@
   /* Google-Maps-style chrome: floating search bar on top, bottom navigation under the sheet */
   --nav-h: calc(58px + var(--safe-b));          /* bottom navigation (Current trip / Routes / My Routes) */
   --top-clear: calc(var(--safe-t) + 66px);      /* below the 48px search bar (10px from the top, 8px gap) */
-  --chip-top: calc(var(--top-clear) + 20px);    /* status pill, context chip and locate button (map credit above) */
-  /* sheet heights are measured from the top of the bottom navigation */
+  --chip-top: var(--top-clear);                 /* status pill, context chip and locate button (the map credit sits above the sheet, map/credits.js) */
+  /* sheet heights are measured from the top of the bottom navigation. The sheet element is always
+     --v-max tall (so a chip or pill appearing never changes its layout); --v-full is shorter while the
+     status pill shows (sheet.css), which only changes the full detent's translateY. */
   --v-peek: 104px;
   --v-half: calc(var(--app-h) * .42);
-  --v-full: calc(var(--app-h) - var(--nav-h) - var(--chip-top));
+  --v-max: calc(var(--app-h) - var(--nav-h) - var(--chip-top));
+  --v-full: var(--v-max);
   --panel-w: 380px;
 
   color-scheme: light;
