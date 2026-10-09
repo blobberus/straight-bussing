@@ -31,6 +31,7 @@ test("loop route wraps (L3 -> L0 -> L1) with headway estimate", () => {
   const [b] = busLegs(o);
   eq(b.board.id, "L3"); eq(b.alight.id, "L1"); eq(b.stopsPassed, 2);
   eq(b.waitLive, false);
+  eq(b.tripId, null, "no live trip update -> no trip to follow");
   eq(b.source, "estimate");
   const cycle = (2 * hav(stops.L0, stops.L1) + 2 * hav(stops.L1, stops.L2)) / 300;
   near(b.wait, cycle / 2, 0.01, "cycle / 1 bus / 2");

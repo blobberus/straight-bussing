@@ -46,7 +46,17 @@ async function dirWith(options, over = {}) {
 
 test("journey: optionRids / planJourney (unique bus routes; walk-only -> null)", () => {
   eq(optionRids(opt("a", 10, "R1", "R2", "R1")), ["R1", "R2"]);
-  eq(planJourney(opt("a", 10, "R1"), "Hospital"), { rids: ["R1"], label: "To Hospital", kind: "plan" });
+  const j = planJourney({ ...opt("a", 10, "R1"), t0: NOW }, "Hospital");
+  eq([j.rids, j.label, j.kind, j.to, j.t0], [["R1"], "To Hospital", "plan", "Hospital", NOW]);
+  eq(j.legs, [
+    { type: "walk", min: 0.3, toName: "Main & 1st" },
+    { type: "bus", rid: "R1", board: { id: "S1", name: "Main & 1st" }, alight: { id: "S3", name: "Hospital" }, tripId: null,
+      boardT: NOW + 120, alightT: NOW + 600, source: "live", waitLive: true },
+  ], "compact legs to follow the trip later");
+  const tl = planJourney({ legs: [walk(20, 0.3), { ...busLeg("R2"), tripId: 77 }, { ...walk(90, 1.1), from: A, to: { lat: 0, lon: 0, name: "Destination" } }] }, "Cafe <b>");
+  eq(tl.legs[1].tripId, "77", "trip id kept as a string");
+  eq(tl.legs[2], { type: "walk", min: 1.1, toName: "Cafe <b>" }, "last walk is named after the destination (escaped at render time)");
+  eq(tl.t0, null);
   eq(planJourney({ legs: [walk(500, 6)] }, "X"), null, "walk-only hides nothing");
   eq(planJourney(null), null);
   ok(sameRids(["R1", "R2"], ["R2", "R1"]) && !sameRids(["R1"], ["R1", "R2"]));
@@ -85,7 +95,9 @@ test("directions: Start sets the journey, keeps the plan drawn, lowers the sheet
   eq(res.querySelectorAll('[data-action="dir:start"]').length, 1, "one primary action");
   runAction("dir:start", {}, null, ctx);
   await tick();
-  eq(ctx.store.get().journey, { rids: ["R1", "R2"], label: "To Hospital", kind: "plan" });
+  const jn = ctx.store.get().journey;
+  eq([jn.rids, jn.label, jn.kind, jn.to], [["R1", "R2"], "To Hospital", "plan", "Hospital"]);
+  eq(jn.legs.map((l) => l.type + (l.rid || "")), ["walk", "busR1", "busR2"], "compact legs stored for the Current trip timeline");
   eq(last(ctx.calls.drawPlan).key, "a", "plan drawn");
   eq(last(detents), "half", "sheet lowered so the map shows");
   ok(res.querySelector(".j-trip") && res.textContent.includes("End trip"), "trip bar");

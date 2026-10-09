@@ -21,15 +21,47 @@ export function optionRids(o) {
   return out;
 }
 
+const numOr = (x) => (typeof x === "number" && isFinite(x) ? x : null);
+
 /**
- * Journey for a directions option, or null when it has no bus legs (walk-only trips hide nothing).
+ * Compact legs of an option, enough to follow the trip later without the Directions view
+ * (core/tripprogress.js): walk {type, min, toName}, bus {type, rid, board:{id,name}, alight:{id,name},
+ * tripId, boardT, alightT, source, waitLive}. The last walk is named after the destination.
  * @param {object|null} o planner Option
  * @param {string} [toLabel] destination name
- * @returns {{rids:string[], label:string, kind:'plan'}|null}
+ * @returns {Array<object>}
+ */
+export function journeyLegs(o, toLabel) {
+  const legs = (o && o.legs) || [], out = [];
+  legs.forEach((l, i) => {
+    if (!l) return;
+    if (l.type === "walk") {
+      const next = legs[i + 1];
+      const toName = i === legs.length - 1 ? toLabel || "destination" : next && next.type === "bus" && next.board ? next.board.name : l.to && l.to.name;
+      out.push({ type: "walk", min: Number(l.min) || 0, toName: toName != null ? String(toName) : null });
+    } else if (l.type === "bus" && l.board && l.alight && l.rid != null) {
+      out.push({ type: "bus", rid: String(l.rid), board: { id: String(l.board.id), name: String(l.board.name ?? l.board.id) },
+        alight: { id: String(l.alight.id), name: String(l.alight.name ?? l.alight.id) }, tripId: l.tripId != null ? String(l.tripId) : null,
+        boardT: numOr(l.boardT), alightT: numOr(l.alightT), source: l.source || null, waitLive: !!l.waitLive });
+    }
+  });
+  return out;
+}
+
+/**
+ * Journey for a directions option, or null when it has no bus legs (walk-only trips hide nothing).
+ * Besides {rids, label, kind} it carries what the Current trip timeline needs to follow the trip
+ * (ui/views/tripprogress.js): `to` (destination name), `t0` (when the plan was made, unix s) and
+ * `legs` (journeyLegs). Not persisted.
+ * @param {object|null} o planner Option
+ * @param {string} [toLabel] destination name
+ * @returns {{rids:string[], label:string, kind:'plan', to:string, t0:number|null, legs:Array<object>}|null}
  */
 export function planJourney(o, toLabel) {
   const rids = optionRids(o);
-  return rids.length ? { rids, label: "To " + (toLabel || "destination"), kind: "plan" } : null;
+  if (!rids.length) return null;
+  const to = toLabel || "destination";
+  return { rids, label: "To " + to, kind: "plan", to, t0: numOr(o && o.t0), legs: journeyLegs(o, to) };
 }
 
 /**
