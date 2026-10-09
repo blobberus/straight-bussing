@@ -32,7 +32,7 @@ struct RouteDetailView: View {
                 }
                 SectionTitle(text: "Stops")
                 Card { stopTimeline(color: Color(hex: r?.color)) }
-                service(svc)
+                RouteScheduleView(rid: rid, day: Self.localDay(model.now), t: model.now).equatable()
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
@@ -41,11 +41,11 @@ struct RouteDetailView: View {
 
     func stopTimeline(color: Color) -> some View {
         let order = Notify.routeOrder(model.staticData.routeStops[rid]).order
-        let busesByStop = Dictionary(grouping: model.live.buses.filter { $0.trip.routeId == rid && $0.stopId != nil }, by: { $0.stopId! })
+        let busesByStop = Dictionary(grouping: model.buses.filter { $0.trip.routeId == rid && $0.stopId != nil }, by: { $0.stopId! })
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(order.enumerated()), id: \.offset) { item in
                 let id = item.element
-                let next = Arrivals.arrivalsFor(trips: model.live.trips, stopId: id, routeId: rid, now: model.now).first
+                let next = model.arrivals(at: id, routeId: rid).first
                 HStack(spacing: 10) {
                     ZStack {
                         VStack(spacing: 0) {
@@ -76,6 +76,27 @@ struct RouteDetailView: View {
         }
     }
 
+    /// Local (America/Chicago) date of `t`, e.g. "2026-10-9": the schedule section only changes with it.
+    static func localDay(_ t: Double) -> String {
+        let p = Schedule.localParts(t)
+        return "\(p.y)-\(p.m)-\(p.d)"
+    }
+}
+
+/// "Hours & service" from the official schedule. Its calendar maths (week summary, changes in the next 30 days,
+/// scheduled buses by hour) depends only on the route and the local date, so the view is equatable on
+/// (rid, day) and is not rebuilt on every live poll or clock tick.
+struct RouteScheduleView: View, Equatable {
+    @Environment(AppModel.self) private var model
+    let rid: String
+    let day: String
+    /// A time on `day` (used for the 30-day window and the weekday).
+    let t: Double
+
+    nonisolated static func == (a: RouteScheduleView, b: RouteScheduleView) -> Bool { a.rid == b.rid && a.day == b.day }
+
+    var body: some View { service(model.staticData.service) }
+
     @ViewBuilder func service(_ svc: ServiceData) -> some View {
         let week = Schedule.weekSummary(svc, rid)
         if !week.isEmpty {
@@ -90,7 +111,7 @@ struct RouteDetailView: View {
                     .frame(minHeight: 36)
                 }
             }
-            let changes = Schedule.upcomingChanges(svc, rid, model.now)
+            let changes = Schedule.upcomingChanges(svc, rid, t)
             if changes.isEmpty {
                 Text("No schedule changes in the next 30 days.").font(.footnote).foregroundStyle(.secondary)
             } else {
@@ -107,7 +128,7 @@ struct RouteDetailView: View {
     }
 
     @ViewBuilder func busesChart(_ svc: ServiceData) -> some View {
-        let key = Schedule.dayKey(model.now)
+        let key = Schedule.dayKey(t)
         let list = Schedule.busesByHour(svc, rid, key)
         let maxN = list.map(\.buses).max() ?? 0
         if maxN > 1 {

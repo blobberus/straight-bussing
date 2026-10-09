@@ -8,6 +8,7 @@ struct BottomSheet<Content: View>: View {
     let available: CGFloat
     @ViewBuilder var content: Content
     @GestureState private var drag: CGFloat = 0
+    static var shape: UnevenRoundedRectangle { UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16) }
 
     static func height(for d: Detent, available: CGFloat) -> CGFloat {
         switch d {
@@ -44,9 +45,14 @@ struct BottomSheet<Content: View>: View {
         }
         .frame(height: h, alignment: .top)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemGroupedBackground))
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16))
-        .shadow(color: .black.opacity(0.18), radius: 10, y: -2)
+        .clipShape(Self.shape)
+        // The shadow belongs to the background shape, not to the clipped content: a shadow on content makes
+        // SwiftUI render the whole sheet offscreen on every drag frame; on a filled shape it is cheap.
+        .background(
+            Self.shape
+                .fill(Color(.systemGroupedBackground))
+                .shadow(color: .black.opacity(0.18), radius: 10, y: -2)
+        )
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: detent)
     }
 

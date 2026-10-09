@@ -4,45 +4,13 @@ import StraightBussingKit
 
 /// The live map (web/js/map): route lines in route colors stacked by draw order (focused routes on top,
 /// others dimmed), stops, live buses with heading, the user's position, and a started/selected trip.
+///
+/// Cheap to re-evaluate on purpose: lines and stops come from `AppModel.mapLayers` (cached per visibility
+/// change), bus staleness is computed at poll time, the camera lives in its own observable, the real user
+/// location is MapKit's `UserAnnotation` (no redraw per location update) and the bottom inset is applied by
+/// the caller, so this body only re-runs when buses, the trip/plan or the visible routes change.
 struct MapScreen: View {
     @Environment(AppModel.self) private var model
-    var bottomInset: CGFloat
-
-    struct Line: Identifiable {
-        let id: String
-        let coords: [CLLocationCoordinate2D]
-        let color: Color
-        let width: CGFloat
-    }
-
-    /// Route lines bottom -> top (MapKit draws later content above earlier content).
-    var lines: [Line] {
-        let vis = model.mapVisibility
-        let hidden = Set(vis.hidden), focus = vis.focus.map { Set($0) }
-        var out: [Line] = []
-        for rid in vis.order.reversed() where !hidden.contains(rid) {
-            guard let r = model.route(rid) else { continue }
-            let dim = focus != nil && !(focus!.contains(rid))
-            for (i, line) in (model.staticData.shapes[rid] ?? []).enumerated() {
-                out.append(Line(id: "\(rid)-\(i)", coords: line.map(\.cl), color: Color(hex: r.color).opacity(dim ? 0.25 : 1),
-                                width: dim ? 3 : 5))
-            }
-        }
-        return out
-    }
-
-    /// Stops served by a visible route.
-    var stops: [Stop] {
-        let hidden = Set(model.hidden)
-        var ids = Set<String>()
-        for (rid, list) in model.staticData.routeStops where !hidden.contains(rid) { ids.formUnion(list) }
-        return ids.compactMap { model.staticData.stops[$0] }.sorted { $0.id < $1.id }
-    }
-
-    var buses: [VehiclePosition] {
-        let hidden = Set(model.hidden)
-        return model.live.buses.filter { !hidden.contains($0.trip.routeId ?? "") }
-    }
 
     /// The trip drawn on the map: the started one, else the selected Directions option.
     var plan: TripOption? {
@@ -52,9 +20,11 @@ struct MapScreen: View {
     }
 
     var body: some View {
-        @Bindable var model = model
-        Map(position: $model.camera) {
-            ForEach(lines) { l in
+        @Bindable var camera = model.mapCamera
+        let layers = model.mapLayers
+        let buses = model.mapBuses.filter { !layers.hidden.contains($0.rid) }
+        Map(position: $camera.position) {
+            ForEach(layers.lines) { l in
                 MapPolyline(coordinates: l.coords)
                     .stroke(l.color, style: StrokeStyle(lineWidth: l.width, lineCap: .round, lineJoin: .round))
             }
@@ -72,28 +42,30 @@ struct MapScreen: View {
                     Marker("Destination", systemImage: "mappin", coordinate: end.cl).tint(.red)
                 }
             }
-            ForEach(stops) { s in
-                Annotation(s.name, coordinate: s.coord.cl, anchor: .center) {
-                    StopDot(isFav: model.isFav(s.id)) { model.push(.stop(s.id)) }
-                        .accessibilityLabel("Stop \(s.name)")
+            ForEach(layers.stops) { s in
+                Annotation(s.stop.name, coordinate: s.stop.coord.cl, anchor: .center) {
+                    StopDot(isFav: s.isFav) { model.push(.stop(s.id)) }
+                        .accessibilityLabel("Stop \(s.stop.name)")
                 }
                 .annotationTitles(.hidden)
             }
-            ForEach(buses, id: \.vehicle.id) { b in
-                Annotation(b.displayLabel, coordinate: b.coord.cl, anchor: .center) {
-                    BusMarker(route: model.route(b.trip.routeId ?? ""), bearing: b.bearing,
-                              stale: b.timestamp > 0 && model.now - b.timestamp > 60)
+            ForEach(buses) { b in
+                Annotation(b.label, coordinate: b.coord.cl, anchor: .center) {
+                    BusMarker(route: model.route(b.rid), bearing: b.bearing, stale: b.stale)
                 }
                 .annotationTitles(.hidden)
             }
-            if let u = model.user {
+            // Demo mode: a fixed simulated position. Real location: MapKit's own user dot.
+            if model.config.demo, let u = model.user {
                 Annotation("My location", coordinate: u.cl, anchor: .center) { UserDot() }
                     .annotationTitles(.hidden)
+            }
+            if !model.config.demo {
+                UserAnnotation()
             }
         }
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
         .mapControls { MapCompass() }
-        .safeAreaPadding(.bottom, bottomInset)
         .accessibilityLabel("Shuttle map")
     }
 }

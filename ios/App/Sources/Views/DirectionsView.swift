@@ -8,17 +8,30 @@ struct DirectionsView: View {
     @Environment(AppModel.self) private var model
     enum Field: Hashable { case from, to }
     @FocusState private var focus: Field?
+    /// Typed text stays in this view: keystrokes never touch AppModel, so the map and the rest of the UI
+    /// don't redraw while typing.
+    @State private var fromText = ""
+    @State private var toText = ""
+    /// Suggestions for `itemsQuery`, searched off the main thread about 100 ms after the last keystroke.
+    @State private var items: [Endpoint] = []
+    @State private var itemsQuery: String?
+
+    struct SuggestionKey: Equatable {
+        var field: Field?
+        var text: String
+    }
+
+    var query: String { focus == .from ? fromText : focus == .to ? toText : "" }
 
     var body: some View {
-        @Bindable var model = model
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 Card {
                     HStack(spacing: 8) {
                         VStack(spacing: 0) {
-                            field(.from, text: $model.dir.fromText, placeholder: "Start", pin: .green)
+                            field(.from, text: $fromText, placeholder: "Start", pin: .green)
                             Divider().padding(.leading, 28)
-                            field(.to, text: $model.dir.toText, placeholder: "Destination", pin: .red)
+                            field(.to, text: $toText, placeholder: "Destination", pin: .red)
                         }
                         Button { model.swapEndpoints(); syncTexts() } label: {
                             Image(systemName: "arrow.up.arrow.down").font(.body.weight(.semibold)).tapTarget()
@@ -32,11 +45,31 @@ struct DirectionsView: View {
             .padding(.bottom, 24)
         }
         .onAppear { syncTexts(); if model.dir.to == nil { focus = .to } }
+        .onChange(of: model.dir.from) { _, e in fromText = e?.label ?? "" }
+        .onChange(of: model.dir.to) { _, e in toText = e?.label ?? "" }
+        .task(id: SuggestionKey(field: focus, text: query)) { await loadSuggestions() }
     }
 
     func syncTexts() {
-        model.dir.fromText = model.dir.from?.label ?? ""
-        model.dir.toText = model.dir.to?.label ?? ""
+        fromText = model.dir.from?.label ?? ""
+        toText = model.dir.to?.label ?? ""
+    }
+
+    /// Debounced on-device search (stations + places.json) on a background thread.
+    func loadSuggestions() async {
+        guard focus != nil else { return }
+        let q = query
+        if itemsQuery != nil {
+            try? await Task.sleep(nanoseconds: 100_000_000)   // typing: wait for a pause; the first list comes right away
+        }
+        guard !Task.isCancelled else { return }
+        let user = model.user, stops = Array(model.staticData.stops.values), places = model.places
+        let found = await Task.detached(priority: .userInitiated) {
+            AppModel.suggestions(q, user: user, stops: stops, places: places)
+        }.value
+        guard !Task.isCancelled else { return }
+        items = found
+        itemsQuery = q
     }
 
     func field(_ f: Field, text: Binding<String>, placeholder: String, pin: Color) -> some View {
@@ -58,11 +91,13 @@ struct DirectionsView: View {
     }
 
     @ViewBuilder func suggestions(for f: Field) -> some View {
-        let q = f == .from ? model.dir.fromText : model.dir.toText
-        let items = model.suggestions(q)
+        let q = f == .from ? fromText : toText
         if items.isEmpty {
-            Text(q.count < 2 ? "Type a station, a place (\u{201C}chipotle\u{201D}, \u{201C}coffee\u{201D}) or an address." : "No matches on campus. Try another name.")
-                .font(.subheadline).foregroundStyle(.secondary)
+            // Only claim "no matches" once the search for this exact text has finished.
+            if q.count < 2 || itemsQuery == q {
+                Text(q.count < 2 ? "Type a station, a place (\u{201C}chipotle\u{201D}, \u{201C}coffee\u{201D}) or an address." : "No matches on campus. Try another name.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
         } else {
             Card {
                 ForEach(Array(items.enumerated()), id: \.offset) { item in
@@ -106,7 +141,7 @@ struct DirectionsView: View {
                 Text("Live data delayed. Bus times may be off.").font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
             }
             if r.options.isEmpty {
-                let running = !model.live.buses.isEmpty
+                let running = !model.buses.isEmpty
                 EmptyStateView(title: "No practical shuttle route right now",
                                message: running ? "Nothing runs close enough to both places." : "No shuttles are running right now.",
                                showOfficial: !running)
@@ -121,6 +156,12 @@ struct DirectionsView: View {
                 Text("Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
+        } else {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Finding trips\u{2026}").font(.subheadline).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
         }
     }
 

@@ -15,7 +15,10 @@ struct RootView: View {
             let available = max(200, geo.size.height - Self.tabBarHeight - topReserved)
             let sheetH = BottomSheet<EmptyView>.height(for: model.detent, available: available)
             ZStack(alignment: .bottom) {
-                MapScreen(bottomInset: sheetH + Self.tabBarHeight)
+                // The inset is applied here, not passed in: MapScreen has no inputs, so a detent change only
+                // relayouts the map instead of re-running its body.
+                MapScreen()
+                    .safeAreaPadding(.bottom, sheetH + Self.tabBarHeight)
                     .ignoresSafeArea()
                 VStack(spacing: 8) {
                     if !inDirections { SearchBar() }
@@ -83,7 +86,7 @@ struct StaleBanner: View {
     @Environment(AppModel.self) private var model
     var body: some View {
         let level = model.staleLevel
-        if level != .fresh && model.live.loaded {
+        if level != .fresh && model.liveLoaded {
             HStack(spacing: 8) {
                 Image(systemName: level == .err ? "wifi.exclamationmark" : "clock.badge.exclamationmark")
                 Text(text(level)).font(.footnote.weight(.semibold)).lineLimit(2)
@@ -103,7 +106,7 @@ struct StaleBanner: View {
     func text(_ l: StaleLevel) -> String {
         switch l {
         case .err: return "Live data unavailable. Times may be wrong. Official: 773.702.8181"
-        case .old: return "Live data is out of date (\(TimeFmt.ago(model.live.feedTs, from: model.now)))."
+        case .old: return "Live data is out of date (\(TimeFmt.ago(model.feedTs, from: model.now)))."
         case .late: return "Live data delayed. Bus times may be off."
         case .fresh: return ""
         }

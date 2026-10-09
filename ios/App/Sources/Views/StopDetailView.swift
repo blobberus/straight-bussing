@@ -22,15 +22,15 @@ struct StopDetailView: View {
                 SectionTitle(text: "Arrivals")
                 Card {
                     if arrivals.isEmpty {
-                        EmptyStateView(title: "No live arrivals", message: model.live.loaded ? "No bus reports this stop right now." : "Loading live data…",
-                                       showOfficial: model.live.loaded)
+                        EmptyStateView(title: "No live arrivals", message: model.liveLoaded ? "No bus reports this stop right now." : "Loading live data…",
+                                       showOfficial: model.liveLoaded)
                     }
                     ForEach(Array(arrivals.enumerated()), id: \.offset) { item in
                         if item.offset > 0 { Divider() }
                         ArrivalRow(a: item.element)
                     }
                 }
-                Text("Updated \(TimeFmt.ago(model.live.lastOk, from: model.now)). Times are live predictions (estimates).")
+                Text("Updated \(TimeFmt.ago(model.lastOk, from: model.now)). Times are live predictions (estimates).")
                     .font(.caption).foregroundStyle(.secondary)
                 if let stop {
                     HStack {

@@ -3,22 +3,41 @@ import StraightBussingKit
 
 /// Loading, polling, location, directions and the started trip.
 extension AppModel {
-    /// Boot: bundled static data, prefs, then live polling (or the demo feed).
+    /// Service alerts change rarely: fetched every 60 s; vehicles + trip updates every 10 s.
+    static let alertsEveryS = 60.0
+
+    /// Boot: bundled static data, prefs, then live polling (or the demo feed). Idempotent.
     func start() {
-        guard staticData.isEmpty else { return }
-        if let dir = Bundle.main.url(forResource: "data", withExtension: nil) {
-            let loaded = StaticLoader.load(from: dir)
-            staticData = loaded.data
-            staticFailed = loaded.failed
-            places = StaticLoader.loadPlaces(from: dir)
-        } else {
+        guard !booted else { return }
+        booted = true
+        Task { await boot() }
+    }
+
+    func boot() async {
+        guard let dir = Bundle.main.url(forResource: "data", withExtension: nil) else {
             staticFailed = ["data (bundle folder missing)"]
+            finishBoot()
+            return
         }
+        // JSON parsing and the place index are pure work on Sendable values: keep them off the main thread.
+        let staticTask = Task.detached(priority: .userInitiated) { StaticLoader.load(from: dir) }
+        let placesTask = Task.detached(priority: .utility) { StaticLoader.loadPlaces(from: dir) }
+        let loaded = await staticTask.value
+        staticData = loaded.data
+        staticFailed = loaded.failed
+        staticVersion += 1
+        finishBoot()
+        places = await placesTask.value
+        if config.demo { applyLaunchScreen() }
+    }
+
+    /// Everything that needs the static data: predictor, prefs, location, clock, polling.
+    func finishBoot() {
         predictor = SchedulePredictor(segments: staticData.segments, routeStops: staticData.routeStops)
         loadPrefs()
         location.onUpdate = { [weak self] p, st in
             guard let self, !self.config.demo else { return }
-            self.locState = st
+            if self.locState != st { self.locState = st }
             if let p { self.user = p }
         }
         if config.demo {
@@ -31,13 +50,12 @@ extension AppModel {
         }
         startClock()
         resumePolling()
-        if config.demo { applyLaunchScreen() }
     }
 
     // MARK: Polling
 
     func resumePolling() {
-        guard pollTask == nil, !staticData.isEmpty || !staticFailed.isEmpty else { return }   // after start()
+        guard pollTask == nil, !staticData.isEmpty || !staticFailed.isEmpty else { return }   // after boot
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -58,13 +76,45 @@ extension AppModel {
         if config.demo {
             poll = DemoFeed.poll(staticData: staticData, now: Date().timeIntervalSince1970, epoch: epoch)
         } else {
-            poll = await FeedClient().poll()
+            let started = Date().timeIntervalSince1970
+            let withAlerts = started - lastAlertsPoll >= Self.alertsEveryS
+            poll = await FeedClient().poll(alerts: withAlerts)
+            if withAlerts, (try? poll.alerts.get()) != nil { lastAlertsPoll = started }   // a failed fetch retries next poll
         }
         let t = Date().timeIntervalSince1970
-        live = live.applying(poll, staticData: staticData, now: t)
-        failures = live.failed ? failures + 1 : 0
-        now = t
+        applyLive(liveState.applying(poll, staticData: staticData, now: t), now: t)
+        failures = liveState.failed ? failures + 1 : 0
         refreshTrip()
+    }
+
+    /// Publish a merged poll: every observed slice is assigned only when it differs, so a view that reads
+    /// `alerts` is not redrawn because buses moved, and an unchanged feed redraws nothing but the clock.
+    func applyLive(_ s: LiveState, now t: Double) {
+        liveState = s
+        if buses != s.buses { buses = s.buses }
+        if trips != s.trips {
+            trips = s.trips
+            arrivalIndex = Arrivals.index(trips: s.trips)
+        }
+        if alerts != s.alerts { alerts = s.alerts }
+        if liveLoaded != s.loaded { liveLoaded = s.loaded }
+        if liveFailed != s.failed { liveFailed = s.failed }
+        if lastOk != s.lastOk { lastOk = s.lastOk }
+        if feedTs != s.feedTs { feedTs = s.feedTs }
+        now = t
+        refreshStatus()
+    }
+
+    /// Stale level and bus marker staleness for `now`, written only when they change.
+    func refreshStatus() {
+        let level = liveState.staleLevel(now: now)
+        if staleLevel != level { staleLevel = level }
+        let t = now
+        let markers = liveState.buses.enumerated().map { i, b in
+            MapBus(id: b.vehicle.id ?? "bus-\(i)", rid: b.trip.routeId ?? "", label: b.displayLabel, coord: b.coord,
+                   bearing: b.bearing, stale: b.timestamp > 0 && t - b.timestamp > 60)
+        }
+        if mapBuses != markers { mapBuses = markers }
     }
 
     func startClock() {
@@ -74,6 +124,7 @@ extension AppModel {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
                 guard let self else { return }
                 self.now = Date().timeIntervalSince1970
+                self.refreshStatus()
             }
         }
     }
@@ -95,14 +146,16 @@ extension AppModel {
 
     var plannerData: PlannerData {
         PlannerData(stops: staticData.stops, routeStops: staticData.routeStops, routeOrder: staticData.routeStopIds,
-                    trips: live.trips, buses: live.buses)
+                    trips: liveState.trips, buses: liveState.buses)
     }
 
-    func openDirections(to: Endpoint? = nil) {
+    /// Open Directions (optionally to a destination) and plan. Returns the planning task (demo screens await it).
+    @discardableResult
+    func openDirections(to: Endpoint? = nil) -> Task<Void, Never>? {
         if dir.from == nil, let u = user { dir.from = Endpoint(label: "My location", coord: u, isMe: true) }
         if let to { dir.to = to }
         if page != .directions { push(.directions) }
-        replan()
+        return replan()
     }
 
     func setEndpoint(_ which: WritableKeyPath<DirectionsState, Endpoint?>, _ e: Endpoint?) {
@@ -117,11 +170,35 @@ extension AppModel {
         replan()
     }
 
-    func replan() {
-        guard let f = dir.from, let t = dir.to else { dir.result = nil; return }
-        dir.result = Planner.plan(from: f.coord, to: t.coord, now: now, data: plannerData, predict: predictor)
+    /// New endpoints: plan on a background thread, then select the first option and frame it on the map.
+    @discardableResult
+    func replan() -> Task<Void, Never>? {
+        planTask?.cancel()
+        planTask = nil
+        guard let f = dir.from, let t = dir.to else {
+            if dir.result != nil { dir.result = nil }
+            return nil
+        }
+        dir.result = nil
         dir.selected = 0
-        if let o = dir.result?.options.first { fit(planPoints(o)) }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            let r = await self.computePlan(from: f.coord, to: t.coord)
+            guard !Task.isCancelled, self.dir.from == f, self.dir.to == t else { return }
+            self.dir.result = r
+            self.dir.selected = 0
+            if let o = r.options.first { self.fit(self.planPoints(o)) }
+        }
+        planTask = task
+        return task
+    }
+
+    /// `Planner.plan` off the main thread (its inputs are Sendable value snapshots).
+    func computePlan(from: LatLon, to: LatLon) async -> PlanResult {
+        let data = plannerData, predict = predictor, t = Date().timeIntervalSince1970
+        return await Task.detached(priority: .userInitiated) {
+            Planner.plan(from: from, to: to, now: t, data: data, predict: predict)
+        }.value
     }
 
     func planPoints(_ o: TripOption) -> [LatLon] {
@@ -133,14 +210,15 @@ extension AppModel {
         }
     }
 
-    /// Station + local place suggestions for a typed query (all on device).
-    func suggestions(_ q: String) -> [Endpoint] {
+    /// Station + local place suggestions for a typed query (all on device). Pure and nonisolated, so
+    /// DirectionsView runs it off the main thread.
+    nonisolated static func suggestions(_ q: String, user: LatLon?, stops: [Stop], places: PlaceIndex?) -> [Endpoint] {
         let n = PlaceIndex.norm(q)
         var out: [Endpoint] = []
         if n.isEmpty || "my location".hasPrefix(n), let u = user { out.append(Endpoint(label: "My location", coord: u, isMe: true)) }
         guard n.count >= 2 else { return out }
-        let stops = staticData.stops.values.filter { PlaceIndex.norm($0.name).contains(n) }.sorted { $0.name < $1.name }.prefix(4)
-        out += stops.map { Endpoint(label: $0.name, coord: $0.coord, stopId: $0.id) }
+        let hits = stops.filter { PlaceIndex.norm($0.name).contains(n) }.sorted { $0.name < $1.name }.prefix(4)
+        out += hits.map { Endpoint(label: $0.name, coord: $0.coord, stopId: $0.id) }
         out += (places?.search(q) ?? []).map { Endpoint(label: $0.label, coord: $0.coord, sub: $0.sub) }
         return out
     }
@@ -161,6 +239,7 @@ extension AppModel {
         paths[.current] = []
         tab = .current
         detent = .half
+        location.setTripMode(true)
         refreshTrip()
         if notify.liveActivity, let snap = tripProgress?.snapshot(staticData: staticData) {
             liveActivity.start(title: "To \(label)", state: snap)
@@ -173,11 +252,12 @@ extension AppModel {
         activeTrip = nil
         tripProgress = nil
         routeState.journey = nil
+        location.setTripMode(false)
     }
 
     func refreshTrip() {
         guard let trip = activeTrip else { return }
-        let p = TripProgress.compute(option: trip.option, staticData: staticData, live: live, now: now)
+        let p = TripProgress.compute(option: trip.option, staticData: staticData, live: liveState, now: now)
         tripProgress = p
         if let snap = p.snapshot(staticData: staticData) { liveActivity.update(snap) }
     }
@@ -203,16 +283,16 @@ extension AppModel {
             await pollOnce()
             switch config.screen ?? "current" {
             case "trip":
-                openDirections(to: demoDestination)
+                _ = await openDirections(to: demoDestination)?.value
                 if let o = dir.result?.options.first(where: { !$0.busLegs.isEmpty }) { startTrip(o, label: demoDestination.label) }
             case "routes": select(.routes)
             case "route": select(.routes); push(.route(staticData.routes[DemoConfig.routeForDetail] != nil ? DemoConfig.routeForDetail : staticData.routeIds.first ?? ""))
             case "myroutes": select(.myroutes); apply(Custom.applyCustom(routeState, "demo-commute"))
-            case "directions": openDirections(to: demoDestination)
+            case "directions": _ = await openDirections(to: demoDestination)?.value
             case "stop": push(.stop(DemoConfig.stopForDetail))
             case "settings": showSettings = true
             case "liveactivity":
-                openDirections(to: demoDestination)
+                _ = await openDirections(to: demoDestination)?.value
                 if let o = dir.result?.options.first(where: { !$0.busLegs.isEmpty }) { startTrip(o, label: demoDestination.label) }
                 showLiveActivityPreview = true
             case "about": select(.myroutes); push(.about)
@@ -227,7 +307,7 @@ extension AppModel {
     func runTour() async {
         func pause(_ s: Double) async { try? await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000)) }
         await pause(2.5)
-        openDirections(to: demoDestination)
+        _ = await openDirections(to: demoDestination)?.value
         await pause(3)
         if dir.result?.options.count ?? 0 > 1 { dir.selected = 1; await pause(1.5); dir.selected = 0; await pause(1) }
         if let o = dir.result?.options.first(where: { !$0.busLegs.isEmpty }) { startTrip(o, label: demoDestination.label) }

@@ -14,7 +14,16 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-        manager.distanceFilter = 15
+        manager.distanceFilter = Self.idleFilterM
+    }
+
+    /// Meters between updates: nearest stops need little precision; a started trip follows the rider closer.
+    static let idleFilterM: CLLocationDistance = 30
+    static let tripFilterM: CLLocationDistance = 15
+
+    /// Finer updates while a trip is in progress, coarser (fewer redraws, less battery) otherwise.
+    func setTripMode(_ on: Bool) {
+        manager.distanceFilter = on ? Self.tripFilterM : Self.idleFilterM
     }
 
     var state: State {

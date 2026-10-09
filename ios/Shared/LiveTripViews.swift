@@ -121,9 +121,6 @@ struct LiveTripLockScreenView: View {
         .opacity(isStale ? 0.75 : 1)
     }
 
-    static func clock(_ t: Double) -> String {
-        let f = DateFormatter()
-        f.setLocalizedDateFormatFromTemplate("jmm")
-        return f.string(from: Date(timeIntervalSince1970: t))
-    }
+    /// "4:12 PM" through the Kit's cached formatter (no DateFormatter allocation per render).
+    static func clock(_ t: Double) -> String { TimeFmt.clock(t) }
 }

@@ -54,7 +54,7 @@ struct CurrentTripView: View {
                 .buttonStyle(.plain)
                 let arr = Array(model.arrivals(at: s.id).prefix(3))
                 if arr.isEmpty {
-                    Text(model.live.loaded ? "No live arrivals right now" : "Loading live data…")
+                    Text(model.liveLoaded ? "No live arrivals right now" : "Loading live data…")
                         .font(.subheadline).foregroundStyle(.secondary).padding(.bottom, 8)
                 } else {
                     ForEach(arr, id: \.self) { a in
@@ -104,19 +104,14 @@ struct CurrentTripView: View {
         }
     }
 
-    /// The next arrival per stop, soonest first (top 6).
+    /// The next arrival per stop, soonest first (top 6), from the per-poll arrival index.
     var soonest: [(stop: String, a: Arrival)] {
-        var best: [String: Arrival] = [:]
-        let hidden = Set(model.hidden)
-        for tu in model.live.trips {
-            guard let rid = tu.trip.routeId, !hidden.contains(rid) else { continue }
-            for u in tu.stopTimeUpdates {
-                guard let sid = u.stopId, u.time > model.now - 30 else { continue }
-                if best[sid] == nil || u.time < best[sid]!.t { best[sid] = Arrival(rid: rid, t: u.time, bus: tu.vehicle.label, tripId: tu.trip.tripId) }
-            }
+        let hidden = Set(model.hidden), now = model.now
+        var all: [(stop: String, a: Arrival)] = []
+        for (sid, list) in model.arrivalIndex {
+            if let a = list.first(where: { $0.t > now - 30 && !hidden.contains($0.rid) }) { all.append((stop: sid, a: a)) }
         }
-        let all: [(stop: String, a: Arrival)] = best.map { (stop: $0.key, a: $0.value) }
-        return Array(all.sorted { $0.a.t < $1.a.t }.prefix(6))
+        return Array(all.sorted { $0.a.t < $1.a.t || ($0.a.t == $1.a.t && $0.stop < $1.stop) }.prefix(6))
     }
 }
 
