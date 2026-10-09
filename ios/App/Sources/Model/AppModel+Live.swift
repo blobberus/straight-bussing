@@ -85,6 +85,7 @@ extension AppModel {
         applyLive(liveState.applying(poll, staticData: staticData, now: t), now: t)
         failures = liveState.failed ? failures + 1 : 0
         refreshTrip()
+        refreshDirections()
     }
 
     /// Publish a merged poll: every observed slice is assigned only when it differs, so a view that reads
@@ -191,6 +192,31 @@ extension AppModel {
         }
         planTask = task
         return task
+    }
+
+    /// Minimum seconds between background re-plans of the open Directions.
+    static let dirRefreshS = 8.0
+
+    /// New live data while Directions is open: re-plan in the background with the new predictions (like the
+    /// web's replan on trips/buses changes) so "(live)" boarding times and waits stay current. Keeps the
+    /// selected option (by route key), never moves the map, skipped while a new-endpoint plan is running.
+    func refreshDirections() {
+        // `dir.result` is nil while a new-endpoint plan runs (replan clears it), so this never races it.
+        guard page == .directions, let f = dir.from, let t = dir.to, dir.result != nil,
+              dirRefreshTask == nil, !liveState.failed else { return }
+        let wall = Date().timeIntervalSince1970
+        guard wall - lastDirRefresh >= Self.dirRefreshS else { return }
+        lastDirRefresh = wall
+        dirRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            let r = await self.computePlan(from: f.coord, to: t.coord)
+            self.dirRefreshTask = nil
+            // Drop it if the endpoints changed meanwhile (a fresh plan is coming) or Directions closed.
+            guard self.page == .directions, self.dir.from == f, self.dir.to == t, let old = self.dir.result else { return }
+            let key = old.options.indices.contains(self.dir.selected) ? old.options[self.dir.selected].key : nil
+            self.dir.result = r
+            self.dir.selected = key.flatMap { k in r.options.firstIndex { $0.key == k } } ?? min(self.dir.selected, max(0, r.options.count - 1))
+        }
     }
 
     /// `Planner.plan` off the main thread (its inputs are Sendable value snapshots).

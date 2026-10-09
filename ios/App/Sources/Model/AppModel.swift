@@ -112,6 +112,9 @@ final class AppModel {
     @ObservationIgnored var pollTask: Task<Void, Never>?
     @ObservationIgnored var clockTask: Task<Void, Never>?
     @ObservationIgnored var planTask: Task<Void, Never>?
+    /// Background re-plan of the open Directions with new live data (see `refreshDirections`).
+    @ObservationIgnored var dirRefreshTask: Task<Void, Never>?
+    @ObservationIgnored var lastDirRefresh: Double = 0
     @ObservationIgnored let epoch = Date().timeIntervalSince1970
     @ObservationIgnored var failures = 0
     @ObservationIgnored var booted = false
