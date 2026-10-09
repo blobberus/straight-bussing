@@ -14,9 +14,9 @@
 }
 .sb-map .maplibregl-canvas{outline:none}
 
-/* attribution: small, readable, top-left under the safe area */
+/* attribution: small, readable, top-left just under the floating search bar (--top-clear, tokens.css) */
 .sb-map .leaflet-top.leaflet-left .leaflet-control-attribution{
-  margin:calc(env(safe-area-inset-top,0px) + 8px) 0 0 8px;padding:2px 7px;border-radius:7px;
+  margin:calc(var(--top-clear,calc(env(safe-area-inset-top,0px) + 66px)) + 2px) 0 0 14px;padding:2px 7px;border-radius:7px;
   font:500 10.5px/15px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
   color:var(--sb-text2);background:var(--sb-chrome);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
   max-width:calc(100vw - 84px);white-space:normal;box-shadow:none}

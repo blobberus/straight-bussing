@@ -1,9 +1,10 @@
 /* Bottom sheet: 3 detents on phones and in the desktop phone frame; floating left panel only on wide,
    short screens (phone landscape): (min-width: 768px) and (max-height: 559px), must match ui/sheet.js PANEL_MEDIA. Owner: D1.
-   Geometry: the sheet is always --v-full tall and slides with translateY so only --vis px show.
+   Geometry: the sheet is always --v-full tall and slides with translateY so only --vis px show. It sits on
+   top of the bottom navigation (#tabs.bottomnav, --nav-h); the search bar floats above it (base.css).
    ui/sheet.js sets data-detent (peek|half|full) and --drag (px, live finger offset) on .sheet. */
 .sheet {
-  position: fixed; z-index: 1000; left: 0; right: 0; bottom: 0;
+  position: fixed; z-index: 1000; left: 0; right: 0; bottom: var(--nav-h);
   height: var(--v-full);
   display: flex; flex-direction: column;
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
@@ -58,11 +59,11 @@
   color: var(--text-2); font-weight: 600;
 }
 
-/* segmented tabs (Nearby / Routes / My Routes) */
-.tabs { margin-top: var(--s2); }
-@media not all and (min-width: 768px) and (max-height: 559px) {
-  .sheet[data-detent="peek"] .tabs { display: none; }
-}
+/* full detent stops below the floating chips too: the context chip (40px) and the status pill (52px,
+   always visible for safety) must never cover the sheet's grab handle */
+#app:has(#ctxbar:not([hidden])) { --v-full: calc(var(--app-h) - var(--nav-h) - var(--chip-top) - 40px); }
+#app:has(#pill:not([hidden])) { --v-full: calc(var(--app-h) - var(--nav-h) - var(--chip-top) - 52px); }
+#app:has(#pill:not([hidden])):has(#ctxbar:not([hidden])) { --v-full: calc(var(--app-h) - var(--nav-h) - var(--chip-top) - 92px); }
 
 /* scrolling content: bottom padding equals the part of the sheet hidden below the screen,
    so the last row can always be scrolled into view in every detent */
@@ -70,7 +71,7 @@
   flex: 1; min-height: 0;
   overflow-y: auto; overflow-x: hidden;
   overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
-  padding: var(--s1) var(--s4) calc(var(--v-full) - var(--vis) + max(16px, var(--safe-b)));
+  padding: var(--s1) var(--s4) calc(var(--v-full) - var(--vis) + 16px);   /* the bottom bar handles the safe area */
   touch-action: pan-y;
   outline: none;
 }
@@ -79,15 +80,15 @@
 /* wide + short (landscape phones): floating left panel, no detents */
 @media (min-width: 768px) and (max-height: 559px) {
   .sheet {
-    left: calc(var(--safe-l) + 12px); right: auto; top: calc(var(--safe-t) + 12px); bottom: 12px;
+    left: calc(var(--safe-l) + 12px); right: auto; top: calc(var(--safe-t) + 12px); bottom: calc(12px + 58px);
     width: var(--panel-w); height: auto;
-    border-radius: var(--r-sheet);
+    border-radius: var(--r-sheet) var(--r-sheet) 0 0;
     transform: none !important; transition: none;
     box-shadow: var(--shadow-float);
   }
   .grab { display: none; }
   .sheet-head { padding-top: var(--s3); touch-action: auto; }
-  .sheet-content { padding-bottom: max(16px, var(--safe-b)); }
+  .sheet-content { padding-bottom: 16px; }
 }
 
 @media (prefers-contrast: more) {

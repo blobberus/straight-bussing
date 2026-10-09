@@ -1,8 +1,9 @@
 /**
  * @module ui/views/nearby
- * Plan Trip tab (view id stays 'nearby'; routing, tests and persisted state use it). Top: the
- * "Where to?" entry (dir:open, focuses Directions' destination) and "Routes to station…" (pick:open).
- * Below it, one glance: the next bus at the nearest stop. With location: the 3 nearest stops
+ * Current trip tab (view id stays 'nearby'; routing, tests and persisted state use it). Destination
+ * search lives in the floating search bar at the top of the screen (index.html #searchBar, dir:open).
+ * Top of this view: the trip in progress (journey kind 'plan': routes, End trip, Trip steps) or a
+ * "No trip in progress" hint, plus "Routes to station…" (pick:open). Below it, one glance: the next bus at the nearest stop. With location: the 3 nearest stops
  * (up to 3 arrivals at the nearest, 1 at the others). Without location (unknown, asking, denied):
  * "Use my location", a station search, "Type an address or place" (stops near that place),
  * and an "Arriving soon" list. Never a dead end; denied location is a first-class state.
@@ -22,8 +23,7 @@ import { stopsNear, matchStations, createPlaceSearch, placeRows, walkText, OFFIC
 import { effectiveHidden } from "../../core/visibility.js";
 import { alertBanner } from "./alerts.js";
 import { catchNote, stopWalkMin } from "./tripinfo.js";
-
-const NAV_IC = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>';
+import { isPlanJourney, tripBarHTML } from "./journey.js";
 
 /** Favorites shown on Nearby (the rest are in My Routes). */
 export const FAV_MAX = 3;
@@ -194,14 +194,20 @@ function regionHTML(state, now) {
 }
 
 /**
- * Plan Trip entry points: "Where to?" (primary, opens Directions with Destination focused) and
- * "Routes to station…" (secondary). One entry for each feature in the app.
+ * Top of the Current trip view: the trip in progress (routes, End trip, Trip steps) or a hint that
+ * none is running, and "Routes to station…". Directions itself opens from the top search bar.
+ * @param {object} state
  * @returns {string}
  */
-export function entryHTML() {
-  return '<div class="pt-top">'
-    + `<button type="button" class="pt-where" data-action="dir:open" data-focus="to" aria-label="Where to? Directions"><span class="pt-whereic" aria-hidden="true">${NAV_IC}</span><span class="pt-wheret">Where to?</span></button>`
-    + '<button type="button" class="v-btn v-btn--secondary pt-pick" data-action="pick:open">Routes to station&hellip;</button></div>';
+export function entryHTML(state) {
+  const pick = '<button type="button" class="v-btn v-btn--secondary v-btn--block pt-pick" data-action="pick:open">Routes to station&hellip;</button>';
+  if (isPlanJourney(state)) {
+    return tripBarHTML(state) + '<div class="pt-top pt-tripact">'
+      + '<button type="button" class="v-btn v-btn--primary pt-steps" data-action="nav" data-view="directions">Trip steps</button>' + pick + "</div>";
+  }
+  return '<div class="pt-notrip"><span class="v-prim">No trip in progress</span>'
+    + '<span class="v-sec">Search for a destination above, choose a route and tap Start.</span></div>'
+    + `<div class="pt-top">${pick}</div>`;
 }
 
 /**
@@ -217,7 +223,7 @@ export function renderNearby(state, now = nowS()) {
   const toggle = place
     ? '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="station">Search stations instead</button></div><p class="v-fine">Only the text you type is sent to photon.komoot.io to find the place.</p>'
     : '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="place">Type an address or place</button></div>';
-  return `<div class="v-nearby"><div data-region="nearby-alert">${alertBanner(state, now)}</div>${entryHTML()}<div data-region="nearby-loc">${locHTML(state)}</div>${search}${toggle}<div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
+  return `<div class="v-nearby"><div data-region="nearby-alert">${alertBanner(state, now)}</div><div data-region="nearby-trip">${entryHTML(state)}</div><div data-region="nearby-loc">${locHTML(state)}</div>${search}${toggle}<div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
 }
 
 /**
@@ -256,10 +262,12 @@ export function peekNearby(state, now = nowS()) {
 
 function curState() { return ctxRef?.store?.get?.() || {}; }
 
-let lastLoc = null, lastAlert = null;
+let lastLoc = null, lastAlert = null, lastTrip = null;
 function patchResults() {
   const al = rootRef?.querySelector?.('[data-region="nearby-alert"]'), ah = alertBanner(curState(), ctxRef?.now ? ctxRef.now() : nowS());
   if (al && ah !== lastAlert) { al.innerHTML = ah; lastAlert = ah; }
+  const tr = rootRef?.querySelector?.('[data-region="nearby-trip"]'), th = entryHTML(curState());
+  if (tr && th !== lastTrip) { tr.innerHTML = th; lastTrip = th; }
   const loc = rootRef?.querySelector?.('[data-region="nearby-loc"]'), lh = locHTML(curState());
   if (loc && lh !== lastLoc) { loc.innerHTML = lh; lastLoc = lh; }
   const el = rootRef?.querySelector?.('[data-region="nearby-results"]');
@@ -270,7 +278,7 @@ function patchResults() {
 
 function rerender(focus) {
   if (!rootRef) return;
-  lastRegion = null; lastLoc = null; lastAlert = null;
+  lastRegion = null; lastLoc = null; lastAlert = null; lastTrip = null;
   rootRef.innerHTML = renderNearby(curState(), ctxRef?.now ? ctxRef.now() : nowS());
   if (focus) rootRef.querySelector('[data-input="nearby-q"]')?.focus({ preventScroll: true });
 }
@@ -310,7 +318,7 @@ export function choosePlace(i) {
  */
 export function mountNearby(root, ctx) {
   unmountNearby();
-  rootRef = root; ctxRef = ctx; lastRegion = null; lastLoc = null; lastAlert = null;
+  rootRef = root; ctxRef = ctx; lastRegion = null; lastLoc = null; lastAlert = null; lastTrip = null;
   root.addEventListener("input", onInput);
   root.addEventListener("keydown", onKey);
   offStore = ctx?.store?.subscribe?.((s, ch) => {
@@ -331,7 +339,7 @@ export function unmountNearby() {
 export const _places = places;
 
 registerView("nearby", {
-  title: () => "Plan Trip",
+  title: () => "Current trip",
   detent: "half",
   tab: "nearby",
   render: (state) => renderNearby(state),

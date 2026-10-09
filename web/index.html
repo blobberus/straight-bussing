@@ -20,26 +20,35 @@
 <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<link rel="stylesheet" href="css/tokens.css?v=3">
-<link rel="stylesheet" href="css/base.css?v=3">
-<link rel="stylesheet" href="css/sheet.css?v=3">
-<link rel="stylesheet" href="css/components.css?v=3">
-<link rel="stylesheet" href="css/map.css?v=3">
-<link rel="stylesheet" href="css/views.css?v=3">
-<link rel="stylesheet" href="css/routes.css?v=3">
-<link rel="stylesheet" href="css/route.css?v=3">
-<link rel="stylesheet" href="css/myroutes.css?v=3">
-<link rel="stylesheet" href="css/journey.css?v=3">
-<link rel="stylesheet" href="css/settings.css?v=3">
+<link rel="stylesheet" href="css/tokens.css?v=4">
+<link rel="stylesheet" href="css/base.css?v=4">
+<link rel="stylesheet" href="css/sheet.css?v=4">
+<link rel="stylesheet" href="css/components.css?v=4">
+<link rel="stylesheet" href="css/map.css?v=4">
+<link rel="stylesheet" href="css/views.css?v=4">
+<link rel="stylesheet" href="css/routes.css?v=4">
+<link rel="stylesheet" href="css/route.css?v=4">
+<link rel="stylesheet" href="css/myroutes.css?v=4">
+<link rel="stylesheet" href="css/journey.css?v=4">
+<link rel="stylesheet" href="css/settings.css?v=4">
 </head>
 <body>
 <!-- #app is a plain wrapper on phones; on desktop/tablet css/base.css turns it into a 393x852 iPhone frame (js/ui/frame.js scales it) -->
 <div id="app" class="app">
 <div id="map" role="region" aria-label="Shuttle map"></div>
 
-<button id="settingsBtn" class="fab fab-sm" type="button" data-action="settings:open" aria-label="Settings">
-  <span class="fab-face"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span>
-</button>
+<!-- Google-Maps-style floating search bar: tap to plan a trip (Directions, destination focused); settings at its right end -->
+<div id="topbar" class="topbar">
+  <div class="searchbar">
+    <button id="searchBar" class="searchbar-btn" type="button" data-action="dir:open" data-focus="to" aria-label="Search for a destination">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <span class="searchbar-text">Search for a destination</span>
+    </button>
+    <button id="settingsBtn" class="searchbar-gear" type="button" data-action="settings:open" aria-label="Settings">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </div>
+</div>
 
 <button id="locateBtn" class="fab" type="button" aria-label="Show my location">
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
@@ -55,19 +64,21 @@
       <button id="back" class="back" type="button" aria-label="Back" hidden>
         <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 2L2 10l8 8"/></svg>
       </button>
-      <h1 id="title" class="sheet-title" tabindex="-1">Plan Trip</h1>
+      <h1 id="title" class="sheet-title" tabindex="-1">Current trip</h1>
       <span id="titleRight" class="titleright"></span>
     </div>
-    <nav id="tabs" class="seg tabs" aria-label="Sections">
-      <button type="button" data-tab="nearby" aria-current="page">Plan Trip</button>
-      <button type="button" data-tab="routes">Routes</button>
-      <button type="button" data-tab="myroutes" id="myRoutesTab">My Routes</button>
-    </nav>
   </header>
   <div id="content" class="sheet-content" tabindex="-1">
     <div class="skels" aria-busy="true"><span class="sr">Loading</span><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
   </div>
 </section>
+
+<!-- bottom navigation (Google-Maps-style): the three sections; id stays "tabs" for the router -->
+<nav id="tabs" class="bottomnav" aria-label="Sections">
+  <button type="button" data-tab="nearby" aria-current="page"><span class="bn-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg></span><span class="bn-label">Current trip</span></button>
+  <button type="button" data-tab="routes"><span class="bn-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h8.5a3.5 3.5 0 0 0 0-7h-9a3.5 3.5 0 0 1 0-7H16"/></svg></span><span class="bn-label">Routes</span></button>
+  <button type="button" data-tab="myroutes" id="myRoutesTab"><span class="bn-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span><span class="bn-label">My Routes</span></button>
+</nav>
 
 <div id="dlg" class="scrim" hidden></div>
 <div id="toast" class="toast hide" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -78,6 +89,6 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
-<script type="module" src="js/main.js?v=3"></script>
+<script type="module" src="js/main.js?v=4"></script>
 </body>
 </html>

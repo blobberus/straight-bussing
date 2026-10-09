@@ -2,7 +2,7 @@
  * @module ui/settings-overlay
  * The Settings overlay (SETTINGS): an iOS-style modal panel that is separate from the sheet router.
  * Opening it lifts the sheet to its "full" detent and covers the WHOLE sheet, including its grab
- * handle, title and tabs (owner: the Plan Trip title/tabs must not look like part of Settings); a
+ * handle and title, and the bottom navigation (owner: those must not look like part of Settings); a
  * scrim dims whatever is still visible behind it (map strip, floating buttons, context bar), and
  * the covered sheet header and content are inert. Closing restores the previous detent.
  * Closes on Done, Escape, a tap on the scrim, the gear (programmatic toggle), any navigation (e.g.
@@ -35,15 +35,16 @@ const navKey = (s) => `${s?.view || ""}|${s?.stopId || ""}|${s?.routeId || ""}`;
  * sheet at its "full" detent. The sheet may be mid-transition: subtracting its current translateY
  * gives its top edge at "full" (translateY 0), so the overlay lands where the sheet will settle.
  * @param {{sheet:{top:number, left:number, width:number, bottom:number}, origin:{left:number, top:number},
- *          k?:number, ty?:number, height:number}} g
+ *          k?:number, ty?:number, height:number, navBottom?:number|null}} g
  *   sheet: bounding rect (screen px); origin: containing block's top-left (screen px);
+ *   navBottom: bottom of the navigation bar under the sheet (screen px), so the overlay covers it too;
  *   k: frame scale (screen px per layout px); ty: sheet's current translateY (layout px); height: containing block height (layout px)
  * @returns {{top:number, left:number, width:number, bottom:number}}
  */
-export function overlayBox({ sheet, origin, k = 1, ty = 0, height }) {
+export function overlayBox({ sheet, origin, k = 1, ty = 0, height, navBottom = null }) {
   const s = k > 0 ? k : 1;
   const top = (sheet.top - origin.top) / s - ty;
-  const sheetBottom = (sheet.bottom - origin.top) / s - ty;
+  const sheetBottom = Math.max((sheet.bottom - origin.top) / s - ty, navBottom == null ? -Infinity : (navBottom - origin.top) / s);
   return {
     top: Math.max(0, top),
     left: (sheet.left - origin.left) / s,
@@ -63,7 +64,7 @@ function sheetTy() {
 
 /** Measure the live DOM (#app, #sheet) and return the overlay box, or null. */
 function measure() {
-  const app = $("app") || document.body, sheet = $("sheet");
+  const app = $("app") || document.body, sheet = $("sheet"), nav = $("tabs");
   if (!sheet) return null;
   const framed = app !== document.body && getComputedStyle(app).transform !== "none";
   const ar = app.getBoundingClientRect();
@@ -73,6 +74,7 @@ function measure() {
     origin: framed ? { left: ar.left, top: ar.top } : { left: 0, top: 0 },
     k: framed && app.offsetWidth ? ar.width / app.offsetWidth : 1,
     ty, height: framed ? app.offsetHeight : document.documentElement.clientHeight || innerHeight,
+    navBottom: nav && nav.offsetHeight ? nav.getBoundingClientRect().bottom : null,
   });
 }
 
@@ -198,7 +200,7 @@ export function openSettingsOverlay(ctx, content, opts = {}) {
   void scrim.offsetWidth;          // start the scrim fade from 0
   scrim.classList.add("is-in");
   // the covered sheet (title, tabs, content) must not be reachable while Settings is on top
-  for (const id of ["sheetHead", "content"]) {
+  for (const id of ["sheetHead", "content", "tabs"]) {
     const n = $(id);
     if (n && !n.inert) { n.inert = true; sess.inerted.push(n); }
   }

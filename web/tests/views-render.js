@@ -24,25 +24,26 @@ test("every view and action is registered", () => {
   ok(typeof getView("pick").mount === "function" && typeof getView("directions").mount === "function" && typeof getView("nearby").mount === "function", "input views mount");
 });
 
-test("plan trip: title, one Where to? entry (dir:open, focus to) and one Routes to station entry", () => {
+test("current trip: title, no-trip hint or the trip in progress, one Routes to station entry, no Directions entry", () => {
   resetNearby();
-  eq(getView("nearby").title(fixture()), "Plan Trip");
+  eq(getView("nearby").title(fixture()), "Current trip");
   eq(getView("nearby").tab, "nearby");
   for (const st of [fixture(), fixture({ user: USER, locState: "granted" }), fixture({ locState: "denied" })]) {
     const h = renderNearby(st, NOW);
-    eq((h.match(/data-action="dir:open"/g) || []).length, 1, "one Directions entry");
+    eq((h.match(/data-action="dir:open"/g) || []).length, 0, "destination search is the top search bar, not in the sheet");
     eq((h.match(/data-action="pick:open"/g) || []).length, 1, "one Routes to station entry");
-    ok(/class="pt-where" data-action="dir:open" data-focus="to"/.test(h), "Where to? focuses destination");
-    ok(h.includes("Where to?") && h.includes("Routes to station&hellip;"));
-    ok(h.indexOf("pt-top") < h.indexOf('data-input="nearby-q"'), "entries above the station search");
-    ok(!/class="v-link" data-action="dir:open"/.test(h), "old small Directions link removed");
+    ok(h.includes("No trip in progress") && h.includes("Search for a destination above"), "no-trip hint");
+    ok(h.indexOf('data-region="nearby-trip"') < h.indexOf('data-input="nearby-q"'), "trip region above the station search");
   }
-  N.mode = "place";
-  ok(renderNearby(fixture(), NOW).includes('data-action="dir:open"'), "entry also in place mode");
+  const rid = Object.keys(fixture().routes)[0];
+  const trip = renderNearby(fixture({ journey: { rids: [rid], label: "To Hospital", kind: "plan" } }), NOW);
+  ok(trip.includes("j-trip") && trip.includes("Trip to Hospital"), "trip in progress card");
+  ok(trip.includes('data-action="journey:end"') && trip.includes('data-action="nav" data-view="directions"'), "End trip + Trip steps");
+  ok(!trip.includes("No trip in progress"));
   resetNearby();
 });
 
-test("plan trip: Directions and Routes to station belong to the Plan Trip tab", () => {
+test("current trip: Directions and Routes to station belong to the Current trip tab", () => {
   for (const v of ["directions", "pick"]) {
     eq(getView(v).parent, "nearby", v + " parent");
     eq(getView(v).tab, "nearby", v + " tab");
@@ -180,7 +181,7 @@ test("routes: actions, groups, eye toggles", () => {
   const g = groupRoutes(s);
   eq(g, { running: ["R1"], idle: ["R2"], hidden: ["R3"] });
   const h = renderRoutes(s);
-  ok(!h.includes('data-action="pick:open"') && !h.includes('data-action="dir:open"'), "Routes to station / Directions moved to Plan Trip");
+  ok(!h.includes('data-action="pick:open"') && !h.includes('data-action="dir:open"'), "Routes to station / Directions are not on Routes");
   ok(h.indexOf(">Running<") < h.indexOf(">Not running<") && h.indexOf(">Not running<") < h.indexOf(">Hidden<"));
   ok(h.includes('aria-pressed="false"') && h.includes('aria-pressed="true"'));
   ok(noRaw(h));

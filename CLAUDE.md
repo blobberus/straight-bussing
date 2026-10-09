@@ -52,6 +52,7 @@ Also every ship: bump the cache name in `web/sw.js` when shell files change; esc
 | Directions (walk + shuttle, 1 transfer) | done | `web/planner.js`; Photon geocoding; bus legs drawn as straight stop-to-stop lines |
 | Constant ground-truth collection | done | `collect.yml` on main (schedules only run from main): overlapping 70-min runs at :07/:37, `tools/merge_arrivals.py` dedupes into `data` branch `data/ground_truth/arrivals.csv`; `docs/DATA.md` |
 | Ride-time learning (`Predict`) | in progress | `RouteKnower.md` is the plan + experiment log (E00, E04, E15 done 2026-10-08; reviewed §13); ship target Fri Nov 20 (Thanksgiving Break is Nov 23-27); live site does NOT deploy `learned.json` yet (§9); ship gate §6.6 |
+| v2.4 (2026-10-08): Google-Maps-style layout: floating destination search bar (gear inside) replaces the top route bar, My Route / trip chip under it, bottom navigation Current trip / Routes / My Routes, Current trip view shows the trip in progress; Settings covers the bottom bar too | done | sw cache `sb-v2-8`; `docs/ARCHITECTURE.md` "Layout (v2.4)" |
 | Weather / traffic / calendar context | done | `tools/context_fetch.py` + daily `context.yml` -> `data/context/` on the data branch; `tools/context_join.py`; `data/calendar.json`; sources vetted in RouteKnower §3.4 (never scrape Google Maps: terms forbid it) |
 | Theme + basemap styling | in progress | `web/theme.js`, `web/mapstyle.js` |
 | Directions: trace route shapes, walking path on streets | next | needs shape clipping / routing |

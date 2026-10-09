@@ -1,5 +1,5 @@
 // Walking in trip times (JOURNEY): option cards + step lists name the walk to the first stop and to the
-// destination, totals say they include walking, leave guidance; Plan Trip "Where to?" focuses Destination.
+// destination, totals say they include walking, leave guidance; the top search bar (dir:open, focus to) focuses Destination.
 import { test, eq, ok } from "./lib.js";
 import { NOW, makeCtx, tick, root } from "./views-fixtures.js";
 import { runAction } from "../js/ui/actions.js";
@@ -80,7 +80,7 @@ test("directions: short walks are still mentioned (<1 min), no-walk ends are sai
   unmountDirections(); el.remove(); resetDir();
 });
 
-test("plan trip: Where to? opens Directions with the destination focused (even without a start)", async () => {
+test("search bar: dir:open with focus=to opens Directions with the destination focused (even without a start)", async () => {
   resetDir();
   deps.plan = () => ({ now: NOW, options: [], walkOnly: { m: 0, min: 0 } });
   const ctx = makeCtx({ view: "nearby" });

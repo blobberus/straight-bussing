@@ -98,11 +98,11 @@ export function stepDetent(d, dir) {
 /** Panel (left column, no detents) layout. Must match css/sheet.css, base.css, components.css. */
 export const PANEL_MEDIA = "(min-width: 768px) and (max-height: 559px)";
 
-function makeProbe(varName) {
+function makeProbe(varName, host) {
   const p = document.createElement("div");
   p.setAttribute("aria-hidden", "true");
   p.style.cssText = `position:fixed;left:-9px;top:0;width:1px;visibility:hidden;pointer-events:none;height:var(${varName})`;
-  document.body.appendChild(p);
+  (host || document.body).appendChild(p);   // next to the sheet, so per-#app overrides of --v-* apply
   return p;
 }
 
@@ -116,7 +116,8 @@ function makeProbe(varName) {
 export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panelMedia }) {
   const grab = grabEl || sheetEl.querySelector(".grab");
   const panelMq = matchMedia(panelMedia || PANEL_MEDIA);
-  const probes = { peek: makeProbe("--v-peek"), half: makeProbe("--v-half"), full: makeProbe("--v-full") };
+  const host = sheetEl.parentElement || document.body;
+  const probes = { peek: makeProbe("--v-peek", host), half: makeProbe("--v-half", host), full: makeProbe("--v-full", host) };
   const listeners = new Set();
   const offs = [];
   let detent = DETENTS.includes(initial) ? initial : DETENTS.includes(sheetEl.dataset.detent) ? sheetEl.dataset.detent : "half";

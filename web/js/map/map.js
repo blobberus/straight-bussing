@@ -14,7 +14,7 @@ import { safeColor } from '../core/esc.js';
 
 const CAMPUS = [41.7897, -87.5997];
 const PAD = 24;           // side padding for fits
-const TOP_PAD = 76;       // clears the top-left attribution and the top-right locate button
+const TOP_PAD = 132;      // clears the floating search bar, the attribution line and the locate button / chips
 const PANES = { sbCasing: 380, sbLines: 390, sbFocusCasing: 392, sbFocusLines: 394, sbPlanCasing: 400, sbPlan: 402,
   sbStops: 420, sbPlanStops: 425, sbHighlight: 430, sbSel: 440 };
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -220,7 +220,9 @@ export function createMap(elId) {
       const maxZoom = o.maxZoom ?? 17;
       if (b.getNorthEast().equals(b.getSouthWest())) { api.flyTo({ lat: b.getCenter().lat, lon: b.getCenter().lng }, maxZoom); return; }
       progUntil = performance.now() + 1500;
-      map.fitBounds(b, { paddingTopLeft: [PAD, TOP_PAD], paddingBottomRight: [PAD, inset + PAD], maxZoom,
+      // sheet (nearly) full: almost no map shows, so frame for the half detent the user will drag back to
+      const size = map.getSize().y, bottom = size - inset - TOP_PAD < 200 ? Math.round(size * 0.5) : inset;
+      map.fitBounds(b, { paddingTopLeft: [PAD, TOP_PAD], paddingBottomRight: [PAD, bottom + PAD], maxZoom,
         animate: o.animate ?? !reducedMotion() });
     },
 

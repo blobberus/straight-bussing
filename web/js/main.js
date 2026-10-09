@@ -36,7 +36,7 @@ const BUS_KEYS = ["buses", "feedTs", "routes", ...VIS_KEYS];
 const $ = (id) => document.getElementById(id);
 const el = {
   sheet: $("sheet"), head: $("sheetHead"), grab: $("grab"), content: $("content"), title: $("title"),
-  right: $("titleRight"), back: $("back"), tabs: $("tabs"), ctxbar: $("ctxbar"), gear: $("settingsBtn"),
+  right: $("titleRight"), back: $("back"), tabs: $("tabs"), ctxbar: $("ctxbar"), gear: $("settingsBtn"), topbar: $("topbar"), app: $("app"),
   pill: $("pill"), pillText: $("pillText"), pillRetry: $("pillRetry"), dlg: $("dlg"), toast: $("toast"), locate: $("locateBtn"),
 };
 const bootS = nowS();
@@ -179,8 +179,9 @@ function safe(fn, fallback) {
   try { return fn() ?? fallback; } catch (e) { console.error(e); return fallback; }
 }
 function renderHeader(s, id, def) {
-  const title = def ? String(safe(() => def.title(s), "")) : "Plan Trip";
+  const title = def ? String(safe(() => def.title(s), "")) : "Current trip";
   if (el.title.textContent !== title) el.title.textContent = title;
+  if (el.app && el.app.dataset.view !== id) el.app.dataset.view = id || "";   // css: hide the search bar in Directions
   el.title.classList.toggle("sm", !TABS.includes(id));
   el.back.hidden = !canGoBack();
   const metaFn = def && (def.meta || def.peek);
@@ -278,7 +279,7 @@ function wireUI() {
   el.back.addEventListener("click", () => back());
   el.tabs.addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) navigate(b.dataset.tab); });
   el.locate.addEventListener("click", onLocateFab);
-  for (const root of [el.content, el.pill, el.dlg, el.ctxbar, el.gear]) bindActions(root, () => ctx);
+  for (const root of [el.content, el.pill, el.dlg, el.ctxbar, el.topbar || el.gear]) bindActions(root, () => ctx);
   el.dlg.addEventListener("click", (e) => { if (e.target === el.dlg) closeDlg(); });
   el.content.addEventListener("focusout", () => setTimeout(() => { if (dirty && !inputFocused()) render(); }, 0));
   document.addEventListener("keydown", (e) => {
@@ -333,7 +334,8 @@ async function boot() {
     setTimeout(() => toast("Couldn't load the map. Lists and times still work."), 0);
   }
   mapCall("setTheme", isDark());
-  bus.on("sheet:inset", (p) => mapCall("setBottomInset", (p && p.px) || 0));
+  // the map is visible above the sheet AND the bottom navigation bar under it (phone layouts only)
+  bus.on("sheet:inset", (p) => mapCall("setBottomInset", ((p && p.px) || 0) + (p && p.px && !sheet?.isPanel?.() ? el.tabs.offsetHeight || 0 : 0)));
   bus.on("toast", (p) => toast(p && p.text));
   sheet = createSheet({ sheetEl: el.sheet, contentEl: el.content, headEl: el.head, grabEl: el.grab });
   initRouter({ store, setDetent: sheet.setDetent, getDetent: sheet.getDetent });

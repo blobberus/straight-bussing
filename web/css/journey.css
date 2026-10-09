@@ -62,3 +62,9 @@
    card, e.g. "Least walking · Earliest arrival". Text, so it never relies on color alone. */
 .j-crit { display: block; margin-bottom: -2px; font-size: var(--fs-cap); line-height: 1rem; font-weight: 600; letter-spacing: .01em; color: var(--accent); }
 @media (forced-colors: active) { .j-crit { color: CanvasText; } }
+
+/* Current trip (nearby.js): hint card when no trip is running; actions under a trip in progress */
+.pt-notrip { display: flex; flex-direction: column; gap: 2px; margin: var(--s2) 0; padding: var(--s3) var(--s4); border-radius: var(--r-card); background: var(--surface); }
+.pt-notrip .v-sec { display: block; }
+.pt-tripact { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.pt-tripact > .v-btn { flex: 1 1 140px; }

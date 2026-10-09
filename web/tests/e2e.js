@@ -83,7 +83,7 @@ test("boot: Nearby fills from the live feed, no status pill", async () => {
     return r.length ? r : null;
   }, "Arriving soon rows");
   ok(rows.length >= 3, "expected several arrival rows, got " + rows.length);
-  eq(title(), "Plan Trip");
+  eq(title(), "Current trip");
   ok($("#pill").hidden, "status pill should be hidden with fresh data: " + txt($("#pill")));
   ok(txt(content()).includes("Use my location"), "location prompt shown without permission");
 });
@@ -99,7 +99,7 @@ test("tabs: Nearby / Routes / My Routes switch title and aria-current; no Alerts
   eq($('#tabs button[data-tab="myroutes"]').getAttribute("aria-current"), "page");
   ok($("#back").hidden, "no Back button on a tab");
   tab("nearby");
-  await waitFor(() => title() === "Plan Trip" && $('[data-region="nearby-results"] [data-action="stop:open"]'), "Nearby again");
+  await waitFor(() => title() === "Current trip" && $('[data-region="nearby-results"] [data-action="stop:open"]'), "Nearby again");
   ok($("#back").hidden, "no Back button on a tab");
 });
 
@@ -111,7 +111,7 @@ test("alerts: Nearby banner shows the active alert and opens the Alerts sub view
   eq($('#tabs button[data-tab="nearby"]').getAttribute("aria-current"), "page", "alerts belong to Nearby");
   ok(!$("#back").hidden, "Back visible in the Alerts sub view");
   click($("#back"), "back");
-  await waitFor(() => state().view === "nearby" && title() === "Plan Trip", "back to Nearby");
+  await waitFor(() => state().view === "nearby" && title() === "Current trip", "back to Nearby");
 });
 
 test("favorites: a favorite station shows on Nearby with its next bus and opens the stop", async () => {
@@ -156,7 +156,7 @@ test("stop view: arrivals, directions buttons, back returns to Nearby", async ()
   ok(/Updated/.test(txt(content())), "freshness footer");
   ok(!$("#back").hidden, "Back visible in a sub view");
   click($("#back"), "back");
-  await waitFor(() => state().view === "nearby" && title() === "Plan Trip", "back to Nearby");
+  await waitFor(() => state().view === "nearby" && title() === "Current trip", "back to Nearby");
 });
 
 test("nearby search: a result tapped after the field loses focus still opens (no rebuild under the finger)", async () => {
@@ -188,14 +188,18 @@ test("routes: eye toggle hides a route (persisted) and shows it again", async ()
   await waitFor(() => !state().hiddenRoutes.includes(rid) && !$(`.v-routerow.is-off .v-eye[data-id="${rid}"]`), "route shown");
 });
 
-test("routes tab: Edit map order is the first control; trip tools moved to Plan Trip", async () => {
+test("layout: search bar on top opens Directions; bottom navigation; Edit map order first on Routes", async () => {
+  const sb = $("#searchBar"), nav = $("#tabs");
+  ok(sb && sb.dataset.action === "dir:open" && sb.dataset.focus === "to" && /destination/i.test(sb.getAttribute("aria-label")), "search bar");
+  ok(nav.getBoundingClientRect().bottom >= W.innerHeight - 1 && !$("#sheetHead #tabs"), "navigation at the bottom, not in the sheet");
+  ok(sb.getBoundingClientRect().bottom <= $("#sheet").getBoundingClientRect().top, "search bar above the sheet");
   tab("routes");
   const top = await waitFor(() => $('#content [data-region="routes-top"]'), "routes top region");
   eq(top.querySelector("button")?.dataset.action, "routes:order-edit", "first control on Routes");
   ok(!$('#content [data-action="pick:open"]') && !$('#content [data-action="dir:open"]'), "no Routes to station / Directions on Routes");
   tab("nearby");
-  await waitFor(() => title() === "Plan Trip" && $("#content .pt-where"), "Plan Trip view");
-  eq($$('#content [data-action="dir:open"]').length, 1, "one Directions entry");
+  await waitFor(() => title() === "Current trip" && $("#content .pt-notrip"), "Current trip view with the no-trip hint");
+  eq($$('#content [data-action="dir:open"]').length, 0, "destination search lives in the top bar");
   eq($$('#content [data-action="pick:open"]').length, 1, "one Routes to station entry");
 });
 
@@ -208,7 +212,7 @@ test("favorites: favorite stations get star badges on the map", async () => {
 
 test("routes to station: dialog offers 3 choices and highlights nothing", async () => {
   tab("nearby");
-  click(await waitFor(() => $('#content [data-action="pick:open"]'), "Routes to station on Plan Trip"), "Routes to station button");
+  click(await waitFor(() => $('#content [data-action="pick:open"]'), "Routes to station on Current trip"), "Routes to station button");
   const dlg = await waitFor(() => $("dialog.v-dialog[open]"), "pick dialog");
   eq(dlg.querySelectorAll("[data-mode]").length, 3);
   ok(/current location/i.test(txt(dlg)) && /select a station/i.test(txt(dlg)) && /address or place/i.test(txt(dlg)), "the three choices");
@@ -242,7 +246,7 @@ test("routes to station: 'Type an address or place' lists stops near the place",
   click($('#content [data-action="routes:clear-filter"]'), "clear filter");
   await waitFor(() => !state().routeFilter && !$(".v-fchip"), "filter cleared");
   tab("nearby");
-  click(await waitFor(() => $('#content [data-action="pick:open"]'), "Routes to station on Plan Trip"), "Routes to station button");
+  click(await waitFor(() => $('#content [data-action="pick:open"]'), "Routes to station on Current trip"), "Routes to station button");
   click(await waitFor(() => $('dialog.v-dialog[open] [data-mode="addr"]'), "addr choice"), "addr mode");
   const input = await waitFor(() => state().view === "pick" && $('#content [data-input="pick-q"]'), "place field");
   type(input, "e2e place", "place field");
@@ -259,7 +263,7 @@ test("routes to station: 'Type an address or place' lists stops near the place",
 
 test("directions: place + station, stubbed sidewalk walking, option drawn on the map", async () => {
   tab("nearby");
-  click(await waitFor(() => $('#content [data-action="dir:open"]'), "Where to? on Plan Trip"), "Directions button");
+  click($("#searchBar"), "search bar");
   const from = await waitFor(() => state().view === "directions" && $('#content [data-input="dir-from"]'), "start field");
   from.focus();
   type(from, "e2e start", "start field");
@@ -323,10 +327,14 @@ test("settings gear: top-right, labeled, 44px target, clear of the locate button
   const o = await waitFor(() => { const x = $("#settingsOverlay"); return x && !x.hidden && x.dataset.state === "open" ? x : null; }, "Settings overlay opened from the gear");
   eq([o.getAttribute("role"), o.getAttribute("aria-modal")], ["dialog", "true"], "modal dialog");
   ok(o.contains(D.activeElement), "focus moved into Settings");
-  const geo = () => JSON.stringify({ o: Math.round(o.getBoundingClientRect().top), st: o.style.top, state: o.dataset.state, tabs: Math.round($("#tabs").getBoundingClientRect().top), title: Math.round($("#title").getBoundingClientRect().top), sheet: Math.round($("#sheet").getBoundingClientRect().top), det: $("#sheet").dataset.detent });
-  try { await waitFor(() => o.getBoundingClientRect().top <= Math.min($("#tabs").getBoundingClientRect().top, $("#title").getBoundingClientRect().top) + 1 || null, "overlay covers the sheet title and tabs"); }
-  catch (e) { throw new Error(e.message + " GEO " + geo()); }
-  ok($("#sheetHead").inert && !$(".sto-scrim").hidden, "covered header inert, background dimmed");
+  // layout boxes, not transforms: headless test frames do not run CSS transitions, so the sheet may sit mid-slide.
+  // The overlay's top edge must be where the sheet's top settles at the full detent (rect top minus its translateY).
+  const ot = () => parseFloat(W.getComputedStyle(o).top);
+  const sheetTopFull = () => { const sh = $("#sheet"), t = W.getComputedStyle(sh).transform; return sh.getBoundingClientRect().top - (t && t !== "none" ? new W.DOMMatrixReadOnly(t).m42 : 0); };
+  await waitFor(() => $("#sheet").dataset.detent === "full" && Math.abs(ot() - sheetTopFull()) <= 1 || null, "overlay placed over the full sheet");
+  ok(ot() <= $("#title").getBoundingClientRect().top - (W.getComputedStyle($("#sheet")).transform !== "none" ? new W.DOMMatrixReadOnly(W.getComputedStyle($("#sheet")).transform).m42 : 0), "overlay covers the sheet title");
+  ok($("#sheetHead").inert && $("#tabs").inert && !$(".sto-scrim").hidden, "covered header and navigation inert, background dimmed");
+  eq(W.getComputedStyle(o).bottom, "0px", "overlay reaches the screen bottom, covering the bottom navigation");
   const done = o.querySelector(".sto-done"), dr = done.getBoundingClientRect(), orr = o.getBoundingClientRect();
   ok(/Done/.test(txt(done)) && dr.right > orr.left + orr.width * 0.7 && dr.top < orr.top + 60, "Done button in the top-right corner");
   click(done, "Done");

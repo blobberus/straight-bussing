@@ -81,9 +81,14 @@
   /* app viewport: the window on phones, the 393x852 phone frame on desktop/tablet (see base.css) */
   --app-w: 100vw;
   --app-h: 100vh;
-  --v-peek: calc(112px + var(--safe-b));
-  --v-half: calc(var(--app-h) * .46);
-  --v-full: calc(var(--app-h) - 56px - var(--safe-t));
+  /* Google-Maps-style chrome: floating search bar on top, bottom navigation under the sheet */
+  --nav-h: calc(58px + var(--safe-b));          /* bottom navigation (Current trip / Routes / My Routes) */
+  --top-clear: calc(var(--safe-t) + 66px);      /* below the 48px search bar (10px from the top, 8px gap) */
+  --chip-top: calc(var(--top-clear) + 20px);    /* status pill, context chip and locate button (map credit above) */
+  /* sheet heights are measured from the top of the bottom navigation */
+  --v-peek: 104px;
+  --v-half: calc(var(--app-h) * .42);
+  --v-full: calc(var(--app-h) - var(--nav-h) - var(--chip-top));
   --panel-w: 380px;
 
   color-scheme: light;
