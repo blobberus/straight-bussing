@@ -15,7 +15,7 @@ import { loadStatic } from "./data/static.js";
 import { startLive } from "./data/live.js";
 import { createSheet } from "./ui/sheet.js";
 import { initRouter, navigate, back, getView, activeTab, canGoBack, TABS } from "./ui/router.js";
-import { registerAction, bindActions } from "./ui/actions.js";
+import { registerAction, bindActions, setHTMLKeepFocus } from "./ui/actions.js";
 import { initTheme, isDark, onChange as onThemeChange } from "./ui/theme.js";
 import { emptyState, OFFICIAL_PHONE } from "./ui/components.js";
 import { registerContextActions, mountContextBar } from "./ui/contextbar.js";
@@ -261,7 +261,7 @@ function render() {
   cur.key = key;
   if (html === cur.html) return;
   const top = el.content.scrollTop;
-  el.content.innerHTML = html;
+  setHTMLKeepFocus(el.content, html);   // live re-render (stop, route detail): keyboard focus stays on its button
   cur.html = html;
   el.content.scrollTop = keyChanged ? 0 : top;
 }

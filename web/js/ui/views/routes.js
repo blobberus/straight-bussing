@@ -16,7 +16,7 @@
  * its name field has focus, so typing is never interrupted by live updates.
  */
 import { registerView } from "../router.js";
-import { registerAction } from "../actions.js";
+import { registerAction, setHTMLKeepFocus } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { runningCount, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibility.js";
@@ -237,10 +237,10 @@ function patch(force = false) {
   const inp = nameInput();
   if (force || !(inp && document.activeElement === inp)) {
     const th = topRegion(s);
-    if (force || th !== lastTop) { top.innerHTML = th; lastTop = th; }
+    if (force || th !== lastTop) { setHTMLKeepFocus(top, th); lastTop = th; }
   }
   const bh = bodyRegion(s);
-  if (force || bh !== lastBody) { body.innerHTML = bh; lastBody = bh; }
+  if (force || bh !== lastBody) { setHTMLKeepFocus(body, bh); lastBody = bh; }   // live counts change: keep keyboard focus
   if (pendingFocus) {
     const { sel, alt } = pendingFocus;
     pendingFocus = null;

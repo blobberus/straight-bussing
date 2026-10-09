@@ -137,22 +137,8 @@ export function placeListHTML(s, q, action, exactAction, errHTML) {
   return note + placeRows(s.items, action) + (s.status === "busy" ? '<p class="v-fine v-more" role="status">Searching more places&hellip;</p>' : "");
 }
 
-/**
- * Replace a region's markup; if focus was on a button inside it, focus the same button in the new markup
- * (place results arrive while the user may be on the note button or a row).
- * @param {Element} el
- * @param {string} html
- */
-export function setHTMLKeepFocus(el, html) {
-  const a = typeof document !== "undefined" ? document.activeElement : null;
-  const key = (b) => [b.getAttribute("data-action"), b.dataset.i, b.dataset.exact].join("|");
-  const was = a && a !== el && el.contains(a) && a.hasAttribute?.("data-action") ? key(a) : null;
-  const assume = a && el.contains(a) && a.closest?.("[data-assume]");
-  el.innerHTML = html;
-  if (!was) return;
-  const b = [...el.querySelectorAll("[data-action]")].find((x) => key(x) === was) || (assume && el.querySelector("[data-assume] button"));
-  b?.focus({ preventScroll: true });
-}
+/** Replace a region's markup keeping keyboard focus (lives in ui/actions.js, shared with main.js and Routes). */
+export { setHTMLKeepFocus } from "../actions.js";
 
 /**
  * After a note button: keep keyboard focus on the note (its replacement button).

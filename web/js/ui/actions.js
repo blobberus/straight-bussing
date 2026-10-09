@@ -70,6 +70,48 @@ function isDisabled(el) {
 }
 
 /**
+ * Replace a region's markup without dropping keyboard focus: if focus was on an element inside it, focus
+ * its counterpart in the new markup (same data-action + id / i / trip / exact; or, for a focusable heading
+ * like the trip title, the same classes). Live updates re-render regions every few seconds; without this a
+ * keyboard or screen-reader user is thrown back to the top of the page.
+ * @param {Element} el
+ * @param {string} html
+ */
+export function setHTMLKeepFocus(el, html) {
+  const a = typeof document !== "undefined" ? document.activeElement : null;
+  const inside = !!a && a !== el && el.contains(a);
+  const key = (b) => [b.getAttribute("data-action"), b.dataset.id, b.dataset.i, b.dataset.trip, b.dataset.exact].join("|");
+  const was = inside && a.hasAttribute?.("data-action") ? key(a) : null;
+  const cls = inside && !was && a.getAttribute?.("tabindex") === "-1" && a.classList?.length ? "." + [...a.classList].map((c) => CSS.escape(c)).join(".") : null;
+  const assume = inside && a.closest?.("[data-assume]");
+  el.innerHTML = html;
+  if (!was && !cls) return;
+  const b = was ? [...el.querySelectorAll("[data-action]")].find((x) => key(x) === was) || (assume && el.querySelector("[data-assume] button")) : el.querySelector(cls);
+  b?.focus({ preventScroll: true });
+}
+
+/**
+ * Keyboard users must not lose their place: if the focused button that ran an action was re-rendered
+ * away (eye toggle, Favorite, End trip, ...) and focus fell back to <body>, focus its replacement (same
+ * action + id, else same id, e.g. Show on map -> Stop showing), else the sheet title. Runs after the
+ * store flush and re-render; does nothing when the action moved focus itself.
+ * @param {HTMLElement} el the trigger (it had focus)
+ * @param {HTMLElement} root delegation root
+ */
+function keepFocus(el, root) {
+  const { action, id } = el.dataset;
+  setTimeout(() => {
+    const a = document.activeElement;
+    if (el.isConnected || (a && a !== document.body && a !== document.documentElement)) return;
+    const q = (sel) => [...root.querySelectorAll(sel), ...document.querySelectorAll(sel)].find((x) => !isDisabled(x) && x.getClientRects().length && !x.closest("[inert], [hidden]"));
+    const esc = (v) => (typeof CSS !== "undefined" && CSS.escape ? CSS.escape(v) : String(v).replace(/["\\]/g, "\\$&"));
+    const next = (id != null && (q(`[data-action="${esc(action)}"][data-id="${esc(id)}"]`) || q(`button[data-id="${esc(id)}"]`)))
+      || document.getElementById("title");
+    next?.focus?.({ preventScroll: true });
+  }, 0);
+}
+
+/**
  * Delegate clicks (and Enter/Space on non-button elements with role="button") on `root` to actions.
  * Inputs/selects with data-action fire on 'change'.
  * @param {HTMLElement} root
@@ -87,7 +129,9 @@ export function bindActions(root, getCtx) {
     if (!el || /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return;
     if (el.tagName === "A" && el.getAttribute("href") && !el.dataset.actionPrevent) return void runAction(el.dataset.action, el.dataset, e, getCtx());
     e.preventDefault();
+    const focused = document.activeElement === el;
     runAction(el.dataset.action, el.dataset, e, getCtx());
+    if (focused) keepFocus(el, root);
   };
   const onChange = (e) => {
     const el = pick(e);
@@ -100,7 +144,9 @@ export function bindActions(root, getCtx) {
     if (!el || el.tagName === "BUTTON" || el.tagName === "A" || /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return;
     if (el.getAttribute("role") !== "button") return;
     e.preventDefault();
+    const focused = document.activeElement === el;
     runAction(el.dataset.action, el.dataset, e, getCtx());
+    if (focused) keepFocus(el, root);
   };
   root.addEventListener("click", onClick);
   root.addEventListener("change", onChange);

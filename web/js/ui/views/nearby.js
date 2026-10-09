@@ -264,11 +264,11 @@ function curState() { return ctxRef?.store?.get?.() || {}; }
 let lastLoc = null, lastAlert = null, lastTrip = null;
 function patchResults() {
   const al = rootRef?.querySelector?.('[data-region="nearby-alert"]'), ah = alertBanner(curState(), ctxRef?.now ? ctxRef.now() : nowS());
-  if (al && ah !== lastAlert) { al.innerHTML = ah; lastAlert = ah; }
+  if (al && ah !== lastAlert) { setHTMLKeepFocus(al, ah); lastAlert = ah; }
   const tr = rootRef?.querySelector?.('[data-region="nearby-trip"]'), th = entryHTML(curState(), ctxRef?.now ? ctxRef.now() : nowS());
-  if (tr && th !== lastTrip) { tr.innerHTML = th; lastTrip = th; }
+  if (tr && th !== lastTrip) { setHTMLKeepFocus(tr, th); lastTrip = th; }   // live trip timeline: keep keyboard focus
   const loc = rootRef?.querySelector?.('[data-region="nearby-loc"]'), lh = locHTML(curState());
-  if (loc && lh !== lastLoc) { loc.innerHTML = lh; lastLoc = lh; }
+  if (loc && lh !== lastLoc) { setHTMLKeepFocus(loc, lh); lastLoc = lh; }
   const el = rootRef?.querySelector?.('[data-region="nearby-results"]');
   if (!el) return;
   const html = regionHTML(curState(), ctxRef?.now ? ctxRef.now() : nowS());

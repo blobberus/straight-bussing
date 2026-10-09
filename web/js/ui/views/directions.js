@@ -259,7 +259,10 @@ function focusField(key) { rootRef?.querySelector?.(`[data-input="dir-${key}"]`)
 function afterSet() {
   D.active = null; D.sugs = []; patch("dir-sug", "");
   replan({ fresh: true });
-  if (!D.to) focusField("to"); else if (!D.from) focusField("from"); else if (rootRef?.contains?.(document.activeElement)) document.activeElement.blur?.();
+  const a = document.activeElement, lost = !a || a === document.body;   // a keyboard pick removed the focused suggestion
+  if (!D.to) focusField("to"); else if (!D.from) focusField("from");
+  else if (lost) rootRef?.querySelector?.('[data-region="dir-res"] .v-opt.is-on .v-optmain, [data-region="dir-res"] .v-optmain')?.focus({ preventScroll: true });
+  else if (rootRef?.contains?.(a)) a.blur?.();   // a tap while typing: drop the keyboard
 }
 
 /** Set an endpoint ('from'|'to') and re-plan. */
