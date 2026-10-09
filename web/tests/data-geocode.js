@@ -1,6 +1,11 @@
 import { test, eq, ok } from './lib.js';
-import { searchPlaces, debounce, clearPlaceCache, featureToPlace, inIllinois, rankPlaces, PHOTON } from '../js/data/geocode.js';
+import { searchPlaces, debounce, clearPlaceCache, featureToPlace, inIllinois, rankPlaces, mergePlaces, PHOTON } from '../js/data/geocode.js';
+import { setPlaces, searchLocal, norm, loadPlaces } from '../js/data/places.js';
 import { res, hang, stubFetch, sleep } from './data-helpers.js';
+
+// Photon tests run with an empty local index; the local-index tests below use their own fixture.
+const NO_PLACES = { stops: [], p: [] };
+setPlaces(NO_PLACES);
 
 const PHOTON_BODY = {
   features: [
@@ -53,7 +58,7 @@ test('geocode: drops features outside Illinois (other state, other country, no s
   ] };
   const out = await searchPlaces('springfield', { fetch: async () => res(body) });
   eq(out.items.map((x) => x.label), ['Springfield', 'Lake Spot']);
-  eq(out.items[0].sub, 'Sangamon County, IL');
+  eq(out.items[0].sub, 'Sangamon County, IL · 280 km from campus', 'far results say how far');
   eq(out.items[0].lat, 39.799);
   ok(inIllinois(feat('x', -87.6, 41.8, { state: 'IL' })), 'IL abbreviation accepted');
   ok(!inIllinois(feat('x', -87.6, 41.8, { state: 'Indiana' })), 'state wins over bbox');
@@ -69,8 +74,8 @@ test('geocode: re-ranks by proximity to Hyde Park, max 5 results', () => {
   const out = rankPlaces([...far, mid, near], 'target');
   eq(out.length, 5);
   eq(out.slice(0, 3).map((x) => x.label), ['Target Hyde Park', 'Target Loop', 'Target 0']);
-  eq(out[0].sub, 'Chicago, IL', 'Chicago township shown as Chicago');
-  eq(out[1].sub, '1101 West Jackson Boulevard, Chicago, IL');
+  eq(out[0].sub, 'Chicago, IL', 'Chicago township shown as Chicago; near campus: no distance note');
+  eq(out[1].sub, '1101 West Jackson Boulevard, Chicago, IL · 11 km from campus');
   // Photon order still breaks ties inside the same distance tier.
   eq(rankPlaces([feat('A', -87.62, 41.88), feat('B', -87.63, 41.88)], 'x').map((x) => x.label), ['A', 'B']);
 });
@@ -179,4 +184,87 @@ test('debounce + abort: typing pattern sends one request for the final text', as
   eq(f.calls.length, 1);
   eq(new URL(f.calls[0].url).searchParams.get('q'), 'regenstein');
   eq(last.items.length, 2);
+});
+
+// ---- local index of places within a 30-minute walk of campus stops (data/places.js) ----
+const PLACES = { stops: ['Harper Court (NE Corner)', 'Booth School', 'Garfield Red Line Station (EB)'], p: [
+  ['Chipotle', 'Fast food', '1522 E 53rd St', 41.7997, -87.588, 0, 1, 'Chipotle mexican fast food'],
+  ['Chipotle', 'Fast food', '806 W 63rd St', 41.7799, -87.6463, 2, 29, 'Chipotle mexican fast food'],
+  ['Medici on 57th', 'Restaurant', '1327 E 57th St', 41.7912, -87.5937, 1, 4, 'restaurant'],
+  ['Medici Bakery', 'Bakery', '1331 E 57th St', 41.7913, -87.5936, 1, 5, 'bakery'],
+  ['University of Chicago Medicine Campus', 'Hospital', '5841 S Maryland Ave', 41.7902, -87.6037, 1, 1, 'hospital'],
+  ['Chick-fil-A', 'Fast food', '1 Test St', 41.79, -87.6, 1, 6, 'Chick-fil-A chicken fast food'],
+  ['Starbucks', 'Cafe', '1530 E 53rd St', 41.7998, -87.5876, 0, 1, 'Starbucks coffee_shop cafe'],
+  ['Plein Air Cafe', 'Cafe', '5751 S Woodlawn Ave', 41.7895, -87.5965, 1, 2, 'cafe'],
+  ['Vue53 Apartments', 'Apartments', '1330 E 53rd St', 41.7995, -87.5935, 0, 3, 'apartments'],
+  ['1121-1133 E 61st St', 'Apartments', '', 41.7843, -87.597, 1, 1, 'apartments'],
+] };
+
+test('places: normalization ignores case, accents, punctuation and spaces', () => {
+  eq(norm("Chick-fil-A"), 'chick fil a');
+  eq(norm("  Café  Ñandú & Co. "), 'cafe nandu and co');
+  eq(norm("Harold's"), 'harolds');
+});
+
+test('places: Chipotle, chickfila (no hyphens), Medici (whole word beats Medicine), nearest first', () => {
+  setPlaces(PLACES);
+  const chip = searchLocal('chipotle');
+  eq(chip.map((x) => x.sub.split(' · ')[1]), ['1522 E 53rd St', '806 W 63rd St'], 'Hyde Park one first (1 min walk)');
+  ok(chip[0].sub.endsWith('1 min walk to Harper Court (NE Corner)') && chip[0].local, 'walk to the nearest stop');
+  eq(searchLocal('chickfila')[0]?.label, 'Chick-fil-A', 'spaces and hyphens ignored');
+  eq(searchLocal('chick fil a')[0]?.label, 'Chick-fil-A');
+  eq(searchLocal('medici').map((x) => x.label).slice(0, 3), ['Medici on 57th', 'Medici Bakery', 'University of Chicago Medicine Campus']);
+  eq(searchLocal('chipolte')[0]?.label, 'Chipotle', 'one swapped letter still finds it');
+  eq(searchLocal('medi')[0]?.label, 'Medici on 57th', 'prefix');
+  setPlaces(NO_PLACES);
+});
+
+test('places: categories and apartments ("coffee", "apartments", "vue")', () => {
+  setPlaces(PLACES);
+  eq(searchLocal('coffee').map((x) => x.label), ['Starbucks', 'Plein Air Cafe'], 'cafes by walking time');
+  eq(searchLocal('apartments').map((x) => x.label), ['Vue53 Apartments', '1121-1133 E 61st St'], 'named complexes first, then address-only buildings');
+  eq(searchLocal('vue53')[0]?.label, 'Vue53 Apartments');
+  eq(searchLocal('zzqx'), []);
+  setPlaces(NO_PLACES);
+});
+
+test('places: search merges local first, asks Photon only when the local index has < 5 matches', async () => {
+  clearPlaceCache();
+  setPlaces(PLACES);
+  const far = { features: [feat('Chipotle', -87.62, 41.88, { street: 'South Wabash Avenue', city: 'Chicago' }),
+    feat('Chipotle', -87.6463, 41.7799, { street: 'West 63rd Street', city: 'Chicago' })] };      // same as a local one
+  const f = stubFetch(() => res(far));
+  const out = await searchPlaces('chipotle', { fetch: f });
+  eq(f.calls.length, 1, 'only 2 local matches: Photon asked too');
+  eq(out.items.map((x) => x.local ? 'local' : 'photon'), ['local', 'local', 'photon'], 'local first; the 63rd St duplicate merged');
+  ok(out.items[2].sub.includes('km from campus'), 'far Photon result says how far');
+  clearPlaceCache();
+  const big = { stops: ['A'], p: Array.from({ length: 6 }, (_, i) => ['Pizza place ' + i, 'Restaurant', '', 41.79, -87.6, 0, i + 1, 'pizza']) };
+  setPlaces(big);
+  const g = stubFetch(() => res(far));
+  const pz = await searchPlaces('pizza', { fetch: g });
+  eq([g.calls.length, pz.items.length], [0, 5], 'answered locally: the typed text is not sent to Photon');
+  clearPlaceCache();
+  setPlaces(PLACES);
+  const off = await searchPlaces('medici', { fetch: async () => { throw new TypeError('offline'); } });
+  eq(off.items.map((x) => x.label).slice(0, 2), ['Medici on 57th', 'Medici Bakery'], 'offline: local results still come back');
+  ok(!off.error, 'no error when local results exist');
+  setPlaces(NO_PLACES);
+  clearPlaceCache();
+});
+
+test('places: mergePlaces treats a contained name within 150 m as the same place', () => {
+  const local = [{ label: 'Joseph Regenstein Library', lat: 41.7922, lon: -87.5999, local: true }];
+  const remote = [{ label: 'Regenstein Library', lat: 41.7925, lon: -87.6 }, { label: 'Regenstein Library', lat: 41.92, lon: -87.63 }];
+  eq(mergePlaces(local, remote).map((x) => x.lat), [41.7922, 41.92]);
+});
+
+test('places: the real data/places.json loads and finds the campus examples', async () => {
+  setPlaces(null);
+  const okLoad = await loadPlaces();
+  ok(okLoad, 'data/places.json loaded');
+  const chip = searchLocal('Chipotle')[0];
+  ok(chip && chip.sub.includes('53rd'), 'Hyde Park Chipotle: ' + JSON.stringify(chip));
+  ok(searchLocal('medici').some((x) => x.label === 'Medici on 57th'), 'Medici on 57th');
+  setPlaces(NO_PLACES);
 });

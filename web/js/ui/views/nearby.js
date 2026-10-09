@@ -221,7 +221,7 @@ export function renderNearby(state, now = nowS()) {
   const place = N.mode === "place";
   const search = `<label class="v-search"><span class="v-ic" aria-hidden="true">${ICONS.search}</span><span class="v-sr">${place ? "Address or place" : "Search stations"}</span><input type="search" data-input="nearby-q" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${place ? "Address, building or place" : "Search stations"}" value="${esc(N.q)}"></label>`;
   const toggle = place
-    ? '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="station">Search stations instead</button></div><p class="v-fine">Only the text you type is sent to photon.komoot.io to find the place.</p>'
+    ? '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="station">Search stations instead</button></div><p class="v-fine">Places near campus are searched on your device; otherwise only the text you type is sent to photon.komoot.io.</p>'
     : '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="place">Type an address or place</button></div>';
   return `<div class="v-nearby"><div data-region="nearby-alert">${alertBanner(state, now)}</div><div data-region="nearby-trip">${entryHTML(state)}</div><div data-region="nearby-loc">${locHTML(state)}</div>${search}${toggle}<div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
 }

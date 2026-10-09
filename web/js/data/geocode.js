@@ -1,7 +1,12 @@
-// Place search via Photon (photon.komoot.io, OpenStreetMap data).
-// Privacy: only the typed text is sent, plus fixed constants (Hyde Park bias point, Illinois bbox),
-// never the user's location.
-// Results: Illinois only (state check, bbox fallback), re-ranked toward UChicago / Hyde Park.
+// Place search. First the local index of places within a 30-minute walk of the campus shuttle stops
+// (data/places.js: instant, private, typo-tolerant, "Chipotle", "chickfila", "Medici", "coffee",
+// "apartments"); then Photon (photon.komoot.io, OpenStreetMap data) for anything else, only when the
+// local index has fewer than LIMIT matches.
+// Privacy: Photon gets only the typed text, plus fixed constants (Hyde Park bias point, Illinois bbox),
+// never the user's location; queries fully answered by the local index are not sent at all.
+// Photon results: Illinois only (state check, bbox fallback), re-ranked toward UChicago / Hyde Park,
+// labelled with their distance from campus when farther than FAR_KM.
+import { loadPlaces, searchLocal, norm } from './places.js';
 
 /** Photon API endpoint. */
 export const PHOTON = 'https://photon.komoot.io/api/';
@@ -21,6 +26,7 @@ const TIER_STEP = 8;      // score cost per tier; Photon rank adds 0..14, so tie
 const KM_PER_POINT = 5;   // within a tier, closer still wins: +1 per 5 km ...
 const KM_CAP = 20;        // ... up to 20 km (+4)
 const MAX_EXTRA_WORDS = 3;
+const FAR_KM = 3;         // Photon results farther than this from campus say how far ("9.6 km from campus")
 const SETTLEMENTS = new Set(['city', 'town', 'village']);
 // OSM kinds that are usually the thing people mean (-2) or a by-product of it (+3).
 const MAJOR = new Set(['railway:station', 'aeroway:aerodrome', 'aeroway:terminal', 'building:train_station',
@@ -127,6 +133,30 @@ export function rankPlaces(features, query) {
     if (!dup) out.push(s.place);
     if (out.length >= LIMIT) break;
   }
+  for (const o of out) {
+    const d = km(HOME.lat, HOME.lon, o.lat, o.lon);
+    if (d > FAR_KM) o.sub = (o.sub ? o.sub + ' · ' : '') + `${d < 10 ? d.toFixed(1) : Math.round(d)} km from campus`;
+  }
+  return out;
+}
+
+/**
+ * Local results first (all within a 30-minute walk of a campus stop), then Photon results that are not
+ * the same place (within 150 m and one name contains the other, e.g. "Joseph Regenstein Library" /
+ * "Regenstein Library"), at most `limit`.
+ * @param {Array<{label:string, lat:number, lon:number}>} local
+ * @param {Array<{label:string, lat:number, lon:number}>} remote
+ * @param {number} [limit]
+ * @returns {Array<object>}
+ */
+export function mergePlaces(local, remote, limit = LIMIT) {
+  const out = local.slice(0, limit);
+  for (const r of remote) {
+    if (out.length >= limit) break;
+    const rn = norm(r.label);
+    const same = out.some((o) => { const on = norm(o.label); return (on.includes(rn) || rn.includes(on)) && km(o.lat, o.lon, r.lat, r.lon) < 0.15; });
+    if (!same) out.push(r);
+  }
   return out;
 }
 
@@ -141,9 +171,11 @@ export function photonUrl(query) {
 }
 
 /**
- * Search places by free text. Never throws. Illinois only, nearest-to-UChicago first, max 5.
+ * Search places by free text. Never throws. Max 5: places within a 30-minute walk of campus stops first
+ * (local index, each with its walk to the nearest stop), then Photon (Illinois only, nearest-to-UChicago
+ * first) when the local index has fewer than 5 matches.
  * @param {string} q query (caller enforces >= 3 chars; shorter returns no items)
- * @param {{signal?:AbortSignal, fetch?:typeof fetch}} [opts]
+ * @param {{signal?:AbortSignal, fetch?:typeof fetch, placesFetch?:typeof fetch}} [opts] fetch: Photon; placesFetch: data/places.json
  * @returns {Promise<{items:{label:string, sub:string, lat:number, lon:number}[], error?:string}>}
  *   error is one of 'aborted' | 'timeout' | 'network' | 'http <status>' | 'bad response'
  */
@@ -154,7 +186,32 @@ export async function searchPlaces(q, opts = {}) {
   if (signal?.aborted) return { items: [], error: 'aborted' };
   const key = query.toLowerCase();
   if (cache.has(key)) return { items: cache.get(key).map((x) => ({ ...x })) };
+  await loadPlaces(opts.placesFetch);
+  if (signal?.aborted) return { items: [], error: 'aborted' };
+  const local = searchLocal(query, { limit: LIMIT });
+  if (local.length >= LIMIT) {                      // answered on the device: nothing is sent to Photon
+    cache.set(key, local);
+    return { items: local.map((x) => ({ ...x })) };
+  }
+  const remote = await photonSearch(query, opts);
+  if (remote.error === 'aborted' || signal?.aborted) return { items: [], error: 'aborted' };
+  const items = mergePlaces(local, remote.items || []);
+  if (!items.length && remote.error) return { items: [], error: remote.error };
+  if (!remote.error) {
+    cache.set(key, items);
+    if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+  }
+  return { items: items.map((x) => ({ ...x })) };
+}
 
+/**
+ * Photon only (no local index), ranked by rankPlaces. Never throws.
+ * @param {string} query trimmed text (>= 3 chars)
+ * @param {{signal?:AbortSignal, fetch?:typeof fetch}} [opts]
+ * @returns {Promise<{items:Array<object>, error?:string}>}
+ */
+export async function photonSearch(query, opts = {}) {
+  const signal = opts.signal;
   const fetchFn = opts.fetch || ((...a) => globalThis.fetch(...a));
   const ctl = new AbortController();
   let timedOut = false;
@@ -169,9 +226,7 @@ export async function searchPlaces(q, opts = {}) {
     if (!j || !Array.isArray(j.features)) return { items: [], error: 'bad response' };
     const items = rankPlaces(j.features, query);
     if (signal?.aborted) return { items: [], error: 'aborted' };
-    cache.set(key, items);
-    if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
-    return { items: items.map((x) => ({ ...x })) };
+    return { items };
   } catch {
     if (timedOut) return { items: [], error: 'timeout' };
     if (signal?.aborted || ctl.signal.aborted) return { items: [], error: 'aborted' };

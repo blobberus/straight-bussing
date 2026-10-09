@@ -31,7 +31,7 @@ export function renderAbout() {
 <h3 class="v-h">Privacy</h3>
 <ul class="v-plain">
   <li>No account, no ads, no tracking. Your location, if you allow it, stays on this device.</li>
-  <li>Place search: when you type an address or place, only that text is sent to <b>photon.komoot.io</b> (OpenStreetMap geocoder). Station names are searched on your device.</li>
+  <li>Place search: station names and places within a 30-minute walk of campus stops are searched on your device. Only when that finds fewer than 5 matches is the text you typed (and nothing else) sent to <b>photon.komoot.io</b> (OpenStreetMap geocoder).</li>
   <li>Walking directions: the start and end of each walking leg, rounded to about 10 m, are sent to <b>routing.openstreetmap.de</b> (or <b>valhalla1.openstreetmap.de</b> if that is down) to follow sidewalks. If both fail, a straight-line estimate is used and labeled "estimate".</li>
   <li>Settings (theme, hidden routes) are saved in this browser only.</li>
 </ul>
@@ -40,7 +40,7 @@ export function renderAbout() {
 <h3 class="v-h">Credits</h3>
 <ul class="v-plain v-sec">
   <li>Live and schedule data: public Passio GTFS and GTFS-Realtime feeds.</li>
-  <li>Map data &copy; OpenStreetMap contributors. Map tiles: OpenFreeMap. Rendering: Leaflet and MapLibre GL.</li>
+  <li>Map data and the campus places list &copy; OpenStreetMap contributors (ODbL). Map tiles: OpenFreeMap. Rendering: Leaflet and MapLibre GL.</li>
   <li>Place search: Photon by komoot. Walking routes: FOSSGIS OSRM and Valhalla.</li>
 </ul>
 <p class="v-foot" data-region="about-data">Version ${esc(APP_VERSION)}</p>

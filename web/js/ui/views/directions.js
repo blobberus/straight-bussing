@@ -61,11 +61,21 @@ export function stopEndpoint(state, id) {
  * @param {string} text
  * @returns {object[]}
  */
+/** Lowercase words without accents or punctuation ("Ellis & 53rd St." -> ["ellis", "53rd", "st"]). */
+const wordsOf = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/['\u2019.]/g, "").split(/[^a-z0-9]+/).filter(Boolean);
+
 export function computeSugs(state, text) {
   const q = String(text || "").trim(), out = [];
   if (!q || "my location".startsWith(q.toLowerCase())) out.push({ kind: "me", label: "My location", sub: state.user ? "Use current location" : "Allow location access" });
-  if (q) for (const s of matchStations(state, q, 5)) out.push({ kind: "stop", id: s.id, lat: s.lat, lon: s.lon, label: s.name, sub: "Shuttle stop · " + (state.stopRoutes?.[s.id] || []).map((r) => state.routes?.[r]?.short || r).join(", ") });
-  if (q.length >= 3 && photon.state.q === q && !photon.state.status) for (const p of photon.state.items) out.push({ kind: "place", lat: p.lat, lon: p.lon, label: p.label, sub: p.sub || "Place" });
+  // Order: stops whose name has the whole typed word(s), then strong nearby places (local index, whole-word
+  // name match), then stops that only partly match ("medici" in "Medicine"), then other places.
+  const qw = wordsOf(q);
+  const stops = q ? matchStations(state, q, 5).map((s) => ({ kind: "stop", id: s.id, lat: s.lat, lon: s.lon, label: s.name,
+    sub: "Shuttle stop · " + (state.stopRoutes?.[s.id] || []).map((r) => state.routes?.[r]?.short || state.routes?.[r]?.long || r).join(", "),
+    whole: qw.every((w) => wordsOf(s.name).includes(w)) })) : [];
+  const places = q.length >= 3 && photon.state.q === q && !photon.state.status
+    ? photon.state.items.map((p) => ({ kind: "place", lat: p.lat, lon: p.lon, label: p.label, sub: p.sub || "Place", strong: !!p.local && p.score >= 85 })) : [];
+  out.push(...stops.filter((s) => s.whole), ...places.filter((p) => p.strong), ...stops.filter((s) => !s.whole), ...places.filter((p) => !p.strong));
   return out;
 }
 
@@ -77,7 +87,7 @@ function sugHTML() {
   if (q.length >= 3 && photon.state.status === "busy") h += '<p class="v-hint" role="status">Searching places&hellip;</p>';
   if (q.length >= 3 && photon.state.status === "err") h += '<p class="v-hint">Couldn\'t search places right now. Station names still work.</p>';
   if (D.meDenied) h += '<p class="v-hint">Location is off. Allow it in your browser settings, or type a start.</p>';
-  if (q.length >= 3) h += '<p class="v-fine">Only the text you type is sent to photon.komoot.io to find places.</p>';
+  if (q.length >= 3) h += '<p class="v-fine">Places near campus are searched on your device; otherwise only the text you type is sent to photon.komoot.io.</p>';
   return h;
 }
 

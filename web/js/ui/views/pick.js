@@ -201,7 +201,7 @@ export function renderPick(state) {
   let head = "";
   if (P.mode === "sel") head = field("Search station name", "Search station name");
   else if (P.mode === "addr" && P.anchor) head = `<div class="v-anchor"><span class="v-grow"><span class="v-sec">Stops within 1.5 km of</span><span class="v-prim">${esc(P.anchor.label)}</span></span><button type="button" class="v-btn v-btn--quiet" data-action="pick:change-place">Change</button></div>`;
-  else if (P.mode === "addr") head = field("Address, building or place", "Address or place") + '<p class="v-fine">Only the text you type is sent to photon.komoot.io to find the place.</p>';
+  else if (P.mode === "addr") head = field("Address, building or place", "Address or place") + '<p class="v-fine">Places near campus are searched on your device; otherwise only the text you type is sent to photon.komoot.io.</p>';
   else head = '<p class="v-lead">Nearest stops within 1.5 km of you. Tap one to see its routes.</p>';
   return `<div class="v-pick" data-mode="${P.mode}">${head}${onlySwitchHTML(PREF.only)}<div class="v-list" data-region="pick-list">${pickListHTML(state)}</div>${otherModes(P.mode)}</div>`;
 }
