@@ -25,8 +25,8 @@ let data = null, loading = null, index = null;
  * @returns {string}
  */
 export function norm(s) {
-  return String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/&/g, ' and ')
-    .replace(/['’`.]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  return String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, ' and ')
+    .replace(/['\u2019`.]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
 /** Edit distance <= 1 (insert, delete, substitute or swap two neighbours). */
