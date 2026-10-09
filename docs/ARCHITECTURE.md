@@ -283,3 +283,18 @@ Tap a custom route row = show it on the map / stop showing (`mr:toggle`, no navi
 `mr:swipe`) = action tray Details (`mr:details`, no apply) / Edit / Delete. Every delete goes through `ui/confirm.js`
 `confirmDialog({title, body, confirmLabel, danger})` -> Promise<boolean> (native `<dialog role="alertdialog">`, Cancel focused,
 Escape / backdrop cancel; settles from the button itself, not the async close event).
+
+### 2026-10-09: stutter fixes, map credit, self-update
+- Sheet geometry: the sheet element is always `--v-max` tall (offset and content padding use `--v-max`); `--v-full` depends only on
+  the status pill (`--pill-h`, measured by a ResizeObserver in main.js). The context chip never changes the detent; it fades out at
+  the full detent. Selecting / clearing a custom route moves nothing (0 layout shift at half and full).
+- Map credit (`js/map/credits.js`, replaces Leaflet's attribution control): "OpenFreeMap · OpenMapTiles · OpenStreetMap" as links,
+  no copyright sign; shown at load, collapses after 5 s into an accessible (i) button at the bottom-left above the sheet (positioned by
+  `setBottomInset`), hidden at the full detent (OSMF Attribution Guidelines allow both). `fitTo` uses `flyToBounds`.
+- My Routes: rows are a fixed 64 px with a fixed-size check circle (`aria-pressed`); `ui/views/myroutes-patch.js` morphs only what
+  changed (keyed rows, keeps drag styles, waits while a pointer is down or a tray animates); tap threshold 10 px in the row's own CSS
+  px; only the tray's Details button opens 'customroute' (saving a new route returns to the list).
+- `ui/update.js`: registers sw.js, checks for a new version when the app returns to the foreground, reloads in the background when a
+  new worker takes control (an installed app could otherwise run old code for days).
+- `tools/run_browser_tests.py` retries a page once, alone, when headless Edge's virtual-time mode stalls it (runner timeout with no
+  results); the output says "(retried once after a runner timeout)". Pages with failing tests are never retried.

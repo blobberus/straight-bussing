@@ -157,6 +157,14 @@ def main() -> int:
     try:
         with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as ex:
             results = list(ex.map(lambda p: run_page(edge, port, p, args.timeout), pages))
+        # Headless Edge's virtual-time mode occasionally stalls a page after load (no frames, no timers),
+        # independent of the code under test. Retry a page that produced no result once, alone, and say so.
+        # A page that reports failing tests is never retried.
+        for i, r in enumerate(results):
+            if not r["ok"] and r["pass"] == 0 and any("timed out" in str(f.get("error", "")) for f in r["failures"]):
+                again = run_page(edge, port, r["page"], args.timeout)
+                again["retried"] = True
+                results[i] = again
     finally:
         srv.shutdown()
         srv.server_close()
@@ -166,7 +174,7 @@ def main() -> int:
         total_pass += r["pass"]
         total_fail += r["fail"]
         status = "OK  " if r["ok"] else "FAIL"
-        print(f"{status} {r['page']}: pass={r['pass']} fail={r['fail']}")
+        print(f"{status} {r['page']}: pass={r['pass']} fail={r['fail']}" + (" (retried once after a runner timeout)" if r.get("retried") else ""))
         if args.verbose:
             for t in r["tests"]:
                 print(f"      {'ok ' if t.get('ok') else 'BAD'} {t.get('name')} ({t.get('ms', 0)} ms)")
