@@ -102,3 +102,17 @@ test("notifier: toasts + system notify once per trip/kind across store updates; 
   await new Promise((r) => queueMicrotask(r));
   eq(sys.length, 3, "stopped: nothing more after stop()");
 });
+
+test("notify: two buses on the SAME trip id each get their own ETA and alert (QA 2026-10-09)", () => {
+  // Passio reuses a trip id for several vehicles; by trip id alone bus 2 got bus 1's prediction and its alert was deduped away
+  const base = st({ notify: N({ rids: ["R1"] }) });
+  const b0 = base.buses[0];
+  const s = { ...base,
+    buses: [b0, { ...b0, vehicle: { id: "v9", label: "109" }, stop_id: "S2" }],
+    trips: [{ trip: { trip_id: "t1", route_id: "R1" }, vehicle: { id: "v1", label: "101" }, stop_time_update: [{ stop_id: "S3", arrival: { time: NOW + 600 } }] },
+            { trip: { trip_id: "t1", route_id: "R1" }, vehicle: { id: "v9", label: "109" }, stop_time_update: [{ stop_id: "S3", arrival: { time: NOW + 150 } }] }] };
+  const r = stopsAway(s, "S3", "R1", NOW);
+  eq(r.map((x) => [x.label, x.stopsAway, x.etaS - NOW]), [["109", 1, 150], ["101", 2, 600]]);
+  const a = dueAlerts(s, new Set(), NOW).alerts;
+  eq(a.map((x) => x.kind).sort(), ["oneStop", "twoStops"], "both buses alert");
+});

@@ -4,7 +4,7 @@
  * no DOM. Input: store.journey of kind 'plan' with the compact `legs` summary written by
  * ui/views/journey.js planJourney:
  *   walk {type:'walk', min, toName}
- *   bus  {type:'bus', rid, board:{id,name}, alight:{id,name}, tripId, boardT, alightT, source?, waitLive?}
+ *   bus  {type:'bus', rid, board:{id,name}, alight:{id,name}, tripId, vehicleId?, boardT, alightT, source?, waitLive?}
  *
  * For every bus leg it finds the stops from the boarding stop to the alighting stop along
  * routeStops (loops wrap), plus up to TRIP.BEFORE stops before the boarding stop while the bus has not
@@ -46,21 +46,32 @@ const timeOf = (u) => { const t = Number((u && u.arrival && u.arrival.time) || (
 const same = (a, b) => a != null && b != null && String(a) === String(b);
 const walkMinM = (m) => (m * WALK_DETOUR) / WALK_M_PER_MIN;
 
-/** Trip update of a trip id, else of a vehicle id. */
+/**
+ * Trip update of a trip run by a vehicle. Passio gives SEVERAL vehicles the same trip_id (e.g. five DCC buses on
+ * one trip id), each with its own predictions, so with a vehicle the entity with both ids wins; the trip id alone
+ * only when it is unambiguous (or no vehicle is known); else the vehicle's own entity.
+ */
 function tripUpdate(trips, tripId, vehicleId) {
-  return (trips || []).find((t) => same(t && t.trip && t.trip.trip_id, tripId))
-    || (trips || []).find((t) => same(t && t.vehicle && t.vehicle.id, vehicleId)) || null;
+  const T = trips || [], vid = (t) => t && t.vehicle && t.vehicle.id;
+  const byTrip = tripId == null ? [] : T.filter((t) => same(t && t.trip && t.trip.trip_id, tripId));
+  return (vehicleId != null && byTrip.find((t) => same(vid(t), vehicleId)))
+    || ((vehicleId == null || byTrip.length === 1) && byTrip[0])
+    || (vehicleId != null && T.find((t) => same(vid(t), vehicleId))) || null;
 }
 
-/** Operating bus running a trip (by its trip id, else by the vehicle named in that trip's update). */
-function busForTrip(S, rid, tripId) {
+/**
+ * Operating bus running a trip: the planned vehicle when known (a trip id can be shared by several buses),
+ * else the bus on that trip id, else the vehicle named in that trip's update.
+ */
+function busForTrip(S, rid, tripId, vehicleId) {
+  const buses = S.buses || [], onRoute = (v) => same(v && v.trip && v.trip.route_id, rid);
+  if (vehicleId != null) return buses.find((v) => same(v && v.vehicle && v.vehicle.id, vehicleId) && onRoute(v)) || null;
   if (tripId == null) return null;
-  const buses = S.buses || [];
   const b = buses.find((v) => same(v && v.trip && v.trip.trip_id, tripId));
   if (b) return b;
-  const tu = (S.trips || []).find((t) => same(t && t.trip && t.trip.trip_id, tripId));
+  const tu = tripUpdate(S.trips, tripId, null);
   const vid = tu && tu.vehicle && tu.vehicle.id;
-  return vid == null ? null : buses.find((v) => same(v && v.vehicle && v.vehicle.id, vid) && same(v.trip && v.trip.route_id, rid)) || null;
+  return vid == null ? null : buses.find((v) => same(v && v.vehicle && v.vehicle.id, vid) && onRoute(v)) || null;
 }
 
 /** Route-order indexes from board to alight (forward, loops wrap; shortest), or null. */
@@ -201,9 +212,9 @@ function evalBus(l, S, now, ctx) {
     const minT = ctx.active ? Math.max(now - 30, reachT - TRIP.GRACE_S) : ctx.readyT - 15;
     for (const a of arrivalsFor(S, bId, { routeId: rid, nowS: now })) {
       if (a.t < minT) continue;
-      const b = busForTrip(S, rid, a.tripId);
+      const b = busForTrip(S, rid, a.tripId, a.vehicleId);
       if (!b || (skip && same(b.vehicle && b.vehicle.id, skip))) continue;
-      const v = place(b, "next", true, tripUpdate(S.trips, a.tripId, null));   // that arrival's trip (may be the vehicle's next one)
+      const v = place(b, "next", true, tripUpdate(S.trips, a.tripId, a.vehicleId));   // that arrival's trip (may be the vehicle's next one)
       if (v && v.idx <= bpos) return v;
     }
     let best = null;
@@ -219,13 +230,13 @@ function evalBus(l, S, now, ctx) {
   };
   const stillAtBoard = nearBoard != null && nearBoard <= TRIP.MISSED_M;
   const nearAlight = userTo(S, aId);
-  const planned = busForTrip(S, rid, l.tripId);
+  const planned = busForTrip(S, rid, l.tripId, l.vehicleId);
   if (planned) {
     // The vehicle may still be finishing an EARLIER trip (your trip is its next one, found via the trip
     // update's vehicle): then it has not started your trip yet, so it is coming (never "past your stop"),
     // and the predictions are those of YOUR trip, not of the one it is on now.
     const onPlanned = same(planned.trip && planned.trip.trip_id, l.tripId);
-    const tu = tripUpdate(S.trips, l.tripId, onPlanned && planned.vehicle ? planned.vehicle.id : null);
+    const tu = tripUpdate(S.trips, l.tripId, l.vehicleId != null ? l.vehicleId : onPlanned && planned.vehicle ? planned.vehicle.id : null);
     // coming to the boarding stop = your trip still predicts it there and you are not past the planned boarding
     const coming = !onPlanned || (!!tu && (tu.stop_time_update || []).some((u) => String(u.stop_id) === bId && timeOf(u) > now - 30));
     V = place(planned, "trip", coming && (!onPlanned || !(ctx.active && pB != null && now > pB + TRIP.GRACE_S && !stillAtBoard)), tu);

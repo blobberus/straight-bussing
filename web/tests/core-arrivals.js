@@ -18,7 +18,7 @@ const trips = [
 test("arrivalsFor sorts ascending and keeps recent past (> now-30)", () => {
   const r = arrivalsFor({ trips }, "S", { nowS: T });
   eq(r.map((a) => a.t - T), [-20, 120, 600, 1800]);
-  eq(r[1], { rid: "R2", t: T + 120, bus: "202", tripId: "t2" });
+  eq(r[1], { rid: "R2", t: T + 120, bus: "202", tripId: "t2", vehicleId: "v2" });
   eq(r[0].bus, null, "missing label -> null");
   eq(r[0].tripId, "t3");
 });
@@ -32,7 +32,7 @@ test("arrivalsFor with routeId ignores hidden and filters route", () => {
 });
 test("arrivalsFor numeric ids and empty inputs", () => {
   eq(arrivalsFor({ trips: [{ trip: { route_id: 7, trip_id: 9 }, stop_time_update: [{ stop_id: 55, arrival: { time: T + 60 } }] }] }, "55", { nowS: T }),
-    [{ rid: "7", t: T + 60, bus: null, tripId: "9" }]);
+    [{ rid: "7", t: T + 60, bus: null, tripId: "9", vehicleId: null }]);
   eq(arrivalsFor({ trips: [] }, "S", { nowS: T }), []);
   eq(arrivalsFor({}, "S", { nowS: T }), []);
   eq(arrivalsFor({ trips: null }, "S"), []);

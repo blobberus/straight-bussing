@@ -160,7 +160,8 @@ function makeCtx({ data, predict, walkMins }) {
     const leg = { type: "bus", rid, board: pt(ids[0]), alight: pt(ids[ids.length - 1]),
       path: ids.map((id) => ({ lat: stops[id].lat, lon: stops[id].lon })), stopsPassed: ids.length - 1,
       wait: w.min, waitLive: w.live, ride: r.min, source: r.source, conf: r.conf, boardT: w.t, alightT: r.alightT,
-      tripId: w.tu && w.tu.trip && w.tu.trip.trip_id != null ? String(w.tu.trip.trip_id) : null };
+      tripId: w.tu && w.tu.trip && w.tu.trip.trip_id != null ? String(w.tu.trip.trip_id) : null,
+      vehicleId: w.tu && w.tu.vehicle && w.tu.vehicle.id != null ? String(w.tu.vehicle.id) : null };   // Passio reuses trip ids across buses
     if (r.p10 != null) { leg.p10 = r.p10; leg.p90 = r.p90; }
     return leg;
   };

@@ -19,7 +19,8 @@ export const OLD_AFTER_S = 300;
  * @param {string} stopId
  * @param {{routeId?:string|null, hidden?:string[], nowS?:number}} [opts]
  *   routeId: only this route (hidden list is ignored then); hidden: route ids to exclude.
- * @returns {Array<{rid:string, t:number, bus:string|null, tripId:string|null}>}
+ * @returns {Array<{rid:string, t:number, bus:string|null, tripId:string|null, vehicleId:string|null}>}
+ *   tripId alone is not unique: Passio gives several vehicles the same trip id (use tripId + vehicleId).
  */
 export function arrivalsFor({ trips } = {}, stopId, { routeId = null, hidden = [], nowS } = {}) {
   const t0 = typeof nowS === "number" ? nowS : currentS();
@@ -35,7 +36,7 @@ export function arrivalsFor({ trips } = {}, stopId, { routeId = null, hidden = [
       const t = Number((u.arrival && u.arrival.time) || (u.departure && u.departure.time) || 0);
       if (t && isFinite(t) && t > t0 - 30) {
         out.push({ rid, t, bus: tu.vehicle && tu.vehicle.label != null ? String(tu.vehicle.label) : null,
-          tripId: tu.trip.trip_id != null ? String(tu.trip.trip_id) : null });
+          tripId: tu.trip.trip_id != null ? String(tu.trip.trip_id) : null, vehicleId: tu.vehicle && tu.vehicle.id != null ? String(tu.vehicle.id) : null });
       }
     }
   }

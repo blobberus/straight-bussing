@@ -34,6 +34,7 @@ function hasLivePrediction(bus, trips, ref) {
   if (!id) return false;
   for (const t of trips || []) {
     if (String(t?.trip?.trip_id) !== String(id)) continue;
+    if (t.vehicle?.id != null && bus.vehicle?.id != null && String(t.vehicle.id) !== String(bus.vehicle.id)) continue;   // shared trip id, other bus
     for (const u of t.stop_time_update || []) {
       const at = Number(u?.arrival?.time || u?.departure?.time || 0);
       if (at && at >= ref - PRED_GRACE_S) return true;

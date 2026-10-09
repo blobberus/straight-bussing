@@ -1,7 +1,7 @@
 // Tests for core/tripprogress.js (pure; fixtures in trip-fixtures.js).
 import { test, eq, ok, near } from "./lib.js";
 import { tripProgress, TRIP } from "../js/core/tripprogress.js";
-import { NOW, stops, baseState, bus, trip, journeyR, journeyXfer, scenes } from "./trip-fixtures.js";
+import { NOW, stops, routes, routeStops, baseState, bus, trip, journeyR, journeyXfer, scenes } from "./trip-fixtures.js";
 
 const scene = (id) => scenes().find((s) => s.id === id).state;
 const prog = (st, now = NOW) => tripProgress(st.journey, st, now);
@@ -195,4 +195,21 @@ test("journey transfer fixture keeps walk names and order", () => {
   const p = tripProgress(journeyXfer(), baseState(), NOW);
   eq(p.legs.map((l) => l.type), ["walk", "bus", "walk", "bus", "walk"]);
   eq(p.legs[4].final, true);
+});
+
+test("shared trip id: Passio gives several buses one trip_id; the planned VEHICLE is followed (QA 2026-10-09)", async () => {
+  // live data showed five DCC buses on trip 874028; following by trip id alone picked whichever came first
+  const { plan } = await import("../js/core/planner.js");
+  const j = journeyR({ tripId: "tS", boardT: NOW + 420, alightT: NOW + 720 });
+  j.legs[1].vehicleId = "v102";
+  const s = baseState({ journey: j, user: { lat: stops.A4.lat - 0.0025, lon: stops.A4.lon },
+    buses: [bus("v101", "101", "R", "tS", "A6", "A7", 0.5), bus("v102", "102", "R", "tS", "A0", "A1", 0.5)],
+    trips: [trip("tS", "R", "v101", "101", [["A7", 60], ["A8", 160]]), trip("tS", "R", "v102", "102", [["A1", 90], ["A4", 420], ["A7", 720]])] });
+  const b = busLeg(prog(s));
+  eq([b.vehicle.label, b.boardEta, b.alightEta, prog(s).phase], ["102", NOW + 420, NOW + 720, "walk-to-stop"], "bus 102 and ITS predictions, not bus 101 past the stop");
+  // the planner records which vehicle's prediction it used
+  const r = plan({ from: { lat: stops.A4.lat, lon: stops.A4.lon }, to: { lat: stops.A7.lat, lon: stops.A7.lon + 0.0005 }, now: NOW,
+    data: { stops, routes, routeStops: { R: routeStops.R }, trips: s.trips, buses: s.buses } });
+  const leg = r.options.flatMap((o) => o.legs).find((l) => l.type === "bus" && l.tripId === "tS");
+  ok(leg && leg.vehicleId === "v102", "bus leg carries vehicleId: " + JSON.stringify(r.options.map((o) => o.legs.map((l) => l.type === "bus" ? [l.rid, l.board.id, l.alight.id, l.tripId, l.vehicleId, l.waitLive] : ["walk", Math.round(l.m)]))) + " walkOnly " + JSON.stringify(r.walkOnly));
 });

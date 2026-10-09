@@ -50,7 +50,7 @@ test("journey: optionRids / planJourney (unique bus routes; walk-only -> null)",
   eq([j.rids, j.label, j.kind, j.to, j.t0], [["R1"], "To Hospital", "plan", "Hospital", NOW]);
   eq(j.legs, [
     { type: "walk", min: 0.3, toName: "Main & 1st" },
-    { type: "bus", rid: "R1", board: { id: "S1", name: "Main & 1st" }, alight: { id: "S3", name: "Hospital" }, tripId: null,
+    { type: "bus", rid: "R1", board: { id: "S1", name: "Main & 1st" }, alight: { id: "S3", name: "Hospital" }, tripId: null, vehicleId: null,
       boardT: NOW + 120, alightT: NOW + 600, source: "live", waitLive: true },
   ], "compact legs to follow the trip later");
   const tl = planJourney({ legs: [walk(20, 0.3), { ...busLeg("R2"), tripId: 77 }, { ...walk(90, 1.1), from: A, to: { lat: 0, lon: 0, name: "Destination" } }] }, "Cafe <b>");

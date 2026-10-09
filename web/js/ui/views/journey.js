@@ -26,7 +26,7 @@ const numOr = (x) => (typeof x === "number" && isFinite(x) ? x : null);
 /**
  * Compact legs of an option, enough to follow the trip later without the Directions view
  * (core/tripprogress.js): walk {type, min, toName}, bus {type, rid, board:{id,name}, alight:{id,name},
- * tripId, boardT, alightT, source, waitLive}. The last walk is named after the destination.
+ * tripId, vehicleId, boardT, alightT, source, waitLive}. The last walk is named after the destination.
  * @param {object|null} o planner Option
  * @param {string} [toLabel] destination name
  * @returns {Array<object>}
@@ -42,6 +42,7 @@ export function journeyLegs(o, toLabel) {
     } else if (l.type === "bus" && l.board && l.alight && l.rid != null) {
       out.push({ type: "bus", rid: String(l.rid), board: { id: String(l.board.id), name: String(l.board.name ?? l.board.id) },
         alight: { id: String(l.alight.id), name: String(l.alight.name ?? l.alight.id) }, tripId: l.tripId != null ? String(l.tripId) : null,
+        vehicleId: l.vehicleId != null ? String(l.vehicleId) : null,
         boardT: numOr(l.boardT), alightT: numOr(l.alightT), source: l.source || null, waitLive: !!l.waitLive });
     }
   });

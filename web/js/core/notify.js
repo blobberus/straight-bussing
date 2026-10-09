@@ -27,10 +27,12 @@ export function routeOrder(list) {
   return { order: loop ? l.slice(0, -1) : l, loop };
 }
 
+/** The bus's own trip update: Passio reuses one trip id for several buses, so trip AND vehicle must match. */
 function tripFor(trips, bus) {
-  const tid = bus?.trip?.trip_id, vid = bus?.vehicle?.id;
-  return (trips || []).find((t) => tid != null && String(t?.trip?.trip_id) === String(tid))
-    || (trips || []).find((t) => vid != null && String(t?.vehicle?.id) === String(vid)) || null;
+  const tid = bus?.trip?.trip_id, vid = bus?.vehicle?.id, T = trips || [];
+  const isTrip = (t) => tid != null && String(t?.trip?.trip_id) === String(tid), isVeh = (t) => vid != null && String(t?.vehicle?.id) === String(vid);
+  const byTrip = T.filter(isTrip);
+  return byTrip.find(isVeh) || ((vid == null || byTrip.length === 1) && byTrip[0]) || T.find(isVeh) || null;
 }
 
 function timeOf(u) {
@@ -135,7 +137,7 @@ function alertFor(state, it, kind, now, late) {
   let body = `${bus} to ${stop}. Next stop: ${it.nextStopName}.`;
   if (kind !== "minutes" && when) body += ` Arrives in ${when}.`;
   if (late) body += " Live data is delayed.";
-  return { key: `${state.notify.stopId}|${it.tripId || it.vehicleId}|${kind}`, kind,
+  return { key: `${state.notify.stopId}|${it.tripId || ""}|${it.vehicleId || ""}|${kind}`, kind,   // trip ids are shared by several buses
     title: `${routeName(state, it.rid)}: ${head}`, body };
 }
 
