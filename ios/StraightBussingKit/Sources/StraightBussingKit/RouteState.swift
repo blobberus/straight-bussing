@@ -106,7 +106,7 @@ public struct StatePatch: Hashable, Sendable {
 }
 
 /// One answer to "which routes does the user see right now" (web/js/core/visibility.js).
-public enum Visibility {
+public enum RouteVisibility {
     /// Route ids hidden right now (a journey wins over the user's hidden list).
     public static func effectiveHidden(_ s: RouteState) -> [String] {
         if let j = s.journey, !j.rids.isEmpty {

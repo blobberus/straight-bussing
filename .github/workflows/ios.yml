@@ -1,11 +1,15 @@
 name: iOS app (build, test, simulator preview)
 # Native SwiftUI draft in ios/ (see ios/README.md). Free macOS runners (public repo). No signing, no secrets.
+# kit: swift test for StraightBussingKit. app: XcodeGen -> build -> UI tests -> simulator screenshots +
+# recordings -> artifact; on main also force-pushes them to the orphan `ios-preview` branch and redeploys
+# Pages, which serves them at https://blobberus.github.io/straight-bussing/ios/
 on:
   push:
-    branches: [main, ios-wip]
+    branches: [main]
     paths: ["ios/**", "web/data/**", ".github/workflows/ios.yml"]
   workflow_dispatch:
-permissions: { contents: read }
+permissions:
+  contents: read
 concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
@@ -15,7 +19,9 @@ jobs:
     name: StraightBussingKit (swift test)
     runs-on: macos-15
     timeout-minutes: 30
-    defaults: { run: { shell: bash } }
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain
@@ -31,3 +37,90 @@ jobs:
             grep -E "Executed [0-9]+ tests" "$RUNNER_TEMP/kit-test.log" | tail -1 || echo "no test summary"
             grep -E "error:|failed \(" "$RUNNER_TEMP/kit-test.log" | head -40 || true
           } >> "$GITHUB_STEP_SUMMARY"
+
+  app:
+    name: App (XcodeGen, build, UI tests, simulator preview)
+    needs: kit
+    runs-on: macos-15
+    timeout-minutes: 75
+    permissions:
+      contents: write   # push the ios-preview branch
+      actions: write    # trigger the Pages deploy
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tools
+        run: |
+          brew install xcodegen
+          python -m pip install --quiet pillow
+          xcodebuild -version
+      - name: Generate Xcode project (XcodeGen) and app icon
+        working-directory: ios
+        run: scripts/bootstrap.sh
+      - name: Pick simulator
+        id: sim
+        run: |
+          UDID=$(python3 ios/scripts/pick_simulator.py)
+          NAME=$(xcrun simctl list devices | grep "$UDID" | sed -E 's/^ *(.*) \(.*\) \(.*$/\1/' | head -1)
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "Simulator: $NAME ($UDID)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Build (app + Live Activity widget extension + UI tests)
+        id: build
+        working-directory: ios
+        run: |
+          xcodebuild build-for-testing -project StraightBussing.xcodeproj -scheme StraightBussing \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build/dd \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/build.log" | grep -E "error:|warning: .*deprecated|BUILD|\*\*" || true
+          grep -q "TEST BUILD SUCCEEDED" "$RUNNER_TEMP/build.log"
+      - name: Build errors
+        if: failure() && steps.build.outcome == 'failure'
+        run: grep -E "error:" "$RUNNER_TEMP/build.log" | sort -u | head -80
+      - name: UI tests
+        id: uitest
+        working-directory: ios
+        env:
+          TEST_RUNNER_SB_SHOTS: ${{ github.workspace }}/preview/uitest
+        run: |
+          xcodebuild test-without-building -project StraightBussing.xcodeproj -scheme StraightBussing \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build/dd \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/uitest.log" | grep -E "Test Case|error|XCTAssert|\*\*" || true
+          grep -q "TEST EXECUTE SUCCEEDED" "$RUNNER_TEMP/uitest.log"
+      - name: Simulator screenshots + recordings (demo mode)
+        if: always() && steps.build.outcome == 'success'
+        run: |
+          bash ios/scripts/simulate.sh "ios/build/dd/Build/Products/Debug-iphonesimulator/StraightBussing.app" \
+            "${{ steps.sim.outputs.udid }}" preview
+      - name: Gallery page
+        if: always() && steps.build.outcome == 'success'
+        run: |
+          python3 ios/scripts/gallery.py preview --sha "$GITHUB_SHA" \
+            --run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --device "${{ steps.sim.outputs.name }}"
+      - name: Upload preview artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-preview
+          path: preview
+          if-no-files-found: warn
+      - name: Publish to the ios-preview branch and redeploy Pages
+        if: always() && steps.build.outcome == 'success' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -f preview/index.html
+          cd preview
+          git init -q -b ios-preview
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "iOS simulator preview for ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ios-preview
+          cd ..
+          gh workflow run pages.yml --ref main -R "$GITHUB_REPOSITORY"
+          echo "Preview: https://blobberus.github.io/straight-bussing/ios/ (after the Pages deploy)" >> "$GITHUB_STEP_SUMMARY"

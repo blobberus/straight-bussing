@@ -10,27 +10,27 @@ final class VisibilityCustomTests: XCTestCase {
     }
 
     func testHiddenListJourneyWinsIsVisible() {
-        XCTAssertEqual(Visibility.effectiveHidden(base(hidden: ["b"])), ["b"])
-        XCTAssertEqual(Visibility.effectiveHidden(base(hidden: ["b"], journey: Journey(rids: ["b", "c"], label: "x"))), ["a", "d"])
-        XCTAssertEqual(Visibility.effectiveHidden(base(hidden: ["b"], journey: Journey(rids: [], label: "walk"))), ["b"], "empty journey")
-        XCTAssertFalse(Visibility.isVisible(base(hidden: ["b"]), "b"))
-        XCTAssertTrue(Visibility.isVisible(base(), "b"))
+        XCTAssertEqual(RouteVisibility.effectiveHidden(base(hidden: ["b"])), ["b"])
+        XCTAssertEqual(RouteVisibility.effectiveHidden(base(hidden: ["b"], journey: Journey(rids: ["b", "c"], label: "x"))), ["a", "d"])
+        XCTAssertEqual(RouteVisibility.effectiveHidden(base(hidden: ["b"], journey: Journey(rids: [], label: "walk"))), ["b"], "empty journey")
+        XCTAssertFalse(RouteVisibility.isVisible(base(hidden: ["b"]), "b"))
+        XCTAssertTrue(RouteVisibility.isVisible(base(), "b"))
     }
 
     func testFocusPrecedence() {
         let cr = [CustomRoute(id: "x", name: "X", rids: ["a", "b"], highlight: ["b"])]
-        XCTAssertEqual(Visibility.mapFocus(base(custom: cr, active: "x")), ["b"])
-        XCTAssertEqual(Visibility.mapFocus(base(custom: cr, active: "x", filter: ["c"])), ["c"])
-        XCTAssertNil(Visibility.mapFocus(base(journey: Journey(rids: ["c"], label: ""), filter: ["c"])))
-        XCTAssertEqual(Visibility.mapFocus(base(filter: ["c"], view: "route", routeId: "d")), ["d"])
-        XCTAssertNil(Visibility.mapFocus(base()))
-        XCTAssertNil(Visibility.activeCustomRoute(base(custom: cr, active: "gone")))
+        XCTAssertEqual(RouteVisibility.mapFocus(base(custom: cr, active: "x")), ["b"])
+        XCTAssertEqual(RouteVisibility.mapFocus(base(custom: cr, active: "x", filter: ["c"])), ["c"])
+        XCTAssertNil(RouteVisibility.mapFocus(base(journey: Journey(rids: ["c"], label: ""), filter: ["c"])))
+        XCTAssertEqual(RouteVisibility.mapFocus(base(filter: ["c"], view: "route", routeId: "d")), ["d"])
+        XCTAssertNil(RouteVisibility.mapFocus(base()))
+        XCTAssertNil(RouteVisibility.activeCustomRoute(base(custom: cr, active: "gone")))
     }
 
     func testDrawOrder() {
-        XCTAssertEqual(Visibility.drawOrder(base(order: ["c", "zz", "a"])), ["c", "a", "b", "d"])
-        XCTAssertEqual(Visibility.drawOrder(base(order: ["c", "a"]), focus: ["d"]), ["d", "c", "a", "b"])
-        XCTAssertEqual(Visibility.mapVisibility(base(view: "route", routeId: "b")).order.first, "b")
+        XCTAssertEqual(RouteVisibility.drawOrder(base(order: ["c", "zz", "a"])), ["c", "a", "b", "d"])
+        XCTAssertEqual(RouteVisibility.drawOrder(base(order: ["c", "a"]), focus: ["d"]), ["d", "c", "a", "b"])
+        XCTAssertEqual(RouteVisibility.mapVisibility(base(view: "route", routeId: "b")).order.first, "b")
     }
 
     func testSaveApplyClearRestores() {

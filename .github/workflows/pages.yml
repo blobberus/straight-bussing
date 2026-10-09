@@ -23,6 +23,13 @@ jobs:
           cp -r web _site
           rm -rf _site/tests
           test -f _site/index.html
+      - name: Add the iPhone app simulator preview under /ios/ (ios-preview branch, built by ios.yml; skipped if missing)
+        run: |
+          if git fetch -q --depth 1 origin ios-preview 2>/dev/null; then
+            mkdir -p _site/ios && git archive FETCH_HEAD | tar -x -C _site/ios && echo "added $(ls _site/ios | wc -l) files to _site/ios"
+          else
+            echo "no ios-preview branch: deploying the web app only"
+          fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: _site }
