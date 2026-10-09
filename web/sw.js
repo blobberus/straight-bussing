@@ -1,6 +1,6 @@
 // Service worker: offline app shell. Network-first so deploys show up immediately.
 // Live feeds and map tiles are cross-origin and never touched (stale bus data is unsafe).
-const CACHE = 'sb-v2-14';
+const CACHE = 'sb-v2-15';
 // PRECACHE:BEGIN (generated list; keep one path per line)
 const PRECACHE = [
   './',
@@ -40,6 +40,7 @@ const PRECACHE = [
   'js/data/geocode.js',
   'js/data/live.js',
   'js/data/places.js',
+  'js/data/spell.js',
   'js/data/static.js',
   'js/map/chevrons.js',
   'js/map/credits.js',
@@ -68,6 +69,7 @@ const PRECACHE = [
   'js/ui/views/myroutes.js',
   'js/ui/views/nearby.js',
   'js/ui/views/pick.js',
+  'js/ui/views/placesearch.js',
   'js/ui/views/route.js',
   'js/ui/views/routes-drag.js',
   'js/ui/views/routes.js',

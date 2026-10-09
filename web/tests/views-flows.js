@@ -86,6 +86,8 @@ test("pick: select a station by name works without location", async () => {
 test("pick: type an address -> places -> stops near the place", async () => {
   resetPick();
   const sent = [];
+  const realLocal = placeDeps.local;
+  placeDeps.local = () => ({ items: [] });     // nothing on the device: Photon (stubbed) answers
   placeDeps.search = async (q) => { sent.push(q); return { items: [{ label: "Regenstein Library", sub: "1100 E 57th St", lat: 41.7921, lon: -87.6 }] }; };
   const ctx = makeCtx({ view: "pick" });
   const el = mountWith(ctx, renderPick, mountPick);
@@ -99,7 +101,7 @@ test("pick: type an address -> places -> stops near the place", async () => {
   ok(el.textContent.includes("Stops within 1.5 km of") && el.textContent.includes("Library"));
   const h = nonNull(ctx.calls).pop();
   ok(h.items.some((s) => s.id === "S2"), "stops near place highlighted");
-  unmountPick(); el.remove(); resetPick();
+  unmountPick(); el.remove(); resetPick(); placeDeps.local = realLocal;
 });
 
 test("nearby: mounted view updates itself on live data without touching the search field", async () => {

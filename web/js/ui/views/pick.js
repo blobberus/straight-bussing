@@ -7,13 +7,15 @@
  * The picker belongs to the Plan Trip tab (view id 'nearby'; opened by its "Routes to station…" button).
  * Once a mode is chosen, a switch "Only show the chosen station's routes" (off by default, remembered
  * for the session) also starts a station journey (store.journey, see ./journey.js) on choosing.
- * Also exports small helpers shared by the other D2 views (station matching, place search, official links).
+ * Also exports small helpers shared by the other D2 views (station matching, official links); the place search
+ * itself lives in ./placesearch.js (re-exported here for older imports).
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { hav, walkMin } from "../../core/geo.js";
-import { searchPlaces, debounce } from "../../data/geocode.js";
+import { norm } from "../../data/places.js";
+import { createPlaceSearch, placeListHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
 import { officialLinks } from "../components.js";
 import { onlySwitchHTML, filterJourney, watchStation } from "./journey.js";
 
@@ -61,63 +63,27 @@ export function stopsNear(state, point, { maxM = PICK_RADIUS_M, max = 5, hidden 
 }
 
 /**
- * Stations whose name contains the query (prefix/word matches first, then alphabetical).
- * Empty query returns every served station alphabetically.
+ * Stations whose name contains the query, or whose words start with every typed word ("57th metra" finds
+ * "57th St. & Metra (NB)"). Order: name starts with it, a word starts with it, all words match, anywhere;
+ * then alphabetical. Empty query returns every served station alphabetically.
  * @param {object} state
  * @param {string} q
  * @param {number} [max=40]
  * @returns {{id:string,name:string,lat:number,lon:number}[]}
  */
 export function matchStations(state, q, max = 40) {
-  const needle = String(q || "").trim().toLowerCase();
-  const rank = (n) => (!needle ? 0 : n.startsWith(needle) ? 0 : n.includes(" " + needle) ? 1 : 2);
+  const needle = String(q || "").trim().toLowerCase(), qw = norm(needle).split(" ").filter(Boolean);
+  const words = (n) => qw.length > 0 && qw.every((w) => norm(n).split(" ").some((x) => x.startsWith(w)));
+  const rank = (n) => (!needle ? 0 : n.startsWith(needle) ? 0 : n.includes(" " + needle) ? 1 : words(n) ? 2 : 3);
   return Object.entries(state.stops || {})
-    .filter(([id, s]) => s && (state.stopRoutes?.[id] || []).length && (!needle || s.name.toLowerCase().includes(needle)))
+    .filter(([id, s]) => s && (state.stopRoutes?.[id] || []).length && (!needle || s.name.toLowerCase().includes(needle) || words(s.name)))
     .map(([id, s]) => ({ id, name: s.name, lat: s.lat, lon: s.lon, r: rank(s.name.toLowerCase()) }))
     .sort((a, b) => a.r - b.r || a.name.localeCompare(b.name, undefined, { numeric: true }))
     .slice(0, max);
 }
 
-/** Injectable place-search backend shared by the picker, Nearby and Directions (tests stub it). */
-export const placeDeps = { search: searchPlaces };
-
-/**
- * Debounced Photon place search with abort + status. Only the typed text leaves the device.
- * @param {(s:{q:string, items:object[], status:''|'busy'|'err'})=>void} onChange called when results arrive
- * @param {{search?:Function, ms?:number}} [opts] search defaults to placeDeps.search (data/geocode.js searchPlaces)
- * @returns {{state:{q:string, items:object[], status:string}, query(q:string):void, cancel():void}}
- */
-export function createPlaceSearch(onChange, { search = (q, o) => placeDeps.search(q, o), ms = 400 } = {}) {
-  const st = { q: "", items: [], status: "" };
-  let ctl = null;
-  const run = debounce(async (q) => {
-    ctl?.abort();
-    const mine = (ctl = new AbortController());
-    let r;
-    try { r = await search(q, { signal: mine.signal }); } catch (e) { r = { items: [], error: "network" }; }
-    if (mine.signal.aborted || st.q !== q) return;
-    const items = Array.isArray(r) ? r : r?.items || [];
-    const err = !Array.isArray(r) && r?.error && r.error !== "aborted";
-    st.items = items; st.status = err ? "err" : "";
-    onChange(st);
-  }, ms);
-  return {
-    state: st,
-    query(q) {
-      q = String(q || "").trim();
-      if (q === st.q && st.status !== "err") return;
-      st.q = q;
-      if (q.length < 3) { run.cancel(); ctl?.abort(); st.items = []; st.status = ""; return; }
-      st.status = "busy"; run(q);
-    },
-    cancel() { run.cancel(); ctl?.abort(); },
-  };
-}
-
-/** Rows for a list of places; each button carries data-action + data-i. */
-export function placeRows(items, action) {
-  return '<div class="v-card">' + items.map((p, i) => `<button type="button" class="v-row" data-action="${action}" data-i="${i}"><span class="v-ic" aria-hidden="true">${ICONS.place}</span><span class="v-grow"><span class="v-prim">${esc(p.label)}</span><span class="v-sec">${esc(p.sub || "")}</span></span></button>`).join("") + "</div>";
-}
+/** Place search (./placesearch.js), re-exported for the views and tests that import it from here. */
+export { placeDeps, createPlaceSearch, placeRows } from "./placesearch.js";
 
 /* ---------------- picker state machine ---------------- */
 
@@ -168,12 +134,8 @@ function otherModes(cur) {
 export function pickListHTML(state) {
   const items = pickItems(state);
   if (P.mode === "addr" && !P.anchor) {
-    const s = places.state, q = P.q.trim();
-    if (q.length < 3) return '<p class="v-hint">Type at least 3 letters of an address, building or place.</p>';
-    if (s.status === "busy") return '<p class="v-hint" role="status">Searching places&hellip;</p>';
-    if (s.status === "err") return '<div class="v-empty"><b>Could not search places right now</b><span>Check your connection, or select a station by name.</span></div>' + modeButton("sel", true);
-    if (!s.items.length) return '<div class="v-empty"><b>No places found</b><span>Check the spelling or try a nearby landmark.</span></div>';
-    return placeRows(s.items, "pick:place");
+    const err = '<div class="v-empty"><b>Could not search places right now</b><span>Check your connection, or select a station by name.</span></div>' + modeButton("sel", true);
+    return placeListHTML(places.state, P.q, "pick:place", "pick:exact", err);
   }
   if (P.mode === "loc" && !state.user) {
     if (P.locWait || state.locState === "asking") return '<p class="v-hint" role="status">Finding your location&hellip;</p>';
@@ -201,7 +163,7 @@ export function renderPick(state) {
   let head = "";
   if (P.mode === "sel") head = field("Search station name", "Search station name");
   else if (P.mode === "addr" && P.anchor) head = `<div class="v-anchor"><span class="v-grow"><span class="v-sec">Stops within 1.5 km of</span><span class="v-prim">${esc(P.anchor.label)}</span></span><button type="button" class="v-btn v-btn--quiet" data-action="pick:change-place">Change</button></div>`;
-  else if (P.mode === "addr") head = field("Address, building or place", "Address or place") + '<p class="v-fine">Places near campus are searched on your device; otherwise only the text you type is sent to photon.komoot.io.</p>';
+  else if (P.mode === "addr") head = field("Address, building or place", "Address or place") + '<p class="v-fine">Places near campus are searched on your device; otherwise only the text you type (or its spelling fix) is sent to photon.komoot.io.</p>';
   else head = '<p class="v-lead">Nearest stops within 1.5 km of you. Tap one to see its routes.</p>';
   return `<div class="v-pick" data-mode="${P.mode}">${head}${onlySwitchHTML(PREF.only)}<div class="v-list" data-region="pick-list">${pickListHTML(state)}</div>${otherModes(P.mode)}</div>`;
 }
@@ -212,7 +174,7 @@ let lastList = null;
 function patchList() {
   const el = rootRef?.querySelector?.('[data-region="pick-list"]');
   const html = pickListHTML(curState());
-  if (el && html !== lastList) { el.innerHTML = html; lastList = html; }
+  if (el && html !== lastList) { setHTMLKeepFocus(el, html); lastList = html; }
   highlight();
 }
 
@@ -374,5 +336,11 @@ registerAction("pick:only", (ds, ev, ctx) => {
   PREF.only = !PREF.only;
   const b = ev?.target?.closest?.('[data-action="pick:only"]') || rootRef?.querySelector?.('[data-action="pick:only"]');
   b?.setAttribute("aria-checked", String(PREF.only));
+});
+registerAction("pick:exact", (ds, ev, ctx) => {
+  ctxRef = ctx || ctxRef;
+  places.exact(ds.exact !== "0");
+  patchList();
+  focusNote(rootRef?.querySelector?.('[data-region="pick-list"]'));
 });
 registerAction("pick:change-place", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; P.anchor = null; rerender(true); });

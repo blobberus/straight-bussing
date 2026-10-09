@@ -68,3 +68,17 @@
 .pt-notrip .v-sec { display: block; }
 .pt-tripact { display: flex; flex-wrap: wrap; gap: var(--s2); }
 .pt-tripact > .v-btn { flex: 1 1 140px; }
+
+/* place search (ui/views/placesearch.js): the spelling-assumption note above the results, e.g. "Showing results
+   for Regenstein" + a small "Search for "regnstien" instead" button (44px target, small text), and the quiet
+   "Searching more places..." line under on-device results while Photon answers */
+.v-assume { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--s2); margin: var(--s1) 0 0; }
+.v-assume-txt { margin: 0; font-size: .875rem; line-height: var(--lh-body); color: var(--text-2); }
+.v-assume-txt b { color: var(--text); font-weight: 650; }
+.v-link.v-assume-btn { min-height: var(--tap); margin-left: calc(-1 * var(--s2)); font-size: .875rem; text-align: left; }
+.v-more { margin-top: var(--s2); }
+@media (forced-colors: active) { .v-assume-btn { color: LinkText; } }
+
+/* high contrast: views.css .v-est is filled with --hairline, which tokens.css sets to currentColor under
+   prefers-contrast: more, so "est." became text on text. Draw it as an outlined tag everywhere. */
+@media (prefers-contrast: more) { .v-est { background: none; color: var(--text); box-shadow: inset 0 0 0 1px currentColor; } }

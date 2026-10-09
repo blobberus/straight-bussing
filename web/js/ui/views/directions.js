@@ -25,7 +25,8 @@ import { rankOptions, criteriaText } from "../../core/rank.js";
 import { walkRoute } from "../../core/walk.js";
 import { predict } from "../../core/predict.js";
 import { routeChip, emptyState, skeleton } from "../components.js";
-import { matchStations, createPlaceSearch, OFFICIAL_HTML, ICONS } from "./pick.js";
+import { matchStations, OFFICIAL_HTML, ICONS } from "./pick.js";
+import { createPlaceSearch, assumeNoteHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
 import { planJourney, sameRids, isPlanJourney, tripBarHTML } from "./journey.js";
 import { WALK_IC, tag, mins, walkMins, walkTotal, optionLines, stepsHTML as stepsFor } from "./tripinfo.js";
 
@@ -55,26 +56,29 @@ export function stopEndpoint(state, id) {
   return s ? { lat: s.lat, lon: s.lon, label: s.name, stop: id } : null;
 }
 
+/** Lowercase words without accents or punctuation ("Ellis & 53rd St." -> ["ellis", "53rd", "st"]). */
+const wordsOf = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/['\u2019.]/g, "").split(/[^a-z0-9]+/).filter(Boolean);
+
 /**
- * Suggestions for a field's text: My location, matching stations, Photon places (when loaded).
+ * Suggestions for a field's text: My location, matching stations, places (on-device results from the first
+ * keystroke, Photon merged in when it answers). When the place search assumed a spelling correction, stations
+ * are matched with the corrected text too.
  * @param {object} state
  * @param {string} text
  * @returns {object[]}
  */
-/** Lowercase words without accents or punctuation ("Ellis & 53rd St." -> ["ellis", "53rd", "st"]). */
-const wordsOf = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/['\u2019.]/g, "").split(/[^a-z0-9]+/).filter(Boolean);
-
 export function computeSugs(state, text) {
-  const q = String(text || "").trim(), out = [];
+  const q = String(text || "").trim(), out = [], ps = photon.state, mine = q.length >= 2 && ps.q === q;
   if (!q || "my location".startsWith(q.toLowerCase())) out.push({ kind: "me", label: "My location", sub: state.user ? "Use current location" : "Allow location access" });
   // Order: stops whose name has the whole typed word(s), then strong nearby places (local index, whole-word
   // name match), then stops that only partly match ("medici" in "Medicine"), then other places.
   const qw = wordsOf(q);
-  const stops = q ? matchStations(state, q, 5).map((s) => ({ kind: "stop", id: s.id, lat: s.lat, lon: s.lon, label: s.name,
+  let found = q ? matchStations(state, q, 5) : [];
+  if (!found.length && mine && ps.assumed) found = matchStations(state, ps.assumed.to, 5);
+  const stops = found.map((s) => ({ kind: "stop", id: s.id, lat: s.lat, lon: s.lon, label: s.name,
     sub: "Shuttle stop · " + (state.stopRoutes?.[s.id] || []).map((r) => state.routes?.[r]?.short || state.routes?.[r]?.long || r).join(", "),
-    whole: qw.every((w) => wordsOf(s.name).includes(w)) })) : [];
-  const places = q.length >= 3 && photon.state.q === q && !photon.state.status
-    ? photon.state.items.map((p) => ({ kind: "place", lat: p.lat, lon: p.lon, label: p.label, sub: p.sub || "Place", strong: !!p.local && p.score >= 85 })) : [];
+    whole: qw.every((w) => wordsOf(s.name).includes(w)) }));
+  const places = mine ? ps.items.map((p) => ({ kind: "place", lat: p.lat, lon: p.lon, label: p.label, sub: p.sub || "Place", strong: !!p.local && p.score >= 85 })) : [];
   out.push(...stops.filter((s) => s.whole), ...places.filter((p) => p.strong), ...stops.filter((s) => !s.whole), ...places.filter((p) => !p.strong));
   return out;
 }
@@ -82,12 +86,13 @@ export function computeSugs(state, text) {
 function sugHTML() {
   const key = D.active;
   if (!key) return "";
-  const text = key === "from" ? D.fromText : D.toText, q = text.trim();
-  let h = D.sugs.length ? `<div class="v-card v-sugs" role="listbox" aria-label="Suggestions for ${key === "from" ? "start" : "destination"}">` + D.sugs.map((s, i) => `<button type="button" class="v-row" role="option" data-action="dir:sug" data-i="${i}"><span class="v-ic" aria-hidden="true">${s.kind === "me" ? ICONS.loc : s.kind === "stop" ? ICONS.stop : ICONS.place}</span><span class="v-grow"><span class="v-prim">${esc(s.label)}</span><span class="v-sec">${esc(s.sub || "")}</span></span></button>`).join("") + "</div>" : "";
-  if (q.length >= 3 && photon.state.status === "busy") h += '<p class="v-hint" role="status">Searching places&hellip;</p>';
-  if (q.length >= 3 && photon.state.status === "err") h += '<p class="v-hint">Couldn\'t search places right now. Station names still work.</p>';
+  const text = key === "from" ? D.fromText : D.toText, q = text.trim(), ps = photon.state, mine = q.length >= 2 && ps.q === q;
+  let h = mine ? assumeNoteHTML(ps, "dir:exact") : "";
+  if (D.sugs.length) h += `<div class="v-card v-sugs" role="listbox" aria-label="Suggestions for ${key === "from" ? "start" : "destination"}">` + D.sugs.map((s, i) => `<button type="button" class="v-row" role="option" data-action="dir:sug" data-i="${i}"><span class="v-ic" aria-hidden="true">${s.kind === "me" ? ICONS.loc : s.kind === "stop" ? ICONS.stop : ICONS.place}</span><span class="v-grow"><span class="v-prim">${esc(s.label)}</span><span class="v-sec">${esc(s.sub || "")}</span></span></button>`).join("") + "</div>";
+  if (mine && ps.status === "busy") h += D.sugs.some((s) => s.kind === "place") ? '<p class="v-fine v-more" role="status">Searching more places&hellip;</p>' : '<p class="v-hint" role="status">Searching places&hellip;</p>';
+  if (mine && ps.status === "err") h += '<p class="v-hint">Couldn&rsquo;t search places right now. Station names still work.</p>';
   if (D.meDenied) h += '<p class="v-hint">Location is off. Allow it in your browser settings, or type a start.</p>';
-  if (q.length >= 3) h += '<p class="v-fine">Places near campus are searched on your device; otherwise only the text you type is sent to photon.komoot.io.</p>';
+  if (q.length >= 2) h += '<p class="v-fine">Places near campus are searched on your device; otherwise only the text you type (or its spelling fix) is sent to photon.komoot.io.</p>';
   return h;
 }
 
@@ -160,7 +165,7 @@ export function renderDirections(state, now = nowS()) {
 }
 
 const lastHtml = {};
-function patch(region, html) { const el = rootRef?.querySelector?.(`[data-region="${region}"]`); if (el && lastHtml[region] !== html) { el.innerHTML = html; lastHtml[region] = html; } }
+function patch(region, html) { const el = rootRef?.querySelector?.(`[data-region="${region}"]`); if (el && lastHtml[region] !== html) { setHTMLKeepFocus(el, html); lastHtml[region] = html; } }
 function patchSug() { if (D.active) D.sugs = computeSugs(cur(), D.active === "from" ? D.fromText : D.toText); patch("dir-sug", sugHTML()); }
 function patchRes() { patch("dir-res", resHTML(cur(), nowFn())); }
 function setInput(key) { const el = rootRef?.querySelector?.(`[data-input="dir-${key}"]`); if (el) el.value = D[key]?.label || (key === "from" ? D.fromText : D.toText); }
@@ -364,6 +369,12 @@ registerAction("dir:to-stop", (ds, ev, ctx) => {
   D.result = null; ctx.navigate("directions");
 });
 registerAction("dir:sug", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; applySug(+ds.i); });
+registerAction("dir:exact", (ds, ev, ctx) => {
+  ctxRef = ctx || ctxRef;
+  photon.exact(ds.exact !== "0");
+  patchSug();
+  focusNote(rootRef?.querySelector?.('[data-region="dir-sug"]'));
+});
 registerAction("dir:swap", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; swap(); });
 registerAction("dir:me", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; useMyLocation(ds.key === "to" ? "to" : "from"); });
 registerAction("dir:opt", (ds, ev, ctx) => {

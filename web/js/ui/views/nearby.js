@@ -19,7 +19,8 @@ import { esc } from "../../core/esc.js";
 import { nowS, minsUntil } from "../../core/time.js";
 import { arrivalsFor, staleLevel } from "../../core/arrivals.js";
 import { routeChip, etaBlock, arrivalRow, emptyState, skeleton } from "../components.js";
-import { stopsNear, matchStations, createPlaceSearch, placeRows, walkText, OFFICIAL_HTML, ICONS } from "./pick.js";
+import { stopsNear, matchStations, walkText, OFFICIAL_HTML, ICONS } from "./pick.js";
+import { createPlaceSearch, placeListHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { alertBanner } from "./alerts.js";
 import { catchNote, stopWalkMin } from "./tripinfo.js";
@@ -172,12 +173,8 @@ function placesHTML(state, now) {
 export function resultsHTML(state) {
   const q = N.q.trim();
   if (N.mode === "place") {
-    const s = places.state;
-    if (q.length < 3) return '<p class="v-hint">Type at least 3 letters of an address, building or place.</p>';
-    if (s.status === "busy") return '<p class="v-hint" role="status">Searching places&hellip;</p>';
-    if (s.status === "err") return '<div class="v-empty"><b>Could not search places right now</b><span>Check your connection, or search a station by name.</span></div>';
-    if (!s.items.length) return '<div class="v-empty"><b>No places found</b><span>Check the spelling or try a nearby landmark.</span></div>';
-    return placeRows(s.items, "nearby:place");
+    const err = '<div class="v-empty"><b>Could not search places right now</b><span>Check your connection, or search a station by name.</span></div>';
+    return placeListHTML(places.state, q, "nearby:place", "nearby:exact", err);
   }
   const m = matchStations(state, q, 8);
   if (!m.length) return '<div class="v-empty"><b>No matching stations</b><span>Check the spelling, or type an address instead.</span></div><button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="nearby:mode" data-mode="place">Search addresses and places</button>';
@@ -221,7 +218,7 @@ export function renderNearby(state, now = nowS()) {
   const place = N.mode === "place";
   const search = `<label class="v-search"><span class="v-ic" aria-hidden="true">${ICONS.search}</span><span class="v-sr">${place ? "Address or place" : "Search stations"}</span><input type="search" data-input="nearby-q" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${place ? "Address, building or place" : "Search stations"}" value="${esc(N.q)}"></label>`;
   const toggle = place
-    ? '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="station">Search stations instead</button></div><p class="v-fine">Places near campus are searched on your device; otherwise only the text you type is sent to photon.komoot.io.</p>'
+    ? '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="station">Search stations instead</button></div><p class="v-fine">Places near campus are searched on your device; otherwise only the text you type (or its spelling fix) is sent to photon.komoot.io.</p>'
     : '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="place">Type an address or place</button></div>';
   return `<div class="v-nearby"><div data-region="nearby-alert">${alertBanner(state, now)}</div><div data-region="nearby-trip">${entryHTML(state)}</div><div data-region="nearby-loc">${locHTML(state)}</div>${search}${toggle}<div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
 }
@@ -273,7 +270,7 @@ function patchResults() {
   const el = rootRef?.querySelector?.('[data-region="nearby-results"]');
   if (!el) return;
   const html = regionHTML(curState(), ctxRef?.now ? ctxRef.now() : nowS());
-  if (html !== lastRegion) { el.innerHTML = html; lastRegion = html; }
+  if (html !== lastRegion) { setHTMLKeepFocus(el, html); lastRegion = html; }
 }
 
 function rerender(focus) {
@@ -366,4 +363,10 @@ registerAction("nearby:mode", (ds, ev, ctx) => {
   rerender(true);
 });
 registerAction("nearby:place", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; choosePlace(+ds.i); });
+registerAction("nearby:exact", (ds, ev, ctx) => {
+  ctxRef = ctx || ctxRef;
+  places.exact(ds.exact !== "0");
+  patchResults();
+  focusNote(rootRef?.querySelector?.('[data-region="nearby-results"]'));
+});
 registerAction("nearby:clear-place", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; N.anchor = null; rerender(false); });

@@ -31,7 +31,7 @@ export function renderAbout() {
 <h3 class="v-h">Privacy</h3>
 <ul class="v-plain">
   <li>No account, no ads, no tracking. Your location, if you allow it, stays on this device.</li>
-  <li>Place search: station names and places within a 30-minute walk of campus stops are searched on your device. Only when that finds fewer than 5 matches is the text you typed (and nothing else) sent to <b>photon.komoot.io</b> (OpenStreetMap geocoder).</li>
+  <li>Place search: station names and places within a 30-minute walk of campus stops are searched on your device, including spelling fixes. Only when that finds fewer than 5 matches, or when you tap “Search for … instead”, is text sent to <b>photon.komoot.io</b> (OpenStreetMap geocoder): the text you typed, or its spelling fix when results are shown for the fix, and nothing else.</li>
   <li>Walking directions: the start and end of each walking leg, rounded to about 10 m, are sent to <b>routing.openstreetmap.de</b> (or <b>valhalla1.openstreetmap.de</b> if that is down) to follow sidewalks. If both fail, a straight-line estimate is used and labeled "estimate".</li>
   <li>Settings (theme, hidden routes) are saved in this browser only.</li>
 </ul>
