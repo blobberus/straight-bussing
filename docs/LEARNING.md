@@ -1,3 +1,9 @@
+> **Superseded (review 2026-10-08).** This was the first plan. Several parts no longer match the project:
+> collection now runs on GitHub Actions + a local fallback (`monitoring.md`), not `tools/collect.py`; ground
+> truth is `data/ground_truth/arrivals.csv` on the `data` branch (`docs/DATA.md`); the models are
+> `tools/model_*.py` (`docs/ALGORITHMS.md`); and the experiment plan, data targets and test protocol are in
+> **`RouteKnower.md`**. Keep this file for history only; do not follow its deployment advice.
+
 # Learning real bus patterns (plan)
 
 Goal: predict how long a bus takes to reach a stop better than Passio GO!'s own ETA, and prove it

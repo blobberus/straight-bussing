@@ -1,0 +1,24 @@
+{
+  "_about": "Academic-calendar regimes for RouteKnower context features (tools/context_join.py -> cal_regime). First matching range wins, so holidays come first. Ends are inclusive. Source: The College Catalog 2026-2027, Academic Calendar, http://collegecatalog.uchicago.edu/thecollege/academiccalendar/ (fetched 2026-10-08; 'All dates are subject to change with no notice'). Re-check each quarter; add 2027-28 when published.",
+  "source": "http://collegecatalog.uchicago.edu/thecollege/academiccalendar/",
+  "fetched": "2026-10-08",
+  "regimes": [
+    { "start": "2026-11-26", "end": "2026-11-26", "regime": "holiday", "note": "Thanksgiving Day (inside Thanksgiving Break)" },
+    { "start": "2027-01-18", "end": "2027-01-18", "regime": "holiday", "note": "Martin Luther King Jr. Day" },
+    { "start": "2027-05-31", "end": "2027-05-31", "regime": "holiday", "note": "Memorial Day" },
+    { "start": "2026-09-28", "end": "2026-11-20", "regime": "class", "note": "Autumn Quarter begins Mon Sep 28" },
+    { "start": "2026-11-21", "end": "2026-11-29", "regime": "break", "note": "Thanksgiving Break Mon-Fri Nov 23-27, with the weekends around it" },
+    { "start": "2026-11-30", "end": "2026-12-04", "regime": "class" },
+    { "start": "2026-12-05", "end": "2026-12-07", "regime": "reading", "note": "College Reading Period Sat-Mon Dec 5-7" },
+    { "start": "2026-12-08", "end": "2026-12-11", "regime": "finals", "note": "College Final Exams Tue-Fri Dec 8-11" },
+    { "start": "2026-12-12", "end": "2027-01-03", "regime": "break", "note": "Autumn Quarter ends Sat Dec 12; Winter Quarter begins Mon Jan 4" },
+    { "start": "2027-01-04", "end": "2027-03-05", "regime": "class" },
+    { "start": "2027-03-06", "end": "2027-03-08", "regime": "reading" },
+    { "start": "2027-03-09", "end": "2027-03-12", "regime": "finals" },
+    { "start": "2027-03-13", "end": "2027-03-21", "regime": "break", "note": "Winter Quarter ends Sat Mar 13; Spring Quarter begins Mon Mar 22" },
+    { "start": "2027-03-22", "end": "2027-05-21", "regime": "class" },
+    { "start": "2027-05-22", "end": "2027-05-24", "regime": "reading" },
+    { "start": "2027-05-25", "end": "2027-05-28", "regime": "finals" },
+    { "start": "2027-05-29", "end": "2027-06-05", "regime": "break", "note": "College Senior Week May 31-Jun 4; Convocation and Quarter ends Sat Jun 5" }
+  ]
+}

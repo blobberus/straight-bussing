@@ -1,0 +1,40 @@
+name: Collect weather context
+# Daily: re-fetch the last few days of Chicago Midway weather observations (Iowa Environmental Mesonet ASOS)
+# and campus-point model weather (Open-Meteo, CC BY 4.0) and merge them into data/context/ on the orphan
+# 'data' branch. Rows are keyed by time, so re-fetching overlapping days is safe and fills late reports.
+# Traffic history is a one-time backfill: the City of Chicago Traffic Tracker stopped updating on
+# 2026-04-30. Sources, vetting and caveats: RouteKnower.md §3.4. Code: tools/context_fetch.py.
+on:
+  schedule: [{ cron: "23 11 * * *" }]   # about 6 AM Chicago time, before the morning service peak
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: { group: data-context, cancel-in-progress: false }
+jobs:
+  context:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Offline tests
+        run: python tools/test_context.py
+      - name: Fetch the last 4 days and push to the data branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            rm -rf databranch; git worktree prune
+            git fetch --no-tags --depth 1 origin +refs/heads/data:refs/remotes/origin/data
+            git worktree add -f -B data databranch origin/data
+            python tools/context_fetch.py recent --days 4 --dir databranch/data/context
+            git -C databranch add -A data/context
+            if git -C databranch diff --cached --quiet; then echo "nothing new"; exit 0; fi
+            git -C databranch commit -qm "data: context $(date -u +%Y-%m-%dT%H:%MZ)"
+            if git -C databranch push origin HEAD:refs/heads/data; then exit 0; fi
+            echo "push rejected (attempt $i): a collector run pushed first; retrying on top of it"
+            sleep $((RANDOM % 20 + 5 * i))
+          done
+          echo "push failed after 5 attempts"; exit 1

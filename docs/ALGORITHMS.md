@@ -174,6 +174,8 @@ headway to the bus ahead (bunching), current schedule deviation, stop address co
 a signalised arterial vs a campus drive). Export as small lookup tables so the app stays build-free.
 Only adopt it if the rolling-origin backtest beats the shrunk hierarchy.
 
+Context features now exist (2026-10-08): `tools/context_join.py` adds leakage-safe weather (`wx_*` Midway METAR, `gr_*` Open-Meteo campus point), typical arterial speed (`tr_typ_mph`, Chicago Traffic Tracker history), the same-day fleet congestion index (`fl_idx`) and the academic-calendar regime (`cal_regime`). Measured prior: rain/snow slow Hyde Park arterials only ~2-4.5 % (RouteKnower E15), so weather enters as a shrunk multiplier (RouteKnower M14), not as its own bucket level.
+
 ## 12. What makes Passio wrong, and how we beat it
 
 - **Schedule-anchored ETAs**: interpolated GTFS times ignore rush hour, class changes and the

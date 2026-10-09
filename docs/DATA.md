@@ -87,3 +87,17 @@ workflow disabled, press "Enable workflow" there.
 
 **Privacy**: the feeds hold only vehicle positions and predictions, no riders. Nothing personal is
 collected; addresses come from public OpenStreetMap data via Photon (stop coordinates only).
+
+## Context data: weather, traffic, academic calendar (added 2026-10-08)
+Used as model features and test slices (RouteKnower.md §3.4). Collected by `tools/context_fetch.py`, joined to
+arrivals by `tools/context_join.py` (leakage-safe: only values known when the bus started the segment).
+
+| File (data branch) | Source | Cadence | Caveats |
+|---|---|---|---|
+| `data/context/weather_mdw.csv` | Iowa Environmental Mesonet ASOS archive, Chicago Midway (MDW) routine METARs: temp, wind, visibility, 1-h precip, weather codes, snow depth | daily workflow `context.yml` re-fetches the last 4 days; history from 2018-03 | MDW is ~10 km west of campus: lake-effect and local showers can differ; METAR precip is hourly |
+| `data/context/weather_campus.csv` | Open-Meteo hourly model data at the campus point (CC BY 4.0, credit "Weather data by Open-Meteo.com") | same workflow | model output, not a measurement; archive (ERA5) has ~5-day lag, recent days come from the forecast model |
+| `data/context/traffic_regions_hourly.csv` | City of Chicago Traffic Tracker, Historical Congestion Estimates by Region 2018-2026 (`kf7e-cur8`): hourly mean arterial speed from CTA bus GPS, regions 21 Hyde Park-Kenwood-Woodlawn, 13 Loop, 20 Washington Park, 29 Downtown Lakefront | one-time backfill | **the city stopped updating it on 2026-04-30**: typical patterns only, nothing current; arterials only (the segment-level dataset is too slow to query and barely covers campus streets) |
+| `data/calendar.json` (main) | UChicago College Catalog 2026-27 academic calendar | by hand each quarter | "dates subject to change"; regimes: class, reading, finals, break, holiday |
+
+Live traffic for today comes from the shuttles themselves: `fl_idx` in the join = median observed/scheduled
+segment time over all shuttle segments finished in the last 30 min (RouteKnower M13).

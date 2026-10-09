@@ -6,3 +6,5 @@ ground_truth/arrivals.csv
 ground_truth/archive/
 # Local fallback collector working files (tools/monitor.py)
 monitor/
+# Weather / traffic context lives on the orphan data branch too (tools/context_fetch.py, RouteKnower.md 3.4)
+context/
