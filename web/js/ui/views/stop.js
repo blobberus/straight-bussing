@@ -9,7 +9,7 @@ import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { nowS, ago, clock } from "../../core/time.js";
-import { arrivalsFor, staleLevel } from "../../core/arrivals.js";
+import { arrivalsFor, staleLevel, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { toggleFav } from "../../core/custom.js";
 import { routeChip, arrivalRow, emptyState, skeleton } from "../components.js";
@@ -73,7 +73,8 @@ export function renderStop(state, now = nowS()) {
     if (arr.length) h += '<div class="v-arrivals">' + arr.map((a) => arrivalRow(a, state, { now, action: "route:open" })).join("") + "</div>";
     else {
       const running = (state.buses || []).length > 0;
-      h += emptyState("No upcoming arrivals", running ? "Nothing is predicted at this stop right now." : "No shuttles are running right now.");
+      h += liveUnknown(state, now) ? emptyState("Live times unavailable", "Can't reach the shuttle feed, so we can't tell when the next bus comes.")   // feed outage != no service
+        : emptyState("No upcoming arrivals", running ? "Nothing is predicted at this stop right now." : "No shuttles are running right now.");
       if (!running) h += OFFICIAL_HTML;
     }
   }

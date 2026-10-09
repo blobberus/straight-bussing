@@ -11,7 +11,7 @@ import { registerAction } from "../actions.js";
 import { esc, safeColor, textOn } from "../../core/esc.js";
 import { nowS, minsUntil, ago } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
-import { arrivalsFor, staleLevel, runningCount, activeAlerts, alertText } from "../../core/arrivals.js";
+import { arrivalsFor, staleLevel, runningCount, activeAlerts, alertText, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { hoursOn, isScheduledNow, weekSummary, upcomingChanges, busesByHour, groupHours, hourLabel, dayKey, routeService } from "../../core/schedule.js";
 import { emptyState, skeleton } from "../components.js";
@@ -131,7 +131,8 @@ function renderBuses(svc, rid, now) {
 
 /** Status line under the title: buses running + today's scheduled hours. */
 function statusHtml(state, rid, r, n, now) {
-  let h = `<p class="v-status">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${n ? `${n} bus${n > 1 ? "es" : ""} running` : "Not running right now"}${r.short && r.long ? ` &middot; <span class="v-sec">${esc(r.short)}</span>` : ""}</p>`;
+  const idle = liveUnknown(state, now) ? "Live status unavailable" : "Not running right now";   // a feed outage is not "not running"
+  let h = `<p class="v-status">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${n ? `${n} bus${n > 1 ? "es" : ""} running` : idle}${r.short && r.long ? ` &middot; <span class="v-sec">${esc(r.short)}</span>` : ""}</p>`;
   const today = hoursOn(state.service, rid, now);
   if (today) {
     const on = isScheduledNow(state.service, rid, now);

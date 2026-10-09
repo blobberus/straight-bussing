@@ -18,7 +18,7 @@
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
-import { runningCount } from "../../core/arrivals.js";
+import { runningCount, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibility.js";
 import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, cleanName } from "../../core/custom.js";
 import { routeChip, emptyState, skeleton } from "../components.js";
@@ -82,7 +82,7 @@ const nameOf = (state, id) => { const r = state.routes?.[id] || {}; return r.lon
 function row(state, id, hidden) {
   const r = state.routes[id] || {}, n = runningCount(state, id), name = nameOf(state, id);
   const tripOff = hidden && !!state.journey && !(state.hiddenRoutes || []).includes(id);   // hidden only by the journey
-  const status = tripOff ? "Not part of this trip" : hidden ? "Hidden from map and times" : n ? `${n} bus${n > 1 ? "es" : ""} running` : "Not running";
+  const status = tripOff ? "Not part of this trip" : hidden ? "Hidden from map and times" : n ? `${n} bus${n > 1 ? "es" : ""} running` : liveUnknown(state) ? "Live status unknown" : "Not running";
   const eye = tripOff ? "" : `<button type="button" class="v-eye" data-action="routes:toggle" data-id="${esc(id)}" aria-pressed="${hidden ? "false" : "true"}" aria-label="${hidden ? "Show" : "Hide"} route ${esc(r.short || "")} ${esc(name)}">${hidden ? EYEOFF : EYE}</button>`;
   return `<div class="v-routerow${hidden ? " is-off" : ""}"><button type="button" class="v-row v-rowmain" data-action="route:open" data-id="${esc(id)}">${routeChip(id, state.routes)}<span class="v-grow"><span class="v-prim">${esc(name)}</span><span class="v-sec">${n && !hidden ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(status)}</span></span></button>${eye}</div>`;
 }
@@ -187,11 +187,13 @@ export function listHTML(state) {
   if (!total) {
     return h + (state.routeFilter ? emptyState("No routes at this station", "Clear the filter to see every route.") : emptyState("No routes", "The schedule data did not load. Reload the app.") + OFFICIAL_HTML);
   }
-  if (state.liveLoaded && !(state.buses || []).length && !state.routeFilter) h += emptyState("No shuttles running right now", "Routes are listed below for reference.");
+  const unknown = liveUnknown(state);   // feed unreachable: we cannot say a route is not running
+  if (unknown && !state.routeFilter) h += emptyState("Live bus status unavailable", "Can't reach the shuttle feed. Routes are listed below for reference.");
+  else if (state.liveLoaded && !(state.buses || []).length && !state.routeFilter) h += emptyState("No shuttles running right now", "Routes are listed below for reference.");
   h += bulkHTML(state, g);
   const group = (title, ids, hidden, cls) => (ids.length ? `<h3 class="v-h">${title}</h3><div class="v-list${cls ? " " + cls : ""}">${ids.map((i) => row(state, i, hidden)).join("")}</div>` : "");
   h += group("Running", g.running, false, "");
-  h += group("Not running", g.idle, false, state.liveLoaded && !(state.buses || []).length ? "is-dim" : "");
+  h += group(unknown ? "Live status unknown" : "Not running", g.idle, false, state.liveLoaded && !(state.buses || []).length ? "is-dim" : "");
   h += group(state.journey ? "Not on this trip" : "Hidden", g.hidden, true, "");
   return h + `<div class="rt-official">${OFFICIAL_HTML}</div>`;
 }

@@ -17,7 +17,7 @@ import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { nowS, minsUntil } from "../../core/time.js";
-import { arrivalsFor, staleLevel } from "../../core/arrivals.js";
+import { arrivalsFor, staleLevel, liveUnknown } from "../../core/arrivals.js";
 import { routeChip, etaBlock, arrivalRow, emptyState, skeleton } from "../components.js";
 import { stopsNear, matchStations, walkText, OFFICIAL_HTML, ICONS } from "./pick.js";
 import { createPlaceSearch, placeListHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
@@ -51,7 +51,10 @@ function soonest(state, now) {
   return out.sort((x, y) => x.a.t - y.a.t).slice(0, 6);
 }
 
-function noService(state) {
+const NO_LIVE = "Live times unavailable";
+function noService(state, now) {
+  // a feed outage is not a service outage: never claim "no shuttles" without live data
+  if (liveUnknown(state, now)) return emptyState(NO_LIVE, "Can't reach the shuttle feed, so we can't tell which shuttles are running. Check with the official service.") + OFFICIAL_HTML;
   return emptyState("No shuttles running right now", "Check the official schedule for service hours.") + OFFICIAL_HTML;
 }
 
@@ -94,7 +97,7 @@ function stopCard(state, s, now, max, hero, guide) {
   let body;
   if (!arr) body = skeleton(1);
   else if (arr.length) body = arr.map((a) => (guide ? guidedRow(a, state, now, walkM) : arrivalRow(a, state, { now, action: "route:open" }))).join("");
-  else body = `<div class="v-none"><span class="v-sec">No upcoming arrivals</span><span class="v-chips">${rs.map((r) => routeChip(r, state.routes)).join("")}</span></div>`;
+  else body = `<div class="v-none"><span class="v-sec">${liveUnknown(state, now) ? NO_LIVE : "No upcoming arrivals"}</span><span class="v-chips">${rs.map((r) => routeChip(r, state.routes)).join("")}</span></div>`;
   return `<section class="v-card${hero ? " v-hero" : ""}">${head}${body}</section>`;
 }
 
@@ -107,14 +110,14 @@ function stopCard(state, s, now, max, hero, guide) {
 export function favoritesHTML(state, now = nowS()) {
   const ids = (state.favStops || []).filter((id) => state.stops?.[id]);
   if (!ids.length) return "";
-  const hidden = effectiveHidden(state), stale = isStale(state, now);
+  const hidden = effectiveHidden(state), stale = isStale(state, now), unknown = liveUnknown(state, now);
   const rows = ids.slice(0, FAV_MAX).map((id) => {
     const name = state.stops[id].name || id;
     const a = state.liveLoaded ? arrivalsFor(state, id, { hidden, nowS: now })[0] : null;
     const m = a ? Math.max(0, minsUntil(a.t, now)) : null;
     const label = a ? `Favorite ${name}: route ${nameOf(state, a.rid)} ${m < 1 ? "arriving now" : "in " + m + " minutes"}${stale ? ", estimate" : ""}`
-      : `Favorite ${name}: ${state.liveLoaded ? "no upcoming arrivals" : "loading"}`;
-    const right = a ? etaBlock(a.t, { stale, now }) : `<span class="v-sec">${state.liveLoaded ? "No buses soon" : ""}</span>`;
+      : `Favorite ${name}: ${unknown ? "live times unavailable" : state.liveLoaded ? "no upcoming arrivals" : "loading"}`;
+    const right = a ? etaBlock(a.t, { stale, now }) : `<span class="v-sec">${unknown ? "No live times" : state.liveLoaded ? "No buses soon" : ""}</span>`;
     return `<button type="button" class="v-row" data-action="stop:open" data-id="${esc(id)}" aria-label="${esc(label)}">${a ? routeChip(a.rid, state.routes) : `<span class="v-ic v-favic" aria-hidden="true">&#9733;</span>`}<span class="v-grow"><span class="v-prim">${esc(name)}</span>${a ? `<span class="v-sec">${esc(state.routes?.[a.rid]?.long || "")}</span>` : ""}</span>${right}</button>`;
   }).join("");
   const more = '<button type="button" class="v-link v-favmore" data-action="nav" data-view="myroutes">All favorites</button>';
@@ -133,7 +136,7 @@ function nearList(state, point, now, guide) {
 function soonList(state, now) {
   if (!state.liveLoaded) return '<h3 class="v-h">Arriving soon</h3>' + skeleton(3);
   const soon = soonest(state, now), stale = isStale(state, now);
-  if (!soon.length) return noService(state);
+  if (!soon.length) return noService(state, now);
   return '<h3 class="v-h">Arriving soon</h3><div class="v-card">' + soon.map(({ id, a }) => {
     const m = Math.max(0, minsUntil(a.t, now));
     const label = `Route ${nameOf(state, a.rid)} at ${state.stops[id]?.name || id}, ${m < 1 ? "arriving now" : "in " + m + " minutes"}${stale ? ", estimate" : ""}`;

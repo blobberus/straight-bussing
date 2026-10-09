@@ -18,7 +18,7 @@ import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { nowS } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
-import { arrivalsFor, staleLevel, runningCount, activeAlerts } from "../../core/arrivals.js";
+import { arrivalsFor, staleLevel, runningCount, activeAlerts, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { createCustom, applyCustom, clearCustom, updateCustom, deleteCustom, toggleHighlight } from "../../core/custom.js";
 import { routeChip, etaBlock, icon, emptyState, skeleton } from "../components.js";
@@ -99,7 +99,7 @@ function favRow(id, i, n, state, now, hidden, stale) {
       + `<button type="button" class="v-btn v-btn--quiet mr-rm" data-action="mr:favrm" data-id="${esc(id)}" aria-label="Remove ${name} from favorites">Remove</button></div>`;
   }
   const a = state.liveLoaded ? arrivalsFor(state, id, { hidden, nowS: now })[0] : null;
-  const sub = a ? longName(a.rid, state.routes) : state.liveLoaded ? "No upcoming buses on your visible routes" : "Waiting for live data";
+  const sub = a ? longName(a.rid, state.routes) : liveUnknown(state, now) ? "Live times unavailable" : state.liveLoaded ? "No upcoming buses on your visible routes" : "Waiting for live data";
   const when = a ? `, next bus ${longName(a.rid, state.routes)} in ${Math.max(0, Math.floor((a.t - now) / 60))} min` : "";
   return `<button type="button" class="v-row mr-favrow" data-key="f:${esc(id)}" data-action="stop:open" data-id="${esc(id)}" aria-label="${esc((st.name || id) + when)}">`
     + `<span class="v-grow" aria-hidden="true"><span class="v-prim">${name}</span><span class="v-sec">${a ? routeChip(a.rid, state.routes, { small: true }) + " " : ""}${esc(sub)}</span></span>`
@@ -179,7 +179,7 @@ export function renderCustom(state, id, now = nowS()) {
   h += '<div class="v-card">';
   for (const rid of rids) {
     const n = runningCount(state, rid), hl = (c.highlight || []).includes(rid), nx = nearestNext(state, rid, now);
-    const run = n ? `${plural(n, "bus")} running` : "Not running right now";
+    const run = n ? `${plural(n, "bus")} running` : liveUnknown(state, now) ? "Live status unavailable" : "Not running right now";
     const next = nx ? ` · ${stale ? "~" : ""}${Math.max(0, Math.floor((nx.t - now) / 60))} min at ${nx.stop}` : "";
     h += `<div class="mr-rrow"><button type="button" class="v-row mr-rmain" data-action="route:open" data-id="${esc(rid)}">${routeChip(rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(longName(rid, state.routes))}</span><span class="v-sec">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(run + next)}</span></span></button>`
       + `<button type="button" class="mr-hl${hl ? " is-on" : ""}" data-action="mr:hl" data-id="${esc(c.id)}" data-rid="${esc(rid)}" aria-pressed="${hl}" aria-label="Highlight ${esc(longName(rid, state.routes))}"><span class="mr-hltick" aria-hidden="true">${CHECK}</span>Highlight</button></div>`;

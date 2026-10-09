@@ -61,6 +61,19 @@ export function staleLevel({ lastOk, failed, feedTs } = {}, nowS) {
 }
 
 /**
+ * Nothing can be said about which shuttles run right now: the live feed is in error (never reached,
+ * failing, or no good poll for > 60 s) and there are no last-known vehicles to show. A feed outage is
+ * not a service outage, so views must then say the live status is unknown instead of "not running" /
+ * "no shuttles running" (rider safety). False while the first poll is still pending (views show loading).
+ * @param {{liveLoaded?:boolean, lastOk:number, failed:boolean, feedTs:number, buses?:Array}} state
+ * @param {number} [nowS]
+ * @returns {boolean}
+ */
+export function liveUnknown(state = {}, nowS) {
+  return !!(state && state.liveLoaded) && !(state.buses || []).length && staleLevel(state, nowS) === "err";
+}
+
+/**
  * Number of vehicles currently reporting on a route.
  * @param {{buses:Array}} state
  * @param {string} rid

@@ -19,7 +19,7 @@ import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { nowS, clock } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
-import { staleLevel } from "../../core/arrivals.js";
+import { staleLevel, liveUnknown } from "../../core/arrivals.js";
 import { plan, refineWalking, PLANNER } from "../../core/planner.js";
 import { rankOptions, criteriaText } from "../../core/rank.js";
 import { walkRoute } from "../../core/walk.js";
@@ -138,7 +138,8 @@ export function resHTML(state, now = nowS()) {
   const walkTag = tag(w.source === "router" ? "sidewalk route" : "estimate");
   if (!r.options.length) {
     const running = (state.buses || []).length > 0;
-    h += emptyState("No practical shuttle route right now", D.missed ? "The next buses leave before you could reach the stop." : running ? "Nothing runs close enough to both places." : "No shuttles are running right now.");
+    h += liveUnknown(state, now) ? emptyState("Can't plan shuttle trips right now", "The live shuttle feed can't be reached, so we can't tell which buses are running.")   // feed outage != no service
+      : emptyState("No practical shuttle route right now", D.missed ? "The next buses leave before you could reach the stop." : running ? "Nothing runs close enough to both places." : "No shuttles are running right now.");
     h += `<div class="v-opt is-on"><div class="v-optmain"><span class="v-otop"><span class="v-otot">${mins(w.min)}<small> min</small></span>${walkTag}<span class="v-oarr">Arrive ${esc(clock(now + (w.min || 0) * 60))}</span></span><span class="v-osum"><span class="v-wk">${WALK_IC}Walk the whole way</span><span class="v-sec">${Math.round(w.m || 0)} m</span></span></div></div>`;
     return h + (running ? "" : OFFICIAL_HTML);
   }
