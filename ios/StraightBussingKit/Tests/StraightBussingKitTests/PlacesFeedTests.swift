@@ -152,7 +152,7 @@ final class StaticDataTests: XCTestCase {
     }
 
     func testMissingFilesReported() {
-        let L = StaticLoader.parse(["routes.json": Data(#"{"1":{"short":"A","long":"Alpha","color":"#123456"}}"#.utf8), "stops.json": Data("junk".utf8)])
+        let L = StaticLoader.parse(["routes.json": Data(##"{"1":{"short":"A","long":"Alpha","color":"#123456"}}"##.utf8), "stops.json": Data("junk".utf8)])
         XCTAssertEqual(L.data.routes["1"]?.long, "Alpha")
         XCTAssertTrue(L.failed.contains("stops.json"))
         XCTAssertTrue(L.failed.contains("shapes.json"))
