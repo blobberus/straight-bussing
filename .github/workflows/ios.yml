@@ -12,7 +12,7 @@ permissions:
   contents: read
 concurrency:
   group: ios-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false   # queue: pushes to web/data by other agents must not cancel a preview half-way
 
 jobs:
   kit:
