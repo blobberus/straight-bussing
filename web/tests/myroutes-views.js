@@ -9,7 +9,9 @@ import { renderStop } from "../js/ui/views/stop.js";
 const noRaw = (h) => !h.includes("<script>") && !h.includes("javascript:") && !h.includes("<img");
 const C1 = { id: "c1", name: "Commute <img src=x>", rids: ["R1", "R3"], highlight: [] };
 const C2 = { id: "c2", name: "Weekend", rids: ["R2"], highlight: [] };
-const reset = () => { _ui.favEdit = false; _ui.confirmDel = null; };
+const reset = () => { _ui.favEdit = false; _ui.swiped = null; document.querySelectorAll("dialog.v-confirm").forEach((d) => d.remove()); };
+const dlg = () => document.querySelector("dialog.v-confirm[open]");
+const press = (sel) => { const b = dlg()?.querySelector(sel); ok(b, "popup button " + sel); b.click(); };
 
 test("myroutes: views registered with the right tab/parents", () => {
   eq(getView("myroutes").tab, "myroutes");
@@ -67,21 +69,27 @@ test("myroutes: favorites edit mode moves and removes", async () => {
   ok(!_ui.favEdit);
 });
 
-test("myroutes: tapping a custom route applies it, fits the map and opens its detail", async () => {
+test("myroutes: tapping a custom route shows it on the map and stays on the list; tapping again stops", async () => {
   reset();
   const ctx = makeCtx({ customRoutes: [C1, C2], hiddenRoutes: ["R2"] });
-  runAction("mr:open", { id: "c2" }, null, ctx);
+  ok(renderMyRoutes(ctx.store.get(), NOW).includes('data-action="mr:toggle" data-id="c2" aria-pressed="false"'), "row toggles");
+  runAction("mr:toggle", { id: "c2" }, null, ctx);
   await tick();
-  const s = ctx.store.get();
+  let s = ctx.store.get();
   eq(s.activeCustom, "c2");
   eq([...s.hiddenRoutes].sort(), ["R1", "R3"]);
   eq(s.prevHidden, ["R2"], "remembers previous hidden list");
-  eq(ctx.calls.navigate.at(-1), ["customroute", { id: "c2" }]);
-  runAction("mr:open", { id: "c1" }, null, ctx);
+  eq(ctx.calls.navigate.length, 0, "does NOT open the detail view");
+  ok(renderMyRoutes(s, NOW).includes('data-id="c2" aria-pressed="true"'), "pressed state, not color alone");
+  runAction("mr:toggle", { id: "c2" }, null, ctx);
+  s = ctx.store.get();
+  eq([s.activeCustom, s.hiddenRoutes], [null, ["R2"]], "second tap restores the usual routes");
+  runAction("mr:toggle", { id: "c1" }, null, ctx);
   eq(ctx.calls.fitTo.length, 1, "fit to R1 shape (R2 has none)");
+  eq(ctx.calls.navigate.length, 0);
 });
 
-test("customroute: detail shows Stop showing / Show on map, highlight toggles, inline delete", async () => {
+test("customroute: detail shows Stop showing / Show on map, highlight toggles, delete asks in a popup", async () => {
   reset();
   const ctx = makeCtx({ customRoutes: [C1, C2], activeCustom: "c1", hiddenRoutes: ["R2"], user: { lat: 41.7899, lon: -87.6001 } });
   let h = renderCustom(ctx.store.get(), "c1", NOW);
@@ -93,13 +101,18 @@ test("customroute: detail shows Stop showing / Show on map, highlight toggles, i
   eq(ctx.store.get().customRoutes[0].highlight, ["R1"]);
   ok(renderCustom(ctx.store.get(), "c1", NOW).includes('aria-pressed="true"'));
   ok(renderCustom(ctx.store.get(), "c2", NOW).includes('data-action="mr:apply"'), "not applied -> Show on map");
-  runAction("mr:del", { id: "c1" }, null, ctx);
-  h = renderCustom(ctx.store.get(), "c1", NOW);
-  ok(h.includes("This can’t be undone") && h.includes('data-action="mr:del-yes"'));
-  runAction("mr:del-no", {}, null, ctx);
-  ok(!renderCustom(ctx.store.get(), "c1", NOW).includes("mr:del-yes"));
-  runAction("mr:del", { id: "c1" }, null, ctx);
-  runAction("mr:del-yes", { id: "c1" }, null, ctx);
+  let backs = 0;
+  ctx.back = () => { backs++; };
+  runAction("mr:del", { id: "c1", from: "detail" }, null, ctx);
+  ok(dlg() && dlg().textContent.includes("This can’t be undone"), "popup");
+  ok(document.activeElement === dlg().querySelector('[data-confirm="no"]'), "Cancel focused, Delete is never the default");
+  press('[data-confirm="no"]');
+  await tick(60);
+  eq(ctx.store.get().customRoutes.length, 2, "Cancel keeps it");
+  runAction("mr:del", { id: "c1", from: "detail" }, null, ctx);
+  press('[data-confirm="yes"]');
+  await tick(60);
+  eq(backs, 1, "back to the list after deleting from the detail view");
   const s = ctx.store.get();
   eq(s.customRoutes.map((c) => c.id), ["c2"]);
   eq(s.activeCustom, null);
@@ -141,6 +154,104 @@ test("customedit: validates >= 1 route, creates + applies, edits in place", asyn
   s = ctx.store.get();
   eq(s.customRoutes[1].rids, ["R1", "R2", "R3"]);
   eq(s.hiddenRoutes, [], "active one re-applied after edit");
+  el.remove();
+});
+
+test("myroutes: More button opens the swipe tray (Details / Edit / Delete); Details does not apply", async () => {
+  reset();
+  const ctx = makeCtx({ customRoutes: [C1, C2] });
+  let h = renderMyRoutes(ctx.store.get(), NOW);
+  ok(h.includes('class="mr-swipe" data-swipe-id="c1" data-nodrag><div class="mr-acts" inert>'), "tray hidden and inert while closed");
+  ok(h.includes('aria-label="More actions for Commute &lt;img src=x&gt;"') && noRaw(h), "escaped More button");
+  ok(h.indexOf('data-action="mr:details"') < h.indexOf('data-action="mr:edit"') && h.indexOf('data-action="mr:edit"') < h.indexOf('data-action="mr:del"'), "Details, Edit, then Delete at the far end");
+  runAction("mr:swipe", { id: "c2" }, null, ctx);
+  h = renderMyRoutes(ctx.store.get(), NOW);
+  ok(h.includes('class="mr-swipe is-open" data-swipe-id="c2" data-nodrag><div class="mr-acts">') && h.includes('data-id="c2" aria-expanded="true"'), "open, focusable");
+  runAction("mr:details", { id: "c2" }, null, ctx);
+  eq(ctx.calls.navigate.at(-1), ["customroute", { id: "c2" }]);
+  ok(!ctx.store.get().activeCustom, "Details only shows the details");
+  runAction("mr:edit", { id: "c1" }, null, ctx);
+  eq(ctx.calls.navigate.at(-1), ["customedit", { id: "c1" }]);
+  eq(_ui.swiped, null, "tray closes when an action runs");
+});
+
+test("myroutes: Delete from a row asks in a popup; Escape / Cancel keep it; Delete removes and stays", async () => {
+  reset();
+  const ctx = makeCtx({ customRoutes: [C1, C2], activeCustom: "c2", hiddenRoutes: ["R1", "R3"], prevHidden: [] });
+  runAction("mr:del", { id: "c2", from: "list" }, null, ctx);
+  ok(dlg() && dlg().getAttribute("role") === "alertdialog" && dlg().textContent.includes("Delete “Weekend”?"), "popup names it");
+  dlg().dispatchEvent(new Event("cancel", { cancelable: true }));   // what the browser fires on Escape
+  await tick(60);
+  eq(ctx.store.get().customRoutes.length, 2, "Escape keeps it");
+  runAction("mr:del", { id: "c2", from: "list" }, null, ctx);
+  press('[data-confirm="yes"]');
+  await tick(60);
+  ok(!document.querySelector("dialog.v-confirm"), "popup removed");
+  const st = ctx.store.get();
+  eq(st.customRoutes.map((c) => c.id), ["c1"], "deleted after confirming");
+  eq([st.activeCustom, st.hiddenRoutes], [null, []], "it was showing: usual routes are back");
+  eq(ctx.calls.navigate.length, 0, "stays in the list");
+  ok(ctx.calls.toast.at(-1).includes("Weekend"));
+});
+
+test("myroutes: swipe left opens the tray; a full swipe never deletes; the drag's click doesn't toggle", async () => {
+  reset();
+  const ctx = makeCtx({ customRoutes: [C1, C2] });
+  const el = root();
+  el.innerHTML = renderMyRoutes(ctx.store.get(), NOW);
+  getView("myroutes").mount(el, ctx);
+  const pe = (type, target, x, y = 10) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, clientX: x, clientY: y, button: 0, pointerType: "touch" }));
+  const front = (id) => el.querySelector(`.mr-swipe[data-swipe-id="${id}"] .mr-front`);
+  // a short drag snaps back
+  pe("pointerdown", front("c1"), 300); pe("pointermove", front("c1"), 280); pe("pointermove", front("c1"), 260); pe("pointerup", front("c1"), 260);
+  await tick(220);
+  eq(_ui.swiped, null, "40 px: closes again");
+  // a long drag (past the whole tray) only opens it
+  let f = front("c1");
+  pe("pointerdown", f, 360); pe("pointermove", f, 330); pe("pointermove", f, 100); pe("pointermove", f, -200); pe("pointerup", f, -200);
+  f.querySelector(".mr-crow").click();             // the click a browser fires after the drag
+  await tick(220);
+  eq(_ui.swiped, "c1", "tray open");
+  eq(ctx.store.get().customRoutes.length, 2, "full swipe did not delete");
+  ok(!dlg(), "no popup either");
+  ok(!ctx.store.get().activeCustom, "the click after the drag was swallowed");
+  ok(el.querySelector('.mr-swipe[data-swipe-id="c1"]').classList.contains("is-open") && !el.querySelector('[data-swipe-id="c1"] .mr-acts').inert, "re-rendered open");
+  // tapping another row only closes the tray
+  f = front("c2");
+  pe("pointerdown", f, 200); pe("pointerup", f, 200); f.querySelector(".mr-crow").click();
+  await tick(220);
+  ok(_ui.swiped === null && !ctx.store.get().activeCustom, "closed, nothing toggled");
+  getView("myroutes").unmount();
+  el.remove();
+});
+
+test("customroute: Edit and Delete sit right under Show on map, before the route list", () => {
+  reset();
+  const h = renderCustom(makeCtx({ customRoutes: [C1] }).store.get(), "c1", NOW);
+  const i = h.indexOf('data-action="mr:edit"'), d = h.indexOf('data-action="mr:del"'), list = h.indexOf("mr-rrow");
+  ok(i > h.indexOf('data-action="mr:apply"') && i < list && d < list, "actions above the routes");
+});
+
+test("customedit: Delete in the editor asks in a popup, keeps typed text on Cancel, then goes to My Routes", async () => {
+  reset();
+  const ctx = makeCtx({ customRoutes: [C1, C2] });
+  const el = root();
+  el.innerHTML = renderEditor(ctx.store.get(), "c2");
+  getView("customedit").mount(el, ctx);
+  ok(!renderEditor(ctx.store.get(), null).includes("mr-editdel"), "no delete when creating");
+  el.querySelector("#mr-name").value = "typed but unsaved";
+  const btn = el.querySelector('[data-action="mr:del"][data-from="edit"]');
+  ok(btn && btn.textContent.includes("Delete custom route"));
+  runAction("mr:del", { id: "c2", from: "edit" }, null, ctx);
+  press('[data-confirm="no"]');
+  await tick(60);
+  eq([ctx.store.get().customRoutes.length, el.querySelector("#mr-name").value], [2, "typed but unsaved"], "Cancel: nothing lost");
+  runAction("mr:del", { id: "c2", from: "edit" }, null, ctx);
+  press('[data-confirm="yes"]');
+  await tick(60);
+  eq(ctx.store.get().customRoutes.map((c) => c.id), ["c1"]);
+  eq(ctx.calls.navigate.at(-1), ["myroutes", {}], "to the list (the detail behind the editor is gone)");
+  getView("customedit").unmount();
   el.remove();
 });
 

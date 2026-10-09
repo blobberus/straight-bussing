@@ -64,3 +64,27 @@
   .mr-showing, .mr-hl, .mr-fav { border: 1px solid CanvasText; }
   .mr-hl.is-on, .mr-fav.is-on { forced-color-adjust: none; background: Highlight; color: HighlightText; }
 }
+
+/* custom routes: swipe-left action tray (myroutes-swipe.js), Apple-Music style. The tray sits behind
+   the row; the row slides left to reveal it. Delete is the far button and always confirms in a popup. */
+.mr-clist { overflow: hidden; }
+.mr-swipe { position: relative; overflow: hidden; }
+.mr-swipe + .mr-swipe { border-top: 1px solid var(--hairline); }
+.mr-acts { position: absolute; top: 0; right: 0; bottom: 0; width: 216px; display: flex; }
+.mr-act { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: var(--tap); border: 0; color: #fff; font: inherit; font-size: var(--fs-cap); font-weight: 650; cursor: pointer; }
+.mr-act .ic { width: 20px; height: 20px; }
+.mr-act--info { background: #8e8e93; }
+.mr-act--edit { background: var(--accent-fill); }
+.mr-act--del { background: var(--danger); }
+.mr-act:focus-visible { outline: 3px solid var(--text); outline-offset: -3px; }
+.mr-front { position: relative; z-index: 1; display: flex; align-items: center; background: var(--surface); touch-action: pan-y;
+  transition: transform var(--d-sheet) var(--ease-spring); }
+.mr-swipe.is-open .mr-front { transform: translate3d(-216px, 0, 0); }
+.mr-front > .mr-crow { flex: 1 1 auto; min-width: 0; }
+.mr-more { color: var(--text-2); margin-right: var(--s1); }
+.mr-hint { margin-top: var(--s2); }
+.mr-dacts { margin: var(--s2) 0 var(--s3); }
+.mr-dacts .v-btn .ic, .mr-editdel .ic { width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px; }
+.mr-editdel { margin-top: var(--s4); }
+@media (prefers-reduced-motion: reduce) { .mr-front { transition: none; } }
+@media (forced-colors: active) { .mr-act { border: 1px solid ButtonText; } }
