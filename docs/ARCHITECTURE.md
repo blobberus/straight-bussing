@@ -289,8 +289,10 @@ Escape / backdrop cancel; settles from the button itself, not the async close ev
   the status pill (`--pill-h`, measured by a ResizeObserver in main.js). The context chip never changes the detent; it fades out at
   the full detent. Selecting / clearing a custom route moves nothing (0 layout shift at half and full).
 - Map credit (`js/map/credits.js`, replaces Leaflet's attribution control): "OpenFreeMap · OpenMapTiles · OpenStreetMap" as links,
-  no copyright sign; shown at load, collapses after 5 s into an accessible (i) button at the bottom-left above the sheet (positioned by
-  `setBottomInset`), hidden at the full detent (OSMF Attribution Guidelines allow both). `fitTo` uses `flyToBounds`.
+  no copyright sign; plain small text (no bubble, no (i) button: owner request 2026-10-09) at the bottom-left above the sheet
+  (positioned by `setBottomInset`), shown at load and faded out for good after 5 s (held while hovered / focused), hidden at the full
+  detent. Settings > About keeps the full credits (OpenStreetMap ODbL, OpenMapTiles, OpenFreeMap) so they stay findable, which the
+  OSMF Attribution Guidelines ask for once the on-map credit disappears. `fitTo` uses `flyToBounds`.
 - My Routes: rows are a fixed 64 px with a fixed-size check circle (`aria-pressed`); `ui/views/myroutes-patch.js` morphs only what
   changed (keyed rows, keeps drag styles, waits while a pointer is down or a tray animates); tap threshold 10 px in the row's own CSS
   px; only the tray's Details button opens 'customroute' (saving a new route returns to the list).

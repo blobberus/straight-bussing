@@ -1,8 +1,8 @@
 /*
  * Real-app SHELL checks that run inside the e2e session (e2e.js calls shellE2E() where they belong in
  * the flow and passes its helpers): showing / clearing a custom route never moves the sheet, the chip
- * hides at the full detent, the map credit has no copyright sign and collapses to an accessible (i)
- * button that stays clear of the floating chrome, and About credits OpenStreetMap / OpenMapTiles /
+ * hides at the full detent, the map credit is plain text with no copyright sign, no bubble and no (i)
+ * button that sits above the sheet and is gone after 5 s, and About credits OpenStreetMap / OpenMapTiles /
  * OpenFreeMap.
  */
 
@@ -57,29 +57,22 @@ export function shellE2E(h, which) {
     return;
   }
 
-  test("map credit: no copyright sign; collapses to a 44px (i) button clear of the chrome; tap reopens", async () => {
+  test("map credit: plain text above the sheet at load (no bubble, no (i) button, no copyright sign), gone after 5 s", async () => {
     setDetent("half");
     const cr = await waitFor(() => $("#map .sb-credits"), "map credit");
     ok(!$("#map .leaflet-control-attribution"), "no Leaflet attribution control");
     ok(!COPY.test($("#map").innerHTML), "no copyright sign in the map");
-    const btn = cr.querySelector("button");
-    eq(btn.getAttribute("aria-label"), "Map credits");
-    await waitFor(() => btn.getAttribute("aria-expanded") === "false", "collapsed after 5 s", 9000);
-    ok(cr.querySelector(".sb-credits-text").hidden, "credit text hidden when collapsed");
-    const r = settled([cr, $("#sheet")], () => btn.getBoundingClientRect());
-    ok(r.width >= 44 && r.height >= 44, "44px target: " + r.width + "x" + r.height);
-    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-    for (const id of ["#topbar", "#locateBtn", "#pill", "#ctxbar"]) {
-      const el = $(id);
-      if (el && !el.hidden) ok(!hit(r, el.getBoundingClientRect()), "credit button clear of " + id);
+    ok(!cr.querySelector("button") && !$("#map .sb-credits-btn"), "no (i) button");
+    if (!cr.hidden && !cr.classList.contains("is-fading")) {
+      ok(/OpenFreeMap/.test(txt(cr)) && /OpenMapTiles/.test(txt(cr)) && /OpenStreetMap/.test(txt(cr)), "credit text: " + txt(cr));
+      const r = settled([cr, $("#sheet")], () => cr.getBoundingClientRect());
+      const sheetTop = settled([$("#sheet")], () => $("#sheet").getBoundingClientRect().top);
+      ok(r.bottom <= sheetTop - 8, `above the sheet and its grab area (${r.bottom} vs ${sheetTop})`);
     }
-    const sheetTop = settled([$("#sheet")], () => $("#sheet").getBoundingClientRect().top);
-    ok(r.bottom <= sheetTop - 8, `above the sheet and its grab area (${r.bottom} vs ${sheetTop})`);
-    h.click(btn, "(i)");
-    eq(btn.getAttribute("aria-expanded"), "true", "tap reopens");
-    ok(/OpenFreeMap/.test(txt(cr)) && /OpenMapTiles/.test(txt(cr)) && /OpenStreetMap/.test(txt(cr)), "credit text: " + txt(cr));
-    h.click(btn, "(i)");
-    eq(btn.getAttribute("aria-expanded"), "false", "second tap collapses");
+    await waitFor(() => cr.hidden, "credit gone after 5 s", 9000);
+    setDetent("peek");
+    ok(cr.hidden, "stays gone when the sheet moves");
+    setDetent("half");
   });
 
   test("browser back closes Settings (not the screen under it); Done drops the history entry (QA 2026-10-09)", async () => {

@@ -1,6 +1,6 @@
 /** Tests for the map credit (map/credits.js, map/style.js ATTRIBUTION, MapApi wiring) and the About credits. */
 import { test, eq, ok, near } from './lib.js';
-import { createCredits, COLLAPSE_MS, MIN_ROOM } from '../js/map/credits.js';
+import { createCredits, SHOW_MS, FADE_MS, MIN_ROOM } from '../js/map/credits.js';
 import { ATTRIBUTION, RASTER_ATTRIBUTION, patchStyle } from '../js/map/style.js';
 import { createMap } from '../js/map/map.js';
 import { renderAbout } from '../js/ui/views/about.js';
@@ -25,7 +25,7 @@ test('credit markup: no copyright sign; OpenFreeMap, OpenMapTiles, OpenStreetMap
     ['OpenStreetMap', 'https://www.openstreetmap.org/copyright', 'noopener']]);
   eq(parse(ATTRIBUTION).textContent.replace(/\s+/g, ' ').trim(), 'OpenFreeMap · OpenMapTiles · OpenStreetMap');
   eq(parse(RASTER_ATTRIBUTION).querySelector('a').getAttribute('href'), 'https://www.openstreetmap.org/copyright');
-  eq(COLLAPSE_MS, 5000, 'collapses after five seconds (OSMF guideline)');
+  eq(SHOW_MS, 5000, 'shown for five seconds (OSMF guideline)');
 });
 
 test('patchStyle: style source credits lose the copyright sign, keep the names', () => {
@@ -37,51 +37,52 @@ test('patchStyle: style source credits lose the copyright sign, keep the names',
   eq(s.sources.other, { type: 'geojson' }, 'sources without credits untouched');
 });
 
-test('credits: open at load, collapse to a 44px (i) button, tap reopens, second tap closes, auto-collapses again', async () => {
+test('credits: plain text at load (no bubble, no (i) button), fades out for good after the delay', async () => {
   const m = bare('t-cr1');
-  const c = createCredits(m, { html: ATTRIBUTION, collapseMs: 120 });
+  const c = createCredits(m, { html: ATTRIBUTION, showMs: 120 });
   try {
-    const btn = c.button, text = c.el.querySelector('.sb-credits-text');
-    eq(btn.getAttribute('aria-label'), 'Map credits');
-    eq(btn.getAttribute('aria-controls'), text.id, 'button controls the credit text');
-    ok(c.isOpen() && !text.hidden && btn.getAttribute('aria-expanded') === 'true', 'expanded at load');
-    ok(text.textContent.includes('OpenStreetMap') && !COPY.test(c.el.innerHTML));
-    const r = btn.getBoundingClientRect();
-    ok(r.width >= 44 && r.height >= 44, '44px target: ' + r.width + 'x' + r.height);
-    await sleep(200);
-    ok(!c.isOpen() && text.hidden && btn.getAttribute('aria-expanded') === 'false', 'collapsed after the delay');
-    btn.click();
-    ok(c.isOpen() && !text.hidden && btn.getAttribute('aria-expanded') === 'true', 'tap reopens');
-    btn.click();
-    ok(!c.isOpen() && text.hidden, 'second tap collapses');
-    btn.click();
-    await sleep(200);
-    ok(!c.isOpen(), 'reopened credit collapses again by itself');
+    eq(c.el.getAttribute('aria-label'), 'Map credits');
+    ok(!c.el.querySelector('button'), 'no (i) button');
+    eq(getComputedStyle(c.el).backgroundColor, 'rgba(0, 0, 0, 0)', 'no bubble background');
+    ok(c.isShown() && !c.el.hidden && /OpenStreetMap/.test(c.el.textContent) && !COPY.test(c.el.innerHTML), 'shown at load');
+    await sleep(120 + 80);
+    ok(!c.isShown() && c.el.classList.contains('is-fading'), 'fading after the delay');
+    await sleep(FADE_MS + 100);
+    ok(c.el.hidden, 'gone after the fade');
+    c.place(100, 600);
+    ok(c.el.hidden && !c.el.style.getPropertyValue('--sb-credit-y'), 'stays gone when the sheet moves');
   } finally { c.destroy(); m.remove(); }
 });
 
-test('credits: never collapse under keyboard focus or a mouse; Escape collapses and focuses (i)', async () => {
+test('credits: held while a link has keyboard focus or a mouse hovers it; a touch never holds it', async () => {
   const m = bare('t-cr2');
-  const c = createCredits(m, { html: ATTRIBUTION, collapseMs: 80 });
+  const c = createCredits(m, { html: ATTRIBUTION, showMs: 80 });
   try {
-    const link = c.el.querySelector('.sb-credits-text a');
+    const link = c.el.querySelector('a');
     link.focus();
     await sleep(200);
-    ok(c.isOpen(), 'held open while a credit link has focus');
-    link.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    ok(!c.isOpen() && document.activeElement === c.button, 'Escape: collapsed, focus on the (i) button');
-    c.expand();
-    c.el.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }));
+    ok(c.isShown(), 'held while a credit link has focus');
+    link.blur();
     await sleep(200);
-    ok(c.isOpen(), 'held open while hovered');
-    c.el.dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'mouse' }));
-    await sleep(200);
-    ok(!c.isOpen(), 'collapses after the mouse leaves');
-    c.expand();
-    c.el.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'touch' }));
-    await sleep(200);
-    ok(!c.isOpen(), 'a touch never pins it open');
+    ok(!c.isShown(), 'fades once focus leaves');
   } finally { c.destroy(); m.remove(); }
+  const m2 = bare('t-cr2b');
+  const c2 = createCredits(m2, { html: ATTRIBUTION, showMs: 80 });
+  try {
+    c2.el.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }));
+    await sleep(200);
+    ok(c2.isShown(), 'held while hovered');
+    c2.el.dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'mouse' }));
+    await sleep(200);
+    ok(!c2.isShown(), 'fades after the mouse leaves');
+  } finally { c2.destroy(); m2.remove(); }
+  const m3 = bare('t-cr2c');
+  const c3 = createCredits(m3, { html: ATTRIBUTION, showMs: 80 });
+  try {
+    c3.el.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'touch' }));
+    await sleep(200);
+    ok(!c3.isShown(), 'a touch never pins it');
+  } finally { c3.destroy(); m3.remove(); }
 });
 
 test('credits: place() sits above the sheet, hides when almost no map shows', async () => {
@@ -91,8 +92,8 @@ test('credits: place() sits above the sheet, hides when almost no map shows', as
     c.place(300, 600);
     eq(c.el.style.getPropertyValue('--sb-credit-y'), '300px');
     ok(!c.el.classList.contains('is-off'));
-    const r = c.button.getBoundingClientRect(), mr = m.getContainer().getBoundingClientRect();
-    ok(r.bottom <= mr.bottom - 300 - 8, 'button clear of the sheet and its grab area: ' + (mr.bottom - 300 - r.bottom));
+    const r = c.el.getBoundingClientRect(), mr = m.getContainer().getBoundingClientRect();
+    ok(r.bottom <= mr.bottom - 300 - 8, 'credit clear of the sheet and its grab area: ' + (mr.bottom - 300 - r.bottom));
     c.place(600 - MIN_ROOM + 1, 600);
     ok(c.el.classList.contains('is-off'), 'full detent: hidden');
     eq(getComputedStyle(c.el).visibility, 'hidden', 'not focusable or tappable while hidden');
@@ -109,7 +110,7 @@ test('MapApi: the credit replaces Leaflet attribution (no copyright sign) and fo
   const api = createMap('t-cr4');
   try {
     const el = api.leaflet.getContainer(), cr = el.querySelector('.sb-credits');
-    ok(cr && cr.querySelector('button[aria-label="Map credits"]'), 'credit control in the map');
+    ok(cr && cr.getAttribute('aria-label') === 'Map credits' && !cr.querySelector('button'), 'plain credit in the map, no (i) button');
     ok(!el.querySelector('.leaflet-control-attribution'), 'no Leaflet attribution control');
     ok(!COPY.test(el.innerHTML), 'no copyright sign anywhere in the map');
     ok(/OpenStreetMap/.test(cr.textContent) && /OpenMapTiles/.test(cr.textContent) && /OpenFreeMap|OpenStreetMap/.test(cr.textContent));

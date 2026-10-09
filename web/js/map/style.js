@@ -30,7 +30,7 @@ const BASE = 'https://tiles.openfreemap.org/styles/';
 const link = (href, name) => `<a href="${href}" target="_blank" rel="noopener">${name}</a>`;
 const DOT = ' <span aria-hidden="true">\u00b7</span> ';
 /**
- * Map credit markup (map/credits.js shows it). No copyright sign: the OSMF attribution guidelines only
+ * Map credit markup (map/credits.js shows it briefly at load; Settings > About keeps the full credits). No copyright sign: the OSMF attribution guidelines only
  * require crediting "OpenStreetMap" (linked to its copyright page); OpenMapTiles asks for a visible
  * "OpenMapTiles" credit; OpenFreeMap serves the tiles.
  */

@@ -1,8 +1,8 @@
 /**
  * map/map.js: the MapApi (see docs/ARCHITECTURE.md "Map layer"). Leaflet map with a patched
  * OpenFreeMap basemap (map/style.js), route network + buses (map/layers.js), favorite stations
- * (map/favorites.js), the collapsible map credit (map/credits.js, kept just above the sheet by
- * setBottomInset), selected stop, user dot,
+ * (map/favorites.js), the brief map credit (map/credits.js: plain text at load, gone after 5 s; kept just
+ * above the sheet by setBottomInset while shown), selected stop, user dot,
  * stop highlights and trip plans. Every method is idempotent and cheap to call on each poll: layers
  * redraw only when their signature changes. Theme colors for overlays come from CSS (css/map.css)
  * keyed on the `.sb-dark` class this module toggles on the map element.
@@ -48,7 +48,7 @@ export function createMap(elId) {
   const L = window.L;
   const el = document.getElementById(elId);
   el.classList.add('sb-map');
-  // no Leaflet attribution control: map/credits.js shows the credit (collapses to an "(i)" button)
+  // no Leaflet attribution control: map/credits.js shows the credit at load, then fades it out (no bubble, no (i))
   const map = L.map(el, { zoomControl: false, attributionControl: false, minZoom: 11, maxZoom: 18, zoomSnap: 0.25,
     zoomDelta: 0.5, wheelPxPerZoomLevel: 90, tapTolerance: 15 }).setView(CAMPUS, 15);
   for (const [name, z] of Object.entries(PANES)) map.createPane(name).style.zIndex = String(z);
@@ -114,7 +114,7 @@ export function createMap(elId) {
 
     /**
      * Height in px of the sheet covering the bottom of the map; fits/flies keep targets above it and the
-     * map credit sits just above it (hidden when almost no map shows). @param {number} px
+     * map credit (while shown) sits just above it (hidden when almost no map shows). @param {number} px
      */
     setBottomInset(px) {
       const v = Math.max(0, Math.round(+px || 0)), h = map.getSize().y;
