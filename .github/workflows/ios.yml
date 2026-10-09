@@ -1,0 +1,31 @@
+name: iOS app (build, test, simulator preview)
+# Native SwiftUI draft in ios/ (see ios/README.md). Free macOS runners (public repo). No signing, no secrets.
+on:
+  push:
+    branches: [main, ios-wip]
+    paths: ["ios/**", "web/data/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+permissions: { contents: read }
+concurrency: { group: ios-${{ github.ref }}, cancel-in-progress: true }
+
+jobs:
+  kit:
+    name: StraightBussingKit (swift test)
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults: { run: { shell: bash } }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: xcodebuild -version && swift --version
+      - name: swift test
+        working-directory: ios/StraightBussingKit
+        run: swift test 2>&1 | tee "$RUNNER_TEMP/kit-test.log"
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### StraightBussingKit tests"
+            grep -E "Executed [0-9]+ tests" "$RUNNER_TEMP/kit-test.log" | tail -1 || echo "no test summary"
+            grep -E "error:|failed \(" "$RUNNER_TEMP/kit-test.log" | head -40 || true
+          } >> "$GITHUB_STEP_SUMMARY"
