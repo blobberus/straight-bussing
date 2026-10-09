@@ -235,12 +235,19 @@ export function startTrip() {
   return true;
 }
 
-/** While a trip is on, keep journey.rids equal to the selected option's routes. */
-function syncJourney() {
+/** Bus legs of a journey as "rid:board>alight" (what the Current trip timeline follows). */
+const legSig = (j) => ((j && j.legs) || []).filter((l) => l.type === "bus").map((l) => `${l.rid}:${l.board?.id}>${l.alight?.id}`).join("|");
+
+/**
+ * While a trip is on, keep journey.rids equal to the selected option's routes. A card the user picks
+ * (picked=true) also replaces the stops and bus to follow, even on the same route; a live re-plan never
+ * moves the boarding stop of a started trip.
+ */
+function syncJourney(picked = false) {
   const s = cur();
   if (!isPlanJourney(s) || !rootRef) return;
   const j = planJourney(D.result?.options?.[D.sel], D.to?.label);
-  if (j && (!sameRids(j.rids, s.journey.rids) || j.label !== s.journey.label)) ctxRef.store.set({ journey: j });
+  if (j && (!sameRids(j.rids, s.journey.rids) || j.label !== s.journey.label || (picked && legSig(j) !== legSig(s.journey)))) ctxRef.store.set({ journey: j });
 }
 
 /** New endpoints mean a new trip: end a started one. */
@@ -381,6 +388,6 @@ registerAction("dir:me", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; useMyLocatio
 registerAction("dir:opt", (ds, ev, ctx) => {
   ctxRef = ctx || ctxRef;
   const o = D.result?.options?.[+ds.i]; if (!o) return;
-  D.sel = +ds.i; D.selKey = o.key; syncJourney(); patchRes(); drawSel(true);
+  D.sel = +ds.i; D.selKey = o.key; syncJourney(true); patchRes(); drawSel(true);
 });
 registerAction("dir:start", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; startTrip(); });

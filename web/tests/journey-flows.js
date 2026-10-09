@@ -122,6 +122,23 @@ test("directions: picking another option during a trip updates journey.rids; liv
   unmountDirections(); el.remove();
 });
 
+test("directions: picking another card on the SAME route during a trip moves the timeline to its stops (QA 2026-10-09)", async () => {
+  const L2 = { id: "S2", name: "Library", lat: 41.792, lon: -87.6 };
+  const other = () => { const o = opt("r1:lib", 16, "R1"); o.legs[1] = { ...o.legs[1], board: L2, tripId: "t9" }; return o; };
+  const { ctx, el } = await dirWith(() => [opt("a", 12, "R1"), other()]);
+  runAction("dir:start", {}, null, ctx);
+  eq(ctx.store.get().journey.legs[1].board.id, "S1");
+  const i = D.result.options.findIndex((o) => o.key === "r1:lib");
+  runAction("dir:opt", { i: String(i) }, null, ctx);
+  await tick();
+  const j = ctx.store.get().journey;
+  eq([j.rids, j.legs[1].board.id, j.legs[1].tripId], [["R1"], "S2", "t9"], "Current trip follows the card shown as selected");
+  ctx.store.set({ trips: ctx.store.get().trips.slice() });   // live re-plan never moves the boarding stop by itself
+  await tick(20);
+  eq(ctx.store.get().journey.legs[1].board.id, "S2");
+  unmountDirections(); el.remove();
+});
+
 test("directions: changing endpoints ends the trip; ending it elsewhere brings Start back", async () => {
   const { ctx, el } = await dirWith([opt("a", 12, "R1")]);
   runAction("dir:start", {}, null, ctx);
