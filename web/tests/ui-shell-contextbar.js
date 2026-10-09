@@ -1,8 +1,8 @@
 // Tests for ui/contextbar.js (journey / custom-route bar, journey:end, custom:clear) and the Nearby
 // alert banner + favorites card (SHELL).
-import { test, eq, ok } from "./lib.js";
+import { test, eq, ok, near } from "./lib.js";
 import { createStore } from "../js/core/store.js";
-import { contextBarHTML, endJourneyPatch, registerContextActions, mountContextBar } from "../js/ui/contextbar.js";
+import { contextBarHTML, endJourneyPatch, registerContextActions, mountContextBar, startMarquee, MARQUEE } from "../js/ui/contextbar.js";
 import { runAction, hasAction } from "../js/ui/actions.js";
 import { alertBanner } from "../js/ui/views/alerts.js";
 import { favoritesHTML, FAV_MAX } from "../js/ui/views/nearby.js";
@@ -104,4 +104,86 @@ test("nearby: favorites card lists favorites with next visible arrival", () => {
   ok(/Favorite One: route A in 5 minutes/.test(h), "hidden route B skipped, next visible is A: " + h.slice(0, 400));
   const j = favoritesHTML({ ...s, hiddenRoutes: [], journey: { rids: ["B"], label: "x" } }, NOW);
   ok(/Favorite One: route B in 2 minutes/.test(j), "journey decides visibility");
+});
+
+/* Marquee: a bar laid out like css/base.css .ctxbar (copied rules, scoped to .t-cb) at a fixed width. */
+function bar(state, width = 240) {
+  if (!document.getElementById("t-cb-css")) {
+    const st = document.createElement("style");
+    st.id = "t-cb-css";
+    st.textContent = ".t-cb{position:absolute;left:-3000px;top:0;display:flex;align-items:center;gap:6px;font:13px/16px sans-serif}"
+      + ".t-cb .ctx-text{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+      + ".t-cb .ctx-run{display:inline-flex;gap:40px}.t-cb .ctx-text:not(.is-marquee) .ctx-run{display:inline}"
+      + ".t-cb .ctx-text.is-marquee{text-overflow:clip;margin-left:-6px;padding-left:6px}"
+      + ".t-cb .ctx-chips{display:flex;flex:none}.t-cb .ctx-btn{flex:none}.t-cb[hidden]{display:none}";
+    document.head.appendChild(st);
+  }
+  const el = document.createElement("div");
+  el.className = "t-cb";
+  el.style.width = width + "px";
+  el.innerHTML = contextBarHTML(state);
+  document.body.appendChild(el);
+  return el;
+}
+const LONG = base({ journey: { rids: ["A", "B"], label: "Regenstein Library to the Smart Museum of Art", kind: "plan" } });
+const frames = (n = 2) => new Promise((r) => { const f = () => (--n <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+
+test("contextbar marquee: long text rests at the start, then glides until its copy sits where it began (seamless loop)", () => {
+  const el = bar(LONG);
+  try {
+    const a = startMarquee(el, { reduced: () => false });
+    ok(a, "animates when the text does not fit");
+    const box = el.querySelector(".ctx-text"), track = el.querySelector(".ctx-track"), copy = el.querySelector(".ctx-copy");
+    ok(box.classList.contains("is-marquee"), "marquee class (no ellipsis)");
+    ok(copy && copy.getAttribute("aria-hidden") === "true" && copy.textContent === track.textContent, "aria-hidden copy of the text");
+    const kf = a.effect.getKeyframes(), t = a.effect.getTiming();
+    const d = copy.getBoundingClientRect().left - track.getBoundingClientRect().left;
+    near(d, track.getBoundingClientRect().width + 40, 1, "glide distance = text + 40px gap");
+    eq(kf[0].transform, kf[1].transform, "rests at the start first");
+    near(kf[1].computedOffset, MARQUEE.restMs / t.duration, 1e-6, "rest share of the loop");
+    near(parseFloat(String(kf[2].transform).replace("translate3d(", "")), -d, 0.01, "ends with the copy where the text began: " + kf[2].transform);
+    near(t.duration, MARQUEE.restMs + (d / MARQUEE.pxPerS) * 1000, 1, "duration = rest + glide at pxPerS");
+    eq(t.iterations, Infinity, "repeats every once in a while");
+    ok(/Only showing routes for:/.test(track.textContent) && /Smart Museum/.test(track.textContent), "starts at the start of the title");
+    startMarquee(el, { reduced: () => false });
+    eq(el.querySelectorAll(".ctx-copy").length, 1, "rebuild keeps one copy");
+    eq(el.querySelector(".ctx-run").getAnimations().length, 1, "rebuild keeps one animation");
+  } finally { el.remove(); }
+});
+
+test("contextbar marquee: text that fits, reduced motion, and a hidden bar stay still", () => {
+  const short = bar(base({ customRoutes: [{ id: "c1", name: "Mine", rids: ["B"], highlight: [] }], activeCustom: "c1" }), 360);
+  const long = bar(LONG);
+  try {
+    eq(startMarquee(short, { reduced: () => false }), null, "fits: still");
+    ok(!short.querySelector(".ctx-copy") && !short.querySelector(".is-marquee"));
+    eq(startMarquee(long, { reduced: () => true }), null, "reduced motion: still");
+    ok(!long.querySelector(".ctx-copy") && !long.querySelector(".is-marquee"), "reduced motion: ellipsis kept");
+    long.hidden = true;
+    eq(startMarquee(long, { reduced: () => false }), null, "hidden bar: still");
+    eq(startMarquee(null), null, "no bar: no throw");
+  } finally { short.remove(); long.remove(); }
+});
+
+test("contextbar marquee: mountContextBar starts it on draw, a mouse hover pauses it, clearing stops it", async () => {
+  const el = bar(base());
+  el.hidden = true;
+  const store = createStore(base());
+  const off = mountContextBar(el, store, { reduced: () => false });
+  try {
+    store.set({ journey: LONG.journey });
+    await Promise.resolve(); await Promise.resolve();
+    await frames(3);
+    const run = el.querySelector(".ctx-run"), [a] = run.getAnimations();
+    ok(a && a.playState === "running", "scrolling after the bar is drawn");
+    el.dispatchEvent(new PointerEvent("pointerenter", { pointerType: "mouse" }));
+    eq(a.playState, "paused", "mouse hover pauses");
+    el.dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse" }));
+    eq(a.playState, "running", "resumes when the mouse leaves");
+    el.dispatchEvent(new PointerEvent("pointerenter", { pointerType: "touch" }));
+    eq(a.playState, "running", "a touch does not pause it");
+    store.set({ journey: null });
+    await Promise.resolve(); await Promise.resolve();
+    ok(el.hidden && a.playState === "idle", "cleared: hidden and stopped");
+  } finally { off(); el.remove(); }
 });

@@ -313,3 +313,11 @@ Escape / backdrop cancel; settles from the button itself, not the async close ev
   state, nowS)` (phases walk-to-stop / waiting / on-bus / arrived, followed vehicle, per-stop state + live ETA, missed-bus detection);
   ui/views/tripprogress.js `tripProgressHTML(state, now, {actionsHTML})`, rendered by nearby.js entryHTML when a trip is active.
 - Map: `onMapTap(fn)` fires for taps on empty map (not layers, credits or controls; never after a drag); main.js lowers the sheet to peek.
+
+### 2026-10-09 (evening): map view stays put, scrolling context bar
+- Camera rule: only choosing a route moves the map (Routes list / route chips `route` + `route:open` -> `fitTo` its shape; a custom
+  route; a trip plan; Routes to station; the locate button; a chosen place). Opening a stop (map tap, list row, `stop:open`) selects
+  it without flying; a bus tap opens its route WITHOUT fitting (main.js `openRoute(rid, false)`). iOS `AppModel.push(.stop)` likewise.
+- Context bar (`ui/contextbar.js`): text that does not fit scrolls Apple Music style (`startMarquee(el, {reduced})`, Web Animations
+  on `.ctx-run`): rests `MARQUEE.restMs` (3.5 s) at the start, glides at `MARQUEE.pxPerS` (32) until an aria-hidden copy sits where
+  the text began, loops; re-measured on draw and resize (ResizeObserver); mouse hover pauses; still (ellipsis) with reduced motion.

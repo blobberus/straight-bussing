@@ -133,6 +133,15 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 .statuspill:not([hidden]) ~ .ctxbar { top: calc(var(--chip-top) + var(--pill-h, 44px) + 8px); }   /* --pill-h: main.js */
 .ctxbar[hidden] { display: none; }
 .ctxbar .ctx-text { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* long text scrolls (ui/contextbar.js startMarquee moves .ctx-run): no ellipsis, soft edges; the 6px left
+   fade lives in padding so the resting text starts exactly where it did */
+.ctxbar .ctx-run { display: inline-flex; gap: 40px; will-change: transform; }
+.ctxbar .ctx-text:not(.is-marquee) .ctx-run { display: inline; will-change: auto; }
+.ctxbar .ctx-text.is-marquee {
+  text-overflow: clip; margin-left: -6px; padding-left: 6px;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 6px, #000 calc(100% - 14px), transparent);
+  mask-image: linear-gradient(90deg, transparent 0, #000 6px, #000 calc(100% - 14px), transparent);
+}
 .ctxbar .ctx-k { color: var(--text-2); }
 .ctxbar .ctx-v { font-weight: 600; }
 .ctxbar .ctx-chips { display: flex; flex: none; flex-wrap: nowrap; gap: 3px; align-items: center; }
