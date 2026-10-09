@@ -1,5 +1,9 @@
 // Live Passio GTFS-realtime JSON feeds. Never cached (stale bus data is unsafe).
 // Failure keeps the last good data and sets failed:true so the UI can show it.
+// store.buses holds only vehicles that are operating (core/operating.js): ghosts that stopped
+// reporting, unknown routes and buses on out-of-service routes without predictions are dropped here,
+// so the map, route detail, counts, alerts and planner never show them.
+import { operatingBuses } from '../core/operating.js';
 
 /** Passio feed base URL. */
 export const BASE = 'https://passio3.com/chicago/passioTransit/gtfs/realtime/';
@@ -50,7 +54,8 @@ export function parseAlerts(j) {
  * - Never overlaps polls; pauses while document.hidden and polls immediately on visible/online.
  * - After `maxFailures` consecutive failures the interval backs off to `backoffMs`; recovers on success.
  * @param {{get():object, set(patch:object):void}} store
- * @param {{intervalMs?:number, backoffMs?:number, timeoutMs?:number, maxFailures?:number, base?:string, fetch?:typeof fetch}} [opts]
+ * @param {{intervalMs?:number, backoffMs?:number, timeoutMs?:number, maxFailures?:number, base?:string, fetch?:typeof fetch, now?:() => number}} [opts]
+ *   now: unix-seconds clock for the in-service check (tests)
  * @returns {{stop():void, pollNow():Promise<void>, failures():number, delay():number}}
  */
 export function startLive(store, opts = {}) {
@@ -60,6 +65,7 @@ export function startLive(store, opts = {}) {
   const maxFailures = opts.maxFailures ?? 3;
   const base = opts.base ?? BASE;
   const fetchFn = opts.fetch || ((...a) => globalThis.fetch(...a));
+  const nowFn = opts.now || (() => Date.now() / 1000);
   const doc = typeof document !== 'undefined' ? document : null;
   let timer = 0, inflight = null, ctl = null, fails = 0, stopped = false;
 
@@ -101,6 +107,11 @@ export function startLive(store, opts = {}) {
       if (vp.status !== 'fulfilled' && tu.value.header?.timestamp) patch.feedTs = toNum(tu.value.header.timestamp);
     }
     if (sa.status === 'fulfilled') patch.alerts = parseAlerts(sa.value);
+    if (patch.buses) {
+      const s = store.get();
+      patch.buses = operatingBuses(patch.buses, { routes: s.routes, service: s.service, trips: patch.trips || s.trips,
+        feedTs: patch.feedTs, nowS: nowFn(), staticLoaded: s.staticLoaded });
+    }
     const ok = vp.status === 'fulfilled' && tu.status === 'fulfilled';
     if (ok) { fails = 0; patch.lastOk = Date.now() / 1000; patch.failed = false; }
     else {
