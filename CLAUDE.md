@@ -57,6 +57,8 @@ Also every ship: bump the cache name in `web/sw.js` when shell files change; esc
 | Custom routes: tap = show on map (no detail jump); swipe left / More = Details, Edit, Delete; delete confirms in a popup | done 2026-10-08 | `ui/views/myroutes-swipe.js`, `ui/confirm.js`; sw `sb-v2-10` |
 | Place search: on-device index of 1,931 places within a 30-min walk of campus stops (Chipotle, Medici, coffee, apartments; typo/spacing tolerant); Photon only when < 5 local matches | done 2026-10-08 | `tools/build_places.py` -> `web/data/places.json`, `web/js/data/places.js`; sw `sb-v2-11` |
 | 2026-10-09 My Routes bug/stutter sweep (fixed rows, keyed patching, Details only via tray), sheet no longer jumps on route chip, map credit without © collapsing to (i), app self-updates on foreground | done | sw `sb-v2-13`; ARCHITECTURE "2026-10-09" |
+| Data repo github.com/blobberus/straight-bussing-data (auto-synced every 30 min: per-day/route CSVs, viewer page, methodology mirror) | done 2026-10-09 | its .github/workflows/sync.yml + scripts/sync.py |
+| Search: instant local results, spelling correction + assumption note, 94 UChicago queries verified; live trip progress timeline; tap empty map closes the sheet | done 2026-10-09 | ARCHITECTURE "2026-10-09 (later)" |
 | Weather / traffic / calendar context | done | `tools/context_fetch.py` + daily `context.yml` -> `data/context/` on the data branch; `tools/context_join.py`; `data/calendar.json`; sources vetted in RouteKnower §3.4 (never scrape Google Maps: terms forbid it) |
 | Theme + basemap styling | in progress | `web/theme.js`, `web/mapstyle.js` |
 | Directions: trace route shapes, walking path on streets | next | needs shape clipping / routing |

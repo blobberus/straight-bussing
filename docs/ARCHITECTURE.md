@@ -123,7 +123,7 @@ export function plan({from, to, now, data:{stops,routes,routeStops,trips,buses},
 export async function refineWalking(option, {walkRoute, now, data, from, to, predict?}): Promise<Option|null>   // replaces walk-leg coords/min with router results, recomputes totals/arrive/walkMin/walkM; a router walk is never shorter than the straight line; if the bus would be missed it re-plans (same route, replanned:true) or resolves null (drop it)
 // Option = {key, total:minFloat, totalMin:int, arrive:unixS, t0:unixS, walkMin:minFloat, walkM:int, meets:string[], legs:[WalkLeg|BusLeg]}   // total/arrive include every walk (to the boarding stop, transfers, to the destination); walkMin/walkM = sums over the walk legs
 // WalkLeg = {type:'walk', from:{lat,lon,name}, to:{lat,lon,name}, m, min, coords?:[[lat,lon]], source?:'router'|'estimate'}
-// BusLeg  = {type:'bus', rid, board:{id,name,lat,lon}, alight:{id,name,lat,lon}, path:[{lat,lon}], stopsPassed, wait, waitLive, ride, source:'live'|'learned'|'schedule'|'estimate', conf, boardT, alightT}
+// BusLeg  = {type:'bus', rid, board:{id,name,lat,lon}, alight:{id,name,lat,lon}, path:[{lat,lon}], stopsPassed, wait, waitLive, ride, source:'live'|'learned'|'schedule'|'estimate', conf, boardT, alightT, tripId}   // tripId: live trip update's trip_id, null for a headway guess
 ```
 Planner rules (port from v1, keep behaviors): walk 80 m/min x1.2 detour estimate (WALK_M_PER_MIN, WALK_DETOUR in core/geo.js), max walk 800 m each end, widened to 1600 m (MAX_WALK_FAR) when no option exists within 800 m; every walk costs m/80 min however short (only walks under 1 m get no step); wait counts from when you reach the stop (t0 + walk), and for the second bus from after the transfer walk; direct + one transfer (transfer walk <= 150 m), loop routes wrap, ride time prefers same-trip live prediction (tripUpdates at alight stop minus at board stop), then `predict.rideMinutes`, then distance/18 km/h; wait = live next arrival at board stop after you arrive, else headway estimate; discard options absurdly longer than walking; direct trips contribute, per route, the best (board, alight) pair for EACH criterion below; ranked by `core/rank.js`; max 4 options (`PLANNER.MAX_OPTS`); every number is an estimate.
 
@@ -298,3 +298,16 @@ Escape / backdrop cancel; settles from the button itself, not the async close ev
   new worker takes control (an installed app could otherwise run old code for days).
 - `tools/run_browser_tests.py` retries a page once, alone, when headless Edge's virtual-time mode stalls it (runner timeout with no
   results); the output says "(retried once after a runner timeout)". Pages with failing tests are never retried.
+
+### 2026-10-09 (later): search speed + spelling, trip progress, tap outside
+- Place search: `searchPlaces(q, {signal, exact, fetch, placesFetch})` -> `{items, error?, assumed?: {from, to, big}}`; Photon gets
+  `assumed.to`; `exact` = as typed, Photon always (3+ letters), up to 8 results; cache keyed by query + exact. `localPlaces(q, {exact})`
+  (sync, null until loaded). data/places.js: `findLocal(q, {limit, exact})` -> `{items, assumed?}`, `placesReady()`, `preloadPlaces()`;
+  data/spell.js (weighted Damerau-Levenshtein corrections); ui/views/placesearch.js: `createPlaceSearch(onChange, {ms=250})` with
+  on-device results on every keystroke and only Photon debounced; note "Showing results for X" + "Search for … instead" when the
+  correction is big (actions dir:exact / nearby:exact / pick:exact). places.json v2 (p[8] other names); tools/place_aliases.json (72
+  campus nicknames keyed by OSM id).
+- Trip progress: `planJourney(o, toLabel)` -> `{rids, label, kind:'plan', to, t0, legs}`; core/tripprogress.js `tripProgress(journey,
+  state, nowS)` (phases walk-to-stop / waiting / on-bus / arrived, followed vehicle, per-stop state + live ETA, missed-bus detection);
+  ui/views/tripprogress.js `tripProgressHTML(state, now, {actionsHTML})`, rendered by nearby.js entryHTML when a trip is active.
+- Map: `onMapTap(fn)` fires for taps on empty map (not layers, credits or controls; never after a drag); main.js lowers the sheet to peek.

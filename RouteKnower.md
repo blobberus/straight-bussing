@@ -11,7 +11,8 @@
 > Thanksgiving Break (§8). Improving the data and the model continues after shipping.
 
 Related files (read, don't duplicate): `docs/DATA.md` (CSV schemas, detector, context data), `docs/ALGORITHMS.md`
-(math of the existing models), `docs/BACKTEST.md` (latest backtest report), `monitoring.md` (keeping the
+(math of the existing models), `docs/BACKTEST.md` (latest backtest report), browsable data + viewer:
+https://github.com/blobberus/straight-bussing-data (auto-synced mirror of the data and this methodology), `monitoring.md` (keeping the
 collectors alive), `web/js/core/predict.js` (how the app reads a model). `docs/LEARNING.md` is superseded.
 
 ---

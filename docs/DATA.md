@@ -102,3 +102,10 @@ arrivals by `tools/context_join.py` (leakage-safe: only values known when the bu
 
 Live traffic for today comes from the shuttles themselves: `fl_idx` in the join = median observed/scheduled
 segment time over all shuttle segments finished in the last 30 min (RouteKnower M13).
+
+## Browse the data: github.com/blobberus/straight-bussing-data
+A separate public repo mirrors this data for browsing, synced every 30 minutes by its own workflow (no secrets: it reads
+this public repo): `data/arrivals/<service day>/<route>.csv` (GitHub renders each as a table; a service day runs 4 AM to
+3:59 AM), `data/latest.csv`, a viewer page with a time x stop chart of every bus trip
+(https://blobberus.github.io/straight-bussing-data/), and a mirror of the RouteKnower methodology (`methodology/`).
+The source of truth stays here; edit methodology in this repo.
