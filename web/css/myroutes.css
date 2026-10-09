@@ -11,15 +11,14 @@
 .mr-chips { gap: 4px; margin-top: 2px; }
 .mr-chev { flex: none; display: inline-grid; place-items: center; color: var(--text-2); }
 .mr-showing { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px 2px 8px; border-radius: 999px; background: var(--accent-fill); color: var(--on-accent); font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 650; }
-.mr-status .mr-showing { vertical-align: 1px; }
-.mr-crow.is-on .v-prim { font-weight: 700; }
+.mr-status { display: flex; align-items: center; flex-wrap: wrap; gap: 0 6px; min-height: 24px; }   /* same height showing or not */
 .mr-badge { flex: none; }
 
 .mr-empty { display: flex; flex-direction: column; gap: var(--s1); margin: var(--s2) 0; padding: var(--s4); border-radius: var(--r-card); background: var(--surface); }
 .mr-empty .v-btn { margin-top: var(--s2); }
 .mr-empty--fav { flex-direction: row; align-items: center; gap: var(--s3); }
 .mr-star { flex: none; display: inline-grid; place-items: center; width: 44px; height: 44px; color: var(--text-2); }
-.mr-more { margin-top: var(--s4); }
+.mr-links { margin-top: var(--s4); }
 
 .mr-favrow .v-sec { display: flex; align-items: center; gap: 6px; }
 .mr-favrow.is-edit { cursor: default; }
@@ -36,6 +35,9 @@
 .mr-hl { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 12px; border: 1px solid var(--hairline-strong); border-radius: 999px; background: none; color: var(--accent); font: inherit; font-size: var(--fs-cap); font-weight: 650; cursor: pointer; position: relative; }
 .mr-hl::after { content: ""; position: absolute; inset: -4px 0; } /* 44px tap target */
 .mr-hl.is-on { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
+.mr-hltick { flex: none; display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--accent); color: transparent; }
+.mr-hltick .ic { width: 11px; height: 11px; stroke-width: 3; }
+.mr-hl.is-on .mr-hltick { box-shadow: none; background: var(--on-accent); color: var(--accent-fill); }   /* same size on / off: no shift */
 .mr-confirm { flex-wrap: wrap; }
 
 .mr-edit .mr-input { width: 100%; min-height: 48px; padding: 0 var(--s3); border: 1px solid var(--hairline-strong); border-radius: var(--r-control); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-row); }
@@ -47,9 +49,10 @@
 .mr-check input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--accent-fill); }
 .mr-check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mr-check + .mr-check::before { left: 34px; }
-.mr-err { min-height: 0; margin: var(--s2) 0 0; color: var(--danger); font-size: var(--fs-body); font-weight: 600; }
+.mr-err { min-height: 0; margin: 0 0 var(--s2); color: var(--danger); font-size: var(--fs-body); font-weight: 600; }
 .mr-err:empty { display: none; }
-.mr-edit .v-actions { position: sticky; bottom: 0; padding: var(--s2) 0; background: var(--sheet-bg, var(--bg)); }
+/* sticky Save bar: the scroller keeps 16px of bottom padding (css/sheet.css); reach into it so rows never show below the bar */
+.mr-edit .v-actions { position: sticky; bottom: -16px; padding: var(--s2) 0 calc(var(--s2) + 16px); background: var(--bg-solid, var(--sheet-bg)); }   /* opaque: no rows ghosting through */
 
 /* stop view: favorite toggle + routes label */
 .mr-stoptop { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
@@ -65,26 +68,45 @@
   .mr-hl.is-on, .mr-fav.is-on { forced-color-adjust: none; background: Highlight; color: HighlightText; }
 }
 
-/* custom routes: swipe-left action tray (myroutes-swipe.js), Apple-Music style. The tray sits behind
-   the row; the row slides left to reveal it. Delete is the far button and always confirms in a popup. */
-.mr-clist { overflow: hidden; }
+/* custom routes: rows with a fixed geometry + swipe-left action tray (myroutes-swipe.js), Apple-Music
+   style. Selecting a route only recolors the check circle: no size, wrap or position ever changes.
+   The tray sits behind the row, flush with the card's right edge; the row slides left to reveal it.
+   Delete is the far button and always confirms in a popup. */
+.mr-clist { padding: 0; overflow: hidden; }
 .mr-swipe { position: relative; overflow: hidden; }
-.mr-swipe + .mr-swipe { border-top: 1px solid var(--hairline); }
-.mr-acts { position: absolute; top: 0; right: 0; bottom: 0; width: 216px; display: flex; }
-.mr-act { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: var(--tap); border: 0; color: #fff; font: inherit; font-size: var(--fs-cap); font-weight: 650; cursor: pointer; }
-.mr-act .ic { width: 20px; height: 20px; }
-.mr-act--info { background: #8e8e93; }
-.mr-act--edit { background: var(--accent-fill); }
-.mr-act--del { background: var(--danger); }
-.mr-act:focus-visible { outline: 3px solid var(--text); outline-offset: -3px; }
+.mr-swipe + .mr-swipe::before { content: ""; position: absolute; z-index: 2; top: 0; left: 52px; right: 0; height: 1px; background: var(--hairline); pointer-events: none; }
 .mr-front { position: relative; z-index: 1; display: flex; align-items: center; background: var(--surface); touch-action: pan-y;
   transition: transform var(--d-sheet) var(--ease-spring); }
 .mr-swipe.is-open .mr-front { transform: translate3d(-216px, 0, 0); }
-.mr-front > .mr-crow { flex: 1 1 auto; min-width: 0; }
-.mr-more { color: var(--text-2); margin-right: var(--s1); }
+.mr-crow { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--s3); min-height: 64px; margin: 0; padding: var(--s2) 0 var(--s2) var(--s4);
+  border: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+.mr-crow:active { background: var(--surface-press); }
+.mr-swipe.is-drag .mr-crow:active { background: none; }
+.mr-crow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; }
+.mr-tick { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--hairline-strong); color: transparent; }
+.mr-tick .ic { width: 14px; height: 14px; stroke-width: 3; }
+.mr-crow.is-on .mr-tick { background: var(--accent-fill); box-shadow: none; color: var(--on-accent); }
+.mr-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mr-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 590; color: var(--text); }
+.mr-chips { display: flex; flex-wrap: wrap; gap: 4px; height: 20px; overflow: hidden; }   /* one line; chips that don't fit are hidden whole */
+.mr-plus { font-size: var(--fs-cap); line-height: 20px; color: var(--text-2); white-space: nowrap; }
+.mr-morebtn { color: var(--text-2); margin-right: var(--s1); }
+.mr-acts { position: absolute; top: 0; right: 0; bottom: 0; width: 216px; display: flex; visibility: hidden; transition: visibility 0s linear var(--d-sheet); }
+.mr-swipe.is-open .mr-acts, .mr-swipe.is-drag .mr-acts { visibility: visible; transition-delay: 0s; }   /* hidden when closed: no red bleed at the card's rounded corners */
+.mr-act { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: var(--tap); margin: 0; padding: 0; border: 0; border-radius: 0; color: #fff; font: inherit; font-size: var(--fs-cap); font-weight: 650; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.mr-act .ic { width: 20px; height: 20px; }
+.mr-act--info { background: #636366; }
+.mr-act--edit { background: var(--accent-fill); }
+.mr-act--del { background: #d70015; }
+.mr-act:focus-visible { outline: 3px solid var(--text); outline-offset: -3px; }
 .mr-hint { margin-top: var(--s2); }
 .mr-dacts { margin: var(--s2) 0 var(--s3); }
 .mr-dacts .v-btn .ic, .mr-editdel .ic { width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px; }
 .mr-editdel { margin-top: var(--s4); }
-@media (prefers-reduced-motion: reduce) { .mr-front { transition: none; } }
-@media (forced-colors: active) { .mr-act { border: 1px solid ButtonText; } }
+.v-confirm { width: min(calc(100vw - 48px), 340px); }
+@media (prefers-reduced-motion: reduce) { .mr-front, .mr-acts { transition: none; } }
+@media (forced-colors: active) {
+  .mr-act { border: 1px solid ButtonText; }
+  .mr-tick { box-shadow: none; border: 2px solid CanvasText; }
+  .mr-crow.is-on .mr-tick { forced-color-adjust: none; background: Highlight; color: HighlightText; border-color: Highlight; }
+}

@@ -390,7 +390,7 @@ async function boot() {
 
   const h = location.hostname;
   if ("serviceWorker" in navigator && (location.protocol === "https:" || h === "localhost" || h === "127.0.0.1")) {
-    navigator.serviceWorker.register("sw.js").catch((e) => console.warn("service worker", e));
+    import("./ui/update.js").then((m) => m.startUpdates()).catch((e) => console.warn("service worker", e));   // register + update on foreground
   }
 }
 

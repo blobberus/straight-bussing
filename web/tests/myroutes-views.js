@@ -36,8 +36,9 @@ test("myroutes: custom route rows escape names and mark the applied one (not by 
   const h = renderMyRoutes(fixture({ customRoutes: [C1, C2], activeCustom: "c1" }), NOW);
   ok(noRaw(h), "escaped");
   ok(h.includes("Commute &lt;img src=x&gt;"));
-  eq((h.match(/class="mr-showing"/g) || []).length, 1, "one Showing pill");
-  ok(h.includes("showing on the map"), "screen reader label says applied");
+  eq((h.match(/class="mr-crow is-on"/g) || []).length, 1, "one row marked on (filled check, not color alone)");
+  ok(h.includes('data-id="c1" aria-pressed="true"') && h.includes('data-id="c2" aria-pressed="false"'), "screen readers hear on / off");
+  ok(!h.includes("mr-showing"), "no Showing pill inserted into the row (it re-flowed the row)");
   ok(!h.includes("Save the routes you ride"), "no empty state");
 });
 
@@ -123,6 +124,8 @@ test("customroute: detail shows Stop showing / Show on map, highlight toggles, d
 test("customedit: validates >= 1 route, creates + applies, edits in place", async () => {
   reset();
   const ctx = makeCtx({ customRoutes: [C2], buses: [] });
+  let backs = 0;
+  ctx.back = () => { backs++; };
   const el = root();
   el.innerHTML = renderEditor(ctx.store.get(), null);
   getView("customedit").mount(el, ctx);
@@ -144,7 +147,9 @@ test("customedit: validates >= 1 route, creates + applies, edits in place", asyn
   eq([made.name, made.rids], ["Lab run", ["R1", "R3"]]);
   eq(s.activeCustom, made.id, "applied");
   eq(s.hiddenRoutes, ["R2"]);
-  eq(ctx.calls.navigate.at(-1), ["customroute", { id: made.id }]);
+  eq(backs, 1, "saving a NEW route goes back to the My Routes list");
+  ok(!ctx.calls.navigate.some(([v]) => v === "customroute"), "never opens Details after saving (only the Details button does)");
+  ok(ctx.calls.toast.at(-1).includes("Lab run") && ctx.calls.toast.at(-1).includes("Showing"), "says it is showing");
   getView("customedit").unmount();
   el.innerHTML = renderEditor(s, made.id);
   ok(el.querySelector('input[value="R1"]').checked && !el.querySelector('input[value="R2"]').checked, "edit prefilled");
@@ -154,6 +159,7 @@ test("customedit: validates >= 1 route, creates + applies, edits in place", asyn
   s = ctx.store.get();
   eq(s.customRoutes[1].rids, ["R1", "R2", "R3"]);
   eq(s.hiddenRoutes, [], "active one re-applied after edit");
+  eq(backs, 2, "editing goes back to where you came from");
   el.remove();
 });
 
@@ -161,12 +167,17 @@ test("myroutes: More button opens the swipe tray (Details / Edit / Delete); Deta
   reset();
   const ctx = makeCtx({ customRoutes: [C1, C2] });
   let h = renderMyRoutes(ctx.store.get(), NOW);
-  ok(h.includes('class="mr-swipe" data-swipe-id="c1" data-nodrag><div class="mr-acts" inert>'), "tray hidden and inert while closed");
+  const t = document.createElement("div");
+  t.innerHTML = h;
+  const row1 = t.querySelector('.mr-swipe[data-swipe-id="c1"]');
+  ok(row1 && !row1.classList.contains("is-open") && row1.querySelector(".mr-acts").hasAttribute("inert"), "tray hidden and inert while closed");
+  ok(row1.querySelector(".mr-front + .mr-acts"), "tray after the row: Tab goes row, More, then the actions");
   ok(h.includes('aria-label="More actions for Commute &lt;img src=x&gt;"') && noRaw(h), "escaped More button");
   ok(h.indexOf('data-action="mr:details"') < h.indexOf('data-action="mr:edit"') && h.indexOf('data-action="mr:edit"') < h.indexOf('data-action="mr:del"'), "Details, Edit, then Delete at the far end");
   runAction("mr:swipe", { id: "c2" }, null, ctx);
-  h = renderMyRoutes(ctx.store.get(), NOW);
-  ok(h.includes('class="mr-swipe is-open" data-swipe-id="c2" data-nodrag><div class="mr-acts">') && h.includes('data-id="c2" aria-expanded="true"'), "open, focusable");
+  t.innerHTML = renderMyRoutes(ctx.store.get(), NOW);
+  const row2 = t.querySelector('.mr-swipe[data-swipe-id="c2"]');
+  ok(row2.classList.contains("is-open") && !row2.querySelector(".mr-acts").hasAttribute("inert") && row2.querySelector('.mr-morebtn[aria-expanded="true"]'), "open, focusable");
   runAction("mr:details", { id: "c2" }, null, ctx);
   eq(ctx.calls.navigate.at(-1), ["customroute", { id: "c2" }]);
   ok(!ctx.store.get().activeCustom, "Details only shows the details");
