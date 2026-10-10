@@ -2,6 +2,8 @@
 
 Use this when the owner says "turn this website into an App Store-level app". It is the **single iPhone plan**: `docs/IOS.md` only points here, `docs/APPSTORE.md` holds costs, the 4.2 analysis and the timeline (don't repeat them here). Read `CLAUDE.md` and `docs/ARCHITECTURE.md` (v2 module contract) first. The owner works on Windows with no Node and no Mac, so every Mac/Xcode step needs CI or a cloud Mac.
 
+**Registering and publishing (enrollment, signing without a Mac, App Store Connect, TestFlight, review): step-by-step in `docs/APPSTORE-SUBMIT.md`.**
+
 ## Status (2026-10-09)
 The owner asked to begin the transition. Started as a **native SwiftUI draft** (not the Capacitor wrap below; lower
 Guideline 4.2 risk, MapKit feel) in `ios/`: details, module map, Mac build steps, done-vs-stub table and the App Store
@@ -171,19 +173,21 @@ Apple frameworks: **ActivityKit** (`ActivityAttributes`, `Activity.request(attri
 - **4.2:** list native features in review notes: Live Activity + Dynamic Island, time-sensitive stop alerts, widgets, nearest stop, offline schedules, favorites/My Routes. Attach a screen recording of live buses (service hours only).
 - **2.5.4 background modes:** only `remote-notification`; `location` only if a journey "Go" mode truly uses it.
 - **4.5.4 push:** no marketing pushes; alerts only after explicit opt-in; app fully usable with notifications off.
-- **5.1.1 privacy:** disclose push tokens/watched stops (if Server push), privacy policy URL, `PrivacyInfo.xcprivacy`.
+- **5.1.1 privacy:** disclose push tokens/watched stops (if Server push), privacy policy URL in App Store Connect **and a privacy policy link inside the app** (5.1.1(i); the iOS About has privacy text but no link yet), `PrivacyInfo.xcprivacy`.
+- **2.1 completeness:** reviewers are not in Chicago and may test outside service hours; give them a clearly labeled simulated-bus switch plus a recording (`docs/APPSTORE-SUBMIT.md` D7).
 - **Safety:** every time is "est."; stale state visible on all surfaces; official phone 773.702.8181 in About and empty/error states.
 
 ## 11. Build and release pipeline
-- No Mac: Codemagic or GitHub Actions `macos-latest`; cloud Mac for debugging. Costs: `docs/APPSTORE.md`.
-- Signing: App Store Connect API key (.p8) in CI secrets; fastlane `match` or Codemagic signing; never commit certs/keys (also keep the APNs .p8 only in Server secrets).
-- Pipeline: tests (`python tools/run_browser_tests.py`) -> `npx cap sync ios` -> archive -> sign -> TestFlight on tag.
+(Corrected 2026-10-10; full steps in `docs/APPSTORE-SUBMIT.md`.)
+- No Mac: GitHub Actions **`macos-26`** (free on this public repo). Since 2026-04-28 uploads must be built with Xcode 26+ and the iOS 26 SDK; `macos-15`, which `ios.yml` uses today, defaults to Xcode 16.4. Xcode Cloud needs a Mac to create its first workflow; cloud Mac only for debugging. Costs: `docs/APPSTORE.md`.
+- Signing: manual, one Apple Distribution certificate (CSR and `.p12` made with OpenSSL on Windows) + two App Store profiles (app, widget) + App Store Connect team API key (App Manager role), all in a protected `appstore` environment; never commit certs/keys (also keep the APNs .p8 only in Server secrets). fastlane `match` is the alternative.
+- Pipeline (native, no Capacitor): XcodeGen -> `xcodebuild archive` (Release, build number = run number) -> `-exportArchive` (`app-store-connect`) -> `fastlane pilot upload` -> TestFlight, on a manual run or `v*` tag.
 - TestFlight: internal testers first; external needs Beta App Review; builds expire after 90 days.
-- Screenshots: 6.9" and 6.5" iPhone; show map, arrivals, Live Activity on Lock Screen, Dynamic Island, widget, a stop alert.
+- Screenshots: **one set at 6.9" (1320 x 2868, iPhone 17/16 Pro Max simulator) is enough**; 6.5" is only required when 6.9" is missing, smaller sizes are scaled. No alpha channel. Show map, arrivals, Live Activity on Lock Screen, Dynamic Island, widget, a stop alert.
 - Metadata: privacy policy + support URLs (GitHub Pages), category Navigation or Travel, export compliance (HTTPS only), neutral name.
 
 ## 12. Phased checklist
-- [ ] P0 Prereqs: UChicago/Passio written permission; Apple Developer enrollment; bundle ID; privacy policy + support page live
+- [ ] P0 Prereqs: UChicago/Passio written permission; Apple Developer enrollment; bundle ID; privacy policy + support page live (order and owners: `docs/APPSTORE-SUBMIT.md`)
 - [x] P1 Refactor into ES modules (done: v2, `docs/ARCHITECTURE.md`)
 - [ ] P1b Web groundwork: `state.notify`, `core/notify.js`, Settings view, `ui/notifier.js` (in-app only), iPhone-sized web layout; add `web/js/platform/` seam
 - [ ] P2 Proxy: 10 s poll, `/v1/snapshot`, CORS, rate limit, stale flag; point web `BASE` at it

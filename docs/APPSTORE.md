@@ -2,20 +2,27 @@
 
 Researched 2026-10-07. Items marked (est.) are not verified from a first-party page, so re-check before paying.
 
+**Step-by-step registration and submission (enrollment, signing without a Mac, App Store Connect, TestFlight, review): `docs/APPSTORE-SUBMIT.md`.**
+
+Corrected 2026-10-10 (re-checked against Apple's pages for APPSTORE-SUBMIT.md): the iPhone app is now native SwiftUI
+(`ios/`), so the Capacitor recommendation in section 3 is superseded; App Review times now come from Apple's own
+figures; the fee-waiver rule, D-U-N-S timing and the rights guideline number (5.2.2, not 5.2.3) were fixed; Codemagic
+prices are confirmed from Codemagic's docs; Xcode Cloud, cloud Mac minimums and the Xcode 26 upload rule were added.
+
 ## 1. Cost estimate
 
 | Item | Low | Likely | High | Notes / source |
 |---|---|---|---|---|
-| Apple Developer Program (individual) | $99 | $99 | $99 | Yearly. No separate "student" tier. https://developer.apple.com/programs/enroll/ |
-| Org enrollment / D-U-N-S | $0 | $0 | $0 | Org needs a legal entity (LLC fees vary, est. $50-300 if you form one) plus a free D-U-N-S, which can take weeks. Not needed for an individual account. |
-| Fee waiver | $0 | n/a | n/a | Only for nonprofit, accredited school or government legal entities, free apps only, not individuals. An unofficial app by a student will not qualify unless it is run through a registered nonprofit. https://developer.apple.com/help/account/membership/fee-waivers/ |
-| Mac + Xcode | $0 | $0-30 | $599 | Low: borrow a Mac or use free CI. Likely: cloud Mac rental by the hour (MacinCloud-type, est. about $1/hr or $30/mo). High: buy a Mac mini (est. $599). Xcode is free. |
-| CI (Codemagic / GitHub Actions) | $0 | $0 | $50 | Codemagic gives individuals 500 free macOS M2 min/month; pay-as-you-go is about $0.095/min (3rd-party, unverified). GitHub Actions macOS is $0.062/min on private repos, free on public repos. https://docs.codemagic.io/billing/pricing/ , https://docs.github.com/en/billing/reference/actions-runner-pricing |
+| Apple Developer Program (individual) | $99 | $99 | $99 | Yearly. No student program; the iOS Developer University Program was discontinued on 2024-05-15 and never allowed App Store distribution. https://developer.apple.com/programs/enroll/ , https://developer.apple.com/programs/ios/university/ |
+| Org enrollment / D-U-N-S | $0 | $0 | $0 | Org needs a legal entity (LLC fees vary, est. $50-300 if you form one), a public website on its own domain and a work email on that domain, plus a free D-U-N-S (Apple: up to 5 business days, then up to 2 business days to reach Apple; https://developer.apple.com/help/account/membership/D-U-N-S/ ). Not needed for an individual account. |
+| Fee waiver | $0 | n/a | n/a | Only for nonprofit, accredited school or government legal entities; individuals and sole proprietors are excluded. Condition is no Paid Applications Agreement and no selling of digital goods (not literally "free apps only"). An unofficial app by a student will not qualify unless it is run through a registered nonprofit. https://developer.apple.com/help/account/membership/fee-waivers/ |
+| Mac + Xcode | $0 | $0-30 | $599 | Low: free CI (GitHub Actions `macos-26`, Xcode 26; uploads need Xcode 26+ since 2026-04-28). Likely: none, or a cloud Mac day for debugging: Scaleway M2 from 0.17 EUR/h with a 24 h minimum (about 4 EUR), AWS EC2 Mac also 24 h minimum. High: buy a Mac mini (est. $599). Xcode is free. |
+| CI (Codemagic / GitHub Actions / Xcode Cloud) | $0 | $0 | $50 | GitHub Actions standard runners are free on public repos ($0.062/min macOS on private). Codemagic: 500 free macOS M2 min/month for personal accounts, then $0.095/min (Codemagic docs, checked 2026-10-10). Xcode Cloud: 25 compute hours/month included with membership, but the first workflow must be configured in Xcode on a Mac. https://docs.codemagic.io/billing/pricing/ , https://docs.github.com/en/billing/reference/actions-runner-pricing , https://developer.apple.com/xcode-cloud/ |
 | Proxy hosting (small) | $0 | $60 | $120 | Free tiers (Cloudflare Workers, Fly, Render) vs about $5-10/mo VPS (est.). |
 | Domain | $0 | $12 | $20 | Optional. Low uses a github.io or workers.dev URL (est.). |
-| Privacy policy / support page hosting | $0 | $0 | $0 | GitHub Pages. Apple requires a policy URL. |
+| Privacy policy / support page hosting | $0 | $0 | $0 | GitHub Pages. Apple requires a policy URL in App Store Connect and a link inside the app (Guideline 5.1.1(i)), plus a support URL. |
 | Push notifications (APNs) | $0 | $0 | $10 | APNs itself is free. You need a server to send; the proxy can do it (also drives Live Activity push-to-update). Time Sensitive notification entitlement is free. High covers a paid push relay. |
-| **Year 1 total** | **~$99** | **~$170-200** | **~$900** | High includes buying a Mac. |
+| **Year 1 total** | **~$99** | **~$170-200** | **~$900** | High includes buying a Mac. Version 1.0 without a push server is $99 (APPSTORE-SUBMIT.md section 2). |
 | **Recurring per year** | **$99** | **~$170** | **~$300** | Apple fee plus hosting and domain. |
 
 ## 2. Feasibility
@@ -33,21 +40,24 @@ Researched 2026-10-07. Items marked (est.) are not verified from a first-party p
 
 ### Third-party data, naming and IP (4.1, 5.2)
 - Do not use "UChicago", "University of Chicago", "Maroon" or the university logos or colors as branding. 4.1 (copycats) and 5.2 (IP) cover impersonation. Use a neutral name such as "Straight Bussing" and state "Unofficial, not affiliated with the University of Chicago" in the description and the app.
-- Passio data: the feed is public but unlicensed for redistribution as far as I found. Passio's terms or the university's transportation office may object, and 5.2.3 / 5.2.1 let Apple pull an app on a rights complaint. Mitigation: email UChicago Campus Transportation and Passio for written permission, cache politely through your proxy and rate-limit, show attribution, and keep a takedown plan. Treat this as the biggest non-technical risk.
+- Passio data: the feed is public but unlicensed for redistribution as far as I found. Passio's terms or the university's transportation office may object, and 5.2.2 (third-party services: "Authorization must be provided upon request") / 5.2.1 (trademarks) let Apple reject or pull an app on a rights complaint. Mitigation: email UChicago Transportation (Department of Safety and Security) and Passio for written permission (attach it in App Review Information > Attachment; APPSTORE-SUBMIT.md step 1), cache politely through your proxy and rate-limit, show attribution, and keep a takedown plan. Treat this as the biggest non-technical risk.
 - Privacy nutrition label: if location is used only on-device and nothing is sent to your server, declare "Data Not Collected". If the proxy logs IPs or you send push tokens, declare Identifiers and Diagnostics as needed. Also provide a privacy policy URL, and a privacy manifest if you use any SDK or API that Apple requires one for.
 - TestFlight steps: enroll, create the App ID and the App Store Connect record, build and upload via Xcode or CI (signing certificates and provisioning), add internal testers (up to 100, no review), then add external testers (the first build needs a short Beta App Review, usually about a day). Builds expire after 90 days.
 
 ### Timeline (realistic)
 | Phase | Duration |
 |---|---|
-| Enrollment (individual; org with D-U-N-S adds 1-4 weeks) | 1-3 days |
-| Capacitor wrap + location, notifications, widget | 2-4 weeks part-time |
+| Enrollment (individual; Apple publishes no time, reports say 1-3 days, sometimes weeks; org adds D-U-N-S, up to about 1-2 weeks) | 1-3 days |
+| ~~Capacitor wrap~~ Native SwiftUI app: drafted 2026-10-09 in `ios/`; left: signing + release CI, privacy link, screenshots | 1-2 sessions |
 | TestFlight beta | 1-2 weeks |
 | Permission outreach to Passio / UChicago (runs in parallel) | 2-6 weeks |
-| App Review (first submit, often 1-3 rounds) | 1-7 days per round |
-| **Total** | **about 6-10 weeks** |
+| App Review (first submit, often 1-3 rounds; Apple: at least 50% of submissions reviewed in < 24 h, 90% in < 48 h, https://developer.apple.com/distribute/app-review/ ) | 1-2 days per round |
+| **Total** | **about 3-6 weeks** (permission is the long pole) |
 
 ## 3. Recommendation
+
+Superseded 2026-10-09: the owner chose the **native SwiftUI** path (`ios/`, see `ios/README.md`), which removes most of
+the 4.2 risk; items 2-4 below are kept for history. Follow `docs/APPSTORE-SUBMIT.md` to ship it.
 
 1. Now: ship and polish the PWA. It costs $0, installs from Safari "Add to Home Screen", and has no review risk. Get written Passio/UChicago permission in the meantime.
 2. If you want the App Store: use **Capacitor** with real native plugins (geolocation, local and push notifications, plus a small Swift WidgetKit extension). It reuses the existing code and can plausibly clear 4.2 if the native features are substantial.
@@ -63,3 +73,4 @@ Researched 2026-10-07. Items marked (est.) are not verified from a first-party p
 - https://docs.github.com/en/billing/reference/actions-runner-pricing
 - https://appflight.dev/learn/rejections/app-store-guideline-4-2-minimum-functionality/
 - https://www.tapbound.com/blog/apple-guideline-4-2-minimum-functionality
+- Added 2026-10-10: https://developer.apple.com/programs/ios/university/ , https://developer.apple.com/help/account/membership/D-U-N-S/ , https://developer.apple.com/distribute/app-review/ , https://developer.apple.com/xcode-cloud/ , https://developer.apple.com/news/upcoming-requirements/ , https://www.scaleway.com/en/mac-mini-m2/ (full list in `docs/APPSTORE-SUBMIT.md`)
