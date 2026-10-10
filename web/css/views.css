@@ -127,7 +127,7 @@ button.v-row:active { transform: scale(.98); opacity: .8; }
 .v-about p { margin: var(--s2) 0; }
 .v-unofficial { padding: var(--s3) var(--s4); }
 .v-unofficial .v-actions { flex-wrap: wrap; }
-.v-unofficial .v-btn { flex: 1 1 140px; }
+.v-unofficial .v-btn { flex: 1 1 100%; }   /* stacked: "Official transportation page" never wraps */
 .v-unofficial .v-btn--secondary { background: var(--bg-solid); }
 .v-plain { margin: var(--s1) 0; padding-left: 1.1em; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text); }
 .v-plain li { margin: var(--s2) 0; }

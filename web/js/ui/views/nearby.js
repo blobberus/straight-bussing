@@ -122,7 +122,7 @@ export function favoritesHTML(state, now = nowS()) {
     const label = a ? `Favorite ${name}: route ${nameOf(state, a.rid)} ${m < 1 ? "arriving now" : "in " + m + " minutes"}${stale ? ", estimate" : ""}`
       : `Favorite ${name}: ${unknown ? "live times unavailable" : state.liveLoaded ? "no upcoming arrivals" : "loading"}`;
     const right = a ? etaBlock(a.t, { stale, now }) : `<span class="v-sec">${unknown ? "No live times" : state.liveLoaded ? "No buses soon" : ""}</span>`;
-    return `<button type="button" class="v-row" data-action="stop:open" data-id="${esc(id)}" aria-label="${esc(label)}">${a ? routeChip(a.rid, state.routes) : `<span class="v-ic v-favic" aria-hidden="true">&#9733;</span>`}<span class="v-grow"><span class="v-prim">${esc(name)}</span>${a ? `<span class="v-sec">${esc(state.routes?.[a.rid]?.long || "")}</span>` : ""}</span>${right}</button>`;
+    return `<button type="button" class="v-row" data-action="stop:open" data-id="${esc(id)}" aria-label="${esc(label)}">${a ? routeChip(a.rid, state.routes) : `<span class="v-ic v-favic" aria-hidden="true">${ICONS.star}</span>`}<span class="v-grow"><span class="v-prim">${esc(name)}</span>${a ? `<span class="v-sec">${esc(state.routes?.[a.rid]?.long || "")}</span>` : ""}</span>${right}</button>`;
   }).join("");
   const more = '<button type="button" class="v-link v-favmore" data-action="nav" data-view="myroutes">All favorites</button>';
   return `<div class="v-favhead"><h3 class="v-h">Favorites</h3>${more}</div><section class="v-card v-favs" aria-label="Favorite stations">${rows}</section>`;

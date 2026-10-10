@@ -129,9 +129,9 @@ function optionHTML(o, i, now, state) {
  * @returns {string}
  */
 export function resHTML(state, now = nowS()) {
-  if (!D.from || !D.to) {
+  if (!D.from || !D.to) {   // one "use my location" action per screen (DESIGN-AUDIT 7.1): the button hides while the start's list offers it
     let h = '<p class="v-hint">Choose a start and a destination. Type a station name, a place, or an address.</p>';
-    if (!D.from && !state.user) h += '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="dir:me" data-key="from">Start from my location</button>';
+    if (!D.from && !state.user && !(D.active === "from" && D.sugs.some((s) => s.kind === "me"))) h +='<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="dir:me" data-key="from">Start from my location</button>';
     return h;
   }
   if (!state.staticLoaded || !D.result) return skeleton(2);
@@ -170,7 +170,7 @@ export function renderDirections(state, now = nowS()) {
 
 const lastHtml = {};
 function patch(region, html) { const el = rootRef?.querySelector?.(`[data-region="${region}"]`); if (el && lastHtml[region] !== html) { setHTMLKeepFocus(el, html); lastHtml[region] = html; } }
-function patchSug() { if (D.active) D.sugs = computeSugs(cur(), D.active === "from" ? D.fromText : D.toText); patch("dir-sug", sugHTML()); }
+function patchSug() { if (D.active) { D.sugs = computeSugs(cur(), D.active === "from" ? D.fromText : D.toText); if (D.active === "to" && !D.from && !cur().user) D.sugs = D.sugs.filter((s) => s.kind !== "me"); } patch("dir-sug", sugHTML()); }   // no start yet: the results' "Start from my location" is the one location action
 function patchRes() { patch("dir-res", resHTML(cur(), nowFn())); }
 function setInput(key) { const el = rootRef?.querySelector?.(`[data-input="dir-${key}"]`); if (el) el.value = D[key]?.label || (key === "from" ? D.fromText : D.toText); }
 
@@ -299,7 +299,7 @@ export function swap() {
 }
 
 const keyOf = (t) => (t?.matches?.('[data-input="dir-from"]') ? "from" : t?.matches?.('[data-input="dir-to"]') ? "to" : null);
-function onFocus(e) { const k = keyOf(e.target); if (!k) return; D.active = k; e.target.select?.(); patchSug(); }
+function onFocus(e) { const k = keyOf(e.target); if (!k) return; D.active = k; e.target.select?.(); patchSug(); patchRes(); }
 function onInput(e) {
   const k = keyOf(e.target); if (!k) return;
   endPlanJourney();
@@ -310,7 +310,7 @@ function onInput(e) {
 function onKey(e) {
   const k = keyOf(e.target); if (!k) return;
   if (e.key === "Enter") { e.preventDefault(); if (D.sugs.length) applySug(0); }
-  else if (e.key === "Escape" && D.active) { e.preventDefault(); e.stopPropagation(); D.active = null; patch("dir-sug", ""); }
+  else if (e.key === "Escape" && D.active) { e.preventDefault(); e.stopPropagation(); D.active = null; D.sugs = []; patch("dir-sug", ""); patchRes(); }
   else if (e.key === "ArrowDown") { const b = rootRef.querySelector('[data-action="dir:sug"]'); if (b) { e.preventDefault(); b.focus(); } }
 }
 

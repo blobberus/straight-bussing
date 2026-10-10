@@ -238,6 +238,23 @@ test("directions: swap, to-stop action, escaping, suggestions include My locatio
   unmountDirections(); el.remove(); resetDir();
 });
 
+test("directions: one 'use my location' action per screen, never a suggestion and a button at once (taste audit 7.1)", async () => {
+  resetDir();
+  stubDeps(() => ({ now: NOW, options: [], walkOnly: { m: 100, min: 1 } }));
+  const ctx = makeCtx({ view: "directions" });   // no location yet, no start
+  const el = mountWith(ctx, renderDirections, mountDirections);
+  const from = el.querySelector('[data-input="dir-from"]'), to = el.querySelector('[data-input="dir-to"]');
+  const sug = () => el.querySelector('[data-region="dir-sug"]').textContent, res = () => el.querySelector('[data-region="dir-res"]').textContent;
+  const focusIn = (inp) => { inp.focus(); inp.dispatchEvent(new FocusEvent("focusin", { bubbles: true })); };
+  focusIn(to);
+  ok(!sug().includes("My location") && res().includes("Start from my location"), "destination focused: only the button");
+  focusIn(from);
+  ok(sug().includes("My location") && !res().includes("Start from my location"), "start focused: only the suggestion");
+  from.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  ok(!sug().includes("My location") && res().includes("Start from my location"), "Escape closes the list: the button is back");
+  unmountDirections(); el.remove(); resetDir();
+});
+
 test("directions: real planner + refineWalking integrate with the view", async () => {
   resetDir();
   deps.plan = realPlan; deps.refineWalking = realRefine; deps.predict = null;
