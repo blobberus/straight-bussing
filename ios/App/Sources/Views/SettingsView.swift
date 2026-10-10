@@ -4,7 +4,8 @@ import StraightBussingKit
 
 /// Settings (top-right gear, ui/views/settings.js): appearance, service alerts, bus alerts ("notify me when my bus
 /// is near <station>": station, routes, 2 stops / 1 stop / N min, in-app banner + system notifications), the
-/// iPhone-only Live Activity switch + preview, privacy, About.
+/// iPhone-only Live Activity switch + preview, simulated buses (demo, for App Review and screenshots at night),
+/// privacy, About.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -13,43 +14,81 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section { ThemePicker() } header: { ListHeader("Appearance") }
-                alertsSection
-                busAlerts
-                Section {
-                    Toggle("Trip status on Lock Screen", isOn: Binding(get: { model.notify.liveActivity },
-                                                                       set: { v in model.updateNotify { $0.liveActivity = v } }))
-                    NavigationLink("Preview Live Activity") { LiveActivityPreviewView() }
-                } header: {
-                    ListHeader("iPhone app")
-                } footer: {
-                    Text("A Live Activity shows your bus on the Lock Screen and in the Dynamic Island: stops away, a self-updating countdown and the next stops. It updates while the app is open; locked-phone updates need a push server (planned).")
-                        .foregroundStyle(Palette.text2)
-                }
-                Section {
-                    Text("No account, no ads, no tracking. Your live location is never sent anywhere; the only location data that leaves this iPhone is the start and end of a walking leg, rounded to about 10 m, sent to Apple Maps for sidewalk directions. Station and place search run on this iPhone; only when that finds fewer than 5 matches is the typed text sent to photon.komoot.io. Downloads: the public shuttle feed and Apple Maps.")
-                        .font(.subheadline)
-                } header: {
-                    ListHeader("Privacy")
-                }
-                Section {
-                    NavigationLink {
-                        AboutView().navigationTitle("About")
-                    } label: {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("About this app")
-                            Text("Unofficial. Privacy, official contact").font(.caption).foregroundStyle(Palette.text2)
+            ScrollViewReader { proxy in
+                Form {
+                    if model.feedSimulated {
+                        // the sheet covers the map's banner: simulated buses are labeled here too
+                        Section { DemoBanner() }
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
+                    Section { ThemePicker() } header: { ListHeader("Appearance") }
+                    alertsSection
+                    busAlerts
+                    Section {
+                        Toggle("Trip status on Lock Screen", isOn: Binding(get: { model.notify.liveActivity },
+                                                                           set: { v in model.updateNotify { $0.liveActivity = v } }))
+                        NavigationLink("Preview Live Activity") { LiveActivityPreviewView() }
+                    } header: {
+                        ListHeader("iPhone app")
+                    } footer: {
+                        Text("A Live Activity shows your bus on the Lock Screen and in the Dynamic Island: stops away, a self-updating countdown and the next stops. It updates while the app is open; locked-phone updates need a push server (planned).")
+                            .foregroundStyle(Palette.text2)
+                    }
+                    demoSection
+                    Section {
+                        Text("No account, no ads, no tracking. Your live location is never sent anywhere; the only location data that leaves this iPhone is the start and end of a walking leg, rounded to about 10 m, sent to Apple Maps for sidewalk directions. Station and place search run on this iPhone; only when that finds fewer than 5 matches is the typed text sent to photon.komoot.io. Downloads: the public shuttle feed and Apple Maps.")
+                            .font(.subheadline)
+                    } header: {
+                        ListHeader("Privacy")
+                    }
+                    Section {
+                        NavigationLink {
+                            AboutView().navigationTitle("About")
+                        } label: {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("About this app")
+                                Text("Unofficial. Privacy, official contact").font(.caption).foregroundStyle(Palette.text2)
+                            }
                         }
                     }
                 }
+                .tint(Palette.accent)
+                .task {
+                    // `-screen settingsdemo` (simulator screenshots): open at the Demo section
+                    guard model.config.screen == "settingsdemo" else { return }
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    proxy.scrollTo("demoToggle", anchor: .top)
+                }
             }
-            .tint(Palette.accent)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("settingsDone") }
             }
+        }
+    }
+
+    // MARK: Simulated buses
+
+    /// "Simulated buses (demo)" (App Review guideline 2.1: reviewers may open the app when no shuttle runs). Off by
+    /// default, never saved; while on, every screen says so and live data is neither shown nor mixed in.
+    var demoSection: some View {
+        Section {
+            Toggle(isOn: Binding(get: { model.feedSimulated }, set: { model.setSimulatedBuses($0) })) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Simulated buses (demo)")
+                    Text("Made-up buses for trying every feature when no shuttle runs").font(.caption).foregroundStyle(Palette.text2)
+                }
+            }
+            .disabled(model.config.demo)
+            .id("demoToggle")
+            .accessibilityIdentifier("simulatedBuses")
+        } header: {
+            ListHeader("Demo")
+        } footer: {
+            Text("While this is on, every screen says \u{201C}\(DemoFeed.alertHeader)\u{201D}, no live data is shown or mixed in, a started trip ends and bus alerts pause. It turns off when the app restarts or after 15 minutes in the background.")
+                .foregroundStyle(Palette.text2)
         }
     }
 
@@ -163,7 +202,10 @@ struct SettingsView: View {
 
     /// One-glance status of the nearest bus for the station (settings.js statusHTML).
     @ViewBuilder func status(_ stopId: String) -> some View {
-        if model.liveLoaded && (model.staleLevel == .err || model.staleLevel == .old) {
+        if model.simulating {
+            Label("Bus alerts are paused while simulated buses are on.", systemImage: "pause.circle")
+                .font(.caption).foregroundStyle(Palette.text2)
+        } else if model.liveLoaded && (model.staleLevel == .err || model.staleLevel == .old) {
             Label("Live data is unavailable, so bus alerts are paused.", systemImage: "exclamationmark.triangle")
                 .font(.caption).foregroundStyle(Palette.warn)
         } else if let first = Notify.stopsAway(staticData: model.staticData, live: model.live, stopId: stopId,

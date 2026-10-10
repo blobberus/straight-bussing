@@ -64,7 +64,7 @@ extension AppModel {
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.pollOnce()
-                let delay: Double = self.config.demo ? 5 : (self.failures >= 3 ? 30 : 10)
+                let delay: Double = self.feedSimulated ? 5 : (self.failures >= 3 ? 30 : 10)
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
         }
@@ -77,12 +77,14 @@ extension AppModel {
 
     func pollOnce() async {
         let poll: FeedPoll
-        if config.demo {
+        let gen = feedGeneration
+        if feedSimulated {
             poll = DemoFeed.poll(staticData: staticData, now: Date().timeIntervalSince1970, epoch: epoch)
         } else {
             let started = Date().timeIntervalSince1970
             let withAlerts = started - lastAlertsPoll >= Self.alertsEveryS
             poll = await FeedClient().poll(alerts: withAlerts)
+            guard gen == feedGeneration else { return }   // switched to simulated buses meanwhile: never mix
             if withAlerts, (try? poll.alerts.get()) != nil { lastAlertsPoll = started }   // a failed fetch retries next poll
         }
         let t = Date().timeIntervalSince1970
@@ -459,7 +461,7 @@ extension AppModel {
         location.setTripMode(true)
         refreshTrip()
         if notify.liveActivity, let snap = tripFollow?.snapshot(staticData: staticData, now: now) {
-            liveActivity.start(title: "To \(label)", state: snap)
+            liveActivity.start(title: "To \(label)", state: snap, simulated: feedSimulated)
             lastActivityPush = (snap: snap, at: Date().timeIntervalSince1970)
         }
         fit(planPoints(o))

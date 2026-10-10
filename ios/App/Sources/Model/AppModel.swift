@@ -210,6 +210,12 @@ final class AppModel {
     var pickMode: PickMode?
     /// Demo screenshots: text typed into Directions on open (`-screen search`).
     var demoQuery: String?
+    /// Settings > Simulated buses (demo), this session only (AppModel+Simulation.swift).
+    var simulating = false
+    /// Bumped when the feed source changes, so a poll still in flight from the other source is dropped.
+    @ObservationIgnored var feedGeneration = 0
+    /// When the app went to the background while simulating (turns simulated buses off after a long absence).
+    @ObservationIgnored var backgroundSince: Double?
     // Directions + trip
     var dir = DirectionsState()
     var activeTrip: ActiveTrip?

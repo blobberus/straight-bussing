@@ -24,11 +24,13 @@ struct StraightBussingApp: App {
             // one forced Live Activity update so the Lock Screen starts from fresh numbers. Back in the app,
             // re-read the notification permission (it may have changed in iOS Settings).
             if phase == .active {
+                model.checkSimulatedOnReturn()
                 model.resumePolling()
                 model.refreshNotifPermission()
             } else if phase == .background {
                 model.flushLiveActivity()
                 model.pausePolling()
+                model.noteBackground()
             }
         }
     }

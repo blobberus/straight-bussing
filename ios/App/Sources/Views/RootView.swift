@@ -2,12 +2,12 @@ import SwiftUI
 import StraightBussingKit
 
 /// Google-Maps-style layout (web v2.4): full-screen map, floating destination search bar with the Settings
-/// gear, the status pill and the map context bar under it, a bottom sheet with three detents resting on the
-/// bottom tab bar.
+/// gear, the status pill, the demo banner and the map context bar under it, a bottom sheet with three detents
+/// resting on the bottom tab bar.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     static let tabBarHeight: CGFloat = 56
-    /// Measured height of the floating chrome above the sheet (search bar, status pill, context bar):
+    /// Measured height of the floating chrome above the sheet (search bar, status pill, demo banner, context bar):
     /// a long stale message or large text makes it taller, and the sheet's full detent must stay below it.
     @State private var chromeH: CGFloat = 50
 
@@ -30,6 +30,7 @@ struct RootView: View {
                     VStack(spacing: 8) {
                         if !inDirections { SearchBar() }
                         StatusPill()
+                        DemoBanner()
                         if ctx && !inDirections { ContextBar() }
                     }
                     .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { h in
@@ -271,5 +272,45 @@ struct TabBar: View {
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .background(.bar, ignoresSafeAreaEdges: .bottom)
         .overlay(alignment: .top) { Divider() }
+    }
+}
+
+/// Shown on every screen while the feed is simulated (Settings > Simulated buses, or the `-demo` launch
+/// argument): simulated buses must never look real (ship checklist item 1). Uses the Kit's demo alert words.
+struct DemoBanner: View {
+    @Environment(AppModel.self) private var model
+    var body: some View {
+        if model.feedSimulated {
+            HStack(spacing: 10) {
+                Image(systemName: "testtube.2").font(.body.weight(.semibold)).foregroundStyle(Palette.warn)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(DemoFeed.alertHeader).font(.footnote.weight(.bold)).foregroundStyle(Palette.text)
+                    Text("Not real shuttles. Times are made up.").font(.caption).foregroundStyle(Palette.text2)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .combine)
+                Spacer(minLength: 0)
+                if !model.config.demo {
+                    Button { model.setSimulatedBuses(false) } label: {
+                        Text("Turn off").font(.footnote.weight(.bold)).foregroundStyle(Palette.accent)
+                            .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Turn off simulated buses")
+                    .accessibilityIdentifier("demoOff")
+                }
+            }
+            .padding(.leading, 12).padding(.trailing, model.config.demo ? 12 : 4)
+            .padding(.vertical, model.config.demo ? 7 : 0)
+            .frame(minHeight: 44)
+            .background(Palette.warnBg, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                .strokeBorder(Palette.warn.opacity(0.45), lineWidth: 1))
+            .shadow(color: Palette.shadow.opacity(0.12), radius: 4, y: 1)
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("demoBanner")
+        }
     }
 }

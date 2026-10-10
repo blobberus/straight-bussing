@@ -113,7 +113,7 @@ extension AppModel {
     /// Deliver the alerts due now: local notifications when allowed, else the in-app banner (unless in-app
     /// alerts are off). Called after every poll and every bus-alert settings change.
     func checkBusAlerts() {
-        guard !config.demo else { return }
+        guard !feedSimulated else { return }   // never notify about a simulated bus
         let due = busAlerter.due(prefs: notify, staticData: staticData, live: liveState, hidden: hidden,
                                  now: Date().timeIntervalSince1970)
         guard !due.isEmpty else { return }

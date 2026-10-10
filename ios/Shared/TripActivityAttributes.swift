@@ -16,4 +16,7 @@ struct TripActivityAttributes: ActivityAttributes {
     typealias ContentState = LiveTripSnapshot
     /// e.g. "To Chipotle".
     var title: String
+    /// Started while Settings > Simulated buses (demo) was on: the Lock Screen and the Dynamic Island say
+    /// "Simulated (demo)" instead of "est. from live data", so a made-up bus never looks real.
+    var simulated = false
 }

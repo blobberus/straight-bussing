@@ -146,6 +146,8 @@ struct LiveTripLockScreenView: View {
     let title: String
     let state: LiveTripSnapshot
     var isStale = false
+    /// A simulated bus (Settings > Simulated buses): said instead of the live-data source.
+    var simulated = false
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -159,12 +161,13 @@ struct LiveTripLockScreenView: View {
             }
             TripProgressBar(state: state)
             HStack(spacing: 4) {
-                Text(isStale ? "Data delayed, times may be off" : "est. from \(state.live ? "live data" : "the schedule") · as of \(Self.clock(state.asOf))")
+                Text(simulated ? "Simulated buses (demo), not real" : isStale ? "Data delayed, times may be off"
+                     : "est. from \(state.live ? "live data" : "the schedule") · as of \(Self.clock(state.asOf))")
                 Spacer()
                 Text("Unofficial")
             }
-            .font(.caption2)
-            .foregroundStyle(isStale ? Palette.warn : Color.secondary)
+            .font(.caption2.weight(simulated ? .bold : .regular))
+            .foregroundStyle(simulated || isStale ? Palette.warn : Color.secondary)
         }
         .opacity(isStale ? 0.75 : 1)
     }

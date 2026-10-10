@@ -16,12 +16,13 @@ struct LiveActivityPreviewView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                DemoBanner()
                 if let s = snapshot {
                     let title = "To \(model.activeTrip?.label ?? "destination")"
                     label("Lock Screen")
                     // a flat dark stand-in for the wallpaper (the system draws the real one); the frame radii here
                     // copy the system's Lock Screen card and Dynamic Island, not the app's radius scale
-                    LiveTripLockScreenView(title: title, state: s)
+                    LiveTripLockScreenView(title: title, state: s, simulated: model.feedSimulated)
                         .padding(14)
                         .environment(\.colorScheme, .dark)
                         .foregroundStyle(.white)
@@ -53,7 +54,7 @@ struct LiveActivityPreviewView: View {
                         HStack {
                             LiveHeadline(state: s).lineLimit(1)
                             Spacer()
-                            Text("est. · Unofficial")
+                            Text(model.feedSimulated ? "Simulated (demo)" : "est. · Unofficial")
                         }
                         .font(.caption2)
                         .foregroundStyle(Palette.text2)
@@ -72,7 +73,7 @@ struct LiveActivityPreviewView: View {
                                 .frame(minHeight: 44)
                         } else {
                             Button("Start Live Activity") {
-                                model.liveActivity.start(title: title, state: s)
+                                model.liveActivity.start(title: title, state: s, simulated: model.feedSimulated)
                             }
                             .primaryButtonStyle()
                             .controlSize(.large)

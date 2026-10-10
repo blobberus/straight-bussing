@@ -15,7 +15,8 @@ struct StraightBussingWidgets: WidgetBundle {
 struct TripLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TripActivityAttributes.self) { context in
-            LiveTripLockScreenView(title: context.attributes.title, state: context.state, isStale: context.isStale)
+            LiveTripLockScreenView(title: context.attributes.title, state: context.state, isStale: context.isStale,
+                                   simulated: context.attributes.simulated)
                 .padding(14)
                 .environment(\.colorScheme, .dark)
                 .foregroundStyle(.white)
@@ -43,7 +44,7 @@ struct TripLiveActivity: Widget {
                         HStack {
                             LiveHeadline(state: s, isStale: context.isStale).lineLimit(1)
                             Spacer()
-                            Text(context.isStale ? "Data delayed" : "est. · Unofficial")
+                            Text(context.attributes.simulated ? "Simulated (demo)" : context.isStale ? "Data delayed" : "est. · Unofficial")
                         }
                         .font(.caption2)
                         .foregroundStyle(.secondary)

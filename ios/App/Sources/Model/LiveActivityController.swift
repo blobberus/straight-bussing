@@ -10,13 +10,14 @@ final class LiveActivityController {
     var isSupported: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
     var isRunning: Bool { activity != nil }
 
-    /// Start (or restart) the activity for a trip.
-    func start(title: String, state: LiveTripSnapshot) {
+    /// Start (or restart) the activity for a trip. `simulated`: the trip follows a simulated bus (demo).
+    func start(title: String, state: LiveTripSnapshot, simulated: Bool = false) {
         guard isSupported else { return }
         end()
         let content = ActivityContent(state: state, staleDate: Date(timeIntervalSince1970: state.asOf + 120))
         do {
-            activity = try Activity.request(attributes: TripActivityAttributes(title: title), content: content, pushType: nil)
+            activity = try Activity.request(attributes: TripActivityAttributes(title: title, simulated: simulated),
+                                            content: content, pushType: nil)
         } catch {
             activity = nil
         }

@@ -86,4 +86,40 @@ final class SmokeUITests: XCTestCase {
         app.buttons["settingsDone"].tap()
         XCTAssertTrue(app.buttons["searchBar"].waitForExistence(timeout: 10))
     }
+
+    func waitGone(_ e: XCUIElement, _ timeout: TimeInterval, _ why: String) {
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: e)
+        gone.expectationDescription = why
+        wait(for: [gone], timeout: timeout)
+    }
+
+    /// Settings > Simulated buses (demo), the way App Review would use it at night: off by default, the demo banner
+    /// on every screen while on, one tap turns it off. Runs WITHOUT -demo (normal prefs; live feed requests).
+    func testSimulatedBusesSwitch() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.buttons["searchBar"].waitForExistence(timeout: 30), "search bar")
+        XCTAssertFalse(app.buttons["demoOff"].exists, "simulated buses are off by default")
+
+        app.buttons["settingsButton"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
+        let toggle = app.switches["simulatedBuses"]
+        var tries = 0
+        while !(toggle.exists && toggle.isHittable) && tries < 12 { app.swipeUp(); tries += 1 }
+        XCTAssertTrue(toggle.exists && toggle.isHittable, "Settings has the Simulated buses switch")
+        XCTAssertEqual(toggle.value as? String, "0", "off by default")
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()   // the switch, not the label
+        XCTAssertTrue(app.descendants(matching: .any)["demoBanner"].waitForExistence(timeout: 10), "the banner shows in Settings")
+        save(app, "23-simulated-settings-light")
+        app.buttons["settingsDone"].tap()
+
+        let off = app.buttons["demoOff"]
+        XCTAssertTrue(off.waitForExistence(timeout: 10), "the banner shows on the map screen")
+        waitGone(app.buttons["busAlertBanner"], 10, "the confirmation banner goes away")
+        app.buttons["tab.routes"].tap()
+        XCTAssertTrue(off.waitForExistence(timeout: 5), "and on every tab")
+        save(app, "24-simulated-routes-light")
+        off.tap()
+        waitGone(off, 10, "one tap turns simulated buses off")
+    }
 }
