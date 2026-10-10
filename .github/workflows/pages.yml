@@ -1,6 +1,10 @@
 name: Deploy site
 on:
-  push: { branches: [main] }
+  push:
+    branches: [main]
+    # ios/ changes deploy through ios.yml (it re-dispatches this workflow after its simulator preview);
+    # docs and top-level notes are not part of the site
+    paths-ignore: ["ios/**", "docs/**", "*.md"]
   schedule: [{ cron: "17 9 * * *" }]   # daily: refresh schedule data
   workflow_dispatch:
 permissions: { contents: read, pages: write, id-token: write }
@@ -13,7 +17,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: python tools/build_gtfs.py
+      - name: Refresh schedule data (Passio GTFS; keeps the committed web/data on failure)
+        run: |
+          python tools/build_gtfs.py || {
+            echo "::warning title=GTFS refresh failed::deploying the committed web/data/*.json"
+            git checkout -- web/data
+          }
       - name: Refresh campus places (OpenStreetMap; daily run only, keeps the committed copy on failure)
         if: github.event_name == 'schedule'
         run: python tools/build_places.py || echo "places refresh failed; using committed web/data/places.json"

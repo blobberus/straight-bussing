@@ -345,15 +345,17 @@ def main():
         if n and n > best.get(t["route_id"], (0, None))[0]:
             best[t["route_id"]] = (n, t["trip_id"])
     route_stops = {rid: [sid for _, sid in sorted(stimes[tid])] for rid, (_, tid) in best.items()}
+    if not (routes and stops and route_stops):   # an outage page or an empty feed must not wipe web/data
+        sys.exit(f"GTFS zip looks empty ({len(routes)} routes, {len(stops)} stops, {len(route_stops)} routed); "
+                 "web/data left unchanged")
 
-    dump("routes.json", routes)
-    dump("stops.json", stops)
-    dump("shapes.json", dict(shapes))
-    dump("route_stops.json", route_stops)
-    dump("segments.json", {"v": 1, "routes": build_segments(trips, route_stops, sched, rows(z, "frequencies.txt"))})
-    dump("service.json", build_service(z, trips, sched, rows(z, "frequencies.txt")))
-    dump("meta.json", {"generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                       "source": URL})
+    # build everything first, then write: a failure part-way leaves the committed web/data/*.json intact
+    out = {"routes.json": routes, "stops.json": stops, "shapes.json": dict(shapes), "route_stops.json": route_stops,
+           "segments.json": {"v": 1, "routes": build_segments(trips, route_stops, sched, rows(z, "frequencies.txt"))},
+           "service.json": build_service(z, trips, sched, rows(z, "frequencies.txt")),
+           "meta.json": {"generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "source": URL}}
+    for name, obj in out.items():
+        dump(name, obj)
 
     total = 0
     for p in sorted(OUT.glob("*.json")):
