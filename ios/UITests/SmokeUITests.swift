@@ -43,9 +43,21 @@ final class SmokeUITests: XCTestCase {
             XCTAssertTrue(app.buttons["Details"].exists)
             save(app, "12-myroutes-swipe-light")
             app.buttons["Delete"].tap()
-            XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 5), "delete asks for confirmation")
+            // iOS 17/18 show the confirmation as an action sheet with Cancel; iOS 26 as a popover without one
+            // (a tap outside cancels). Either way it asks first and says what will happen.
+            let message = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "This custom route will be removed")).firstMatch
+            let cancel = app.buttons["Cancel"]
+            XCTAssertTrue(message.waitForExistence(timeout: 5) || cancel.exists, "delete asks for confirmation")
             save(app, "13-myroutes-delete-confirm-light")
-            app.buttons["Cancel"].tap()
+            if cancel.exists {
+                cancel.tap()
+            } else if app.otherElements["PopoverDismissRegion"].exists {
+                app.otherElements["PopoverDismissRegion"].tap()
+            } else {
+                // outside the popover, on a spot that is harmless if the tap gets through: the selected tab
+                app.buttons["tab.myroutes"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            }
+            wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: message)], timeout: 5)
             XCTAssertTrue(app.buttons["custom.demo-commute"].waitForExistence(timeout: 5), "cancel keeps the route")
         }
 
