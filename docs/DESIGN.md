@@ -80,7 +80,7 @@ Motion: durations 120 (press/fade), 220 (content swap), 320 (sheet settle). Easi
 ## 5. States
 
 - Loading: skeleton rows (--surface, 1.2s shimmer opacity .6-1; static under reduced motion). Never a spinner on a blank sheet.
-- Empty (no service): "No shuttles running right now" + next service start time if known + link "Official schedule". Show the route list dimmed.
+- Empty (no service): "No shuttles running right now" + next service start time if known + link "Official schedule". Show the route list dimmed. Only when the schedule agrees: if the feed is fresh but empty while a route is scheduled, say "No live locations right now" / "Scheduled, no live location" and name the scheduled routes and end times instead (`docs/ARCHITECTURE.md` "2026-10-10").
 - No arrivals at stop: "No upcoming arrivals" with the last scheduled time.
 - Stale (feed >60s old): amber pill under header: "Live data delayed. Times may be off." ETAs switch to --text-2 and gain "~". After 5 min: replace live badges with "Scheduled" and show "Last live update 6:42 PM".
 - Offline/error: sheet keeps last good data, shows --danger-tinted banner "Can't reach the shuttle feed. Retrying" with Retry button (44px). Never clear lists on a failed poll.

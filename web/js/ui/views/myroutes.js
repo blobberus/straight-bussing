@@ -19,6 +19,7 @@ import { esc } from "../../core/esc.js";
 import { nowS } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
 import { arrivalsFor, staleLevel, runningCount, activeAlerts, liveUnknown } from "../../core/arrivals.js";
+import { scheduledNoLive, noLiveStatus } from "../../core/operating.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { createCustom, applyCustom, clearCustom, updateCustom, deleteCustom, toggleHighlight } from "../../core/custom.js";
 import { routeChip, etaBlock, icon, emptyState, skeleton } from "../components.js";
@@ -179,7 +180,7 @@ export function renderCustom(state, id, now = nowS()) {
   h += '<div class="v-card">';
   for (const rid of rids) {
     const n = runningCount(state, rid), hl = (c.highlight || []).includes(rid), nx = nearestNext(state, rid, now);
-    const run = n ? `${plural(n, "bus")} running` : liveUnknown(state, now) ? "Live status unavailable" : "Not running right now";
+    const run = n ? `${plural(n, "bus")} running` : liveUnknown(state, now) ? "Live status unavailable" : noLiveStatus(state, rid, now) || "Not running right now";
     const next = nx ? ` · ${stale ? "~" : ""}${Math.max(0, Math.floor((nx.t - now) / 60))} min at ${nx.stop}` : "";
     h += `<div class="mr-rrow"><button type="button" class="v-row mr-rmain" data-action="route:open" data-id="${esc(rid)}">${routeChip(rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(longName(rid, state.routes))}</span><span class="v-sec">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(run + next)}</span></span></button>`
       + `<button type="button" class="mr-hl${hl ? " is-on" : ""}" data-action="mr:hl" data-id="${esc(c.id)}" data-rid="${esc(rid)}" aria-pressed="${hl}" aria-label="Highlight ${esc(longName(rid, state.routes))}"><span class="mr-hltick" aria-hidden="true">${CHECK}</span>Highlight</button></div>`;
@@ -200,9 +201,10 @@ function checkRow(rid, state, on) {
  * Render the create/edit form.
  * @param {object} state
  * @param {string|null} id custom route id, null to create
+ * @param {number} [now] unix seconds
  * @returns {string}
  */
-export function renderEditor(state, id) {
+export function renderEditor(state, id, now = nowS()) {
   if (!state.staticLoaded) return skeleton(4);
   const c = id ? findCustom(state, id) : null;
   if (id && !c) return emptyState("Custom route not found", "It may have been deleted.") + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="mr:home">Back to My Routes</button>';
@@ -212,12 +214,13 @@ export function renderEditor(state, id) {
   const name = c ? c.name : `My route ${k}`;
   const sel = new Set(c ? c.rids : []);
   const all = Object.keys(state.routes || {});
-  const running = all.filter((r) => runningCount(state, r) > 0), idle = all.filter((r) => !running.includes(r));
+  const unknown = liveUnknown(state, now), running = all.filter((r) => runningCount(state, r) > 0);   // scheduled + silent is never "Not running"
+  const sched = unknown ? [] : all.filter((r) => !running.includes(r) && scheduledNoLive(state, r, now)), idle = all.filter((r) => !running.includes(r) && !sched.includes(r));
   const group = (title, list) => list.length ? `<fieldset class="mr-fs"><legend class="mr-label">${title}</legend><div class="v-card">${list.map((r) => checkRow(r, state, sel.has(r))).join("")}</div></fieldset>` : "";
   return `<form class="mr mr-edit" data-form="mr-edit" data-id="${esc(c ? c.id : "")}" novalidate>`
     + `<label class="mr-label" for="mr-name">Name</label><input id="mr-name" class="mr-input" type="text" name="name" maxlength="60" autocomplete="off" enterkeyhint="done" value="${esc(name)}">`
     + '<p class="mr-label mr-routesq">Routes</p><p class="mr-err" role="alert" data-region="mr-err"></p>'   // error next to what it is about
-    + `${group("Running now", running)}${group("Not running", idle)}`
+    + `${group("Running now", running)}${group("Scheduled, no live location", sched)}${group(unknown ? "Live status unknown" : "Not running", idle)}`
     + '<div class="v-actions"><button type="button" class="v-btn v-btn--secondary" data-action="mr:cancel">Cancel</button><button type="submit" class="v-btn v-btn--primary">Save</button></div>'
     + (c ? `<button type="button" class="v-btn v-btn--quiet v-btn--block mr-danger mr-editdel" data-action="mr:del" data-id="${esc(c.id)}" data-from="edit">${TRASH}Delete custom route</button>` : "") + "</form>";
 }

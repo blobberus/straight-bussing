@@ -320,6 +320,30 @@ test("status pill: failing feed shows the error pill with Retry; recovery hides 
   await waitFor(() => $("#pill").hidden && !state().failed, "pill hidden after recovery");
 });
 
+// Rider safety (2026-10-10): a fresh feed with no vehicles while a route is scheduled is not "no shuttles running".
+test("status pill: an empty feed while a route is scheduled says no bus reports a location, never 'no shuttles running'", async () => {
+  const svc = state().service, feed = T.feed, rid = T.R;
+  const days = (d) => ({ days: { mon: d, tue: d, wed: d, thu: d, fri: d, sat: d, sun: d }, exceptions: [] });
+  const poll = () => W.dispatchEvent(new W.Event("online"));
+  T.feed = (name) => (name === "serviceAlerts" ? feed(name) : { header: { gtfs_realtime_version: "2.0", timestamp: Math.floor(Date.now() / 1000) }, entity: [] });
+  try {
+    SB.store.set({ service: { routes: { [rid]: days({ first: "00:00", last: "24:00", trips: 1, buses: Array(24).fill(1) }) } } });   // scheduled all day
+    poll();
+    await waitFor(() => !$("#pill").hidden && txt($("#pillText")) === "No shuttles are reporting live locations", "silent-service pill");
+    tab("routes");
+    await waitFor(() => /Scheduled, no live location/.test(txt(content())) && /No live locations right now/.test(txt(content())), "Routes: scheduled group + banner");
+    ok(!/No shuttles running/.test(txt(content())), "Routes never claims no service: " + txt(content()).slice(0, 200));
+    SB.store.set({ service: { routes: { [rid]: days(null) } } });   // nothing scheduled now: the honest case
+    await waitFor(() => txt($("#pillText")) === "No shuttles running right now", "no-service pill");
+  } finally {
+    T.feed = feed;
+    SB.store.set({ service: svc });
+    poll();
+    tab("nearby");
+  }
+  await waitFor(() => $("#pill").hidden && state().buses.length, "live buses back, pill hidden");
+});
+
 test("settings gear: top-right, labeled, 44px target, clear of the locate button", async () => {
   const g = $("#settingsBtn"), loc = $("#locateBtn");
   ok(g && g.getAttribute("aria-label") === "Settings" && g.dataset.action === "settings:open", "gear button");

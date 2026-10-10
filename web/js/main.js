@@ -9,6 +9,7 @@ import { bus } from "./core/events.js";
 import { nowS, clock } from "./core/time.js";
 import { hav } from "./core/geo.js";
 import { staleLevel } from "./core/arrivals.js";
+import { silentService } from "./core/operating.js";
 import { mapVisibility } from "./core/visibility.js";
 import { createMap } from "./map/map.js";
 import { loadStatic } from "./data/static.js";
@@ -163,8 +164,8 @@ function renderPill(s, now) {
     msg = `Live data is out of date${s.feedTs ? " (last update " + clock(s.feedTs) + ")" : ""}. Times are approximate.`;
   } else if (lvl === "late") {
     kind = "warn"; msg = "Live data delayed. Times may be off.";
-  } else if (s.liveLoaded && !(s.buses || []).length) {
-    kind = "info"; msg = "No shuttles running right now";
+  } else if (s.liveLoaded && !(s.buses || []).length) {   // fresh, empty feed: "no shuttles" only if the schedule agrees
+    [kind, msg] = silentService(s, now) ? ["warn", "No shuttles are reporting live locations"] : ["info", "No shuttles running right now"];
   }
   const sig = kind + "|" + msg + "|" + retry;
   if (sig === pillSig) return;
@@ -252,8 +253,7 @@ function render() {
   if (!def) return;
   const key = id + "|" + (s.stopId || "") + "|" + (s.routeId || "");
   if (def !== cur.def || (def.mount && key !== cur.key)) return switchView(id, def, key, s);
-  // Views with mount() own their DOM after mounting (store subscription + in-place patches).
-  // Rebuilding them here would replace a button between pointerdown and click, losing the tap.
+  // Views with mount() own their DOM (store subscription + patches): a rebuild here would replace a button mid-tap.
   if (def.mount) return;
   if ((dirty = inputFocused())) return;
   const html = renderView(def, s);

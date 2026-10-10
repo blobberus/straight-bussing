@@ -1,27 +1,25 @@
 /**
  * @module ui/views/routes
- * Routes list. Top to bottom: a quiet "Edit map order" button (the first control on the tab), the
- * custom-route / journey bar, the optional filter chip "Routes to <station> x" (set from the Plan Trip
- * tab's station picker), Show all / Hide all, then Running / Not running / Hidden groups with a
- * per-route eye toggle that writes store.hiddenRoutes (persisted by state.js; honored by map,
- * arrivals and Nearby). "Routes to station..." and "Directions" live on the Plan Trip tab, not here.
- *
- * v2.1: a custom-route bar ("Make this a custom route" with an inline name field, or "Showing <name>"
- * with Clear / Update / Save as new), a journey note ("Only showing routes for <label>"), and an
- * "Edit map order" mode: drag a row by its grip (routes-drag.js) or use Move up / Move down
- * (store.routeOrder, drawn top-first). The official service phone and page always sit at the bottom.
- *
- * The view mounts and owns its DOM: two regions are patched in place on store changes
- * ([data-region="routes-top"], [data-region="routes-body"]); the top region is never touched while
- * its name field has focus, so typing is never interrupted by live updates.
+ * Routes list: "Edit map order" (first control), the custom-route / journey bar, the optional filter chip
+ * "Routes to <station> x" (Plan Trip's station picker), Show all / Hide all, then the groups Running /
+ * Scheduled, no live location / Not running / Hidden, each row with an eye toggle (store.hiddenRoutes,
+ * persisted; honored by map, arrivals and Nearby). A scheduled route with no reporting bus is never "Not
+ * running" (core/operating.js, rider safety). The official service phone and page sit at the bottom.
+ * v2.1: custom-route bar ("Make this a custom route" + inline name field, or "Showing <name>" with Clear /
+ * Update / Save as new), journey note, "Edit map order" mode (drag by the grip, routes-drag.js, or Move
+ * up / down; store.routeOrder, drawn top-first).
+ * The view mounts and owns its DOM: regions [data-region="routes-top"] and [data-region="routes-body"] are
+ * patched in place on store changes; the top is never touched while its name field has focus.
  */
 import { registerView } from "../router.js";
 import { registerAction, setHTMLKeepFocus } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { runningCount, liveUnknown } from "../../core/arrivals.js";
+import { scheduledNoLive, noLiveStatus, silentService, silentText } from "../../core/operating.js";
+import { nowS } from "../../core/time.js";
 import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibility.js";
 import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, cleanName } from "../../core/custom.js";
-import { routeChip, emptyState, skeleton } from "../components.js";
+import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { OFFICIAL_HTML } from "./pick.js";
 import { stationToggleHTML } from "./journey.js";
 import { attachOrderDrag } from "./routes-drag.js";
@@ -35,8 +33,7 @@ const DOWN = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke
 
 /** View-local UI state (not in the store). mode: 'list' | 'order'. */
 const R = { mode: "list", naming: false, draft: "" };
-let rootRef = null, ctxRef = null, offStore = null, lastTop = null, lastBody = null, pendingFocus = null;
-let detachDrag = null, dragging = false;
+let rootRef = null, ctxRef = null, offStore = null, lastTop = null, lastBody = null, pendingFocus = null, detachDrag = null, dragging = false;
 
 /**
  * Route ids sorted by short name (numeric aware), restricted to the active station filter.
@@ -52,15 +49,17 @@ export function routeIds(state) {
 }
 
 /**
- * Group routes into running / not running / hidden (hidden = effectiveHidden: journey or user list).
+ * Group routes: running / scheduled with no live bus ([] in a feed outage) / not running / hidden (effectiveHidden).
  * @param {object} state
- * @returns {{running:string[], idle:string[], hidden:string[]}}
+ * @param {number} [now] unix seconds
+ * @returns {{running:string[], scheduled:string[], idle:string[], hidden:string[]}}
  */
-export function groupRoutes(state) {
-  const hiddenSet = new Set(effectiveHidden(state)), out = { running: [], idle: [], hidden: [] };
+export function groupRoutes(state, now = nowS()) {
+  const hiddenSet = new Set(effectiveHidden(state)), unknown = liveUnknown(state, now), out = { running: [], scheduled: [], idle: [], hidden: [] };
   for (const id of routeIds(state)) {
     if (hiddenSet.has(id)) out.hidden.push(id);
     else if (runningCount(state, id) > 0) out.running.push(id);
+    else if (!unknown && scheduledNoLive(state, id, now)) out.scheduled.push(id);   // never "Not running"
     else out.idle.push(id);
   }
   return out;
@@ -79,10 +78,10 @@ export function filterChipHTML(state) {
 
 const nameOf = (state, id) => { const r = state.routes?.[id] || {}; return r.long || r.short || id; };
 
-function row(state, id, hidden) {
+function row(state, id, hidden, now) {
   const r = state.routes[id] || {}, n = runningCount(state, id), name = nameOf(state, id);
   const tripOff = hidden && !!state.journey && !(state.hiddenRoutes || []).includes(id);   // hidden only by the journey
-  const status = tripOff ? "Not part of this trip" : hidden ? "Hidden from map and times" : n ? `${n} bus${n > 1 ? "es" : ""} running` : liveUnknown(state) ? "Live status unknown" : "Not running";
+  const status = tripOff ? "Not part of this trip" : hidden ? "Hidden from map and times" : n ? `${n} bus${n > 1 ? "es" : ""} running` : liveUnknown(state, now) ? "Live status unknown" : noLiveStatus(state, id, now) || "Not running";
   const eye = tripOff ? "" : `<button type="button" class="v-eye" data-action="routes:toggle" data-id="${esc(id)}" aria-pressed="${hidden ? "false" : "true"}" aria-label="${hidden ? "Show" : "Hide"} route ${esc(r.short || "")} ${esc(name)}">${hidden ? EYEOFF : EYE}</button>`;
   return `<div class="v-routerow${hidden ? " is-off" : ""}"><button type="button" class="v-row v-rowmain" data-action="route:open" data-id="${esc(id)}">${routeChip(id, state.routes)}<span class="v-grow"><span class="v-prim">${esc(name)}</span><span class="v-sec">${n && !hidden ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(status)}</span></span></button>${eye}</div>`;
 }
@@ -153,12 +152,12 @@ export function orderHTML(state) {
  * Show all / Hide all for the routes in the list (the station filter's routes when one is set).
  * Not offered during a journey (its bar has its own Show all).
  * @param {object} state
- * @param {{running:string[], idle:string[], hidden:string[]}} g groupRoutes(state)
+ * @param {{running:string[], scheduled:string[], idle:string[], hidden:string[]}} g groupRoutes(state)
  * @returns {string}
  */
 export function bulkHTML(state, g) {
   if (state.journey) return "";
-  const shown = g.running.length + g.idle.length, scope = state.routeFilter ? " at this station" : "";
+  const shown = g.running.length + g.scheduled.length + g.idle.length, scope = state.routeFilter ? " at this station" : "";
   return `<div class="rt-bulk" role="group" aria-label="All routes${scope}">`
     + `<button type="button" class="v-btn v-btn--quiet" data-action="routes:show-all"${g.hidden.length ? "" : " disabled"}>Show all<span class="v-sr"> routes${scope}</span></button>`
     + `<button type="button" class="v-btn v-btn--quiet" data-action="routes:hide-all"${shown ? "" : " disabled"}>Hide all<span class="v-sr"> routes${scope}</span></button></div>`;
@@ -177,38 +176,39 @@ export function toolsHTML(state) {
 /**
  * The list body (normal mode).
  * @param {object} state
+ * @param {number} [now] unix seconds
  * @returns {string}
  */
-export function listHTML(state) {
+export function listHTML(state, now = nowS()) {
   if (!state.staticLoaded) return skeleton(5);
-  const g = groupRoutes(state);
+  const g = groupRoutes(state, now);
   let h = filterChipHTML(state);
-  const total = g.running.length + g.idle.length + g.hidden.length;
-  if (!total) {
-    return h + (state.routeFilter ? emptyState("No routes at this station", "Clear the filter to see every route.") : emptyState("No routes", "The schedule data did not load. Reload the app.") + OFFICIAL_HTML);
-  }
-  const unknown = liveUnknown(state);   // feed unreachable: we cannot say a route is not running
+  const total = g.running.length + g.scheduled.length + g.idle.length + g.hidden.length;
+  if (!total) return h + (state.routeFilter ? emptyState("No routes at this station", "Clear the filter to see every route.") : emptyState("No routes", "The schedule data did not load. Reload the app.") + OFFICIAL_HTML);
+  const unknown = liveUnknown(state, now), empty = state.liveLoaded && !(state.buses || []).length;   // unknown: feed unreachable, we cannot say a route is not running
   if (unknown && !state.routeFilter) h += emptyState("Live bus status unavailable", "Can't reach the shuttle feed. Routes are listed below for reference.");
-  else if (state.liveLoaded && !(state.buses || []).length && !state.routeFilter) h += emptyState("No shuttles running right now", "Routes are listed below for reference.");
+  else if (empty && !state.routeFilter) h += silentService(state, now) ? emptyState("No live locations right now", silentText(state, g.scheduled, now, OFFICIAL_PHONE)) : emptyState("No shuttles running right now", "Routes are listed below for reference.");
   h += bulkHTML(state, g);
-  const group = (title, ids, hidden, cls) => (ids.length ? `<h3 class="v-h">${title}</h3><div class="v-list${cls ? " " + cls : ""}">${ids.map((i) => row(state, i, hidden)).join("")}</div>` : "");
+  const group = (title, ids, hidden, cls) => (ids.length ? `<h3 class="v-h">${title}</h3><div class="v-list${cls ? " " + cls : ""}">${ids.map((i) => row(state, i, hidden, now)).join("")}</div>` : "");
   h += group("Running", g.running, false, "");
-  h += group(unknown ? "Live status unknown" : "Not running", g.idle, false, state.liveLoaded && !(state.buses || []).length ? "is-dim" : "");
+  h += group("Scheduled, no live location", g.scheduled, false, "");
+  h += group(unknown ? "Live status unknown" : "Not running", g.idle, false, empty ? "is-dim" : "");
   h += group(state.journey ? "Not on this trip" : "Hidden", g.hidden, true, "");
   return h + `<div class="rt-official">${OFFICIAL_HTML}</div>`;
 }
 
 /** Top region: Edit map order first, then the custom-route / journey bar (empty in order mode). */
 function topRegion(state) { return R.mode === "order" ? "" : toolsHTML(state) + topBarHTML(state); }
-function bodyRegion(state) { return R.mode === "order" && state.staticLoaded ? orderHTML(state) : listHTML(state); }
+function bodyRegion(state, now) { return R.mode === "order" && state.staticLoaded ? orderHTML(state) : listHTML(state, now); }
 
 /**
  * Render the routes view (both regions).
  * @param {object} state
+ * @param {number} [now] unix seconds
  * @returns {string}
  */
-export function renderRoutes(state) {
-  return `<div data-region="routes-top">${topRegion(state)}</div><div data-region="routes-body">${bodyRegion(state)}</div>`;
+export function renderRoutes(state, now = nowS()) {
+  return `<div data-region="routes-top">${topRegion(state)}</div><div data-region="routes-body">${bodyRegion(state, now)}</div>`;
 }
 
 /**

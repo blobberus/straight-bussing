@@ -179,7 +179,7 @@ test("stop: stale, empty, hidden, missing", () => {
 test("routes: actions, groups, eye toggles", () => {
   const s = fixture({ hiddenRoutes: ["R3"], buses: fixture().buses.slice(0, 1) });
   const g = groupRoutes(s);
-  eq(g, { running: ["R1"], idle: ["R2"], hidden: ["R3"] });
+  eq(g, { running: ["R1"], scheduled: [], idle: ["R2"], hidden: ["R3"] });
   const h = renderRoutes(s);
   ok(!h.includes('data-action="pick:open"') && !h.includes('data-action="dir:open"'), "Routes to station / Directions are not on Routes");
   ok(h.indexOf(">Running<") < h.indexOf(">Not running<") && h.indexOf(">Not running<") < h.indexOf(">Hidden<"));

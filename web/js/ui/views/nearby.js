@@ -18,7 +18,8 @@ import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { nowS, minsUntil } from "../../core/time.js";
 import { arrivalsFor, staleLevel, liveUnknown } from "../../core/arrivals.js";
-import { routeChip, etaBlock, arrivalRow, emptyState, skeleton } from "../components.js";
+import { routeChip, etaBlock, arrivalRow, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
+import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
 import { stopsNear, matchStations, walkText, OFFICIAL_HTML, ICONS } from "./pick.js";
 import { createPlaceSearch, placeListHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
 import { effectiveHidden } from "../../core/visibility.js";
@@ -55,6 +56,9 @@ const NO_LIVE = "Live times unavailable";
 function noService(state, now) {
   // a feed outage is not a service outage: never claim "no shuttles" without live data
   if (liveUnknown(state, now)) return emptyState(NO_LIVE, "Can't reach the shuttle feed, so we can't tell which shuttles are running. Check with the official service.") + OFFICIAL_HTML;
+  if ((state.buses || []).length) return emptyState("No upcoming arrivals", "No bus on your visible routes has a predicted arrival right now.") + OFFICIAL_HTML;
+  // fresh but empty feed while routes are scheduled: GPS off or service ended early, we can't tell (rider safety)
+  if (silentService(state, now)) return emptyState("No live locations right now", silentText(state, scheduledRoutes(state, now, { hidden: effectiveHidden(state) }), now, OFFICIAL_PHONE)) + OFFICIAL_HTML;
   return emptyState("No shuttles running right now", "Check the official schedule for service hours.") + OFFICIAL_HTML;
 }
 
@@ -97,7 +101,7 @@ function stopCard(state, s, now, max, hero, guide) {
   let body;
   if (!arr) body = skeleton(1);
   else if (arr.length) body = arr.map((a) => (guide ? guidedRow(a, state, now, walkM) : arrivalRow(a, state, { now, action: "route:open" }))).join("");
-  else body = `<div class="v-none"><span class="v-sec">${liveUnknown(state, now) ? NO_LIVE : "No upcoming arrivals"}</span><span class="v-chips">${rs.map((r) => routeChip(r, state.routes)).join("")}</span></div>`;
+  else body = `<div class="v-none"><span class="v-sec">${liveUnknown(state, now) ? NO_LIVE : silentService(state, now) ? "No live times right now" : "No upcoming arrivals"}</span><span class="v-chips">${rs.map((r) => routeChip(r, state.routes)).join("")}</span></div>`;
   return `<section class="v-card${hero ? " v-hero" : ""}">${head}${body}</section>`;
 }
 
@@ -110,7 +114,7 @@ function stopCard(state, s, now, max, hero, guide) {
 export function favoritesHTML(state, now = nowS()) {
   const ids = (state.favStops || []).filter((id) => state.stops?.[id]);
   if (!ids.length) return "";
-  const hidden = effectiveHidden(state), stale = isStale(state, now), unknown = liveUnknown(state, now);
+  const hidden = effectiveHidden(state), stale = isStale(state, now), unknown = liveUnknown(state, now) || silentService(state, now);
   const rows = ids.slice(0, FAV_MAX).map((id) => {
     const name = state.stops[id].name || id;
     const a = state.liveLoaded ? arrivalsFor(state, id, { hidden, nowS: now })[0] : null;
@@ -130,7 +134,7 @@ function nearList(state, point, now, guide) {
   let h = stopCard(state, near[0], now, 3, true, guide);
   if (near.length > 1) h += '<h3 class="v-h">Also nearby</h3>' + near.slice(1).map((s) => stopCard(state, s, now, 1, false, guide)).join("");
   if (guide) h += '<p class="v-fine pt-walknote">Leave times use a walking estimate (80 m a minute) and live bus times. Allow extra time.</p>';
-  return h;
+  return h + (silentService(state, now) ? noService(state, now) : "");   // say why the cards have no times
 }
 
 function soonList(state, now) {

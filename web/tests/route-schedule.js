@@ -1,6 +1,6 @@
 // core/schedule.js unit tests.
 import { test, eq, ok } from "./lib.js";
-import { localParts, clock12, dayKey, hoursOn, weekSummary, busesByHour, upcomingChanges, isScheduledNow, groupHours, hourLabel, routeService } from "../js/core/schedule.js";
+import { localParts, clock12, dayKey, hoursOn, weekSummary, busesByHour, upcomingChanges, isScheduledNow, scheduledUntil, groupHours, hourLabel, routeService } from "../js/core/schedule.js";
 import { serviceFixture, utc } from "./route-fixtures.js";
 
 const S = serviceFixture();
@@ -51,6 +51,16 @@ test("schedule: isScheduledNow includes the after-midnight tail of yesterday", (
   eq(isScheduledNow(S, "D", utc("2026-10-08T15:00:00Z")), true);
   eq(isScheduledNow(S, "D", utc("2026-11-26T16:00:00Z")), false, "holiday removed");
   eq(isScheduledNow(S, "zz", 0), null);
+});
+
+test("schedule: scheduledUntil = end of the window running now (after-midnight tail too)", () => {
+  eq(scheduledUntil(S, "N", utc("2026-10-08T07:00:00Z")), "28:29", "2 AM Thu: Wed night service until 4:29 AM");
+  eq(clock12(scheduledUntil(S, "N", utc("2026-10-08T22:00:00Z"))), "4:29 AM", "5 PM: tonight's window");
+  eq(scheduledUntil(S, "D", utc("2026-10-08T15:00:00Z")), "19:25");
+  eq(scheduledUntil(S, "D", utc("2026-10-10T16:00:00Z")), "14:00", "added Saturday service");
+  eq(scheduledUntil(S, "N", utc("2026-10-08T15:00:00Z")), null, "10 AM: not scheduled");
+  eq(scheduledUntil(S, "D", utc("2026-11-26T16:00:00Z")), null, "holiday removed");
+  eq(scheduledUntil(S, "zz", 0), null, "no schedule data");
 });
 
 test("schedule: busesByHour in service-day order + groupHours", () => {

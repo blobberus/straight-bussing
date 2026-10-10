@@ -107,6 +107,12 @@ export function searchPlaces(q, {signal}): Promise<{items:[{label, sub, lat, lon
 export const STALE_S = 300
 export function isOperating(bus, {routes, service, trips, feedTs, nowS, staticLoaded}): boolean   // fresh (<= 5 min older than the FEED), known route, and route scheduled now OR trip has a live prediction >= now-60
 export function operatingBuses(buses, ctx): bus[]   // data/live.js filters store.buses with it (opts.now injectable for tests)
+// 2026-10-10 silent service (rider safety): a fresh feed with no vehicle while routes are scheduled is NOT "no shuttles running"
+export function scheduledRoutes(state, nowS, {hidden?, among?}?): rid[]   // scheduled now (service.json; no data = not counted), data order
+export function silentService(state, nowS): boolean   // liveLoaded, no operating bus, not liveUnknown, >= 1 route (visible or not) scheduled now
+export function scheduledNoLive(state, rid, nowS): boolean   // scheduled now, no operating bus on it (callers check liveUnknown first)
+export function noLiveStatus(state, rid, nowS): string|null  // 'Scheduled until 4:29 AM, no live location'
+export function silentText(state, rids, nowS, phone?): string   // plain text (escape it): names <= 3 routes + scheduled end, else counts; [] = hidden only
 ```
 ```js
 // core/arrivals.js  (pure, takes state slices)
@@ -252,6 +258,7 @@ weekSummary(service, rid): [{days:'Mon–Fri', label:'7:00 AM – 11:30 PM'}|{da
 busesByHour(service, rid, dayKey): [{hour, buses}]  // only hours with service
 upcomingChanges(service, rid, unixS, horizonDays=30): [{date, label:'Thu, Nov 26', text:'No service'|'Extra service'}]
 isScheduledNow(service, rid, unixS): boolean|null
+scheduledUntil(service, rid, unixS): 'HH:MM'|null   // end of the window running now (may be >= 24:00; clock12 formats it)
 ```
 
 ### Ownership for v2.1 (in addition to the table above; never edit files you do not own)
@@ -322,3 +329,18 @@ Escape / backdrop cancel; settles from the button itself, not the async close ev
 - Context bar (`ui/contextbar.js`): text that does not fit scrolls Apple Music style (`startMarquee(el, {reduced})`, Web Animations
   on `.ctx-run`): rests `MARQUEE.restMs` (3.5 s) at the start, glides at `MARQUEE.pxPerS` (32) until an aria-hidden copy sits where
   the text began, loops; re-measured on draw and resize (ResizeObserver); mouse hover pauses; still (ellipsis) with reduced motion.
+
+### 2026-10-10: empty live feed during scheduled service (rider safety)
+Collected data showed the Passio feed fresh but empty from about midnight to 4:30 AM while service.json has the night routes
+(North / South / East) in service until ~4:29 AM: the buses run without GPS, or service ends early; we cannot tell which. Wording
+(web `core/operating.js` + iOS Kit `Operating`, same text):
+- **Scheduled, silent** (`silentService`): pill (warn) "No shuttles are reporting live locations"; Current trip / Directions empty state
+  "No live locations right now" + `silentText` ("The schedule shows the North and East routes in service until 4:29 AM and the South
+  route until 4:25 AM, but no bus is sending its location, so we can't confirm they're running. Call 773.702.8181 before you rely on
+  them.") + official link; stop cards "No live times right now"; stop view names only that stop's visible scheduled routes; Routes
+  group "Scheduled, no live location" with rows "Scheduled until 4:29 AM, no live location" (also per route while other buses run);
+  route detail status the same + one explaining line; My Routes rows and editor group likewise.
+- **Nothing scheduled now** (fresh feed, no bus): "No shuttles running right now" (the honest case, unchanged).
+- **Feed outage** (`liveUnknown`): unchanged ("Live times unavailable", "Live status unknown"); it wins over the rules above.
+Hidden routes still prevent the "no shuttles" claim but are not named ("Some hidden routes are scheduled now, ..."). `renderRoutes`,
+`listHTML`, `groupRoutes` (now `{running, scheduled, idle, hidden}`) and `renderEditor` take an optional `now` (tests).

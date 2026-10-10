@@ -20,11 +20,13 @@ import { esc } from "../../core/esc.js";
 import { nowS, clock } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
 import { staleLevel, liveUnknown } from "../../core/arrivals.js";
+import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
+import { effectiveHidden } from "../../core/visibility.js";
 import { plan, refineWalking, PLANNER } from "../../core/planner.js";
 import { rankOptions, criteriaText } from "../../core/rank.js";
 import { walkRoute } from "../../core/walk.js";
 import { predict } from "../../core/predict.js";
-import { routeChip, emptyState, skeleton } from "../components.js";
+import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { matchStations, OFFICIAL_HTML, ICONS } from "./pick.js";
 import { createPlaceSearch, assumeNoteHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
 import { planJourney, sameRids, isPlanJourney, tripBarHTML } from "./journey.js";
@@ -139,7 +141,8 @@ export function resHTML(state, now = nowS()) {
   if (!r.options.length) {
     const running = (state.buses || []).length > 0;
     h += liveUnknown(state, now) ? emptyState("Can't plan shuttle trips right now", "The live shuttle feed can't be reached, so we can't tell which buses are running.")   // feed outage != no service
-      : emptyState("No practical shuttle route right now", D.missed ? "The next buses leave before you could reach the stop." : running ? "Nothing runs close enough to both places." : "No shuttles are running right now.");
+      : emptyState("No practical shuttle route right now", D.missed ? "The next buses leave before you could reach the stop." : running ? "Nothing runs close enough to both places."
+        : silentService(state, now) ? silentText(state, scheduledRoutes(state, now, { hidden: effectiveHidden(state) }), now, OFFICIAL_PHONE) : "No shuttles are running right now.");   // empty feed, routes scheduled
     h += `<div class="v-opt is-on"><div class="v-optmain"><span class="v-otop"><span class="v-otot">${mins(w.min)}<small> min</small></span>${walkTag}<span class="v-oarr">Arrive ${esc(clock(now + (w.min || 0) * 60))}</span></span><span class="v-osum"><span class="v-wk">${WALK_IC}Walk the whole way</span><span class="v-sec">${Math.round(w.m || 0)} m</span></span></div></div>`;
     return h + (running ? "" : OFFICIAL_HTML);
   }

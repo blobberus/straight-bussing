@@ -12,7 +12,8 @@ import { nowS, ago, clock } from "../../core/time.js";
 import { arrivalsFor, staleLevel, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { toggleFav } from "../../core/custom.js";
-import { routeChip, arrivalRow, emptyState, skeleton } from "../components.js";
+import { routeChip, arrivalRow, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
+import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
 import { OFFICIAL_HTML } from "./pick.js";
 
 /** Max arrivals listed on the stop screen. */
@@ -72,9 +73,11 @@ export function renderStop(state, now = nowS()) {
     const arr = arrivalsFor(state, id, { hidden, nowS: now }).slice(0, MAX_ARRIVALS);
     if (arr.length) h += '<div class="v-arrivals">' + arr.map((a) => arrivalRow(a, state, { now, action: "route:open" })).join("") + "</div>";
     else {
-      const running = (state.buses || []).length > 0;
+      const running = (state.buses || []).length > 0, silent = !running && silentService(state, now);   // empty feed, routes scheduled
+      const here = silent ? scheduledRoutes(state, now, { among: shown }) : [];
       h += liveUnknown(state, now) ? emptyState("Live times unavailable", "Can't reach the shuttle feed, so we can't tell when the next bus comes.")   // feed outage != no service
-        : emptyState("No upcoming arrivals", running ? "Nothing is predicted at this stop right now." : "No shuttles are running right now.");
+        : here.length ? emptyState("No live times right now", silentText(state, here, now, OFFICIAL_PHONE))
+        : emptyState("No upcoming arrivals", running ? "Nothing is predicted at this stop right now." : silent ? "No visible route at this stop is scheduled right now." : "No shuttles are running right now.");
       if (!running) h += OFFICIAL_HTML;
     }
   }

@@ -187,6 +187,13 @@ export function upcomingChanges(service, rid, unixS, horizonDays = 30) {
   });
 }
 
+/** The service window [from, to] containing unixS: today's, else yesterday's after-midnight tail; or null. */
+function windowAt(r, unixS) {
+  const p = localParts(unixS);
+  const find = (day, t) => spansOf(day).find(([a, b]) => t >= mins(a) && t < mins(b)) || null;
+  return find(dayFor(r, isoDate(p)).day, p.min) || find(dayFor(r, isoDate(p, -1)).day, p.min + 1440);
+}
+
 /**
  * Is the route scheduled to run at unixS? Checks today's windows and yesterday's after-midnight tail.
  * @param {object} service
@@ -196,10 +203,19 @@ export function upcomingChanges(service, rid, unixS, horizonDays = 30) {
  */
 export function isScheduledNow(service, rid, unixS) {
   const r = routeService(service, rid);
-  if (!r) return null;
-  const p = localParts(unixS);
-  const inside = (day, t) => spansOf(day).some(([a, b]) => t >= mins(a) && t < mins(b));
-  return inside(dayFor(r, isoDate(p)).day, p.min) || inside(dayFor(r, isoDate(p, -1)).day, p.min + 1440);
+  return r ? !!windowAt(r, unixS) : null;
+}
+
+/**
+ * End of the scheduled service window the route is in at unixS (format it with clock12).
+ * @param {object} service
+ * @param {string} rid
+ * @param {number} unixS
+ * @returns {string|null} 'HH:MM' (may be >= 24:00, after midnight); null when not scheduled now or no data
+ */
+export function scheduledUntil(service, rid, unixS) {
+  const r = routeService(service, rid), w = r && windowAt(r, unixS);
+  return w ? w[1] : null;
 }
 
 /**

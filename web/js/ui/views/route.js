@@ -14,7 +14,8 @@ import { hav } from "../../core/geo.js";
 import { arrivalsFor, staleLevel, runningCount, activeAlerts, alertText, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { hoursOn, isScheduledNow, weekSummary, upcomingChanges, busesByHour, groupHours, hourLabel, dayKey, routeService } from "../../core/schedule.js";
-import { emptyState, skeleton } from "../components.js";
+import { emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
+import { noLiveStatus } from "../../core/operating.js";
 import { OFFICIAL_HTML } from "./pick.js";
 
 const STALE_BUS_S = 60;
@@ -131,8 +132,10 @@ function renderBuses(svc, rid, now) {
 
 /** Status line under the title: buses running + today's scheduled hours. */
 function statusHtml(state, rid, r, n, now) {
-  const idle = liveUnknown(state, now) ? "Live status unavailable" : "Not running right now";   // a feed outage is not "not running"
-  let h = `<p class="v-status">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${n ? `${n} bus${n > 1 ? "es" : ""} running` : idle}${r.short && r.long ? ` &middot; <span class="v-sec">${esc(r.short)}</span>` : ""}</p>`;
+  const unknown = liveUnknown(state, now), quiet = !n && !unknown && noLiveStatus(state, rid, now);   // scheduled, silent: not "not running"
+  const idle = unknown ? "Live status unavailable" : quiet || "Not running right now";   // a feed outage is not "not running"
+  let h = `<p class="v-status">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${n ? `${n} bus${n > 1 ? "es" : ""} running` : esc(idle)}${r.short && r.long ? ` &middot; <span class="v-sec">${esc(r.short)}</span>` : ""}</p>`;
+  if (quiet) h += `<p class="v-sec r-nolive">${esc(`No bus on this route is sending its location, so we can't confirm it's running. Call ${OFFICIAL_PHONE} before you rely on it.`)}</p>`;
   const today = hoursOn(state.service, rid, now);
   if (today) {
     const on = isScheduledNow(state.service, rid, now);
