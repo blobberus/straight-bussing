@@ -30,9 +30,9 @@ export function renderAbout() {
 <div class="v-theme" data-region="theme"></div>
 <h3 class="v-h">Privacy</h3>
 <ul class="v-plain">
-  <li>No account, no ads, no tracking. Your location, if you allow it, is used on this device and never stored or shared. The one exception: when you ask for directions, the rounded start of a walking leg can be your location (see Walking directions).</li>
+  <li>No account, no ads, no tracking. Your location, if you allow it, is used on this device; your live location is never stored or sent anywhere. The one exception: when you ask for directions, the rounded start of a walking leg can be your location (see Walking directions).</li>
   <li>Place search: station names and places within a 30-minute walk of campus stops are searched on your device, including spelling fixes. Only when that finds fewer than 5 matches, or when you tap “Search for … instead”, is text sent to <b>photon.komoot.io</b> (OpenStreetMap geocoder): the text you typed, or its spelling fix when results are shown for the fix, and nothing else.</li>
-  <li>Walking directions: the start and end of each walking leg, rounded to about 10 m, are sent to <b>routing.openstreetmap.de</b> (or <b>valhalla1.openstreetmap.de</b> if that is down) to follow sidewalks. If both fail, a straight-line estimate is used and labeled "estimate".</li>
+  <li>Walking directions: only the start and end of each walking leg (your location, when a trip starts there), rounded to about 10 m, are sent to <b>routing.openstreetmap.de</b> (or <b>valhalla1.openstreetmap.de</b> if that is down) to follow sidewalks. Nothing else about you or your trip is sent. If both fail, a straight-line estimate is used and labeled “estimate”.</li>
   <li>Settings (theme, hidden routes) are saved in this browser only.</li>
 </ul>
 <h3 class="v-h">How times work</h3>

@@ -39,6 +39,7 @@ Every finding below is **fixed** except the ones under "Left deliberately". Comm
 | press feedback on every control; 44px appearance segments and official links | 9.1, 14.1, 14.2 |
 | loading skeleton shaped like the rows it stands in for | 8.1 |
 | one location action in Directions, no wrapped About CTA, SVG star | 6.1, 7.1, 13.1 |
+| About privacy: one consistent statement of what location data leaves the device | 15.3 |
 
 The rules are now written down in `docs/DESIGN.md` "1b. System rules" (color lock, radius scale, layers, copy, states).
 New regression tests: button / toggle / tag / badge / placeholder contrast in both themes (46 measurements,
@@ -193,6 +194,7 @@ One family already: inline 24 px outline SVGs (Feather / Lucide style, round cap
 |---|---|---|---|
 | 15.1 | Directions card + steps | "No walk: board at X", "No walk: start at X", "No walk: get off at X" read like a log line | "Board at X, no walk · bus 3:37 AM", "Start at X, no walk needed", "Get off at X, no walk needed" |
 | 15.2 | Stop not found | button "Back to Nearby"; the tab has been "Current trip" since v2.4 | "Back to Current trip" |
+| 15.3 | About, Privacy | "Your location, if you allow it, stays on this device." and, one bullet later, walking-leg endpoints are sent to routing.openstreetmap.de / Valhalla: the two bullets contradict each other (privacy honesty) | "Your live location is never sent anywhere; the only location data that leaves the device is the rounded start and end of a walking leg", and the walking bullet says "only" + "(your location, when a trip starts there)", matching the iOS About wording. The photon.komoot.io bullet (typed text only) is unchanged |
 
 Every other string was re-read (309 strings in the view modules, shell and operating rules); they are plain and specific.
 

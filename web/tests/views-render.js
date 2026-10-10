@@ -228,6 +228,8 @@ test("alerts: list, empty state and About link", () => {
 test("about: unofficial, official contact, privacy hosts, version, theme control", async () => {
   const h = renderAbout();
   for (const s of ["unofficial", "773.702.8181", "safety-security.uchicago.edu/Transportation", "photon.komoot.io", "routing.openstreetmap.de", "valhalla1.openstreetmap.de", "Version", "OpenStreetMap"]) ok(h.includes(s), s);
+  // privacy honesty (taste audit 15.3): never "location stays on this device" next to a bullet that sends walking endpoints
+  ok(!h.includes("stays on this device") && h.includes("live location is never stored or sent") && h.includes("only the start and end of each walking leg"), "location wording is consistent");
   const el = root();
   el.innerHTML = h;
   mountAbout(el, makeCtx());
