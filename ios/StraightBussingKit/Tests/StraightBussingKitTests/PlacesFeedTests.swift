@@ -61,13 +61,7 @@ final class PlacesTests: XCTestCase {
         XCTAssertTrue(real.search("medici").contains { $0.label == "Medici on 57th" })
     }
 
-    /// Search cost per keystroke on the real index (the app runs it off the main thread, debounced).
-    func testRealSearchPerformance() throws {
-        let real = try XCTUnwrap(StaticLoader.loadPlaces(from: TS.webData))
-        measure {
-            for q in ["ch", "chipotle", "coffee", "medici", "regenstein", "harper"] { _ = real.search(q) }
-        }
-    }
+    // Search cost per keystroke: BenchmarkTests.testSearchPerKeystroke (release build in CI).
 }
 
 /// GTFS-realtime JSON parsing (data/live.js parseBuses/parseTrips/parseAlerts) and the feed client.

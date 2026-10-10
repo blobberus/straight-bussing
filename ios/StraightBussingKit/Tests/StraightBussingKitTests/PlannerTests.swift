@@ -217,18 +217,7 @@ final class PlannerTests: XCTestCase, PlannerFixture {
         }
     }
 
-    /// Cost of one plan on the real network with the demo feed's live trips (what Directions runs, off the
-    /// main thread, on every endpoint change and live poll).
-    func testRealNetworkPlanPerformance() {
-        let S = TS.real.data
-        let now = 1_791_480_000.0
-        let live = LiveState().applying(DemoFeed.poll(staticData: S, now: now, epoch: now), staticData: S, now: now)
-        let d = PlannerData(stops: S.stops, routeStops: S.routeStops, routeOrder: S.routeStopIds, trips: live.trips, buses: live.buses)
-        let predict = SchedulePredictor(segments: S.segments, routeStops: S.routeStops)
-        measure {
-            _ = Planner.plan(from: DemoFeedTests.origin, to: DemoFeedTests.destination, now: now, data: d, predict: predict)
-        }
-    }
+    // Cost of a plan on the real network: BenchmarkTests.testDirectionsPlan (release build in CI).
 }
 
 /// Shared synthetic network helpers (PlannerTests and RefineTests).

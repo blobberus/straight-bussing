@@ -18,7 +18,7 @@ final class RefineTests: XCTestCase, PlannerFixture {
         let to = LatLon(lat: stops["L1"]!.lat - 0.002, lon: stops["L1"]!.lon)
         let d = data()
         let o = Planner.plan(from: from, to: to, now: T, data: d).options[0]
-        let r = try await XCTUnwrapAsync(await Planner.refineWalking(o, walkRoute: fakeWalk(), now: T, data: d, from: from, to: to))
+        let r = try XCTUnwrapAsync(await Planner.refineWalking(o, walkRoute: fakeWalk(), now: T, data: d, from: from, to: to))
         let walks = r.walkLegs
         XCTAssertEqual(walks.count, 2)
         XCTAssertTrue(walks.allSatisfy { $0.source == .router && $0.coords?.count == 3 })
@@ -42,7 +42,7 @@ final class RefineTests: XCTestCase, PlannerFixture {
         let d = data(trips: trips)
         let o = Planner.plan(from: from, to: to, now: T, data: d).options[0]
         XCTAssertEqual(o.busLegs[0].boardT, T + 120, "estimate catches t1")
-        let r = try await XCTUnwrapAsync(await Planner.refineWalking(o, walkRoute: fakeWalk { _, _, _ in 5 }, now: T, data: d, from: from, to: to))
+        let r = try XCTUnwrapAsync(await Planner.refineWalking(o, walkRoute: fakeWalk { _, _, _ in 5 }, now: T, data: d, from: from, to: to))
         let b = r.busLegs[0]
         XCTAssertEqual(b.boardT, T + 900)
         XCTAssertEqual(b.tripId, "t2")
@@ -66,7 +66,7 @@ final class RefineTests: XCTestCase, PlannerFixture {
         let d = data(), from = near_("L3"), to = LatLon(lat: stops["L1"]!.lat - 0.002, lon: stops["L1"]!.lon)
         let o = Planner.plan(from: from, to: to, now: T, data: d).options[0]
         let zero: WalkRouter = { _, _ in WalkResult(m: 0, min: 0, coords: [], source: .router) }
-        let r = try await XCTUnwrapAsync(await Planner.refineWalking(o, walkRoute: zero, now: T, data: d, from: from, to: to))
+        let r = try XCTUnwrapAsync(await Planner.refineWalking(o, walkRoute: zero, now: T, data: d, from: from, to: to))
         near(r.legs[0].walk?.min, Geo.hav(from, stops["L3"]!.coord) / 80, 1e-6, "floored at crow-flies")
         XCTAssertGreaterThan(r.total, r.busLegs[0].wait + r.busLegs[0].ride)
     }
@@ -76,7 +76,7 @@ final class RefineTests: XCTestCase, PlannerFixture {
         let o = try XCTUnwrap(Planner.plan(from: from, to: to, now: T, data: d).options.first { $0.key == "A>B" })
         let a2 = stops["A2"]!.coord
         let walk = fakeWalk { a, _, m in abs(a.lat - a2.lat) < 1e-9 && abs(a.lon - a2.lon) < 1e-9 ? 6 : m / 80 }
-        let r = try await XCTUnwrapAsync(await Planner.refineWalking(o, walkRoute: walk, now: T, data: d, from: from, to: to))
+        let r = try XCTUnwrapAsync(await Planner.refineWalking(o, walkRoute: walk, now: T, data: d, from: from, to: to))
         XCTAssertTrue(r.replanned)
         XCTAssertEqual(r.legs[2].walk?.min, 6)
         XCTAssertGreaterThanOrEqual(r.busLegs[1].boardT, r.busLegs[0].alightT + 6 * 60 - 1)
@@ -88,7 +88,7 @@ final class RefineTests: XCTestCase, PlannerFixture {
         let d = data()
         let from = LatLon(lat: stops["L3"]!.lat + 0.002, lon: stops["L3"]!.lon)
         let o = Planner.plan(from: from, to: near_("L1"), now: T, data: d).options[0]
-        let r = try await XCTUnwrapAsync(await Planner.refineWalking(o, walkRoute: { _, _ in throw Boom() }, now: T, data: d))
+        let r = try XCTUnwrapAsync(await Planner.refineWalking(o, walkRoute: { _, _ in throw Boom() }, now: T, data: d))
         XCTAssertEqual(r.legs[0].walk?.source, .estimate)
         near(r.total, o.total, 0.01)
     }

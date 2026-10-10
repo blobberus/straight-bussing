@@ -75,8 +75,16 @@ struct AlertRow: View {
             }
             .padding(.vertical, 10)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel((severe ? "Important: " : "") + title + (alert.description.isEmpty ? "" : ". " + alert.description)
-                                + (rids.isEmpty ? "" : ". Routes " + rids.map(model.shortName).joined(separator: ", ")) + (when.isEmpty ? "" : ". " + when))
+            .accessibilityLabel(spoken(severe: severe, title: title, rids: rids, when: when))
         }
+    }
+
+    /// The VoiceOver sentence (its own function: as one inline expression, Xcode 26's type checker gives up).
+    func spoken(severe: Bool, title: String, rids: [String], when: String) -> String {
+        var parts: [String] = [(severe ? "Important: " : "") + title]
+        if !alert.description.isEmpty { parts.append(alert.description) }
+        if !rids.isEmpty { parts.append("Routes " + rids.map(model.shortName).joined(separator: ", ")) }
+        if !when.isEmpty { parts.append(when) }
+        return parts.joined(separator: ". ")
     }
 }

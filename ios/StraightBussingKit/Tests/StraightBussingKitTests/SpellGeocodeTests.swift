@@ -142,7 +142,7 @@ final class StubHTTP: HTTPDataLoader, @unchecked Sendable {
     var urls: [URL] { lock.lock(); defer { lock.unlock() }; return _urls }
     func fetchData(for request: URLRequest) async throws -> (Data, URLResponse) {
         let url = request.url!
-        lock.lock(); _urls.append(url); lock.unlock()
+        lock.withLock { _urls.append(url) }
         let (d, status) = try handler(url)
         return (d, HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!)
     }

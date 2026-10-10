@@ -31,7 +31,11 @@ jobs:
           xcodebuild -version | head -1 | awk '{split($2,v,"."); if (v[1] < 26) {print "Xcode " $2 " < 26"; exit 1}}'
       - name: swift test
         working-directory: ios/StraightBussingKit
-        run: swift test 2>&1 | tee "$RUNNER_TEMP/kit-test.log"
+        run: swift test --skip BenchmarkTests 2>&1 | tee "$RUNNER_TEMP/kit-test.log"
+      - name: Benchmarks (release build, XCTest measure; ios/README.md "Performance")
+        id: bench
+        working-directory: ios/StraightBussingKit
+        run: swift test -c release -Xswiftc -enable-testing --filter BenchmarkTests 2>&1 | tee "$RUNNER_TEMP/kit-bench.log"
       - name: Summary
         if: always()
         run: |
@@ -39,6 +43,9 @@ jobs:
             echo "### StraightBussingKit tests"
             grep -E "Executed [0-9]+ tests" "$RUNNER_TEMP/kit-test.log" | tail -1 || echo "no test summary"
             grep -E "error:|failed \(" "$RUNNER_TEMP/kit-test.log" | head -40 || true
+            echo "### Benchmarks (release, $(sysctl -n machdep.cpu.brand_string 2>/dev/null || uname -m))"
+            test -f "$RUNNER_TEMP/kit-bench.log" && python3 ios/scripts/bench_summary.py "$RUNNER_TEMP/kit-bench.log" || echo "no benchmark log"
+            grep -E "warning:" "$RUNNER_TEMP/kit-test.log" | sed -E 's#^.*/ios/#ios/#' | sort -u | head -20 || true
           } >> "$GITHUB_STEP_SUMMARY"
 
   app:
