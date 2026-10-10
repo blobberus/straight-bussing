@@ -28,7 +28,8 @@ jobs:
       - name: Toolchain (App Store uploads need Xcode 26+, docs/APPSTORE-SUBMIT.md)
         run: |
           xcodebuild -version && swift --version
-          xcodebuild -version | head -1 | awk '{split($2,v,"."); if (v[1] < 26) {print "Xcode " $2 " < 26"; exit 1}}'
+          # awk reads all of the output (head -1 would close the pipe early and xcodebuild aborts on EPIPE)
+          xcodebuild -version | awk 'NR == 1 {split($2, v, "."); if (v[1] < 26) {print "Xcode " $2 " < 26"; bad = 1}} END {exit bad}'
       - name: swift test
         working-directory: ios/StraightBussingKit
         run: swift test --skip BenchmarkTests 2>&1 | tee "$RUNNER_TEMP/kit-test.log"
@@ -69,7 +70,8 @@ jobs:
           brew install xcodegen
           python -m pip install --quiet pillow
           xcodebuild -version
-          xcodebuild -version | head -1 | awk '{split($2,v,"."); if (v[1] < 26) {print "Xcode " $2 " < 26"; exit 1}}'
+          # awk reads all of the output (head -1 would close the pipe early and xcodebuild aborts on EPIPE)
+          xcodebuild -version | awk 'NR == 1 {split($2, v, "."); if (v[1] < 26) {print "Xcode " $2 " < 26"; bad = 1}} END {exit bad}'
           xcrun simctl list runtimes | grep -i ios || true
       - name: Generate Xcode project (XcodeGen) and app icon
         working-directory: ios
