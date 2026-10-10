@@ -18,15 +18,17 @@ concurrency:
 jobs:
   kit:
     name: StraightBussingKit (swift test)
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-      - name: Toolchain
-        run: xcodebuild -version && swift --version
+      - name: Toolchain (App Store uploads need Xcode 26+, docs/APPSTORE-SUBMIT.md)
+        run: |
+          xcodebuild -version && swift --version
+          xcodebuild -version | head -1 | awk '{split($2,v,"."); if (v[1] < 26) {print "Xcode " $2 " < 26"; exit 1}}'
       - name: swift test
         working-directory: ios/StraightBussingKit
         run: swift test 2>&1 | tee "$RUNNER_TEMP/kit-test.log"
@@ -42,7 +44,7 @@ jobs:
   app:
     name: App (XcodeGen, build, UI tests, simulator preview)
     needs: kit
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 75
     permissions:
       contents: write   # push the ios-preview branch
@@ -60,6 +62,8 @@ jobs:
           brew install xcodegen
           python -m pip install --quiet pillow
           xcodebuild -version
+          xcodebuild -version | head -1 | awk '{split($2,v,"."); if (v[1] < 26) {print "Xcode " $2 " < 26"; exit 1}}'
+          xcrun simctl list runtimes | grep -i ios || true
       - name: Generate Xcode project (XcodeGen) and app icon
         working-directory: ios
         run: bash scripts/bootstrap.sh
@@ -82,6 +86,13 @@ jobs:
       - name: Build errors
         if: failure() && steps.build.outcome == 'failure'
         run: grep -E "error:" "$RUNNER_TEMP/build.log" | sort -u | head -80
+      - name: Build warnings (our sources only)
+        if: always() && steps.build.outcome != 'skipped'
+        run: |
+          W=$(grep -E "/ios/(App|Shared|Widget|UITests|StraightBussingKit)/.*warning:" "$RUNNER_TEMP/build.log" | sort -u || true)
+          N=$(printf "%s" "$W" | grep -c "warning:" || true)
+          echo "### Swift warnings in our sources: $N" >> "$GITHUB_STEP_SUMMARY"
+          printf "%s\n" "$W" | sed -E 's#^.*/ios/#ios/#' | head -60 | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Prepare simulator (boot, skip the keyboard swipe-typing intro)
         if: steps.build.outcome == 'success'
         run: |
