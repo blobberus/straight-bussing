@@ -15,9 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from arrivals_lib import COLUMNS
 ap = argparse.ArgumentParser(); ap.add_argument("--duration", type=float, default=5); ap.add_argument("--out")
 a = ap.parse_known_args()[0]
-def row(trip, ep):
+def row(trip, ep, veh="V1"):
     r = {c: "" for c in COLUMNS}
-    r.update(epoch=str(ep), vehicle_id="V1", trip_id=trip, stop_id="A", stop_index="0", source="transition")
+    r.update(epoch=str(ep), vehicle_id=veh, trip_id=trip, stop_id="A", stop_index="0", source="transition")
     return ",".join(r[c] for c in COLUMNS) + "\n"
 out = Path(a.out); new = not out.exists()
 with open(out, "a") as f:
@@ -25,8 +25,8 @@ with open(out, "a") as f:
     f.write(row("SHARED", 1791400000))
 end, k = time.time() + a.duration, 0
 while time.time() < end:
-    k += 1
-    with open(out, "a") as f: f.write(row(f"T{os.getpid()}_{k}", 1791400000 + k * 400))
+    k += 1      # one bus per chunk: the same bus at the same stop within 120 s would be one arrival
+    with open(out, "a") as f: f.write(row(f"T{os.getpid()}_{k}", 1791400000 + k * 400, f"V{os.getpid()}"))
     time.sleep(0.4)
 '''
 

@@ -115,7 +115,9 @@ Totals: ~4,000-4,500 rows a day, ~30k a week, ~1 MB a day. The CSV rotates to `a
 2. **Low detection share on Drexel and Regents Express** in daytime (0.62): missed detections or variants (E01).
 3. **Heavy tails**: pilot RMSE ~3x MAE. Layovers, trip-id flips at terminals and detours under the 30-minute cut still
    pollute segment times. Look at the worst 2% (E01).
-4. **Duplicates**: 2 exact duplicates passed `merge_arrivals.py`. Find which rule missed them.
+4. **Duplicates**: 2 exact duplicates passed `merge_arrivals.py`. Find which rule missed them. **2026-10-10**: no exact
+   duplicates left, but 51 same-bus same-stop pairs < 120 s apart with different trip ids (collectors disagreeing on
+   Passio's trip id, incl. terminal flips). Merge now dedupes on vehicle + stop; 41 rows dropped from the data branch.
 5. **Passio outliers**: 5-10 minute lead MAE 1,973 s on n = 10 in E00 is almost surely a trip/terminal matching
    issue. Fix before any Passio comparison is trusted.
 6. **Detector truth check**: the +-10 s claim comes from simulation. Validate in the field: 20+ hand-logged arrivals at

@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from arrivals_lib import COLUMNS
-from merge_arrivals import HEADER, merge
+from merge_arrivals import HEADER, dedupe, merge
 
 T0 = 1791400000
 
@@ -67,10 +67,24 @@ def test_richer_row_replaces_in_place():
 def test_distinct_visits_kept():
     d = tmp()
     rows = [row(T0, "A", 0), row(T0 + 600, "A", 0),                       # second lap, same trip id
-            row(T0 + 5, "A", 0, veh="V2"), row(T0 + 5, "A", 4, trip="T2")]   # other bus / other index
+            row(T0 + 5, "A", 0, veh="V2"), row(T0 + 5, "B", 1)]              # other bus / other stop
     write(d / "run.csv", rows)
     s = merge(d / "arrivals.csv", d / "run.csv")
     assert s["added"] == 4 and s["dup"] == 0, s
+
+
+def test_trip_id_disagreement_is_one_arrival():
+    """Two collectors give one stop visit different trip ids: Passio flapping between ids (same index), or a
+    terminal flip (last index of the old trip vs index 0 of the new). 51 such pairs were on the data branch
+    on 2026-10-10. The richer row (with previous stop) wins either way."""
+    d = tmp()
+    write(d / "a.csv", [row(T0, "A", 4, trip="T1", prev="D"), row(T0 + 300, "C", 2, trip="T7")])
+    write(d / "b.csv", [row(T0 + 1, "A", 0, trip="T2"), row(T0 + 310, "C", 2, trip="T8", prev="B")])
+    into = d / "arrivals.csv"
+    merge(into, d / "a.csv")
+    s = merge(into, d / "b.csv")
+    assert s["added"] == 0 and s["dup"] == 1 and s["replaced"] == 1, s
+    assert body(into) == [row(T0, "A", 4, trip="T1", prev="D"), row(T0 + 310, "C", 2, trip="T8", prev="B")]
 
 
 def test_bad_lines_skipped_and_existing_lines_untouched():
@@ -94,6 +108,19 @@ def test_rotation_and_dedupe_against_archive():
     write(d / "b.csv", [row(T0 + 49 * 300 + 3, "A", 0, trip="T49"), row(T0 + 99999, "B", 1)])
     s = merge(into, d / "b.csv")
     assert s["dup"] == 1 and s["added"] == 1, s
+
+
+def test_dedupe_cleans_the_shared_file_in_place():
+    d = tmp()
+    into = d / "arrivals.csv"
+    rows = [row(T0, "A", 4, trip="T1"), row(T0 + 2, "A", 0, trip="T2", prev="D"), "garbage\n",
+            row(T0 + 90, "B", 1, trip="T2"), row(T0 + 95, "B", 1, trip="T3"), row(T0 + 700, "A", 4, trip="T1")]
+    write(into, rows)
+    s = dedupe(into)
+    assert s == {"kept": 4, "dropped": 2}, s
+    assert body(into) == [rows[1], "garbage\n", rows[3], rows[5]], body(into)    # richer row, first's place
+    before = into.read_bytes()
+    assert dedupe(into)["dropped"] == 0 and into.read_bytes() == before
 
 
 def test_missing_run_file_is_noop():

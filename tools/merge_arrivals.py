@@ -2,10 +2,14 @@
 """Merge one collector run's arrival rows into the shared ground-truth CSV (schema: docs/DATA.md).
 
   python tools/merge_arrivals.py --into data/ground_truth/arrivals.csv --add run.csv [--rotate-mb 40]
+  python tools/merge_arrivals.py --into data/ground_truth/arrivals.csv --dedupe   # one-off, after a rule change
 
 Collector runs overlap on purpose (.github/workflows/collect.yml) so there is never a gap, which
-means two runs can log the same arrival a few seconds apart. A row is a duplicate when vehicle,
-trip, stop and stop_index match and the epochs are within DUP_S. The kept row is the one with more
+means two runs can log the same arrival a few seconds apart. A row is a duplicate when vehicle and
+stop match and the epochs are within DUP_S, whatever the trip id and stop_index: two collectors can
+disagree on Passio's trip id (it flaps between ids, and flips at terminals, where a stop is both the
+last index of one trip and index 0 of the next), and on this network a stop repeats within a route
+only at its terminal, so a bus can't be at one stop twice within DUP_S. The kept row is the one with more
 filled fields (a run that just started has no previous stop or Passio prediction yet). Existing
 lines are never re-serialised, so git diffs stay small. Idempotent: merging the same file twice
 changes nothing. Stdlib only.
@@ -17,10 +21,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from arrivals_lib import COLUMNS, read_tail
 
-DUP_S = 120          # same vehicle+trip+stop within this many seconds = one arrival
+DUP_S = 120          # same vehicle + stop within this many seconds = one arrival
 HEADER = ",".join(COLUMNS) + "\n"
-I_EPOCH, I_TRIP, I_VEH, I_STOP, I_IDX = (COLUMNS.index(c) for c in
-                                         ("epoch", "trip_id", "vehicle_id", "stop_id", "stop_index"))
+I_EPOCH, I_VEH, I_STOP = (COLUMNS.index(c) for c in ("epoch", "vehicle_id", "stop_id"))
 
 
 def parse(line):
@@ -33,7 +36,7 @@ def parse(line):
 
 
 def key(r):
-    return r[I_VEH], r[I_TRIP], r[I_STOP], r[I_IDX]
+    return r[I_VEH], r[I_STOP]
 
 
 def filled(r):
@@ -60,7 +63,7 @@ def merge(into, add, rotate_mb=0.0):
     if arch:
         for r in read_tail(arch[-1]):
             try:
-                archived.setdefault((r["vehicle_id"], r["trip_id"], r["stop_id"], r["stop_index"]), []).append(int(r["epoch"]))
+                archived.setdefault((r["vehicle_id"], r["stop_id"]), []).append(int(r["epoch"]))
             except (KeyError, ValueError):
                 pass
 
@@ -107,12 +110,47 @@ def merge(into, add, rotate_mb=0.0):
     return stats
 
 
+def dedupe(into):
+    """Apply the duplicate rule to the shared file itself (one-off cleanup after a rule change): of each
+    group of duplicates the richest row stays, at the position of the first. -> dict(kept, dropped)."""
+    into = Path(into)
+    lines = [ln for ln in read_lines(into) if not ln.startswith("epoch,")]
+    index, out, dropped = {}, [], 0               # key -> [(epoch, position in out)]
+    for ln in lines:
+        p = parse(ln)
+        if not p:
+            out.append(ln)                        # malformed lines are left alone, like merge()
+            continue
+        r, ep = p
+        hit = next(((e, j) for e, j in index.get(key(r), ()) if abs(ep - e) <= DUP_S), None)
+        if hit is None:
+            index.setdefault(key(r), []).append((ep, len(out)))
+            out.append(ln)
+            continue
+        dropped += 1
+        if filled(r) > filled(parse(out[hit[1]])[0]):
+            out[hit[1]] = ln
+    if dropped:
+        tmp = into.with_name(into.name + ".tmp")
+        with open(tmp, "w", encoding="utf-8", newline="") as f:
+            f.write(HEADER)
+            f.writelines(out)
+        os.replace(tmp, into)
+    return dict(kept=len(out), dropped=dropped)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--into", required=True, help="shared CSV (created if missing)")
-    ap.add_argument("--add", required=True, help="CSV written by one truth_logger.py run")
+    ap.add_argument("--add", help="CSV written by one truth_logger.py run")
     ap.add_argument("--rotate-mb", type=float, default=0, help="archive --into once it passes this size (0 = never)")
+    ap.add_argument("--dedupe", action="store_true", help="instead of merging: drop duplicates inside --into")
     a = ap.parse_args()
+    if a.dedupe:
+        print("dedupe: " + " ".join(f"{k}={v}" for k, v in dedupe(a.into).items()))
+        return
+    if not a.add:
+        ap.error("--add is required unless --dedupe")
     s = merge(a.into, a.add, a.rotate_mb)
     print("merge: " + " ".join(f"{k}={v}" for k, v in s.items()))
 
