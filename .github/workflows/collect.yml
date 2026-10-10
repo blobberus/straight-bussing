@@ -1,15 +1,34 @@
 name: Collect ground truth
-# Constant collection: a run starts at :07 and :37 and logs for 70 min, so runs always overlap and a
-# late or skipped scheduled start leaves no gap. Each run writes only its own rows, then merges them
-# into data/ground_truth/arrivals.csv on the orphan 'data' branch (tools/merge_arrivals.py drops the
-# duplicates from the overlap) and refreshes web/data/learned.json there. Nothing is ever pushed to
-# main, so this never triggers a Pages deploy. Docs: docs/DATA.md
+# Constant collection. Each run logs 70 min and, 40 min in, starts its own successor
+# (tools/collect_chain.py), so consecutive runs overlap by ~30 min and no start is ever missed.
+# Why: GitHub fired only ~4 of the ~48 scheduled runs a day (2026-10-09), 30-40 min late. The :07/:37
+# cron stays as a backstop that restarts the chain if it ever stops.
+# Bounds (details in tools/collect_chain.py): two concurrency slots (a/b) mean GitHub never runs more than
+# 2 collect runs at once; a run dispatches at most once, only while it is the only queued/in-progress
+# collect run. Kill switches: repo variable COLLECT_CHAIN=off, or "Disable workflow" in the Actions tab.
+# Each run writes only its own rows, then merges them into data/ground_truth/arrivals.csv on the orphan
+# 'data' branch (tools/merge_arrivals.py drops the duplicates from the overlap) and refreshes
+# web/data/learned.json there. Nothing is ever pushed to main, so this never triggers a Pages deploy.
+# Docs: docs/DATA.md, monitoring.md
 on:
-  schedule: [{ cron: "7,37 * * * *" }]
+  schedule:
+    - cron: "7 * * * *"      # slot a
+    - cron: "37 * * * *"     # slot b
   workflow_dispatch:
+    inputs:
+      slot:
+        description: "Concurrency slot. Self-chained runs alternate a/b; a manual run can keep a."
+        type: choice
+        options: [a, b]
+        default: a
 permissions:
   contents: write
-  actions: write          # keepalive: re-enable this workflow so GitHub's 60-day idle rule can't stop it
+  actions: write          # start the next run (self-chain) + keepalive (re-enable after GitHub's 60-day idle rule)
+concurrency:              # one running run per slot: never more than 2 collect runs at once
+  group: collect-${{ inputs.slot || (github.event.schedule == '37 * * * *' && 'b') || 'a' }}
+  cancel-in-progress: false   # never cancel a collecting run (a newer waiting run replaces an older waiting one)
+env:
+  SLOT: ${{ inputs.slot || (github.event.schedule == '37 * * * *' && 'b') || 'a' }}
 jobs:
   collect:
     runs-on: ubuntu-latest
@@ -19,20 +38,73 @@ jobs:
         with: { ref: main }
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
+      - name: Start the self-chain watcher (background; may start the next run 40 min from now)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COLLECT_CHAIN: ${{ vars.COLLECT_CHAIN }}
+        run: |
+          nohup python tools/collect_chain.py watch --slot "$SLOT" --state "$RUNNER_TEMP/chain.json" \
+            > "$RUNNER_TEMP/chain.log" 2>&1 < /dev/null &
+          echo "slot $SLOT, watcher pid $!, COLLECT_CHAIN='${COLLECT_CHAIN}'"
       - name: Refresh static network data
-        run: python tools/build_gtfs.py || echo "GTFS download failed; using committed web/data"
+        run: |
+          python tools/build_gtfs.py || {
+            echo "::warning title=GTFS refresh failed::using the committed web/data"
+            git checkout -- web/data
+          }
       - name: Seed from the shared CSV
         run: |
           if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
-            git fetch --no-tags --depth 1 origin +refs/heads/data:refs/remotes/origin/data
+            # blob-less + shallow: only the one CSV below is downloaded, not the whole data branch
+            git fetch --no-tags --depth 1 --filter=blob:none origin +refs/heads/data:refs/remotes/origin/data
             git show origin/data:data/ground_truth/arrivals.csv > "$RUNNER_TEMP/seed.csv" 2>/dev/null || : > "$RUNNER_TEMP/seed.csv"
           else
             : > "$RUNNER_TEMP/seed.csv"
           fi
       - name: Log arrivals (70 min)
+        id: log
         timeout-minutes: 75
         continue-on-error: true              # rows are flushed as they are found; keep what we have
-        run: python tools/truth_logger.py --duration 4200 --seed "$RUNNER_TEMP/seed.csv" --out "$RUNNER_TEMP/run.csv"
+        run: |
+          date +%s > "$RUNNER_TEMP/log.t0"
+          python tools/truth_logger.py --duration 4200 --seed "$RUNNER_TEMP/seed.csv" --out "$RUNNER_TEMP/run.csv" \
+            --status-file "$RUNNER_TEMP/logger.json"
+      - name: Check the logging run (annotates problems; the job stays green so the merge always runs)
+        if: always()
+        env: { OUTCOME: "${{ steps.log.outcome }}" }
+        run: |
+          python - "$RUNNER_TEMP" <<'EOF'
+          import json, os, sys, time
+          d = sys.argv[1]
+          try:
+              ran = (time.time() - int(open(f"{d}/log.t0").read())) / 60
+          except (OSError, ValueError):
+              ran = 0.0
+          try:
+              s = json.load(open(f"{d}/logger.json"))
+          except (OSError, ValueError):
+              s = None
+          warn = []
+          if os.environ.get("OUTCOME") != "success":
+              warn.append(f"the logging step ended '{os.environ.get('OUTCOME')}'")
+          if ran < 65:
+              warn.append(f"logging stopped after {ran:.0f} of 70 min")
+          if s is None:
+              warn.append("the logger wrote no status file (crashed or killed)")
+          else:
+              if s.get("errors"):
+                  warn.append(f"{s['errors']} processing error(s) were skipped; first: {s.get('first_error')}")
+              if s.get("polls") and s.get("fetch_errors", 0) > 0.2 * 2 * s["polls"]:
+                  warn.append(f"{s['fetch_errors']} of {2 * s['polls']} feed fetches failed (Passio outage?)")
+          line = f"logger: {ran:.0f} min" + (f", {s['polls']} polls, {s['rows']} rows, {s['errors']} errors, "
+                                             f"{s['fetch_errors']} failed fetches" if s else ", no status")
+          print(line)
+          esc = lambda m: m.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          for w in warn:
+              print(f"::warning title=Collector run degraded::{esc(w)} (rows found so far are still merged)")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write(f"**{line}**\n\n" + "".join(f"- warning: {w}\n" for w in warn) + "\n")
+          EOF
       - name: Merge into the data branch and push
         if: always()
         run: |
@@ -42,8 +114,13 @@ jobs:
           for i in 1 2 3 4 5; do
             rm -rf databranch; git worktree prune
             if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
-              git fetch --no-tags --depth 1 origin +refs/heads/data:refs/remotes/origin/data
-              git worktree add -f -B data databranch origin/data
+              # blob-less, shallow fetch + sparse worktree: only what this job reads or writes is downloaded
+              # (data/ground_truth/ incl. archive/ for merge_arrivals.py, web/data/ for learned.json, top-level
+              # README.md); data/context/ (~30 MB of weather/traffic CSVs) stays on the server, untouched.
+              git fetch --no-tags --depth 1 --filter=blob:none origin +refs/heads/data:refs/remotes/origin/data
+              git worktree add --no-checkout -f -B data databranch origin/data
+              git -C databranch sparse-checkout set --cone data/ground_truth web/data
+              git -C databranch reset -q --hard
             else
               git worktree add --orphan -b data databranch 2>/dev/null || {
                 git worktree add --detach databranch
@@ -64,10 +141,19 @@ jobs:
             sleep $((RANDOM % 20 + 5 * i))
           done
           echo "push failed after 5 attempts"; exit 1
-      - name: Keep the schedule alive
+      - name: Keep the schedule alive (unless someone disabled the workflow by hand)
         if: always()
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
+          api="https://api.github.com/repos/${{ github.repository }}/actions/workflows/collect.yml"
+          state=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$api" \
+            | python -c "import json, sys; print(json.load(sys.stdin).get('state', ''))" || echo unknown)
+          if [ "$state" = "disabled_manually" ]; then echo "workflow was disabled by hand: leaving it off"; exit 0; fi
           curl -fsS -X PUT -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/collect.yml/enable" \
-            || echo "keepalive call failed (harmless)"
+            "$api/enable" || echo "keepalive call failed (harmless)"
+      - name: Self-chain result (waits only while this run still has to start the next one)
+        if: always()
+        timeout-minutes: 90                  # the wait itself ends at the watcher's deadline (85 min after start)
+        run: |
+          python tools/collect_chain.py wait --state "$RUNNER_TEMP/chain.json"
+          echo "--- watcher log"; cat "$RUNNER_TEMP/chain.log" 2>/dev/null || true

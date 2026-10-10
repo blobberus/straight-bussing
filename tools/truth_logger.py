@@ -6,9 +6,12 @@ per true bus arrival at a stop (schema in arrivals_lib.COLUMNS, docs in docs/DAT
   python tools/truth_logger.py --duration 180
   python tools/truth_logger.py --out some.csv --interval 10
   python tools/truth_logger.py --seed arrivals.csv --out run.csv   # new rows only (CI; merge_arrivals.py)
+  python tools/truth_logger.py ... --status-file s.json            # polls/rows/error counts at exit (CI)
+A failed fetch, bad JSON or a malformed feed entry only skips that feed or entry for one poll; it is
+counted (status line, final 'done:' line, --status-file) and the run keeps going.
 No rider data exists in these feeds; nothing personal is collected.
 """
-import argparse, json, sys, time, urllib.request
+import argparse, gzip, json, sys, time, traceback, urllib.request, zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,21 +23,68 @@ BASE = "https://passio3.com/chicago/passioTransit/gtfs/realtime/"
 UA = "StraightBussing-collector (student project)"
 
 
+def decode_body(body, encoding=None):
+    """Feed bytes -> JSON. gzip (header or magic bytes) and deflate are unpacked; plain bytes pass through."""
+    enc = (encoding or "").strip().lower()
+    if "gzip" in enc or body[:2] == b"\x1f\x8b":
+        body = gzip.decompress(body)
+    elif "deflate" in enc:
+        try:
+            body = zlib.decompress(body)
+        except zlib.error:                       # raw deflate without the zlib header
+            body = zlib.decompress(body, -zlib.MAX_WBITS)
+    return json.loads(body.decode("utf-8"))
+
+
 def fetch(name, timeout=15):
-    req = urllib.request.Request(BASE + name + ".json", headers={"User-Agent": UA, "Accept-Encoding": "identity"})
+    """One realtime feed. Asks for gzip (tripUpdates ~84 kB -> ~5 kB); an uncompressed reply still works."""
+    req = urllib.request.Request(BASE + name + ".json", headers={"User-Agent": UA, "Accept-Encoding": "gzip"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+        return decode_body(r.read(), r.headers.get("Content-Encoding"))
 
 
-def reports(feed):
+class Errors:
+    """Counts failed fetches and processing errors and logs them to stderr, sampled (first 20, then every
+    100th) so a feed that is malformed on every poll cannot flood the log."""
+    def __init__(self, out=None):
+        self.fetch = self.proc = 0
+        self.first = ""
+        self.out = out
+
+    def __call__(self, where, ex, fetch=False):
+        if fetch:
+            self.fetch += 1
+            n, kind, loc = self.fetch, "fetch", ""
+        else:
+            self.proc += 1
+            n, kind, loc = self.proc, "ERROR", ""
+            tb = traceback.extract_tb(ex.__traceback__) if ex.__traceback__ else None
+            if tb:
+                loc = f" at {Path(tb[-1].filename).name}:{tb[-1].lineno}"
+            if not self.first:
+                self.first = f"{where}: {type(ex).__name__}: {ex}{loc}"[:300]
+        if n <= 20 or n % 100 == 0:
+            more = " (from now on only every 100th is logged)" if n == 20 else ""
+            print(f"{datetime.now():%H:%M:%S} {kind} {where}: {type(ex).__name__}: {ex}{loc}{more}",
+                  file=self.out or sys.stderr, flush=True)
+
+
+def reports(feed, err=None):
     for e in feed.get("entity", []):
-        v = e.get("vehicle") or {}
-        pos, trip, veh = v.get("position") or {}, v.get("trip") or {}, v.get("vehicle") or {}
-        if "latitude" not in pos or not trip.get("trip_id"):
+        try:
+            v = e.get("vehicle") or {}
+            pos, trip, veh = v.get("position") or {}, v.get("trip") or {}, v.get("vehicle") or {}
+            if "latitude" not in pos or not trip.get("trip_id"):
+                continue
+            rep = {"veh": veh.get("id"), "trip": trip.get("trip_id"), "route": trip.get("route_id"),
+                   "lat": pos.get("latitude"), "lon": pos.get("longitude"), "speed": pos.get("speed"),
+                   "q": v.get("current_stop_sequence"), "stop_id": v.get("stop_id"), "vt": v.get("timestamp")}
+        except Exception as ex:
+            if err is None:
+                raise
+            err("vehiclePositions entity", ex)
             continue
-        yield {"veh": veh.get("id"), "trip": trip.get("trip_id"), "route": trip.get("route_id"),
-               "lat": pos.get("latitude"), "lon": pos.get("longitude"), "speed": pos.get("speed"),
-               "q": v.get("current_stop_sequence"), "stop_id": v.get("stop_id"), "vt": v.get("timestamp")}
+        yield rep
 
 
 def feed_summary(feed):
@@ -51,16 +101,62 @@ def feed_summary(feed):
     return {"veh": len(pos), "trip": sum(1 for v in pos if (v.get("trip") or {}).get("trip_id")), "fresh": len(fresh)}
 
 
-def store_predictions(tr, feed, now):
+def store_predictions(tr, feed, now, err=None):
     for e in feed.get("entity", []):
-        u = e.get("trip_update") or {}
-        trip = (u.get("trip") or {}).get("trip_id")
-        made = u.get("timestamp") or now
-        made = min(made, now)
-        for st in u.get("stop_time_update") or []:
-            t = (st.get("arrival") or st.get("departure") or {}).get("time")
-            if trip and t is not None and st.get("stop_id"):
-                tr.add_prediction(trip, st["stop_id"], made, t, st.get("stop_sequence"))
+        try:
+            u = e.get("trip_update") or {}
+            trip = (u.get("trip") or {}).get("trip_id")
+            made = u.get("timestamp") or now
+            made = min(made, now)
+            for st in u.get("stop_time_update") or []:
+                t = (st.get("arrival") or st.get("departure") or {}).get("time")
+                if trip and t is not None and st.get("stop_id"):
+                    tr.add_prediction(trip, st["stop_id"], made, t, st.get("stop_sequence"))
+        except Exception as ex:
+            if err is None:
+                raise
+            err("tripUpdates entity", ex)
+
+
+def poll(tr, w, now, err, get=fetch):
+    """One poll of both feeds. Any failure (network, bad JSON, a malformed entry, a detector bug) goes to
+    err() and only skips that feed or entry for this poll, never the run. -> feed_summary or None."""
+    try:
+        feed = get("tripUpdates")
+    except Exception as ex:
+        err("tripUpdates", ex, fetch=True)
+    else:
+        try:
+            store_predictions(tr, feed, now, err)
+        except Exception as ex:                  # not a feed object at all
+            err("tripUpdates", ex)
+    try:
+        feed = get("vehiclePositions")
+    except Exception as ex:
+        err("vehiclePositions", ex, fetch=True)
+        return None
+    summary, ev = None, []
+    try:
+        summary = feed_summary(feed)
+    except Exception as ex:
+        err("vehiclePositions summary", ex)
+    try:
+        for rep in reports(feed, err):
+            try:
+                ev += tr.update(rep, now)
+            except Exception as ex:
+                err(f"detector update (vehicle {rep.get('veh')})", ex)
+    except Exception as ex:
+        err("vehiclePositions", ex)
+    try:
+        ev += tr.drain(now)
+    except Exception as ex:
+        err("detector drain", ex)
+    try:
+        w.write(ev)
+    except Exception as ex:
+        err("write rows", ex)
+    return summary
 
 
 class Writer:
@@ -78,7 +174,7 @@ class Writer:
     def write(self, events):
         if not events:
             return
-        events.sort(key=lambda e: e["epoch"])
+        events.sort(key=lambda e: e.get("epoch") or 0)
         with open(self.path, "a", encoding="utf-8", newline="") as f:
             for e in events:
                 try:
@@ -108,46 +204,50 @@ def main():
     ap.add_argument("--rotate-mb", type=float, default=0,
                     help="at start, move --out to archive/<name>-<UTC date>.csv if larger than this (0 = never)")
     ap.add_argument("--seed", help="CSV whose tail seeds the detector (default --out); lets a run write only its own rows")
+    ap.add_argument("--status-file", help="write {polls, rows, errors, fetch_errors, ...} as JSON here at exit")
     a = ap.parse_args()
     a.interval = max(5.0, a.interval)
     st = L.Static()
     if not st.route_stops:
         sys.exit("web/data/route_stops.json missing (run tools/build_gtfs.py)")
     rotate(Path(a.out), a.rotate_mb)
-    tr, w = Tracker(st), Writer(a.out, st)
-    tr.seed(L.read_tail(a.seed or a.out), int(time.time()))
+    tr, w, err = Tracker(st), Writer(a.out, st), Errors()
+    try:
+        tr.seed(L.read_tail(a.seed or a.out), int(time.time()))
+    except Exception as ex:                      # a bad seed only costs duplicate protection (merge dedupes too)
+        err("seed", ex)
     end = time.time() + a.duration if a.duration else None
-    polls, summary = 0, {}
+    started, polls, summary = time.time(), 0, {}
     try:
         while True:
             t0 = time.time()
-            now = int(t0)
-            for name, fn in (("tripUpdates", lambda f: store_predictions(tr, f, now)), ("vehiclePositions", None)):
-                try:
-                    feed = fetch(name)
-                except Exception as ex:   # network/JSON problems must not kill the loop
-                    print(f"{datetime.now():%H:%M:%S} {name}: {ex}", file=sys.stderr)
-                    continue
-                if fn:
-                    fn(feed)
-                else:
-                    ev = []
-                    summary = feed_summary(feed)
-                    for rep in reports(feed):
-                        ev += tr.update(rep, now)
-                    w.write(ev + tr.drain(now))
+            s = poll(tr, w, int(t0), err)
+            if s is not None:
+                summary = s
             polls += 1
             if polls % 6 == 0:
                 feed_txt = " ".join(f"{k}={v}" for k, v in summary.items())
-                print(f"{datetime.now():%H:%M:%S} polls={polls} rows={w.n} {feed_txt}".rstrip(), flush=True)
+                bad = (f" errors={err.proc}" if err.proc else "") + (f" fetch_errors={err.fetch}" if err.fetch else "")
+                print(f"{datetime.now():%H:%M:%S} polls={polls} rows={w.n} {feed_txt}{bad}".rstrip(), flush=True)
             if a.once or (end and time.time() + a.interval > end):
                 break
             time.sleep(max(0.5, a.interval - (time.time() - t0)))
     except KeyboardInterrupt:
         pass
     finally:
-        w.write(tr.drain(int(time.time()), final=True))
-    print(f"done: {w.n} rows appended to {a.out}")
+        try:
+            w.write(tr.drain(int(time.time()), final=True))
+        except Exception as ex:
+            err("final drain", ex)
+        if a.status_file:
+            try:
+                Path(a.status_file).write_text(json.dumps(
+                    {"started": int(started), "ended": int(time.time()), "duration": a.duration, "polls": polls,
+                     "rows": w.n, "errors": err.proc, "fetch_errors": err.fetch, "first_error": err.first}),
+                    encoding="utf-8")
+            except OSError as ex:
+                print(f"could not write {a.status_file}: {ex}", file=sys.stderr)
+    print(f"done: {w.n} rows appended to {a.out}; polls={polls} errors={err.proc} fetch_errors={err.fetch}")
 
 
 if __name__ == "__main__":

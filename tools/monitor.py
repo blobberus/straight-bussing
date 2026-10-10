@@ -5,7 +5,7 @@
   python tools/monitor.py local [--hours H]   # also collect on this machine (0 = until stopped)
   python tools/monitor.py resume [--hours H]  # same, first merges what an interrupted session left
   python tools/monitor.py stop                # stop the local collector (graceful, then forced)
-  python tools/monitor.py dispatch            # start a CI run now (needs GITHUB_TOKEN)
+  python tools/monitor.py dispatch            # start a CI run now (GITHUB_TOKEN, or a logged-in gh CLI)
 
 The local collector mirrors .github/workflows/collect.yml: overlapping truth_logger.py chunks seeded
 from the data branch CSV, each merged with tools/merge_arrivals.py into a worktree of the 'data'
@@ -24,6 +24,17 @@ FEED = "https://passio3.com/chicago/passioTransit/gtfs/realtime/vehiclePositions
 RUN_S = 70 * 60                  # one CI run logs this long (collect.yml --duration 4200)
 UA = "StraightBussing-monitor (student project)"
 BRANCH = "monitor-data"          # local branch for the worktree; pushes go to <remote>/data
+
+
+def github_token():
+    """$GITHUB_TOKEN, else the logged-in gh CLI's token, else None (unauthenticated: 60 API calls/h, no dispatch)."""
+    if os.environ.get("GITHUB_TOKEN"):
+        return os.environ["GITHUB_TOKEN"]
+    try:
+        r = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=20)
+        return (r.stdout.strip() or None) if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 class Ctx:
@@ -196,7 +207,7 @@ def data_branch(token):
 
 
 def status(ctx, a):
-    token, now, issues = os.environ.get("GITHUB_TOKEN"), time.time(), []   # issues: (level, reason, action)
+    token, now, issues = github_token(), time.time(), []   # issues: (level, reason, action)
     DISPATCH = "python tools/monitor.py dispatch (or Actions tab -> Collect ground truth -> Run workflow)"
     print(f"Straight Bussing collector status  {ts(now)}  ({REPO})")
     wf = runs = None
@@ -224,8 +235,9 @@ def status(ctx, a):
                 print(f"  {ts(s)[:16]}  {r['event']:<17} {r['status']:<11} {r['conclusion'] or '':<9} {r['html_url']}")
             if now - last > 2 * 3600:
                 issues.append((2, f"no run started for {age(now - last)}", DISPATCH + "; if it keeps happening, take over locally"))
-            elif now - last > 45 * 60:
-                issues.append((1, f"no run started for {age(now - last)} (expected every 30 min)", DISPATCH))
+            elif now - last > 50 * 60:
+                issues.append((1, f"no run started for {age(now - last)} (self-chained runs start about every 40 min)",
+                               DISPATCH))
             done = [r for r in runs if r["status"] == "completed"]
             if len(done) >= 3 and all(r["conclusion"] == "failure" for r in done[:3]):
                 issues.append((2, "the last 3 runs failed", "read the failing step log (see monitoring.md 'Runs failing')"))
@@ -518,11 +530,11 @@ def stop(ctx, a):
 
 
 def dispatch(ctx, a):
-    token = os.environ.get("GITHUB_TOKEN")
+    token = github_token()
     steps = (f"Manual: open https://github.com/{REPO}/actions/workflows/{WORKFLOW} -> 'Run workflow' -> "
              "branch main -> Run workflow.")
     if not token:
-        print("GITHUB_TOKEN not set. " + steps)
+        print("GITHUB_TOKEN not set and gh CLI not logged in. " + steps)
         return 1
     try:
         with http(f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches", token, "POST",

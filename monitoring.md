@@ -6,8 +6,10 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
 
 ## What is running
 - **CI collector** `.github/workflows/collect.yml` on **main** (schedules only run from the default branch;
-  it also checks out main's `tools/`). It starts at **:07 and :37** every hour; each run logs 70 min, so runs
-  overlap and a late or skipped start leaves no gap. Each run merges its rows with `tools/merge_arrivals.py`
+  it also checks out main's `tools/`). Each run logs 70 min and **starts its own successor 40 min in**
+  (`tools/collect_chain.py`; GitHub drops most scheduled runs), so runs overlap by ~30 min. The **:07 / :37**
+  cron is only a backstop that restarts the chain. At most 2 collect runs ever run at once (slots a/b).
+  Off switch: repo variable `COLLECT_CHAIN=off`, or Disable workflow. A run's summary says `Self-chain: done:dispatched`. Each run merges its rows with `tools/merge_arrivals.py`
   (drops overlap duplicates) into `data/ground_truth/arrivals.csv` on the orphan **`data`** branch, refreshes
   `web/data/learned.json` there, and re-enables itself (60-day idle rule). Schema and details: `docs/DATA.md`.
 - **Local fallback** `tools/monitor.py local`: the same pipeline from this PC (30-min overlapping chunks,
@@ -27,13 +29,13 @@ Git Bash gotcha: it rewrites `rev:path` arguments (`git show origin/data:data/..
 | Status says | Likely cause | Do |
 |---|---|---|
 | `workflow is disabled_...` | 60-day idle rule or someone disabled it | Ask Nathan to open https://github.com/blobberus/straight-bussing/actions/workflows/collect.yml and press **Enable workflow** (or, with a token: `curl -X PUT -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/blobberus/straight-bussing/actions/workflows/collect.yml/enable`). Then dispatch. |
-| `no scheduled run has fired yet` / `no run started for ...` | New schedules can take ~1 h to fire; GitHub delays or drops runs under load | `python tools/monitor.py dispatch` (needs `GITHUB_TOKEN`; otherwise it prints the manual steps for Nathan). Check the workflow is on main: `git fetch -q origin && git ls-tree --name-only origin/main .github/workflows/` (must list `collect.yml`). Over 2 h with no run: take over locally, recheck in an hour. |
+| `no scheduled run has fired yet` / `no run started for ...` | The self-chain stopped (read the last run's **Self-chain** summary line / `::warning::`) and the cron backstop hasn't fired; GitHub delays or drops scheduled runs under load | `python tools/monitor.py dispatch` (uses `GITHUB_TOKEN` or the logged-in `gh` CLI; otherwise it prints the manual steps for Nathan). One dispatch restarts the chain. If the chain keeps stopping: `python tools/test_chain.py`, check `vars.COLLECT_CHAIN` is not `off` (`gh variable list`). Check the workflow is on main: `git fetch -q origin && git ls-tree --name-only origin/main .github/workflows/` (must list `collect.yml`). Over 2 h with no run: take over locally, recheck in an hour. |
 | `a run failed` / `the last 3 runs failed` | Python error, GTFS download, git push | Steps of a run: `curl -s https://api.github.com/repos/blobberus/straight-bussing/actions/runs/<run_id>/jobs` (run id is in the URL that status prints; shows each step's conclusion). Full logs need auth: ask Nathan to open the run URL, or read it with Claude in Chrome. Reproduce locally: `python tools/truth_logger.py --once`, `python tools/test_truth.py`, `python tools/test_merge.py`. Fix, then **Update the collector**. |
 | `push failed after 5 attempts` (in a run's Merge step) | Many runs racing, or a file > 100 MB | One lost run is covered by the overlap. If repeated: `git fetch origin data && git log --oneline -5 origin/data`; the CSV rotates to `archive/` at 40 MB, so check that the rotation still works. |
 | `Passio feed unreachable` | Passio outage | Nothing to fix. Note the time. If it lasts > 1 day, check that the feed URL in CLAUDE.md still works. |
 | `buses are running but no new arrivals merged for 3 h` | Detector or static data broken (GTFS changed) | During service hours: `python tools/truth_logger.py --duration 120 --out "$TEMP/t.csv"`. `skip row` on stderr means stops are missing from `web/data` (CI rebuilds GTFS each run; check main's `tools/build_gtfs.py`). |
 | `N local run file(s) were never pushed` | Local collector was killed | `python tools/monitor.py resume --hours 0.01` (merges and pushes them, then exits). |
-| `GitHub API unavailable` | Rate limit (60/h unauthenticated) or offline | Wait, or run with `GITHUB_TOKEN` set for that one command. Never commit a token. |
+| `GitHub API unavailable` | Rate limit (60/h unauthenticated) or offline | Wait, or `gh auth login` once (monitor.py then uses its token), or set `GITHUB_TOKEN` for that one command. Never commit a token. |
 | monitor.py itself crashes | Bug | `python tools/test_monitor.py` (about 1 min, hermetic), fix, rerun. |
 
 ## Take over locally
@@ -115,8 +117,8 @@ State: `data/monitor/state.json` (totals, last push, last error), `monitor.log`,
 
 ## Update the collector
 Pushing to main is outward-facing: confirm with Nathan first unless he asked for the update.
-1. Edit on `v2-rewrite`: `.github/workflows/collect.yml`, `tools/{truth_logger,arrival_detector,arrivals_lib,merge_arrivals,refresh_model,model_core,model_segments,model_quantile,model_kalman,backtest,monitor}.py`, `docs/DATA.md`.
-2. Test: `python tools/test_truth.py && python tools/test_merge.py && python tools/test_models.py && python tools/test_monitor.py && python tools/truth_logger.py --once`.
+1. Edit on `v2-rewrite`: `.github/workflows/collect.yml`, `tools/{truth_logger,arrival_detector,arrivals_lib,merge_arrivals,refresh_model,model_core,model_segments,model_quantile,model_kalman,backtest,monitor,collect_chain}.py`, `docs/DATA.md`.
+2. Test: `python tools/test_truth.py && python tools/test_merge.py && python tools/test_models.py && python tools/test_monitor.py && python tools/test_chain.py && python tools/truth_logger.py --once`.
 3. Commit only those paths on v2-rewrite (`git commit --only -m "..." -- <paths>`; Nathan may have other uncommitted work), then `git push origin v2-rewrite`.
 4. Bring the same files to main through a worktree (the method used in commit `a466886`):
    ```

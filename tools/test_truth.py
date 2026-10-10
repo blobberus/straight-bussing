@@ -288,6 +288,108 @@ def real_network_distances_positive():
             assert d and d > 0 and how in ("shape", "haversine"), (rid, i, d)
 
 
+def vp_feed(reps, junk=()):
+    """vehiclePositions JSON for reports from simulate(), plus optional junk entities."""
+    ents = [{"vehicle": {"position": {"latitude": r["lat"], "longitude": r["lon"], "speed": r["speed"]},
+                         "trip": {"trip_id": r["trip"], "route_id": r["route"]}, "vehicle": {"id": r["veh"]},
+                         "stop_id": r["stop_id"], "timestamp": r["vt"]}} for r in reps]
+    return {"header": {"timestamp": max([r["vt"] for r in reps] or [0])}, "entity": list(junk) + ents}
+
+
+@test
+def gzip_deflate_and_plain_feeds_decode():
+    import gzip, zlib
+    import truth_logger as TL
+    raw = b'{"entity": [], "header": {"timestamp": 1}}'
+    want = {"entity": [], "header": {"timestamp": 1}}
+    assert TL.decode_body(raw, None) == want
+    assert TL.decode_body(raw, "identity") == want
+    assert TL.decode_body(gzip.compress(raw), "gzip") == want
+    assert TL.decode_body(gzip.compress(raw), None) == want            # gzip without the header: magic bytes
+    assert TL.decode_body(zlib.compress(raw), "deflate") == want
+    co = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+    assert TL.decode_body(co.compress(raw) + co.flush(), "deflate") == want   # raw deflate
+
+
+@test
+def fetch_asks_for_gzip_and_accepts_either_reply():
+    import gzip
+    import truth_logger as TL
+    raw, seen = b'{"entity": [{"id": "1"}]}', []
+
+    class Resp:
+        def __init__(self, body, enc):
+            self.body, self.headers = body, {"Content-Encoding": enc} if enc else {}
+
+        def read(self):
+            return self.body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    replies = [Resp(gzip.compress(raw), "gzip"), Resp(raw, None)]   # 2nd: server ignores Accept-Encoding
+
+    def fake_urlopen(req, timeout=None):
+        seen.append((req.get_header("Accept-encoding"), timeout))
+        return replies.pop(0)
+
+    real = TL.urllib.request.urlopen
+    TL.urllib.request.urlopen = fake_urlopen
+    try:
+        assert TL.fetch("tripUpdates") == {"entity": [{"id": "1"}]}
+        assert TL.fetch("vehiclePositions") == {"entity": [{"id": "1"}]}
+    finally:
+        TL.urllib.request.urlopen = real
+    assert seen == [("gzip", 15), ("gzip", 15)], seen
+
+
+@test
+def malformed_feeds_and_entries_never_stop_the_run():
+    """Junk entities, bad types, non-dict feeds, fetch failures and a detector exception are counted and
+    skipped; the good vehicle still yields every arrival exactly once."""
+    import io
+    import truth_logger as TL
+    st = fake_static()
+    reps, truth = simulate(st, ["A", "B", "C", "D", "A"])
+    tr = Tracker(st)
+    real_update = tr.update
+
+    def update(rep, now):
+        if rep["veh"] == "BOOM":
+            raise ValueError("detector bug")
+        return real_update(rep, now)
+
+    tr.update = update
+    out = Path(tempfile.mkdtemp(prefix="sb-truth-")) / "run.csv"
+    w, log = TL.Writer(out, st), io.StringIO()
+    err = TL.Errors(out=log)
+    good_tu = {"trip_update": {"trip": {"trip_id": "T1"}, "timestamp": T0, "stop_time_update": [
+        {"stop_id": "B", "arrival": {"time": T0 + 60}}, "junk-stop"]}}
+    bad_tu = [7, "junk", {"trip_update": {"trip": {"trip_id": "T1"}, "timestamp": "bad",
+                                          "stop_time_update": [{"stop_id": "B", "arrival": {"time": T0}}]}}]
+    boom = dict(reps[0], veh="BOOM")
+    for k, r in enumerate(reps):
+        def get(name, k=k, r=r):
+            if k % 7 == 3:
+                raise OSError("timed out")
+            if name == "tripUpdates":
+                return ["not", "a", "feed"] if k % 5 == 1 else {"entity": bad_tu + [good_tu]}
+            junk = [None, "x", {"vehicle": {"position": {"latitude": 1}, "trip": "not-a-dict"}}]
+            return vp_feed([r, dict(boom, vt=r["vt"])], junk=junk)
+        TL.poll(tr, w, r["vt"] + 2, err, get=get)
+    TL.poll(tr, w, reps[-1]["vt"] + 3, err, get=lambda name: 42)    # a feed that is not even a dict
+    w.write(tr.drain(reps[-1]["vt"] + 5, final=True))
+    rows = [ln.split(",") for ln in out.read_text(encoding="utf-8").splitlines()[1:]]
+    idx = [int(r[L.COLUMNS.index("stop_index")]) for r in rows]
+    assert w.n == len(rows) and idx == [0, 1, 2, 3, 4], idx
+    assert err.proc > 0 and err.fetch > 0 and err.first, (err.proc, err.fetch, err.first)
+    assert "detector bug" in log.getvalue() and "ERROR" in log.getvalue()
+    assert err.proc > 100 and log.getvalue().count("\n") <= 40 + err.proc // 100 + err.fetch // 100, "log not sampled"
+
+
 def main():
     fails = 0
     for fn in TESTS:
