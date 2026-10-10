@@ -9,7 +9,7 @@ Row semantics (matches tools/arrivals_lib.fmt_row):
   dwell_s   = dwell at THIS stop (known after the bus leaves it)
   run       = segment_s - dwell(prev stop)          time actually moving   -> speed v = d / run
 """
-import csv, math, statistics
+import bisect, csv, math, statistics
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -24,6 +24,12 @@ Z80 = 1.2815515655446004          # N(0,1) 90th percentile -> 80% central interv
 MIN_RUN_S = 3.0                   # below this a "segment" is a GPS glitch
 MAX_SEG_S = 1800.0                # longer = layover / detour / bus parked; not a travel time
 MAX_SPEED = 30.0                  # m/s (108 km/h): faster is impossible for a campus shuttle
+# E01 cleaning (RouteKnower.md §3.3, experiments/routeknower/E01-data-quality-2026-10-10.md)
+SAME_VISIT_S = 300                # same vehicle + stop this close = one visit logged twice (no loop is < 15 min)
+SHARED_TRIP_S = 2700              # another bus on the same trip id within 45 min: Passio's prediction is ambiguous
+STALE_LEAD_S = 300                # stored prediction this old = Passio had stopped updating that trip + stop
+MAX_SPEED_CITY = 20.0             # m/s on segments < CITY_M: one end is mistimed (only Lake Shore Dr hops are longer)
+CITY_M = 2000.0
 
 try:
     from zoneinfo import ZoneInfo
@@ -162,9 +168,73 @@ def make_row(d, prev_dwell=None):
     return r
 
 
-def rows_from_dicts(dicts):
-    """list[dict] -> list[Row] sorted by epoch, with the previous stop's dwell joined in."""
+def _service_day(d, ep):
+    """Local date with a 4 AM cut (night service after midnight belongs to the day before)."""
+    loc = str(d.get("local_time", ""))
+    if len(loc) >= 13 and loc[11:13].isdigit():
+        day = date(int(loc[0:4]), int(loc[5:7]), int(loc[8:10]))
+        return day - timedelta(days=1) if int(loc[11:13]) < 4 else day
+    return (chicago(ep) - timedelta(hours=4)).date()
+
+
+def clean_dicts(dicts):
+    """E01 rules on real arrival dicts -> (kept dicts, ids of dicts whose segment is a stale link,
+    ids of dicts whose Passio prediction can't be trusted). Evidence: experiments/routeknower/E01-*.md.
+    1. one visit logged twice (same vehicle + stop within SAME_VISIT_S): keep the earliest row;
+    2. stale link: the same vehicle logged another arrival strictly between prev_arrival_epoch and
+       epoch (trip-id flaps, or a collector that missed part of the lap), so it is not one drive;
+    3. Passio: the trip id was shared with another bus within SHARED_TRIP_S (Downtown Campus Connector
+       is one frequency trip for every bus; the logger keys predictions by trip + stop only), the
+       arrival opens a loop at its terminal (index 0: the prediction may be for the end of the loop),
+       or the stored lead is >= STALE_LEAD_S (Passio stopped updating it: a biased sample)."""
+    seen, kept = {}, []
+    for d in sorted(dicts, key=lambda d: _f(d.get("epoch"), 0.0)):
+        ep = _f(d.get("epoch"))
+        k = (str(d.get("vehicle_id", "")), str(d.get("stop_id", "")))
+        if ep is not None and k[0] and k in seen and ep - seen[k] <= SAME_VISIT_S:
+            continue
+        if ep is not None:
+            seen[k] = ep
+        kept.append(d)
+    by_veh, by_trip = {}, {}
+    for d in kept:
+        ep = _f(d.get("epoch"))
+        if ep is None:
+            continue
+        by_veh.setdefault(str(d.get("vehicle_id", "")), []).append(ep)
+        by_trip.setdefault(str(d.get("trip_id", "")), []).append((ep, str(d.get("vehicle_id", ""))))
+    for v in list(by_veh.values()) + list(by_trip.values()):
+        v.sort()
+    stale, no_passio = set(), set()
+    for d in kept:
+        ep, pe, veh = _f(d.get("epoch")), _f(d.get("prev_arrival_epoch")), str(d.get("vehicle_id", ""))
+        if ep is None:
+            continue
+        e = by_veh.get(veh, [])
+        if veh and pe is not None and bisect.bisect_left(e, ep) - bisect.bisect_right(e, pe) > 0:
+            stale.add(id(d))
+        if not d.get("passio_pred_epoch"):
+            continue
+        lead = _f(d.get("passio_pred_lead_s"))
+        tl = by_trip.get(str(d.get("trip_id", "")), [])
+        lo, hi = bisect.bisect_left(tl, (ep - SHARED_TRIP_S, "")), bisect.bisect_right(tl, (ep + SHARED_TRIP_S, "\uffff"))
+        shared = any(v != veh for _, v in tl[lo:hi])
+        if shared or str(d.get("stop_index", "")) == "0" or (lead is not None and lead >= STALE_LEAD_S):
+            no_passio.add(id(d))
+    return kept, stale, no_passio
+
+
+def rows_from_dicts(dicts, clean=True):
+    """list[dict] -> list[Row] sorted by epoch, with the previous stop's dwell joined in.
+    clean: on real rows (synthetic ones, source 'synthetic', are left alone) apply the E01 rules of
+    clean_dicts, drop segments faster than MAX_SPEED_CITY under CITY_M (one end mistimed), and make
+    Row.trip one bus's run (trip id | vehicle | service day): Passio trip ids repeat every day and all
+    Downtown Campus Connector buses share one, which mixed buses in backtest chains and the Corrector."""
     dicts = list(dicts)
+    stale, no_passio = set(), set()
+    real = clean and any(d.get("source") != "synthetic" for d in dicts)
+    if real:
+        dicts, stale, no_passio = clean_dicts(dicts)
     dwell_at = {}
     for d in dicts:
         dw, ep = _f(d.get("dwell_s")), _f(d.get("epoch"))
@@ -172,11 +242,18 @@ def rows_from_dicts(dicts):
             dwell_at[(str(d.get("trip_id", "")), str(d.get("stop_id", "")), int(ep))] = dw
     rows = []
     for d in dicts:
+        if id(d) in stale:
+            continue
         pe = _f(d.get("prev_arrival_epoch"))
         pd = dwell_at.get((str(d.get("trip_id", "")), str(d.get("prev_stop_id", "")), int(pe))) if pe is not None else None
         r = make_row(d, pd)
-        if r is not None:
-            rows.append(r)
+        if r is None or (real and r.dist < CITY_M and r.speed > MAX_SPEED_CITY):
+            continue
+        if id(d) in no_passio:
+            r.passio = r.lead = None
+        if real:                              # one bus's run: trip ids repeat daily and DCC buses share one
+            r.trip = f"{r.trip}|{r.vehicle}|{_service_day(d, r.epoch)}"
+        rows.append(r)
     by_route = {}
     for r in rows:
         if r.dwell is not None:

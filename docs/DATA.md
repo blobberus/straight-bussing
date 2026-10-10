@@ -45,6 +45,14 @@ Arrival times are good to about **+-10 s**: reports come every ~10 s, GPS is +-5
 16-minute capture at 5 s vs 10 s cadence: 29 of 30 arrivals in both, median difference 0 s, max 8 s. `dwell_s` is
 +-5-10 s; short segments (< 60 s) have large relative speed error. Passio outages leave gaps, not errors.
 
+**Known defects in the real file (RouteKnower E01, 2026-10-10; `experiments/routeknower/E01-data-quality-2026-10-10.md`).**
+About 4% of `prev_*` links jump over other arrivals of the same bus (trip-id flaps, collector gaps); >= 1.5% of transition
+rows are timed while the bus was elsewhere; the same visit is sometimes logged twice 2-5 min apart. The Passio
+prediction is ambiguous when several buses share a trip id (every Downtown Campus Connector bus runs trip 874028)
+or at a trip's first stop, and `passio_pred_lead_s` is ~2-4 min unless Passio had stopped updating that trip (a
+lead >= 5 min is a failure case, not a 5-minute forecast). `tools/model_core.py` `load_rows` handles all of these
+(`clean_dicts`); read the CSV raw only with that in mind.
+
 ## Run it
 ```
 python tools/truth_logger.py --once                 # one poll (smoke test)

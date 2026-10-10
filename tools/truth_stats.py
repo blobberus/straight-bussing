@@ -2,8 +2,11 @@
 """Summarize the ground-truth CSV: rows, stops, hour coverage, Passio MAE by prediction lead time.
   python tools/truth_stats.py [path]"""
 import csv, statistics, sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from model_core import SAME_VISIT_S, clean_dicts
 
 DEFAULT = Path(__file__).resolve().parent.parent / "data" / "ground_truth" / "arrivals.csv"
 BUCKETS = [(120, 300), (300, 600), (600, 1200), (1200, 3600)]
@@ -30,10 +33,18 @@ def main():
         print(f"speed_mps: n={len(sp)} median={statistics.median(sp):.1f} min={min(sp):.1f} max={max(sp):.1f}")
     dist = [float(r["dist_prev_m"]) for r in rows if r["dist_prev_m"]]
     dw = [float(r["dwell_s"]) for r in rows if r["dwell_s"]]
-    dup = len(rows) - len({(r["vehicle_id"], r["trip_id"], r["stop_index"]) for r in rows})
+    visits = defaultdict(list)          # trip ids repeat daily (and DCC buses share one): dedupe on bus + stop + time
+    for r in rows:
+        visits[(r["vehicle_id"], r["stop_id"])].append(int(r["epoch"]))
+    gaps = [b - a for v in visits.values() for a, b in zip(sorted(v), sorted(v)[1:])]
     print(f"sanity: speeds outside 0-20 m/s: {sum(not 0 < x <= 20 for x in sp)}, dist_prev_m <= 0: "
-          f"{sum(x <= 0 for x in dist)}, duplicate vehicle+trip+stop: {dup}, "
+          f"{sum(x <= 0 for x in dist)}, same bus + stop <= 120 s (merge rule): {sum(g <= 120 for g in gaps)}, "
+          f"121-{SAME_VISIT_S} s: {sum(120 < g <= SAME_VISIT_S for g in gaps)}, "
           f"median dwell: {statistics.median(dw) if dw else '-'} s")
+    kept, stale, untrusted = clean_dicts(rows)
+    kept = {id(r) for r in kept}
+    print(f"E01 checks (RouteKnower.md 3.3): stale prev links {len(stale)}, Passio predictions not trusted "
+          f"{len(untrusted)} (trip id shared by 2+ buses, trip start, or lead >= 300 s)")
     errs = [(int(r["passio_pred_lead_s"]), int(r["passio_pred_epoch"]) - int(r["epoch"]))
             for r in rows if r["passio_pred_epoch"]]
     print(f"rows with a Passio prediction: {len(errs)}")
@@ -42,6 +53,11 @@ def main():
         if e:
             print(f"  lead {lo // 60:>2}-{hi // 60:<2} min: n={len(e):4d} MAE={statistics.mean(map(abs, e)):6.1f}s "
                   f"bias={statistics.mean(e):+6.1f}s")
+    ok = [int(r["passio_pred_epoch"]) - int(r["epoch"]) for r in rows
+          if r["passio_pred_epoch"] and id(r) in kept and id(r) not in untrusted]
+    if ok:
+        print(f"  trusted only (E01; leads >= 5 min are not a fair sample): n={len(ok)} "
+              f"MAE={statistics.mean(map(abs, ok)):.1f}s bias={statistics.mean(ok):+.1f}s")
 
 
 if __name__ == "__main__":

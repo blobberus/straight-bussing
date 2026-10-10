@@ -71,6 +71,46 @@ def test_row_semantics_prev_dwell():
     assert C.make_row(dict(d1, dist_prev_m="5000", segment_s="20")) is None   # 250 m/s glitch
 
 
+def _arr(ep, veh, trip, stop, idx, prev=None, dist=300.0, lead=None, err=0, source="transition"):
+    """One real-looking arrivals.csv dict (prev = (stop, epoch) of the previous detected stop)."""
+    d = {"epoch": str(ep), "vehicle_id": veh, "trip_id": trip, "stop_id": stop, "stop_index": str(idx),
+         "route_id": "R", "local_time": "2026-10-09 08:%02d:00" % (ep // 60 % 60), "dwell_s": "0",
+         "prev_stop_id": "", "prev_arrival_epoch": "", "segment_s": "", "dist_prev_m": "",
+         "passio_pred_epoch": "", "passio_pred_lead_s": "", "source": source}
+    if prev:
+        d.update(prev_stop_id=prev[0], prev_arrival_epoch=str(prev[1]), segment_s=str(ep - prev[1]), dist_prev_m=str(dist))
+    if lead is not None:
+        d.update(passio_pred_epoch=str(ep + err), passio_pred_lead_s=str(lead))
+    return d
+
+
+def test_e01_cleaning_rules():
+    """RouteKnower E01 (experiments/routeknower/E01-data-quality-2026-10-10.md): duplicate visits, stale
+    links, untrustworthy Passio predictions, impossible city speeds, one bus per Row.trip."""
+    ds = [_arr(1000, "V1", "T", "A", 0, lead=150),                                  # trip start: Passio dropped
+          _arr(1100, "V1", "T", "B", 1, ("A", 1000), lead=150, err=20),             # clean
+          _arr(1250, "V1", "T2", "B", 1, ("A", 1000)),                              # same visit, other collector
+          _arr(1300, "V1", "T", "C", 2, ("B", 1100), lead=400, err=-390),           # Passio froze: lead >= 300
+          _arr(1600, "V1", "T9", "X", 4),                                           # trip-id flap logged elsewhere
+          _arr(2000, "V1", "T", "D", 3, ("C", 1300)),                               # stale link over X
+          _arr(9000, "V2", "S", "A", 1, lead=150), _arr(9200, "V3", "S", "B", 2, ("A", 9000), lead=150),
+          _arr(9400, "V3", "S", "C", 3, ("B", 9200), lead=150),                     # S shared by V2 + V3
+          _arr(9405, "V3", "S", "D", 4, ("C", 9400), dist=150),                     # 30 m/s on 150 m: mistimed
+          _arr(9600, "V3", "S", "E", 5, ("D", 9405), dist=4000)]                    # 20.5 m/s on Lake Shore Dr: ok
+    kept, stale, nop = C.clean_dicts(ds)
+    assert ds[2] not in kept and len(kept) == len(ds) - 1
+    assert {id(ds[5])} == stale
+    assert {id(ds[0]), id(ds[3]), id(ds[6]), id(ds[7]), id(ds[8])} == nop
+    rows = {r.stop + r.vehicle: r for r in C.rows_from_dicts(ds)}
+    assert sorted(rows) == ["BV1", "BV3", "CV1", "CV3", "EV3"]
+    assert rows["BV1"].passio == 1120 and rows["CV1"].passio is None and rows["CV3"].passio is None
+    assert rows["BV1"].trip == "T|V1|2026-10-09" and rows["BV3"].trip != rows["BV1"].trip
+    old = C.rows_from_dicts(ds, clean=False)                                    # the pre-E01 behaviour
+    assert len(old) == 8 and all(r.trip in ("T", "T2", "S") for r in old)
+    syn = [dict(d, source="synthetic") for d in ds]                             # synthetic rows: untouched
+    assert len(C.rows_from_dicts(syn)) == len(old)
+
+
 def test_harmonic_speed():
     assert C.harmonic_speed([100, 100], [10, 40]) == 4.0                # 200 m in 50 s
     assert (10 + 2.5) / 2 > 4.0                                         # arithmetic mean of speeds overstates
