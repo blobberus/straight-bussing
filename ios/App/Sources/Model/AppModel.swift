@@ -377,7 +377,7 @@ final class AppModel {
         for rid in vis.order.reversed() where !hidden.contains(rid) {
             guard let r = S.routes[rid] else { continue }
             let dim = focus.map { !$0.contains(rid) } ?? false
-            let color = Color(hex: r.color).opacity(dim ? 0.25 : 1)
+            let color = dim ? Color.dimmed(hex: r.color) : Color(hex: r.color)
             for (i, line) in (S.shapes[rid] ?? []).enumerated() {
                 lines.append(MapLine(id: "\(rid)-\(i)", coords: line.map(\.cl), color: color, width: dim ? 3 : 5))
             }
