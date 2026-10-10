@@ -129,11 +129,26 @@ jobs:
             -retry-tests-on-failure -test-iterations 2 \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/uitest.log" | grep -E "Test Case|error|XCTAssert|\*\*" || true
           grep -q "TEST EXECUTE SUCCEEDED" "$RUNNER_TEMP/uitest.log" || { echo "::group::UI test log (last 120 lines)"; tail -120 "$RUNNER_TEMP/uitest.log"; echo "::endgroup::"; exit 1; }
+      - name: App launch timings (simulator, demo build; ios/README.md "Performance")
+        if: always() && steps.build.outcome == 'success'
+        run: |
+          {
+            echo "### App launch (simulator, demo build)"
+            test -f "$RUNNER_TEMP/uitest.log" && python3 ios/scripts/bench_summary.py "$RUNNER_TEMP/uitest.log" || echo "no UI test log"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Simulator screenshots + recordings (demo mode)
         if: always() && steps.build.outcome == 'success'
         run: |
           bash ios/scripts/simulate.sh "ios/build/dd/Build/Products/Debug-iphonesimulator/StraightBussing.app" \
             "${{ steps.sim.outputs.udid }}" preview
+      - name: Crash reports (only when the app died in the simulator)
+        if: always() && steps.build.outcome == 'success'
+        run: |
+          shopt -s nullglob
+          files=(~/Library/Logs/DiagnosticReports/StraightBussing*)
+          if [ ${#files[@]} -eq 0 ]; then echo "no crash reports"; exit 0; fi
+          python3 ios/scripts/crash_summary.py "${files[@]}" | tee "$RUNNER_TEMP/crashes.txt" | head -200
+          { echo "### App crash reports: ${#files[@]}"; echo '```'; head -60 "$RUNNER_TEMP/crashes.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Live simulator in the browser (Appetize.io; skipped until the APPETIZE_API_TOKEN secret exists)
         if: always() && steps.build.outcome == 'success' && github.ref == 'refs/heads/main'
         continue-on-error: true              # a third-party outage must never fail the build

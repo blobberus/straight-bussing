@@ -33,7 +33,7 @@ ios/
 
 `web/data/*.json` is bundled into the app at build time through a folder reference in `project.yml` (`../web/data`,
 copied as `data/` in the app bundle). It is never duplicated in `ios/`; the daily GTFS refresh flows into the next
-build. The app icon is rendered from `web/icons/icon.svg` by `scripts/make_icon.py` (fallback: `sips` upscales
+build, and between builds the app downloads newer files from the web app's site (see "Schedule updates" below). The app icon is rendered from `web/icons/icon.svg` by `scripts/make_icon.py` (fallback: `sips` upscales
 `web/icons/icon-512.png`).
 
 ## How the Kit maps to the web modules
@@ -62,6 +62,7 @@ data-geocode.js) so the Swift port provably behaves the same.
 | ui/views/tripinfo.js, ui/components.js liveLabel, main.js pill, stop.js / alerts.js / route.js / pick.js / routes.js helpers | Wording.swift (`TripInfo`, `LiveText`, `StationSearch`, `RouteText`, `Custom.defaultName`) | leave guidance, option lines, step list, status pill, live labels, freshness, alert windows, station matching, bus sentences |
 | data/live.js | LiveModels.swift, FeedClient.swift | tolerant GTFS-rt JSON decoding, async/await URLSession (injectable `HTTPDataLoader`), `LiveState.applying` = the web's poll merge |
 | data/static.js | StaticModels.swift, StaticLoader.swift | each file independent, failures reported |
+| (sw.js daily data refresh) | ScheduleUpdate.swift (`ScheduleUpdater`, `ScheduleStore`, `StaticValidator`) | newer web/data from GitHub Pages at most daily, validated, bundled copy as fallback |
 | data/places.js, data/spell.js | Places.swift, Spell.swift | normalization, prefixes, one typo, nicknames, categories, spelling correction with the `assumed` note (`PlaceIndex.find`) |
 | data/geocode.js | Geocode.swift (`Photon`, `PlaceSearcher`) | Photon only when < 5 local matches (or "Search for … instead"), Illinois only, ranked toward UChicago, local-first merge, corrected text sent, 30-query cache |
 | (demo only) | DemoFeed.swift | deterministic simulated feed generated from the bundled static data |
@@ -116,8 +117,8 @@ Island compact "53RD | 3 stops · 4 min", expanded progress bar + boarding/aligh
   alerts, About, Settings; custom route detail with Highlight; editor grouped by live status.
 - Stop detail, Settings (theme, service alerts, bus alerts with routes, in-app switch, status and the notification
   permission state, Live Activity switch + preview, Simulated buses (demo), privacy + Privacy policy link), About
-  (unofficial notice, Call 773.702.8181, official page, appearance, privacy incl. Photon and Apple walking
-  directions, Privacy policy and Help and bug reports links, credits "OpenFreeMap · OpenMapTiles · OpenStreetMap"
+  (unofficial notice, Call 773.702.8181, official page, appearance, privacy incl. Photon, Apple walking
+  directions and the daily schedule check, Privacy policy and Help and bug reports links, credits "OpenFreeMap · OpenMapTiles · OpenStreetMap"
   without the copyright sign, plus Apple Maps), Live Activity preview screen. Bus alerts arrive as local
   notifications while the app is open, or as an in-app banner when notifications are off.
 - **Simulated buses (demo)** (Settings > Demo; `Model/AppModel+Simulation.swift`), for App Review (guideline 2.1) and
@@ -127,8 +128,9 @@ Island compact "53RD | 3 stops · 4 min", expanded progress bar + boarding/aligh
   live data: switching starts from an empty feed state, drops a poll in flight from the other source, ends a
   started trip, re-plans Directions and pauses bus alert notifications. `-demo` (CI) is a superset (fixed
   location, seeded prefs) and shows the same banner.
-- Prefs persist in UserDefaults (`Model/Prefs.swift`). Polling every 10 s only while the app is active (30 s
-  back-off after 3 failures); stale data is always flagged.
+- Prefs persist in UserDefaults (`Model/Prefs.swift`). Polling every 10 s only while the app is open (20 s in Low
+  Power Mode, 30 s back-off after 3 failures, nothing in the background); stale data is always flagged, and on return
+  to the app the freshness flags are re-checked before the first new poll answers (see "Performance").
 
 Launch arguments (used by CI, handy in Xcode's scheme editor too): `-demo` (simulated buses, fixed location on the
 Main Quad, separate wiped prefs), `-screen current|trip|routes|route|myroutes|directions|stop|settings|settingsdemo|liveactivity|about|alerts|pick|search|custom|editor|order`,
@@ -136,19 +138,29 @@ Main Quad, separate wiped prefs), `-screen current|trip|routes|route|myroutes|di
 
 ## Build and run on a Mac
 
-1. Xcode 15.4+ (iOS 17 SDK) and `brew install xcodegen`.
+1. Xcode 26+ (iOS 26 SDK: App Store uploads need it since 2026-04-28; the deployment target stays iOS 17) and
+   `brew install xcodegen`.
 2. `ios/scripts/bootstrap.sh` (renders the icon, runs `xcodegen generate`), then `open ios/StraightBussing.xcodeproj`.
 3. Pick an iPhone simulator, Run. For simulated buses add `-demo` under Product > Scheme > Edit Scheme > Arguments.
 4. Kit tests: `cd ios/StraightBussingKit && swift test` (or the Test action in Xcode on the package).
 5. On a real iPhone: set your Team and a real bundle id (see checklist), then Run. Live Activities need iOS 16.1+;
    the Dynamic Island needs an iPhone 14 Pro or later.
 
-## What CI does (.github/workflows/ios.yml, macOS runner, free for this public repo)
+## What CI does (.github/workflows/ios.yml, `macos-26` runner = Xcode 26, free for this public repo)
 
-1. `kit`: `swift test` for StraightBussingKit.
+Both jobs check `xcodebuild -version` is 26 or later (App Store uploads require Xcode 26 / the iOS 26 SDK; see
+docs/APPSTORE-SUBMIT.md). On the 2026-10-10 image: Xcode 26.6, Swift 6.3.3, simulators iOS 26.2 / 26.4 / 26.5 (no
+iOS 18), so `pick_simulator.py` picks an iPhone 17 Pro. Swift stays in language mode 5 (`SWIFT_VERSION: 5.0`,
+tools 5.9); the run summary lists every Swift warning in our sources.
+
+1. `kit`: `swift test` for StraightBussingKit (debug, benchmarks skipped), then the benchmarks in a release build
+   (`swift test -c release -Xswiftc -enable-testing --filter BenchmarkTests`), summarized as a table by
+   `scripts/bench_summary.py`.
 2. `app`: `brew install xcodegen`, `scripts/bootstrap.sh`, picks the best available iPhone simulator
    (`scripts/pick_simulator.py`, Dynamic Island models first; runner images change), `xcodebuild build-for-testing`
-   (app + widget extension + UI tests, `CODE_SIGNING_ALLOWED=NO`), `test-without-building` (XCUITest), then
+   (app + widget extension + UI tests, `CODE_SIGNING_ALLOWED=NO`), one warm-up launch with `simctl` (a fresh iOS 26
+   simulator's first launch is slow enough for XCUITest to report "does not have a process ID"),
+   `test-without-building` (XCUITest, a failed test is retried once; the launch timings go to the summary), then
    `scripts/simulate.sh` launches the demo build on every screen in light and dark mode
    (`xcrun simctl io booted screenshot`), records two walk-throughs (`recordVideo --codec=h264`), then takes the App
    Store set on a 6.9-inch simulator (`pick_simulator.py --store`: iPhone 17 / 16 Pro Max, 1320 x 2868; it creates
@@ -160,6 +172,104 @@ Main Quad, separate wiped prefs), `-screen current|trip|routes|route|myroutes|di
    `_site/ios/` (the web app deploys exactly as before when the branch is missing).
 4. On `main`, if the repo secret `APPETIZE_API_TOKEN` exists, `scripts/appetize.py` uploads the same simulator `.app`
    to Appetize.io and the gallery gets "Try it live" buttons (live buses / simulated buses via `-demo` / dark mode).
+
+## Performance (measured, 2026-10-10)
+
+Measure, don't guess: `StraightBussingKit/Tests/StraightBussingKitTests/BenchmarkTests.swift` (XCTest `measure`,
+10 runs, release build) covers the hot paths, and `UITests/LaunchPerformanceUITests.swift` the app launch in the
+simulator (demo build). CI prints both tables in the run summary. GitHub's Mac runners differ from run to run, so
+the before / after below comes from one A/B job that benchmarked the old Kit (7055eb3) and the new one on the same
+machine, interleaved twice (best of the two rounds; milliseconds per block):
+
+| Benchmark (one block) | before | after | change |
+|---|---:|---:|---|
+| Place search: 17 queries, letter by letter + typos | 73.8 | 9.7 | 7.6x faster (0.57 ms a query) |
+| ... 9 queries typing a name | 32.6 | 5.0 | 6.6x faster |
+| ... 8 typos, nicknames, categories | 42.9 | 5.7 | 7.5x faster |
+| Launch: places.json + search index (off the main thread) | 35.9 | 24.4 | 32% less |
+| Launch: bundled schedule decode (off the main thread) | 4.6 | 4.7 | same (code unchanged) |
+| Stations: 17 name matches + 20 nearest-stop lookups | 6.0 | 3.8 | 36% less |
+| Directions: plan 3 trips (off the main thread) | 7.0 | 5.7 | 19% less |
+| Directions: refine 3 plans (instant router) | 0.14 | 0.16 | same |
+| Per poll: decode the 3 feeds (busy weekday) | 1.7 | 1.6 | same (code unchanged) |
+| Per poll: merge + operating filter + arrival index | 0.30 | 0.49 | runner noise: code unchanged, the old code itself measured 0.30 and 0.91 |
+| Per poll: follow a started trip 10 times | 0.34 | 0.94 | runner noise: code unchanged, old 0.34 and 0.85 |
+| Map: road paths of 99 bus rides | 1.65 | 1.65 | same |
+
+What each block is: launch = decode the bundled web/data / places.json plus the search index; per poll = decode the
+three feeds of a busy weekday (the real snapshot x3: 33 buses, 45 trips), merge + operating filter + arrival index,
+follow a started trip 10 times; Directions = plan 3 trips on the real network, refine them with an instant router
+(CPU only); search = 17 queries typed letter by letter, misspelled, nicknames and categories (split into the 9
+typing and 8 typo queries); stations = 17 station-name matches + 20 nearest-stop lookups; geometry = the road path
+of every 5-stop ride on every route (99 legs).
+
+App launch in the CI simulator (iPhone 17 Pro, iOS 26.5, debug build, demo mode; seconds, average / best). These two
+runs were on different runner machines, so read them as "no regression", not as a speed-up; the launch path itself
+did not change (decode off the main thread before and after):
+
+| UI timing | before (old app) | after |
+|---|---:|---:|
+| Launch to first frame (`XCTApplicationLaunchMetric`, 5 runs) | 4.58 / 3.26 | 3.05 / 2.54 |
+| Launch to "next bus at the nearest stop" shown (3 runs, includes XCUITest's idle waits) | 8.36 / 7.25 | 6.89 / 6.59 |
+
+On a real iPhone a release build is several times faster; the simulator numbers are for spotting regressions.
+
+What changed:
+- Place search (per keystroke, the worst path): normalized text is ASCII, so names, nicknames and categories keep
+  their bytes from the index build and are compared as bytes (no String prefix / Foundation `contains`, no array
+  per word, no array per place); `norm` has an ASCII fast path (no Unicode decomposition: also the index build at
+  launch); the spelling distance uses a precomputed 128 x 128 substitution table and reused buffers instead of two
+  dictionary lookups and three allocations per vocabulary word. Same results: the 94 UChicago queries and every
+  spelling test pass unchanged.
+- Planner: the ride cache is keyed by (route, first, last stop index) instead of a joined string of the whole path;
+  the loop time per route is computed once per plan.
+- Launch: the bundled (or downloaded) data is decoded off the main thread (as before) and the first paint never
+  waits for it; the schedule check runs after boot, off the main thread.
+- Per poll: only the observed slices that changed are written (as before); map stop markers are `Equatable` on what
+  they show (`StopDot` + `.equatable()`; its tap closure is new on every map body), so SwiftUI skips all ~90
+  unchanged stop views when the map body re-runs for moving buses; the plan and ring sets are computed once per map
+  body instead of once per stop. Annotation content never reads the model from the environment (MapKit hosts it
+  outside the normal view tree).
+- Map counts: route lines and stops are cached per visibility change (as before); direction chevrons are capped at
+  40 per shape line (the two longest routes, 33 km and 25 km, had 104 and 77 SwiftUI annotations each).
+- Memory: every cache is bounded: sidewalk routes 256 entries, oldest dropped first (it grew for the whole session),
+  bus-leg paths 64, Photon 30 queries, the clock formatter one per time zone and locale, fired bus alerts capped.
+- Battery and network: the live feeds use one ephemeral `URLSession` without a URL cache (every poll has a new
+  cache-busting URL, so the shared session wrote a new disk cache entry every 10 s), no cookies, 8 s request /
+  15 s resource timeouts, no waiting for connectivity (offline fails at once and the pill says so), one warm
+  HTTP/2 connection; 20 s polls in Low Power Mode; no polling and no clock tick in the background; a request
+  cancelled by going to the background is not counted as a feed failure. Location: when-in-use, 10 m accuracy with
+  a 30 m distance filter (15 m during a started trip), never in the background.
+- Rider safety: back in the app after a break, `now` and the freshness flags are updated before the first new poll
+  is sent, so data from before the break never looks fresh (it shows "Last known" / the pill until the poll lands).
+- Main thread: JSON decode, planning, refining, search, the schedule download and validation all run off it; the
+  main thread only assigns results.
+
+## Schedule updates (fresh data without an app update)
+
+The app bundles `web/data` at build time, but the web app's data refreshes daily (pages.yml runs
+`tools/build_gtfs.py` on every deploy and at 09:17 UTC). Kit `ScheduleUpdate.swift` keeps the iPhone current:
+- At launch (after the first paint, off the main thread) and on every return to the app, `ScheduleUpdater` checks
+  if a check is due (at most once a day; one hour after a failure). It sends one conditional GET for
+  `https://blobberus.github.io/straight-bussing/data/meta.json` (If-None-Match / If-Modified-Since). A 304, or a
+  `generated_utc` that is not newer than the data in use, ends the check: about 120 bytes.
+- Only when it is newer: the 7 schedule files (routes, stops, shapes, route_stops, stop_addresses, service,
+  segments; about 20 KB compressed) in parallel. The set is used only if every file downloaded and
+  `StaticValidator` passes: required files readable, routes / stops / route stops / shapes / service hours not empty,
+  a readable schedule date newer than the one in use, every route_stops route and stop known, shapes and service
+  only for known routes, every stop within 50 km of campus. Then it is written atomically to
+  `Library/Caches/schedule/current/` (new folder first, then swapped in) with `state.json` (dates, validators).
+- places.json (about 50 KB compressed) is checked at most weekly the same way (at least 100 places, all near campus,
+  newer date).
+- At launch `ScheduleStore.loadBest` uses the downloaded set only when it is newer than the bundled one and still
+  valid; a damaged or outdated download (an app update bundled newer data) is deleted and the bundled copy is used.
+  If iOS purges Caches, the bundled copy is used until the next check.
+- A new schedule is swapped in right away unless a trip is started or Directions is open (then after the next poll
+  that finds neither); prefs, map order and favorites stay. About shows the date of the data in use ("Schedule data
+  from Oct 10, 2026", like the web).
+- Privacy: plain GETs of public files with no query, no cookies, no location, search text or identifier; skipped in
+  Low Data Mode (`allowsConstrainedNetworkAccess = false`: optional data); off in `-demo`. About's Privacy list says
+  so. Tests: `ScheduleUpdateTests` (validation, fallback, once a day, 304, failed / invalid downloads, offline).
 
 ## See it without a Mac (Windows)
 
@@ -243,7 +353,7 @@ actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 | Back always works | done | every pushed page has Back; Settings is a system sheet (Done / swipe down); no edge-swipe inside the custom sheet |
 | Accessibility: 44 pt targets, labels, Dynamic Type, Reduce Motion, state not by color alone | done (design pass 2026-10-10) | `ios/DESIGN-AUDIT-2026-10-10.md`: AA contrast for every text pair in light and dark (`Shared/Palette.swift`), measured chrome so large text never slides under the sheet, names wrap instead of truncating, tab bar Large Content Viewer, map moves snap under Reduce Motion; map markers keep fixed sizes; real-device VoiceOver pass still open |
 | Held tap while loading (3b4a409) | not applicable | native UI is ready before data arrives |
-| Self-update (service worker) / daily GTFS data | partial | code updates come from the App Store; `web/data` is bundled at build time, so new schedules need a new build. A launch-time download of `web/data/*.json` from Pages is feasible (adds a request to github.io; About must say so) and not done |
+| Self-update (service worker) / daily GTFS data | done (data) | code updates come from the App Store; schedule files come from the web app's site at most daily, validated, bundled copy as fallback (Kit `ScheduleUpdate.swift`, "Schedule updates" above); About lists the request to blobberus.github.io |
 | iPhone-sized frame on desktop, PWA install, keyboard shortcuts, browser back | not applicable | |
 | Learned ride times | supported, not shipped (same as web) | |
 
@@ -276,7 +386,6 @@ Web status as of 2026-10-10 (web parity port; contracts in docs/ARCHITECTURE.md 
 |---|---|
 | Live Activity / bus alerts while the phone is locked | needs the push server (`conversion to appstore.md` sections 6-8); `LiveActivityController.pushTokenStub` |
 | Favorite-stop home screen widget | iOS-only extra (P8), out of scope |
-| Fresh schedule data without an app update | feasible (download `web/data` at launch), not done; see the matrix row above |
 | Real-device QA, VoiceOver pass, Dynamic Type audit on hardware | needs an iPhone |
 
 ## App Store checklist status
@@ -287,7 +396,9 @@ Web status as of 2026-10-10 (web parity port; contracts in docs/ARCHITECTURE.md 
       UserDefaults reason CA92.1. Update it if push tokens are ever sent to a server. Walking-leg endpoints (rounded
       to ~10 m) go to Apple's MapKit directions service, not to us; re-check the App Privacy answers at submission.
       Typed place text goes to photon.komoot.io only when the on-device index has < 5 matches (never your location);
-      decide at submission whether the App Privacy label lists it as "Search History, not linked to you".
+      decide at submission whether the App Privacy label lists it as "Search History, not linked to you". The daily
+      schedule check fetches public files from blobberus.github.io and sends nothing about the user (no data
+      collected).
 - [x] Location usage string (`NSLocationWhenInUseUsageDescription`), asked only when the user taps "Use my location";
       location stays on the device. No background location.
 - [x] `NSSupportsLiveActivities`, `ITSAppUsesNonExemptEncryption = NO`, portrait iPhone, `straightbussing://` URL scheme.

@@ -36,7 +36,7 @@ def main():
                 continue
             name, metric, avg, rsd, values = m.groups()
             vals = [float(v) for v in values.split(",") if v.strip()]
-            scale = 1000.0 if "seconds" in metric else 1.0
+            scale = 1000.0 if ("seconds" in metric or metric.endswith(", s")) else 1.0
             mean = (sum(vals) / len(vals)) if vals else float(avg)
             rows[name] = {"metric": metric, "avg_ms": mean * scale, "min_ms": (min(vals) if vals else float(avg)) * scale,
                           "rsd": float(rsd), "runs": len(vals)}
