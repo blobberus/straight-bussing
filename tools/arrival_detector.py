@@ -149,6 +149,18 @@ class Tracker:
     def _stop_of(self, route, idx):
         return self.st.stops[self.st.route_stops[route][idx]]
 
+    @staticmethod
+    def _spans(s, stop):
+        """True if `stop` lies between the last two reports (inside the ellipse with them as foci,
+        widened by 2 x RADIUS_M), so the midpoint of their times can stand in for the arrival. False when
+        Passio's stop_id moved on while the bus was nowhere near the stop (it switched late, or over a
+        stop the bus does not serve): then the visit gets no row rather than a time it was elsewhere."""
+        if len(s["hist"]) < 2:
+            return False
+        (la0, lo0, _, _), (la1, lo1, _, _) = s["hist"][-2], s["hist"][-1]
+        return (hav_m(la0, lo0, stop["lat"], stop["lon"]) + hav_m(la1, lo1, stop["lat"], stop["lon"])
+                <= hav_m(la0, lo0, la1, lo1) + 2 * RADIUS_M)
+
     def _depart(self, s, lat, lon, sp, vt, out):
         """Track the pending arrival's dwell; close it once the vehicle has left (outside the radius
         or moving >= DEPART_SPEED). Dwell = arrival -> midpoint of last stopped report and the next
@@ -257,7 +269,7 @@ class Tracker:
             if fwd or lap:                           # left stop pn (stops in between were skipped)
                 self._check_defer(s, key, route, lat, lon, sp, vt, out, force=True)
                 gap_ok = s["last_vt"] is not None and vt - s["last_vt"] <= MAX_GAP
-                fb = (s["last_vt"] + vt) / 2 if gap_ok else None
+                fb = (s["last_vt"] + vt) / 2 if gap_ok and self._spans(s, self._stop_of(route, pn)) else None
                 if lap:
                     self._arrive(s, key, route, pn, self._approach(s, self._stop_of(route, pn), fb), "transition", out)
                 else:

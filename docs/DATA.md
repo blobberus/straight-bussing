@@ -32,8 +32,11 @@ arrival, `passio_pred_lead_s` = epoch - when it was made · `source`
   bus is still closing in the arrival waits until it stops, turns away, or 60 s pass.
 - **proximity**: within 40 m of the current/adjacent stop at < 1 m/s.
 - Time = when the track crosses the stop, interpolated between reports with the reported speed; else the
-  earliest closest report inside 40 m; else closest within 120 m. No row if the bus was already at the
-  stop in every remembered report (logger start, layovers): we never saw it arrive.
+  earliest closest report inside 40 m; else closest within 120 m; else (transitions only) the midpoint of
+  the last two reports, if they are <= 60 s apart and the stop lies between them. No row if the bus was
+  already at the stop in every remembered report (logger start, layovers): we never saw it arrive; and no
+  row if `stop_id` moved on while the bus was nowhere near the stop (it switched late, or over a stop the
+  bus does not serve).
 - `current_stop_sequence` is ignored when `stop_id` is present (it does not match route order);
   loop terminals are disambiguated with `tripUpdates` stop_sequence, then forward progress.
 - Dedupe per vehicle+trip+stop index; also one row per physical visit when the trip id flips at a terminal

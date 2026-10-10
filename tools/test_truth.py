@@ -171,6 +171,43 @@ def trip_id_flips_on_arrival_at_terminal():
     assert r["prev_stop_id"] == "A" and int(r["prev_arrival_epoch"]) == ev[0]["epoch"], r
 
 
+KX = 111320 * math.cos(math.radians(LAT))          # metres per degree of longitude
+B_EAST = STEP * KX                                 # stop B, metres east of stop A (~249)
+
+
+def rep_m(east, north, stop_id, vt, speed, trip="T1", veh="V1", route="R"):
+    """A report `east` / `north` metres from stop A."""
+    return {"veh": veh, "trip": trip, "route": route, "lat": LAT + north / 111320, "lon": LON0 + east / KX,
+            "speed": speed, "q": None, "stop_id": stop_id, "vt": int(vt)}
+
+
+@test
+def late_stop_id_switch_far_from_the_stop_gets_no_row():
+    """E01 B2: the bus serves A, then detours 300 m north of the line; Passio's stop_id stays B until the
+    bus is 500 m past B, then moves to C. No report came within 120 m of B, and B does not lie between
+    the last two reports, so B gets no row (before the fix: a row at the midpoint of those reports)."""
+    st = fake_static()
+    reps = [rep_m(-150, 0, "A", T0, 8), rep_m(-70, 0, "A", T0 + 10, 8), rep_m(0, 0, "A", T0 + 20, 0),
+            rep_m(0, 0, "A", T0 + 30, 0)]
+    pts = [(0, n) for n in (80, 160, 240, 300)] + [(e, 300) for e in range(80, int(B_EAST) + 500, 80)]
+    pts.append((B_EAST + 500, 300))
+    for k, (e, n) in enumerate(pts):
+        reps.append(rep_m(e, n, "B" if e < B_EAST + 500 else "C", T0 + 40 + 10 * k, 8))
+    reps += [rep_m(B_EAST + 500 + 80 * j, 300, "C", reps[-1]["vt"] + 10 * j, 8) for j in (1, 2)]
+    ev = run(Tracker(st), reps)
+    assert [e["idx"] for e in ev] == [0], [(e["idx"], e["source"], e["epoch"] - T0) for e in ev]
+
+
+@test
+def transition_between_two_distant_reports_uses_the_midpoint():
+    """E01 B2 positive control: reports 50 s apart, 200 m before and 200 m after B (both > 120 m away,
+    B between them): B still gets a transition row at the midpoint time."""
+    st = fake_static()
+    reps = [rep_m(B_EAST - 200, 0, "B", T0, 8), rep_m(B_EAST + 200, 0, "C", T0 + 50, 8)]
+    ev = run(Tracker(st), reps)
+    assert [(e["idx"], e["source"], e["epoch"]) for e in ev] == [(1, "transition", T0 + 25)], ev
+
+
 @test
 def same_trip_second_lap_is_logged():
     st = fake_static()
