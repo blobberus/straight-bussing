@@ -100,7 +100,7 @@ jobs:
           N=$(printf "%s" "$W" | grep -c "warning:" || true)
           echo "### Swift warnings in our sources: $N" >> "$GITHUB_STEP_SUMMARY"
           printf "%s\n" "$W" | sed -E 's#^.*/ios/#ios/#' | head -60 | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Prepare simulator (boot, skip the keyboard swipe-typing intro)
+      - name: Prepare simulator (boot, skip the keyboard swipe-typing intro, warm up the first launch)
         if: steps.build.outcome == 'success'
         run: |
           U="${{ steps.sim.outputs.udid }}"
@@ -109,16 +109,24 @@ jobs:
           for k in DidShowContinuousPathIntroduction KeyboardDidShowProductivityTutorial DidShowGestureKeyboardIntroduction; do
             xcrun simctl spawn "$U" defaults write com.apple.keyboard.preferences "$k" -bool true || true
           done
+          # A fresh iOS 26 simulator is slow on its very first app launch (XCUITest then reports "does not have
+          # a process ID"): pay that cost once here.
+          xcrun simctl install "$U" ios/build/dd/Build/Products/Debug-iphonesimulator/StraightBussing.app
+          xcrun simctl launch "$U" com.example.straightbussing -demo || true
+          sleep 8
+          xcrun simctl terminate "$U" com.example.straightbussing || true
       - name: UI tests
         id: uitest
         working-directory: ios
         env:
           TEST_RUNNER_SB_SHOTS: ${{ github.workspace }}/preview/uitest
         run: |
+          # one retry of a failed test (simulator launch hiccups on shared runners); a real failure fails twice
           xcodebuild test-without-building -project StraightBussing.xcodeproj -scheme StraightBussing \
             -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build/dd \
+            -retry-tests-on-failure -test-iterations 2 \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/uitest.log" | grep -E "Test Case|error|XCTAssert|\*\*" || true
-          grep -q "TEST EXECUTE SUCCEEDED" "$RUNNER_TEMP/uitest.log"
+          grep -q "TEST EXECUTE SUCCEEDED" "$RUNNER_TEMP/uitest.log" || { echo "::group::UI test log (last 120 lines)"; tail -120 "$RUNNER_TEMP/uitest.log"; echo "::endgroup::"; exit 1; }
       - name: Simulator screenshots + recordings (demo mode)
         if: always() && steps.build.outcome == 'success'
         run: |
