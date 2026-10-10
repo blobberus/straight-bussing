@@ -25,8 +25,7 @@ struct TripTimelineView: View {
                     }
                     Spacer()
                     Button("End trip") { model.endTrip() }
-                        .secondaryButtonStyle()
-                        .tint(Palette.danger)
+                        .secondaryButtonStyle(destructive: true)
                         .accessibilityIdentifier("endTrip")
                 }
                 .padding(.vertical, 8)
@@ -55,7 +54,7 @@ struct TripTimelineView: View {
                 Button {
                     if model.page != .directions { model.push(.directions) }
                 } label: { Text("Trip steps").frame(maxWidth: .infinity, minHeight: 44) }
-                    .buttonStyle(.bordered)
+                    .secondaryButtonStyle()
                 PickButton()
             }
             Text(TripText.footnote(p)).font(.caption).foregroundStyle(Palette.text2)
@@ -158,7 +157,7 @@ struct TripBusLeg: View {
                 HStack(spacing: 8) {
                     RouteChip(route: r, rid: leg.rid)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                        Text(name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text)
                         Text(meta.joined(separator: " · ")).font(.caption).foregroundStyle(Palette.text2)
                         if !whereLine.isEmpty {
                             Text(whereLine).font(.caption.weight(.medium)).foregroundStyle(v?.stale == true ? Palette.warn : Palette.text2)

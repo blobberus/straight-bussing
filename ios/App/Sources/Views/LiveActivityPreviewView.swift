@@ -76,7 +76,6 @@ struct LiveActivityPreviewView: View {
                                 model.liveActivity.start(title: title, state: s, simulated: model.feedSimulated)
                             }
                             .primaryButtonStyle()
-                            .controlSize(.large)
                         }
                     }
                     Text("Times are estimates. The countdown ticks on its own; stops away updates while the app is open (push updates need the server).")

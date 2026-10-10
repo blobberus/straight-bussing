@@ -133,7 +133,7 @@ struct DirectionsView: View {
                             Image(systemName: item.element.isMe ? "location.fill" : item.element.stopId != nil ? "bus" : "mappin")
                                 .frame(width: 22).foregroundStyle(Palette.text2).accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(item.element.label).foregroundStyle(.primary).lineLimit(1)
+                                Text(item.element.label).foregroundStyle(Palette.text).lineLimit(1)
                                 Text(model.placeSubtitle(item.element)).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
                             }
                             Spacer()
@@ -163,7 +163,7 @@ struct DirectionsView: View {
                 Button { model.useMyLocation(to: false) } label: {
                     Label("Start from my location", systemImage: "location.fill").frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .secondaryButtonStyle()
             }
         } else if let r = model.dir.result {
             TripBar()
@@ -255,7 +255,7 @@ struct TripBar: View {
                         }
                     }
                     Spacer()
-                    Button("End trip") { model.endTrip() }.secondaryButtonStyle().tint(Palette.danger)
+                    Button("End trip") { model.endTrip() }.secondaryButtonStyle(destructive: true)
                 }
                 .padding(.vertical, 8)
                 .accessibilityElement(children: .contain)

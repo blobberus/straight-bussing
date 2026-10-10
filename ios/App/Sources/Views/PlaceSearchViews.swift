@@ -100,7 +100,7 @@ struct PlaceList: View {
                                 HStack(spacing: 10) {
                                     Image(systemName: "mappin.and.ellipse").frame(width: 22).foregroundStyle(Palette.text2).accessibilityHidden(true)
                                     VStack(alignment: .leading, spacing: 1) {
-                                        Text(item.element.label).foregroundStyle(.primary).lineLimit(1)
+                                        Text(item.element.label).foregroundStyle(Palette.text).lineLimit(1)
                                         Text(item.element.sub).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
                                     }
                                     Spacer(minLength: 0)

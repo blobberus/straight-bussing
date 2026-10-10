@@ -168,7 +168,7 @@ struct RoutesView: View {
                 HStack {
                     Button("Cancel") { naming = false; draft = "" }.secondaryButtonStyle()
                     Spacer()
-                    Button("Save") { saveName() }.primaryButtonStyle().controlSize(.large)
+                    Button("Save") { saveName() }.primaryButtonStyle()
                 }
             }
         } else if let c = RouteVisibility.activeCustomRoute(s) {

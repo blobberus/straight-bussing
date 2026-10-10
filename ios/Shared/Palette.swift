@@ -82,11 +82,46 @@ extension UIColor {
     }
 }
 
-extension View {
-    /// The primary button: white text on the accent fill (4.7:1 in light and dark; the plain accent tint is
-    /// only 2.4:1 under white text in dark mode).
-    func primaryButtonStyle() -> some View { buttonStyle(.borderedProminent).tint(Palette.accentFill) }
+/// The one primary button (the web's .v-btn--primary): white text on the accent fill, 4.7:1 in light and dark
+/// (the system prominent style takes the tint, and white on the dark-mode accent is only 2.4:1).
+struct PrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .fontWeight(.semibold)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .background(Palette.accentFill, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
 
-    /// A secondary button with a 44 pt hit target (regular bordered buttons are 34 pt tall).
-    func secondaryButtonStyle() -> some View { buttonStyle(.bordered).controlSize(.large) }
+/// A secondary button (the web's .v-btn--secondary): accent text, or the danger red, on the neutral gray fill
+/// (#0060CC 4.6:1 to 5.0:1, #64B0FF 4.7:1, red 4.7:1 or more), 44 pt tall. With a custom tint the system
+/// bordered style switches to a tinted fill whose contrast was not checked, so this is drawn here.
+struct SecondaryButtonStyle: ButtonStyle {
+    var destructive = false
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(destructive ? Palette.danger : Palette.accent)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 44)
+            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.6 : 1) : 0.45)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+extension View {
+    func primaryButtonStyle() -> some View { buttonStyle(PrimaryButtonStyle()) }
+    func secondaryButtonStyle(destructive: Bool = false) -> some View { buttonStyle(SecondaryButtonStyle(destructive: destructive)) }
 }

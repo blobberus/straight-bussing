@@ -16,7 +16,7 @@ struct StopDetailView: View {
             VStack(spacing: 10) {
                 EmptyStateView(title: "Stop not found", message: "This stop is not in the current schedule.")
                 Button { model.popToRoot(); model.select(.current) } label: { Text("Back to Current trip").frame(maxWidth: .infinity, minHeight: 44) }
-                    .buttonStyle(.bordered)
+                    .secondaryButtonStyle()
             }
             .padding(16)
         }
@@ -37,10 +37,12 @@ struct StopDetailView: View {
                     Text(all.isEmpty ? "No routes listed for this stop." : "None of your visible routes stop here.").font(.subheadline).foregroundStyle(Palette.text2)
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
+                        // 10 pt around each chip is its hit area (44 pt tall, at least 44 wide), with an even gap between chips
+                        HStack(spacing: 0) {
                             ForEach(shown, id: \.self) { rid in
                                 Button { model.push(.route(rid)) } label: {
-                                    RouteChip(route: model.route(rid), rid: rid).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                                    RouteChip(route: model.route(rid), rid: rid)
+                                        .padding(.horizontal, 10).padding(.vertical, 12).contentShape(Rectangle())
                                 }
                                     .buttonStyle(.plain)
                                     .accessibilityLabel("Route \(model.longName(rid))")
@@ -111,7 +113,7 @@ struct StopDetailView: View {
             Label("From here", systemImage: "arrow.up.circle").lineLimit(1)
                 .frame(maxWidth: .infinity, minHeight: 44)
         }
-        .buttonStyle(.bordered)
+        .secondaryButtonStyle()
         .accessibilityLabel("Directions from \(stop.name)")
     }
 

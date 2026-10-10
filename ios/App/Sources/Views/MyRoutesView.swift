@@ -31,11 +31,11 @@ struct MyRoutesView: View {
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             // Trailing edge: first button sits at the edge -> reads Details | Edit | Delete.
                             Button { model.requestDelete(c, from: "list") } label: { Text("Delete") }
-                                .tint(.red)
+                                .tint(Palette.dangerFill)
                             Button { model.push(.editCustom(c.id)) } label: { Text("Edit") }
-                                .tint(.orange)
+                                .tint(Palette.accentFill)
                             Button { model.push(.customRoute(c.id)) } label: { Text("Details") }
-                                .tint(.gray)
+                                .tint(Palette.neutralFill)
                         }
                         .contextMenu {
                             Button { model.push(.customRoute(c.id)) } label: { Label("Details", systemImage: "info.circle") }
@@ -98,7 +98,7 @@ struct MyRoutesView: View {
                     HStack {
                         Label {
                             VStack(alignment: .leading, spacing: 1) {
-                                Text("Service alerts").foregroundStyle(.primary)
+                                Text("Service alerts").foregroundStyle(Palette.text)
                                 Text(n > 0 ? "\(n) active alert\(n == 1 ? "" : "s")" : "None right now").font(.caption).foregroundStyle(Palette.text2)
                             }
                         } icon: { Image(systemName: "exclamationmark.triangle") }
@@ -114,7 +114,7 @@ struct MyRoutesView: View {
                 Button { model.push(.about) } label: {
                     Label {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("About this app").foregroundStyle(.primary)
+                            Text("About this app").foregroundStyle(Palette.text)
                             Text("Unofficial. Privacy, theme, official contact").font(.caption).foregroundStyle(Palette.text2)
                         }
                     } icon: { Image(systemName: "info.circle") }
@@ -143,7 +143,7 @@ struct FavoriteRow: View {
         Button { if !editing { model.push(.stop(id)) } } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(name).foregroundStyle(.primary).lineLimit(1)
+                    Text(name).foregroundStyle(Palette.text).lineLimit(1)
                     HStack(spacing: 4) {
                         if let a { RouteChip(route: model.route(a.rid), rid: a.rid, size: 11) }
                         Text(sub).font(.caption).foregroundStyle(Palette.text2).lineLimit(1)
@@ -176,7 +176,7 @@ struct CustomRouteRow: View {
                     .font(.title2)
                     .foregroundStyle(active ? Palette.accent : Palette.text2)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(c.name).font(.body.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+                    Text(c.name).font(.body.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(1)
                     HStack(spacing: 4) {
                         if rids.isEmpty { Text("No routes").font(.caption).foregroundStyle(Palette.text2) }
                         ForEach(rids.prefix(6), id: \.self) { RouteChip(route: model.route($0), rid: $0, size: 11) }
@@ -221,13 +221,12 @@ struct CustomRouteDetailView: View {
                     }
                     HStack {
                         Button { model.push(.editCustom(id)) } label: { Label("Edit", systemImage: "pencil").frame(maxWidth: .infinity, minHeight: 44) }
-                            .buttonStyle(.bordered)
+                            .secondaryButtonStyle()
                         // red text on the gray bordered fill: the system destructive red is 3:1 there
                         Button { model.requestDelete(c, from: "detail") } label: {
                             Label("Delete", systemImage: "trash").frame(maxWidth: .infinity, minHeight: 44)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(Palette.danger)
+                        .secondaryButtonStyle(destructive: true)
                     }
                 }
                 .listRowBackground(Palette.card)
@@ -251,7 +250,7 @@ struct CustomRouteDetailView: View {
         } else {
             VStack(spacing: 10) {
                 EmptyStateView(title: "Custom route not found", message: "It may have been deleted.")
-                Button { model.popToRoot() } label: { Text("Back to My Routes").frame(maxWidth: .infinity, minHeight: 44) }.buttonStyle(.bordered)
+                Button { model.popToRoot() } label: { Text("Back to My Routes").frame(maxWidth: .infinity, minHeight: 44) }.secondaryButtonStyle()
             }
             .padding(16)
         }
@@ -288,7 +287,7 @@ struct CustomRouteLine: View {
                 HStack(spacing: 10) {
                     RouteChip(route: model.route(rid), rid: rid)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(model.longName(rid)).foregroundStyle(.primary)
+                        Text(model.longName(rid)).foregroundStyle(Palette.text)
                         HStack(spacing: 4) {
                             if n > 0 { LiveDot() }
                             Text(run + next).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
@@ -346,7 +345,7 @@ struct CustomRouteEditor: View {
                 HStack {
                     Button("Cancel") { model.back() }.secondaryButtonStyle()
                     Spacer()
-                    Button("Save") { save() }.primaryButtonStyle().controlSize(.large).font(.headline).accessibilityIdentifier("customSave")
+                    Button("Save") { save() }.primaryButtonStyle().font(.headline).accessibilityIdentifier("customSave")
                 }
                 if let id, let c = model.routeState.customRoutes.first(where: { $0.id == id }) {
                     Button { model.requestDelete(c, from: "edit") } label: {
@@ -381,7 +380,7 @@ struct CustomRouteEditor: View {
                     } label: {
                         HStack {
                             RouteChip(route: model.route(rid), rid: rid)
-                            Text(model.longName(rid)).foregroundStyle(.primary)
+                            Text(model.longName(rid)).foregroundStyle(Palette.text)
                             Spacer()
                             Image(systemName: picked.contains(rid) ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(picked.contains(rid) ? Palette.accent : Palette.text2)

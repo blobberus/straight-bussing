@@ -80,7 +80,7 @@ struct CurrentTripView: View {
             Button {
                 if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
             } label: { Text("Open iOS Settings").frame(maxWidth: .infinity, minHeight: 44) }
-                .buttonStyle(.bordered)
+                .secondaryButtonStyle()
         default:
             Button { model.locate() } label: {
                 Label("Use my location", systemImage: "location.fill").frame(maxWidth: .infinity, minHeight: 44)
@@ -115,7 +115,7 @@ struct CurrentTripView: View {
             if m.isEmpty {
                 EmptyStateView(title: "No matching stations", message: "Check the spelling, or type an address instead.")
                 Button { placeMode = true } label: { Text("Search addresses and places").frame(maxWidth: .infinity, minHeight: 44) }
-                    .buttonStyle(.bordered)
+                    .secondaryButtonStyle()
             } else {
                 Card {
                     ForEach(Array(m.enumerated()), id: \.offset) { item in
@@ -124,7 +124,7 @@ struct CurrentTripView: View {
                             HStack(spacing: 10) {
                                 Image(systemName: "bus").frame(width: 22).foregroundStyle(Palette.text2).accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(item.element.name).foregroundStyle(.primary)
+                                    Text(item.element.name).foregroundStyle(Palette.text)
                                     Text((model.staticData.stopRoutes[item.element.id] ?? []).map(model.shortName).joined(separator: ", "))
                                         .font(.caption).foregroundStyle(Palette.text2)
                                 }
@@ -231,7 +231,7 @@ struct PickButton: View {
         Button { model.pickMode = nil; model.push(.pick) } label: {
             Text("Routes to station\u{2026}").frame(maxWidth: .infinity, minHeight: 44)
         }
-        .buttonStyle(.bordered)
+        .secondaryButtonStyle()
         .accessibilityIdentifier("pickOpen")
     }
 }
@@ -271,7 +271,7 @@ struct StopCard: View {
             Button { model.push(.stop(stop.id)) } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(stop.name).font(hero ? .headline : .subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(2)
+                        Text(stop.name).font(hero ? .headline : .subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(2)
                         Text(TripInfo.walkText(stop.d)).font(.caption).foregroundStyle(Palette.text2)
                     }
                     Spacer()
@@ -327,7 +327,7 @@ struct SoonRow: View {
         HStack(spacing: 10) {
             RouteChip(route: model.route(a.rid), rid: a.rid)
             VStack(alignment: .leading, spacing: 1) {
-                Text(stopName).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
+                Text(stopName).font(.subheadline.weight(.medium)).foregroundStyle(Palette.text).lineLimit(1)
                 Text(model.route(a.rid)?.long ?? "").font(.caption).foregroundStyle(Palette.text2).lineLimit(1)
             }
             Spacer()
@@ -373,7 +373,7 @@ struct FavoritesCard: View {
                 if let a { RouteChip(route: model.route(a.rid), rid: a.rid) }
                 else { Image(systemName: "star.fill").foregroundStyle(Palette.star).frame(width: 24).accessibilityHidden(true) }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(name).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
+                    Text(name).font(.subheadline.weight(.medium)).foregroundStyle(Palette.text).lineLimit(1)
                     if let a { Text(model.route(a.rid)?.long ?? "").font(.caption).foregroundStyle(Palette.text2).lineLimit(1) }
                 }
                 Spacer()
@@ -399,7 +399,7 @@ struct AlertsBanner: View {
                 HStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.warn).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(b.head).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                        Text(b.head).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text)
                         Text(b.line).font(.subheadline).foregroundStyle(Palette.text2).lineLimit(2)
                     }
                     Spacer()

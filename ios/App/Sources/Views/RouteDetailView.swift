@@ -18,7 +18,7 @@ struct RouteDetailView: View {
             VStack(spacing: 10) {
                 EmptyStateView(title: "Route not found", message: "This route is not in the current schedule.")
                 Button { model.popToRoot(); model.select(.routes) } label: { Text("See all routes").frame(maxWidth: .infinity, minHeight: 44) }
-                    .buttonStyle(.bordered)
+                    .secondaryButtonStyle()
             }
             .padding(16)
         }
@@ -133,7 +133,7 @@ struct RouteDetailView: View {
                     Button { model.push(.stop(id)) } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(name).font(.subheadline).foregroundStyle(.primary).lineLimit(2)
+                                Text(name).font(.subheadline).foregroundStyle(Palette.text).lineLimit(2)
                                 ForEach(Array(here.enumerated()), id: \.offset) { b in
                                     Text("Bus \(b.element.label) heading here\(b.element.stale ? " · seen \(TimeFmt.ago(b.element.seen, from: model.now))" : "")")
                                         .font(.caption2.weight(.bold)).foregroundStyle(Color.textOn(hex: route.color))

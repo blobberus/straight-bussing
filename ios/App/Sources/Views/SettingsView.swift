@@ -309,7 +309,7 @@ struct StationPicker: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(name).foregroundStyle(.primary)
+                    Text(name).foregroundStyle(Palette.text)
                     if let sub { Text(sub).font(.caption).foregroundStyle(Palette.text2) }
                     HStack(spacing: 3) {
                         ForEach(model.staticData.stopRoutes[id] ?? [], id: \.self) { RouteChip(route: model.route($0), rid: $0, size: 10) }

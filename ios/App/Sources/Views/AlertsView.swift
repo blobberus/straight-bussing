@@ -28,7 +28,7 @@ struct AlertsView: View {
                         HStack(spacing: 10) {
                             Image(systemName: "info.circle").foregroundStyle(Palette.text2).accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text("About this app").foregroundStyle(.primary)
+                                Text("About this app").foregroundStyle(Palette.text)
                                 Text("Unofficial. Privacy, theme, official contact").font(.caption).foregroundStyle(Palette.text2)
                             }
                             Spacer()

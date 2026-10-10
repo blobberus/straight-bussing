@@ -103,7 +103,7 @@ struct ArrivalRow: View {
         HStack(spacing: 10) {
             RouteChip(route: r, rid: a.rid)
             VStack(alignment: .leading, spacing: 1) {
-                Text(model.longName(a.rid)).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(2)
+                Text(model.longName(a.rid)).font(.subheadline.weight(.medium)).foregroundStyle(Palette.text).lineLimit(2)
                 HStack(spacing: 4) {
                     LiveDot(level: model.staleLevel)
                     Text(lbl.text + extra).font(.caption).foregroundStyle(miss ? Color.primary : Palette.text2).lineLimit(2)

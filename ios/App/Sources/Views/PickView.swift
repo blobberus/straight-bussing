@@ -67,7 +67,7 @@ struct PickView: View {
             HStack(spacing: 12) {
                 Image(systemName: icon).frame(width: 24).foregroundStyle(Palette.accent).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).foregroundStyle(.primary)
+                    Text(title).foregroundStyle(Palette.text)
                     Text(sub).font(.caption).foregroundStyle(Palette.text2)
                 }
                 Spacer()
@@ -161,7 +161,7 @@ struct PickView: View {
                     Button { model.chooseStation(s.id) } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(s.name).foregroundStyle(.primary)
+                                Text(s.name).foregroundStyle(Palette.text)
                                 Text((s.d >= 0 ? Self.walkShort(s.d) + " · " : "") + (model.staticData.stopRoutes[s.id] ?? []).map(model.shortName).joined(separator: ", "))
                                     .font(.caption).foregroundStyle(Palette.text2)
                             }
@@ -186,7 +186,7 @@ struct PickView: View {
             if primary {
                 Button { setMode(m) } label: { Text(title).frame(maxWidth: .infinity, minHeight: 44) }.primaryButtonStyle()
             } else {
-                Button { setMode(m) } label: { Text(title).frame(maxWidth: .infinity, minHeight: 44) }.buttonStyle(.bordered)
+                Button { setMode(m) } label: { Text(title).frame(maxWidth: .infinity, minHeight: 44) }.secondaryButtonStyle()
             }
         }
     }

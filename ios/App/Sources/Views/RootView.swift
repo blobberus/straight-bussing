@@ -1,4 +1,6 @@
+import Combine
 import SwiftUI
+import UIKit
 import StraightBussingKit
 
 /// Google-Maps-style layout (web v2.4): full-screen map, floating destination search bar with the Settings
@@ -10,6 +12,8 @@ struct RootView: View {
     /// Measured height of the floating chrome above the sheet (search bar, status pill, demo banner, context bar):
     /// a long stale message or large text makes it taller, and the sheet's full detent must stay below it.
     @State private var chromeH: CGFloat = 50
+    /// The keyboard is up: the tab bar steps aside so the sheet keeps its room for suggestions.
+    @State private var keyboardUp = false
 
     var body: some View {
         @Bindable var model = model
@@ -18,13 +22,14 @@ struct RootView: View {
             // On the Routes list the list's own bar says the same thing with the same button (one action per intent).
             let ctx = ContextBar.shows(model) && model.detent != .full && !(model.tab == .routes && model.page == nil)
             let topReserved: CGFloat = chromeH > 1 ? chromeH + 14 : 8
-            let available = max(200, geo.size.height - Self.tabBarHeight - topReserved)
+            let tabH: CGFloat = keyboardUp ? 0 : Self.tabBarHeight
+            let available = max(200, geo.size.height - tabH - topReserved)
             let sheetH = BottomSheet<EmptyView>.height(for: model.detent, available: available)
             ZStack(alignment: .bottom) {
                 // The inset is applied here, not passed in: MapScreen has no inputs, so a detent change only
                 // relayouts the map instead of re-running its body.
                 MapScreen()
-                    .safeAreaPadding(.bottom, sheetH + Self.tabBarHeight)
+                    .safeAreaPadding(.bottom, sheetH + tabH)
                     .ignoresSafeArea()
                 VStack(spacing: 8) {
                     VStack(spacing: 8) {
@@ -43,12 +48,14 @@ struct RootView: View {
                 .padding(.top, 4)
                 VStack(spacing: 0) {
                     BottomSheet(detent: $model.detent, available: available) { SheetContent() }
-                    TabBar()
+                    if !keyboardUp { TabBar() }
                 }
             }
             // Above the sheet at every detent, like a system banner.
             .overlay(alignment: .top) { ToastBanner().padding(.horizontal, 12).padding(.top, 4) }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         .sheet(isPresented: $model.showSettings) { SettingsView() }
         .sheet(isPresented: $model.showLiveActivityPreview) {
             NavigationStack { LiveActivityPreviewView() }
@@ -205,7 +212,7 @@ struct ToastBanner: View {
                 Button { model.dismissToast() } label: {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: model.toastIcon).foregroundStyle(Palette.accent).accessibilityHidden(true)
-                        Text(text).font(.subheadline).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                        Text(text).font(.subheadline).foregroundStyle(Palette.text).multilineTextAlignment(.leading)
                         Spacer(minLength: 0)
                     }
                     .padding(12)
