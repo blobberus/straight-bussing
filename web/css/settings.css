@@ -39,12 +39,12 @@
 /* switch: native checkbox stays focusable/clickable on top, the knob is drawn behind it */
 .st-sw input { position: absolute; right: 0; top: 50%; width: 51px; height: 31px; margin: -15.5px 0 0; opacity: 0; cursor: pointer; z-index: 1; }
 .st-knob { flex: none; position: relative; width: 51px; height: 31px; border-radius: var(--r-pill); background: var(--hairline-strong); transition: background-color var(--d-press) var(--ease); }
-.st-knob::after { content: ""; position: absolute; left: 2px; top: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform var(--d-press) var(--ease); }
+.st-knob::after { content: ""; position: absolute; left: 2px; top: 2px; width: 27px; height: 27px; border-radius: 50%; background: var(--knob); box-shadow: var(--shadow-knob); transition: transform var(--d-press) var(--ease); }
 .st-sw input:checked + .st-knob { background: var(--accent); }   /* the one accent: green means live data only */
 .st-sw input:checked + .st-knob::after { transform: translateX(20px); }
 .st-sw input:focus-visible + .st-knob { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* state is not color alone: an "I" bar marks the on position */
-.st-sw input:checked + .st-knob::before { content: ""; position: absolute; left: 12px; top: 10px; width: 2px; height: 11px; border-radius: 1px; background: #fff; }
+.st-sw input:checked + .st-knob::before { content: ""; position: absolute; left: 12px; top: 10px; width: 2px; height: 11px; border-radius: 1px; background: var(--on-accent); }
 
 /* status */
 .st-status { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); }
@@ -57,7 +57,7 @@
    and floating chrome, below the dialog scrim and toasts. */
 .sto-scrim {
   position: fixed; inset: 0; z-index: var(--z-overlay-scrim);
-  background: rgba(0, 0, 0, .38); opacity: 0;
+  background: var(--scrim); opacity: 0;
   transition: opacity var(--d-sheet) var(--ease-exit);
 }
 .sto-scrim.is-in { opacity: 1; }
@@ -67,7 +67,7 @@
   display: flex; flex-direction: column;
   background: var(--bg-solid); color: var(--text);
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
-  box-shadow: 0 -8px 28px rgba(0, 0, 0, .22), 0 -1px 0 var(--hairline);
+  box-shadow: var(--shadow-card), 0 -1px 0 var(--hairline);
   overflow: hidden;
   /* --sto-from (set by JS): how far below its place it starts, = the distance the sheet travels */
   transform: translate3d(0, var(--sto-from, 100%), 0);

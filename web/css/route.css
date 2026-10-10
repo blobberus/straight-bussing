@@ -19,7 +19,7 @@
 .r-tl .v-tlstop.is-loopend .r-seg { height: 50%; }
 .r-bus { position: absolute; left: 48px; z-index: 1; transform: translate(-50%, -50%); min-width: 26px; max-width: 46px; height: 22px; padding: 0 5px; box-sizing: border-box;
   display: flex; align-items: center; justify-content: center; border-radius: var(--r-tag); font-size: var(--fs-cap); font-weight: 700; line-height: 1;
-  white-space: nowrap; overflow: hidden; box-shadow: 0 0 0 2px var(--bg-solid), 0 1px 3px rgba(0, 0, 0, .25); pointer-events: none;
+  white-space: nowrap; overflow: hidden; box-shadow: 0 0 0 2px var(--bg-solid), var(--shadow-chip); pointer-events: none;
   transition: top var(--d-swap, .25s) ease; }
 .r-bus::after { content: ""; position: absolute; left: 50%; bottom: -5px; margin-left: -4px; border: 4px solid transparent; border-bottom: 0; border-top-color: inherit; }
 .r-bus.is-stale { opacity: .55; outline: 2px dashed var(--text-2); outline-offset: 1px; }

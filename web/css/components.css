@@ -110,7 +110,7 @@ button.row:active { background: var(--surface-press); transform: scale(.98); }
 .seg button::after, .themeseg button::after { content: ""; position: absolute; inset: -5px 0; } /* 44px hit area */
 .seg button.on, .seg button[aria-current="page"], .seg button[aria-pressed="true"],
 .themeseg button.on, .themeseg button[aria-checked="true"] {
-  background: var(--seg-on); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .18);
+  background: var(--seg-on); color: var(--text); box-shadow: var(--shadow-thumb);
 }
 .themeseg { margin: var(--s2) 0; }
 .themeseg button { min-width: 72px; }

@@ -133,7 +133,7 @@ button.v-row:active { transform: scale(.98); opacity: .8; }
 .v-plain li { margin: var(--s2) 0; }
 .v-seg { display: flex; gap: 2px; padding: 2px; border-radius: var(--r-control); background: var(--surface); }
 .v-segbtn { position: relative; flex: 1; min-height: 40px; border: 0; border-radius: var(--r-inner); background: none; color: var(--text); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
-.v-segbtn.is-on { background: var(--seg-on); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.v-segbtn.is-on { background: var(--seg-on); box-shadow: var(--shadow-thumb); }
 
 /* ---------- directions ---------- */
 .v-dirbox { position: relative; display: flex; flex-direction: column; gap: 6px; margin: var(--s1) 0 var(--s2); padding-right: 52px; }
