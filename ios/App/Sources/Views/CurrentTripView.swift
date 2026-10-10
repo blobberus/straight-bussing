@@ -64,6 +64,9 @@ struct CurrentTripView: View {
                 }
             }
         }
+        if model.silentService, let why = model.silentText() {   // say why the stops have no times (rider safety)
+            EmptyStateView(title: "No live locations right now", message: why, showOfficial: true)
+        }
     }
 
     @ViewBuilder var noLocation: some View {
@@ -87,7 +90,8 @@ struct CurrentTripView: View {
         SectionTitle(text: "Arriving soon")
         let soon = soonest
         if soon.isEmpty {
-            EmptyStateView(title: "No live arrivals", message: "No shuttles report arrivals right now.", showOfficial: true)
+            EmptyStateView(title: model.silentService ? "No live locations right now" : "No live arrivals",
+                           message: (model.silentService ? model.silentText() : nil) ?? "No shuttles report arrivals right now.", showOfficial: true)
         } else {
             Card {
                 ForEach(Array(soon.enumerated()), id: \.offset) { item in

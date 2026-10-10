@@ -11,12 +11,20 @@ struct RouteDetailView: View {
         let r = model.route(rid)
         let n = model.running(rid)
         let svc = model.staticData.service
+        // scheduled but no bus reporting: "Scheduled until 4:29 AM, no live location", never "Not running" (rider safety)
+        let quiet: String? = n == 0 && !model.liveOutage ? Operating.noLiveStatus(rid, buses: model.buses, service: svc, now: model.now) : nil
+        let status: String = n > 0 ? "\(n) bus\(n == 1 ? "" : "es") running"
+            : model.liveOutage ? "Live status unavailable" : quiet ?? "Not running right now"
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
                     if n > 0 { LiveDot() }
-                    Text(n > 0 ? "\(n) bus\(n == 1 ? "" : "es") running" : "Not running right now").font(.subheadline.weight(.semibold))
+                    Text(status).font(.subheadline.weight(.semibold))
                     if let r, !r.short.isEmpty { Text("· \(r.short)").font(.subheadline).foregroundStyle(.secondary) }
+                }
+                if quiet != nil {
+                    Text("No bus on this route is sending its location, so we can't confirm it's running. Call 773.702.8181 before you rely on it.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
                 if let h = Schedule.hoursOn(svc, rid, model.now) {
                     let on = Schedule.isScheduledNow(svc, rid, model.now)

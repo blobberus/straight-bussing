@@ -1,8 +1,10 @@
 import SwiftUI
 import StraightBussingKit
 
-/// Routes tab (ui/views/routes.js): Edit map order first, Show all / Hide all, Running / Not running / Hidden
-/// groups with a per-route eye toggle (persisted), official contact at the bottom.
+/// Routes tab (ui/views/routes.js): Edit map order first, Show all / Hide all, Running / Scheduled, no live
+/// location / Not running / Hidden groups with a per-route eye toggle (persisted), official contact at the
+/// bottom. A scheduled route with no reporting bus is never "Not running" (Operating silent service; rider
+/// safety), and a feed outage is "Live status unknown".
 struct RoutesView: View {
     @Environment(AppModel.self) private var model
 
@@ -62,11 +64,28 @@ struct RoutesView: View {
                     .font(.subheadline).foregroundStyle(.secondary)
             }
         }
+        let svc = model.staticData.service
+        let outage = model.liveOutage
         let running = all.filter { !hidden.contains($0) && model.running($0) > 0 }
-        let idle = all.filter { !hidden.contains($0) && model.running($0) == 0 }
+        let scheduled: [String] = outage ? [] : all.filter {
+            !hidden.contains($0) && model.running($0) == 0 && Operating.scheduledNoLive($0, buses: model.buses, service: svc, now: model.now)
+        }
+        let idle = all.filter { !hidden.contains($0) && model.running($0) == 0 && !scheduled.contains($0) }
         let off = all.filter { hidden.contains($0) }
+        if model.silentService {   // fresh but empty feed while routes are scheduled
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("No live locations right now").font(.headline)
+                    Text(Operating.silentText(scheduled, routes: model.staticData.routes, service: svc, now: model.now, phone: "773.702.8181"))
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
         if !running.isEmpty { Section("Running") { ForEach(running, id: \.self) { RouteRow(rid: $0, hidden: false) } } }
-        if !idle.isEmpty { Section("Not running") { ForEach(idle, id: \.self) { RouteRow(rid: $0, hidden: false) } } }
+        if !scheduled.isEmpty { Section("Scheduled, no live location") { ForEach(scheduled, id: \.self) { RouteRow(rid: $0, hidden: false) } } }
+        let idleTitle: String = outage ? "Live status unknown" : "Not running"
+        if !idle.isEmpty { Section(idleTitle) { ForEach(idle, id: \.self) { RouteRow(rid: $0, hidden: false) } } }
         if !off.isEmpty { Section("Hidden") { ForEach(off, id: \.self) { RouteRow(rid: $0, hidden: true) } } }
         Section {
             OfficialContact()
@@ -109,6 +128,8 @@ struct RouteRow: View {
 
     func subtitle(_ n: Int) -> String {
         if n > 0 { return "\(n) bus\(n == 1 ? "" : "es") running" }
+        if model.liveOutage { return "Live status unknown" }   // a feed outage is not "not running"
+        if let s = Operating.noLiveStatus(rid, buses: model.buses, service: model.staticData.service, now: model.now) { return s }
         if let h = Schedule.hoursOn(model.staticData.service, rid, model.now) { return "Today: \(h.label)" }
         return "Not running right now"
     }

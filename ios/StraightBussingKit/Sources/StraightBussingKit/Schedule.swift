@@ -160,15 +160,27 @@ public enum Schedule {
         }
     }
 
+    /// The service window (from, to) containing `t`: today's, else yesterday's after-midnight tail.
+    static func windowAt(_ r: RouteService, _ t: Double) -> (String, String)? {
+        let p = localParts(t)
+        func find(_ day: ServiceDay?, _ m: Int) -> (String, String)? {
+            spansOf(day).first { s in m >= mins(s.0)! && m < mins(s.1)! }
+        }
+        return find(dayFor(r, isoDate(p)).day, p.min) ?? find(dayFor(r, isoDate(p, days: -1)).day, p.min + 1440)
+    }
+
     /// Is the route scheduled to run at `t`? Checks today's windows and yesterday's after-midnight tail.
     /// nil when there is no schedule data.
     public static func isScheduledNow(_ service: ServiceData?, _ rid: String, _ t: Double) -> Bool? {
         guard let r = routeService(service, rid) else { return nil }
-        let p = localParts(t)
-        func inside(_ day: ServiceDay?, _ m: Int) -> Bool {
-            spansOf(day).contains { s in m >= mins(s.0)! && m < mins(s.1)! }
-        }
-        return inside(dayFor(r, isoDate(p)).day, p.min) || inside(dayFor(r, isoDate(p, days: -1)).day, p.min + 1440)
+        return windowAt(r, t) != nil
+    }
+
+    /// End of the scheduled service window the route is in at `t`: 'HH:MM', may be >= 24:00 (format with
+    /// `clock12`). nil when not scheduled now or no schedule data (web core/schedule.js scheduledUntil).
+    public static func scheduledUntil(_ service: ServiceData?, _ rid: String, _ t: Double) -> String? {
+        guard let r = routeService(service, rid) else { return nil }
+        return windowAt(r, t)?.1
     }
 
     public struct HourGroup: Hashable, Sendable {

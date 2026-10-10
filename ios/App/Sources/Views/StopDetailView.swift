@@ -22,7 +22,10 @@ struct StopDetailView: View {
                 SectionTitle(text: "Arrivals")
                 Card {
                     if arrivals.isEmpty {
-                        EmptyStateView(title: "No live arrivals", message: model.liveLoaded ? "No bus reports this stop right now." : "Loading live data…",
+                        // silent feed while this stop's routes are scheduled: say so (rider safety)
+                        let why = model.liveLoaded && model.silentService ? model.silentText(among: Set(model.staticData.stopRoutes[stopId] ?? [])) : nil
+                        EmptyStateView(title: "No live arrivals",
+                                       message: why ?? (model.liveLoaded ? "No bus reports this stop right now." : "Loading live data…"),
                                        showOfficial: model.liveLoaded)
                     }
                     ForEach(Array(arrivals.enumerated()), id: \.offset) { item in

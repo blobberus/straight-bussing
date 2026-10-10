@@ -142,8 +142,11 @@ struct DirectionsView: View {
             }
             if r.options.isEmpty {
                 let running = !model.buses.isEmpty
+                // a feed outage or a silent feed while routes are scheduled is not "no shuttles running" (rider safety)
+                let idle: String = model.liveOutage ? "The live shuttle feed can't be reached, so we can't tell which buses are running."
+                    : (model.silentService ? model.silentText() : nil) ?? "No shuttles are running right now."
                 EmptyStateView(title: "No practical shuttle route right now",
-                               message: running ? "Nothing runs close enough to both places." : "No shuttles are running right now.",
+                               message: running ? "Nothing runs close enough to both places." : idle,
                                showOfficial: !running)
                 walkOnlyCard(r)
             } else {

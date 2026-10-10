@@ -346,6 +346,21 @@ final class AppModel {
 
     func route(_ rid: String) -> Route? { staticData.routes[rid] }
     func running(_ rid: String) -> Int { Arrivals.runningCount(buses: buses, rid: rid) }
+    /// The feed is in error with no last-known buses: nothing can be said about which shuttles run (web
+    /// core/arrivals.js liveUnknown). A feed outage is not a service outage.
+    var liveOutage: Bool { liveLoaded && buses.isEmpty && staleLevel == .err }
+    /// Fresh but empty feed while routes are scheduled (Operating.silentService): never "no shuttles running".
+    var silentService: Bool {
+        Operating.silentService(loaded: liveLoaded, buses: buses, level: staleLevel, routeIds: staticData.routeIds,
+                                service: staticData.service, now: now)
+    }
+    /// Silent-service explanation naming the visible scheduled routes. With `among` (a stop's routes): nil when
+    /// none of those is scheduled now.
+    func silentText(among: Set<String>? = nil) -> String? {
+        let rids = Operating.scheduledRoutes(staticData.routeIds, service: staticData.service, now: now, hidden: Set(hidden), among: among)
+        if among != nil && rids.isEmpty { return nil }
+        return Operating.silentText(rids, routes: staticData.routes, service: staticData.service, now: now, phone: "773.702.8181")
+    }
     /// Live arrivals at a stop from the per-poll index (same result as `Arrivals.arrivalsFor`).
     func arrivals(at stopId: String, routeId: String? = nil) -> [Arrival] {
         Arrivals.arrivals(in: arrivalIndex, stopId: stopId, routeId: routeId, hidden: routeId == nil ? Set(hidden) : [], now: now)
