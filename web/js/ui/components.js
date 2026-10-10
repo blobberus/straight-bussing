@@ -203,15 +203,17 @@ export function emptyState(title, body, opts = {}) {
     + (opts.official ? officialLinks() : "") + "</div>";
 }
 
+/** One placeholder row shaped like an arrival row: route badge, two text lines, ETA (index.html boots with the same markup). */
+export const SKELETON_ROW = '<div class="skel" aria-hidden="true"><span class="skel-chip"></span><span class="skel-lines"><span></span><span></span></span><span class="skel-eta"></span></div>';
+
 /**
- * Loading placeholder rows (no spinners).
+ * Loading placeholder rows (no spinners), shaped like the rows that replace them.
  * @param {number} [n=3]
  * @returns {string}
  */
 export function skeleton(n = 3) {
   const k = Math.max(1, Math.min(12, Math.floor(Number(n) || 3)));
-  return '<div class="skels" aria-busy="true"><span class="sr">Loading</span>'
-    + '<div class="skel" aria-hidden="true"></div>'.repeat(k) + "</div>";
+  return '<div class="skels" aria-busy="true"><span class="sr">Loading</span>' + SKELETON_ROW.repeat(k) + "</div>";
 }
 
 /**

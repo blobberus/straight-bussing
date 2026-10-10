@@ -84,6 +84,7 @@ test("emptyState / skeleton / pill / segmented / icon", () => {
   ok(noRawTag(e) && e.includes("773.702.8181") && e.includes("tel:+17737028181"), e);
   ok(!emptyState("t").includes("773"));
   eq((skeleton(4).match(/class="skel"/g) || []).length, 4);
+  ok(["skel-chip", "skel-lines", "skel-eta"].every((c) => skeleton(1).includes(c)), "rows shaped like arrival rows (taste audit 8.1)");
   ok(skeleton().includes("Loading"));
   ok(pill("warn", EVIL).includes("pill-warn") && noRawTag(pill("warn", EVIL)));
   ok(pill("bogus", "x").includes("pill-info"));
