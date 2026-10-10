@@ -159,12 +159,12 @@ struct LiveTripLockScreenView: View {
             }
             TripProgressBar(state: state)
             HStack(spacing: 4) {
-                Text(isStale ? "Data delayed · times may be off" : "est. from \(state.live ? "live data" : "the schedule") · as of \(Self.clock(state.asOf))")
+                Text(isStale ? "Data delayed, times may be off" : "est. from \(state.live ? "live data" : "the schedule") · as of \(Self.clock(state.asOf))")
                 Spacer()
                 Text("Unofficial")
             }
             .font(.caption2)
-            .foregroundStyle(isStale ? Color.orange : Color.secondary)
+            .foregroundStyle(isStale ? Palette.warn : Color.secondary)
         }
         .opacity(isStale ? 0.75 : 1)
     }

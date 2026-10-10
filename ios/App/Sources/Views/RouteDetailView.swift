@@ -8,6 +8,8 @@ import StraightBussingKit
 struct RouteDetailView: View {
     @Environment(AppModel.self) private var model
     let rid: String
+    /// Stop row height on the rail: 44 pt at the default text size, more with Dynamic Type.
+    @ScaledMetric(relativeTo: .subheadline) private var rowH: CGFloat = 44
 
     var body: some View {
         if let r = model.route(rid) {
@@ -38,26 +40,26 @@ struct RouteDetailView: View {
                 HStack(spacing: 6) {
                     if n > 0 { LiveDot() }
                     Text(status).font(.subheadline.weight(.semibold))
-                    if !r.short.isEmpty && !r.long.isEmpty { Text("· \(r.short)").font(.subheadline).foregroundStyle(.secondary) }
+                    if !r.short.isEmpty && !r.long.isEmpty { Text("· \(r.short)").font(.subheadline).foregroundStyle(Palette.text2) }
                 }
                 .accessibilityElement(children: .combine)
                 if quiet != nil {
                     Text("No bus on this route is sending its location, so we can't confirm it's running. Call 773.702.8181 before you rely on it.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(Palette.text2)
                 }
                 if let h = Schedule.hoursOn(svc, rid, model.now) {
                     let on = Schedule.isScheduledNow(svc, rid, model.now)
                     (Text("Today ").bold() + Text(h.label + RouteText.exceptionNote(h)) + Text(on == nil ? "" : on! ? " · Scheduled now" : " · Not scheduled now"))
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(Palette.text2)
                 }
                 if model.hidden.contains(rid) {
                     if model.routeState.journey != nil {
-                        Text("This route is not part of the current journey, so it is hidden on the map.").font(.subheadline).foregroundStyle(.secondary)
+                        Text("This route is not part of the current journey, so it is hidden on the map.").font(.subheadline).foregroundStyle(Palette.text2)
                     } else {
                         HStack {
                             Text("This route is hidden from the map and arrival times.").font(.subheadline)
                             Spacer()
-                            Button("Show") { model.toggleRouteHidden(rid) }.buttonStyle(.bordered)
+                            Button("Show") { model.toggleRouteHidden(rid) }.secondaryButtonStyle()
                         }
                     }
                 }
@@ -69,8 +71,8 @@ struct RouteDetailView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             ForEach(Array(spots.enumerated()), id: \.offset) { item in
                                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                    Circle().fill(Color(hex: r.color)).frame(width: 8, height: 8).accessibilityHidden(true)
-                                    Text(item.element.text).font(.footnote).foregroundStyle(item.element.stale ? Color.orange : Color.secondary)
+                                    Image(systemName: "bus.fill").font(.caption2).foregroundStyle(Palette.text2).accessibilityHidden(true)
+                                    Text(item.element.text).font(.footnote).foregroundStyle(item.element.stale ? Palette.warn : Palette.text2)
                                 }
                             }
                         }
@@ -81,11 +83,11 @@ struct RouteDetailView: View {
                     Card { stopTimeline(ids: ids, loop: loop, spots: spots, color: Color(hex: r.color), route: r) }
                     if loop, let first = ids.first {
                         Label("Loop: continues to \(model.staticData.stops[first]?.name ?? first)", systemImage: "arrow.triangle.2.circlepath")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(.footnote).foregroundStyle(Palette.text2)
                     }
                     if model.liveLoaded {
                         Text(model.isStale ? "Live data delayed. Times and bus positions may be off." : "Times are live predictions. Bus positions are approximate.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(.footnote).foregroundStyle(Palette.text2)
                     }
                 }
                 RouteScheduleView(rid: rid, day: Self.localDay(model.now), t: model.now, alertIds: routeAlerts.map(\.id)).equatable()
@@ -113,25 +115,25 @@ struct RouteDetailView: View {
                             Rectangle().fill(i == 0 && !loop ? .clear : color).frame(width: 5)
                             Rectangle().fill(last && !loop ? .clear : color).frame(width: 5)
                         }
-                        Circle().fill(Color(.systemBackground)).overlay(Circle().stroke(color, lineWidth: 2.5)).frame(width: 11, height: 11)
-                            .offset(y: 22 - 5.5)
+                        Circle().fill(Palette.card).overlay(Circle().stroke(color, lineWidth: 2.5)).frame(width: 11, height: 11)
+                            .offset(y: rowH / 2 - 5.5)
                         if !(last && !loop) {
                             Image(systemName: "chevron.down").font(.system(size: 8, weight: .heavy)).foregroundStyle(Color.textOn(hex: route.color))
-                                .offset(y: 44 - 6)
+                                .offset(y: rowH - 6)
                         }
                         ForEach(Array(onRail.enumerated()), id: \.offset) { b in
                             BusRailMarker(route: route, label: b.element.label).fixedSize()
                                 .opacity(b.element.stale ? 0.55 : 1)
-                                .offset(y: b.element.prev == nil ? 2 : 22 + CGFloat(b.element.frac) * 44 - 12)
+                                .offset(y: b.element.prev == nil ? 2 : rowH / 2 + CGFloat(b.element.frac) * rowH - 12)
                         }
                     }
-                    .frame(width: 40, height: 44)
+                    .frame(width: 40, height: rowH)
                     .zIndex(1)
                     .accessibilityHidden(true)
                     Button { model.push(.stop(id)) } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(name).font(.subheadline).foregroundStyle(.primary).lineLimit(1)
+                                Text(name).font(.subheadline).foregroundStyle(.primary).lineLimit(2)
                                 ForEach(Array(here.enumerated()), id: \.offset) { b in
                                     Text("Bus \(b.element.label) heading here\(b.element.stale ? " · seen \(TimeFmt.ago(b.element.seen, from: model.now))" : "")")
                                         .font(.caption2.weight(.bold)).foregroundStyle(Color.textOn(hex: route.color))
@@ -142,10 +144,10 @@ struct RouteDetailView: View {
                             Spacer()
                             if !eta.isEmpty {
                                 Text(eta).font(.subheadline.weight(.semibold)).monospacedDigit()
-                                    .foregroundStyle(eta == "Now" ? Color.green : Color.primary)
+                                    .foregroundStyle(eta == "Now" ? Palette.live : Palette.text)
                             }
                         }
-                        .frame(minHeight: 44)
+                        .frame(minHeight: rowH)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -192,7 +194,7 @@ struct RouteScheduleView: View, Equatable {
                         HStack {
                             Text(w.days).font(.subheadline.weight(.semibold))
                             Spacer()
-                            Text(w.label).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                            Text(w.label).font(.subheadline).foregroundStyle(Palette.text2).multilineTextAlignment(.trailing)
                         }
                         .frame(minHeight: 36)
                         .accessibilityElement(children: .combine)
@@ -205,8 +207,10 @@ struct RouteScheduleView: View, Equatable {
                 Card {
                     ForEach(alerts) { a in
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text("Service alert").font(.caption.weight(.bold)).padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(Color.orange.opacity(0.2), in: Capsule())
+                            Text("Service alert").font(.caption.weight(.bold)).foregroundStyle(Palette.warn)
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(Palette.warnBg, in: RoundedRectangle(cornerRadius: Radius.tag, style: .continuous))
+                                .fixedSize()
                             Text(a.header.isEmpty ? (a.description.isEmpty ? "Service alert" : a.description) : a.header).font(.subheadline)
                         }
                         .frame(minHeight: 36, alignment: .leading)
@@ -218,12 +222,12 @@ struct RouteScheduleView: View, Equatable {
                     }
                 }
             } else if has {
-                Text("No schedule changes in the next 30 days.").font(.footnote).foregroundStyle(.secondary)
+                Text("No schedule changes in the next 30 days.").font(.footnote).foregroundStyle(Palette.text2)
             }
             busesChart(svc)
             if has {
                 Text("Hours and bus counts come from the official published schedule. Live service may differ.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Palette.text2)
             }
         }
     }
@@ -242,18 +246,18 @@ struct RouteScheduleView: View, Equatable {
                     HStack(alignment: .bottom, spacing: 3) {
                         ForEach(bars, id: \.hour) { x in
                             VStack(spacing: 2) {
-                                Text(x.buses > 0 ? "\(x.buses)" : " ").font(.system(size: 9)).foregroundStyle(.secondary)
-                                RoundedRectangle(cornerRadius: 2).fill(Color.accentColor.opacity(x.buses > 0 ? 0.8 : 0.2))
+                                Text(x.buses > 0 ? "\(x.buses)" : " ").font(.system(size: 9)).foregroundStyle(Palette.text2)
+                                RoundedRectangle(cornerRadius: 2).fill(Palette.accent.opacity(x.buses > 0 ? 0.8 : 0.2))
                                     .frame(height: max(2, CGFloat(x.buses) / CGFloat(maxN) * 60))
                                 Text(x.hour % 3 == 0 ? Schedule.hourLabel(x.hour).replacingOccurrences(of: " ", with: "") : " ")
-                                    .font(.system(size: 8)).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                                    .font(.system(size: 8)).foregroundStyle(Palette.text2).lineLimit(1).fixedSize()
                             }
                             .frame(maxWidth: .infinity)
                         }
                     }
                     .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        ForEach(RouteText.hoursLines(list), id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+                        ForEach(RouteText.hoursLines(list), id: \.self) { Text($0).font(.caption).foregroundStyle(Palette.text2) }
                     }
                 }
                 .padding(.vertical, 8)

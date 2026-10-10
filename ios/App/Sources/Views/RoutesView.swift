@@ -14,7 +14,11 @@ struct RoutesView: View {
 
     var body: some View {
         List {
-            if model.editingOrder { orderSection } else { listSections }
+            // every section's rows on the token card color (Group hands the modifier to each section)
+            Group {
+                if model.editingOrder { orderSection } else { listSections }
+            }
+            .listRowBackground(Palette.card)
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -44,10 +48,11 @@ struct RoutesView: View {
                 Button("Reset order") { model.resetMapOrder() }
             }
         } header: {
-            Text("Map order")
+            Text("Map order").foregroundStyle(Palette.text2)
         } footer: {
-            Text("Drag a route by its handle. Routes higher in this list are drawn on top on the map.")
+            Text("Drag a route by its handle. Routes higher in this list are drawn on top on the map.").foregroundStyle(Palette.text2)
         }
+        .listRowBackground(Palette.card)
     }
 
     // MARK: List
@@ -115,27 +120,28 @@ struct RoutesView: View {
                 Section {
                     let scope = s.routeFilter != nil ? " at this station" : ""
                     HStack {
-                        Button("Show all") { model.showAllRoutes() }.buttonStyle(.bordered).disabled(g.hidden.isEmpty)
+                        Button("Show all") { model.showAllRoutes() }.secondaryButtonStyle().disabled(g.hidden.isEmpty)
                             .accessibilityLabel("Show all routes\(scope)")
                         Spacer()
-                        Button("Hide all") { model.hideAllRoutes() }.buttonStyle(.bordered).disabled(g.running.isEmpty && g.scheduled.isEmpty && g.idle.isEmpty)
+                        Button("Hide all") { model.hideAllRoutes() }.secondaryButtonStyle().disabled(g.running.isEmpty && g.scheduled.isEmpty && g.idle.isEmpty)
                             .accessibilityLabel("Hide all routes\(scope)")
                     }
                 }
             }
-            if !g.running.isEmpty { Section("Running") { ForEach(g.running, id: \.self) { RouteRow(rid: $0, hidden: false) } } }
-            if !g.scheduled.isEmpty { Section("Scheduled, no live location") { ForEach(g.scheduled, id: \.self) { RouteRow(rid: $0, hidden: false) } } }
+            if !g.running.isEmpty { Section(header: ListHeader("Running")) { ForEach(g.running, id: \.self) { RouteRow(rid: $0, hidden: false) } } }
+            if !g.scheduled.isEmpty { Section(header: ListHeader("Scheduled, no live location")) { ForEach(g.scheduled, id: \.self) { RouteRow(rid: $0, hidden: false) } } }
             if !g.idle.isEmpty {
-                Section(model.liveOutage ? "Live status unknown" : "Not running") {
+                Section(header: ListHeader(model.liveOutage ? "Live status unknown" : "Not running")) {
                     ForEach(g.idle, id: \.self) { RouteRow(rid: $0, hidden: false).opacity(empty ? 0.75 : 1) }
                 }
             }
-            if !g.hidden.isEmpty { Section(s.journey != nil ? "Not on this trip" : "Hidden") { ForEach(g.hidden, id: \.self) { RouteRow(rid: $0, hidden: true) } } }
+            if !g.hidden.isEmpty { Section(header: ListHeader(s.journey != nil ? "Not on this trip" : "Hidden")) { ForEach(g.hidden, id: \.self) { RouteRow(rid: $0, hidden: true) } } }
         }
         Section {
             OfficialContact()
         } footer: {
             Text("Unofficial app. Schedules come from the published GTFS feed; live positions from the public shuttle feed.")
+                .foregroundStyle(Palette.text2)
         }
     }
 
@@ -152,7 +158,7 @@ struct RoutesView: View {
                 .accessibilityElement(children: .contain)
             }
         } else if naming {
-            Section("Name this custom route") {
+            Section(header: ListHeader("Name this custom route")) {
                 TextField("My route", text: $draft)
                     .textInputAutocapitalization(.words)
                     .submitLabel(.done)
@@ -160,9 +166,9 @@ struct RoutesView: View {
                     .onSubmit(saveName)
                     .accessibilityIdentifier("routesName")
                 HStack {
-                    Button("Cancel") { naming = false; draft = "" }.buttonStyle(.bordered)
+                    Button("Cancel") { naming = false; draft = "" }.secondaryButtonStyle()
                     Spacer()
-                    Button("Save") { saveName() }.buttonStyle(.borderedProminent)
+                    Button("Save") { saveName() }.primaryButtonStyle().controlSize(.large)
                 }
             }
         } else if let c = RouteVisibility.activeCustomRoute(s) {
@@ -179,10 +185,10 @@ struct RoutesView: View {
                 }
                 if !Custom.matchesCurrent(s, c) {
                     HStack {
-                        Button("Update") { model.updateActiveCustomToVisible() }.buttonStyle(.bordered)
+                        Button("Update") { model.updateActiveCustomToVisible() }.secondaryButtonStyle()
                             .accessibilityLabel("Update \(c.name)")
                         Spacer()
-                        Button("Save as new") { startNaming() }.buttonStyle(.bordered)
+                        Button("Save as new") { startNaming() }.secondaryButtonStyle()
                     }
                 }
             }
@@ -223,10 +229,10 @@ struct RouteRow: View {
                 HStack(spacing: 10) {
                     RouteChip(route: r, rid: rid)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(model.longName(rid)).font(.body.weight(.medium)).foregroundStyle(hidden ? .secondary : .primary)
+                        Text(model.longName(rid)).font(.body.weight(.medium)).foregroundStyle(hidden ? Palette.text2 : Palette.text)
                         HStack(spacing: 4) {
                             if n > 0 && !hidden { LiveDot() }
-                            Text(subtitle(n, tripOff: tripOff)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            Text(subtitle(n, tripOff: tripOff)).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
                         }
                     }
                     Spacer()

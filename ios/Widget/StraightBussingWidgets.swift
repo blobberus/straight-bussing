@@ -17,6 +17,8 @@ struct TripLiveActivity: Widget {
         ActivityConfiguration(for: TripActivityAttributes.self) { context in
             LiveTripLockScreenView(title: context.attributes.title, state: context.state, isStale: context.isStale)
                 .padding(14)
+                .environment(\.colorScheme, .dark)
+                .foregroundStyle(.white)
                 .activityBackgroundTint(Color.black.opacity(0.55))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in

@@ -31,42 +31,30 @@ struct StopDetailView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 Label(model.staticData.addresses[stopId]?.address ?? "Address not available", systemImage: "mappin.and.ellipse")
-                    .font(.subheadline).foregroundStyle(.secondary)
-                Text("Routes at this stop").font(.footnote.weight(.semibold)).foregroundStyle(.secondary).accessibilityAddTraits(.isHeader)
+                    .font(.subheadline).foregroundStyle(Palette.text2)
+                Text("Routes at this stop").font(.footnote.weight(.semibold)).foregroundStyle(Palette.text2).accessibilityAddTraits(.isHeader)
                 if shown.isEmpty {
-                    Text(all.isEmpty ? "No routes listed for this stop." : "None of your visible routes stop here.").font(.subheadline).foregroundStyle(.secondary)
+                    Text(all.isEmpty ? "No routes listed for this stop." : "None of your visible routes stop here.").font(.subheadline).foregroundStyle(Palette.text2)
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
                             ForEach(shown, id: \.self) { rid in
-                                Button { model.push(.route(rid)) } label: { RouteChip(route: model.route(rid), rid: rid).frame(minHeight: 44) }
+                                Button { model.push(.route(rid)) } label: {
+                                    RouteChip(route: model.route(rid), rid: rid).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                                }
                                     .buttonStyle(.plain)
                                     .accessibilityLabel("Route \(model.longName(rid))")
                             }
                         }
                     }
                 }
-                HStack {
-                    Button {
-                        let to = Endpoint(label: stop.name, coord: stop.coord, stopId: stopId)
-                        if model.dir.from == nil || model.dir.from?.stopId == stopId {
-                            model.dir.from = model.user.map { Endpoint(label: "My location", coord: $0, isMe: true) }
-                        }
-                        model.dirActiveTo = false
-                        model.openDirections(to: to)
-                    } label: { Label("Directions to here", systemImage: "arrow.triangle.turn.up.right.circle.fill").frame(maxWidth: .infinity, minHeight: 44) }
-                    .buttonStyle(.borderedProminent)
-                    Button {
-                        model.dir.from = Endpoint(label: stop.name, coord: stop.coord, stopId: stopId)
-                        model.dir.to = nil
-                        model.dirActiveTo = true
-                        model.openDirections()
-                    } label: { Label("From here", systemImage: "arrow.up.circle").frame(maxWidth: .infinity, minHeight: 44) }
-                    .buttonStyle(.bordered)
+                ViewThatFits(in: .horizontal) {
+                    HStack { directionButtons(stop) }
+                    VStack { directionButtons(stop) }
                 }
                 SectionTitle(text: "Arrivals")
                 if !model.liveLoaded {
-                    Hint("Loading live data\u{2026}")
+                    Card { SkeletonRows(count: 3) }
                 } else if arrivals.isEmpty {
                     emptyArrivals(shown: shown)
                 } else {
@@ -80,23 +68,51 @@ struct StopDetailView: View {
                 if !hid.isEmpty {
                     let n = "+\(hid.count) hidden route\(hid.count > 1 ? "s" : "") also stop\(hid.count > 1 ? "" : "s") here"
                     if model.routeState.journey != nil {
-                        Text("\(n) (hidden during your trip).").font(.subheadline).foregroundStyle(.secondary)
+                        Text("\(n) (hidden during your trip).").font(.subheadline).foregroundStyle(Palette.text2)
                     } else {
                         HStack {
-                            Text("\(n).").font(.subheadline).foregroundStyle(.secondary)
+                            Text("\(n).").font(.subheadline).foregroundStyle(Palette.text2)
                             Spacer()
-                            Button("Show") { model.unhideRoutes(at: stopId) }.buttonStyle(.bordered)
+                            Button("Show") { model.unhideRoutes(at: stopId) }.secondaryButtonStyle()
                                 .accessibilityLabel("Show the hidden routes that stop here")
                         }
                     }
                 }
                 Text(LiveText.updatedText(lastOk: model.lastOk, failed: model.liveFailed, level: model.staleLevel, now: model.now))
                     .font(.caption.weight(model.staleLevel == .err ? .semibold : .regular))
-                    .foregroundStyle(model.staleLevel == .err ? Color.orange : Color.secondary)
+                    .foregroundStyle(model.staleLevel == .err ? Palette.warn : Palette.text2)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
+    }
+
+    /// "Directions" (to this stop; the primary action) and "From here". Labels never wrap: ViewThatFits stacks them.
+    @ViewBuilder func directionButtons(_ stop: Stop) -> some View {
+        Button {
+            let to = Endpoint(label: stop.name, coord: stop.coord, stopId: stopId)
+            if model.dir.from == nil || model.dir.from?.stopId == stopId {
+                model.dir.from = model.user.map { Endpoint(label: "My location", coord: $0, isMe: true) }
+            }
+            model.dirActiveTo = false
+            model.openDirections(to: to)
+        } label: {
+            Label("Directions", systemImage: "arrow.triangle.turn.up.right.circle.fill").lineLimit(1)
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .primaryButtonStyle()
+        .accessibilityLabel("Directions to \(stop.name)")
+        Button {
+            model.dir.from = Endpoint(label: stop.name, coord: stop.coord, stopId: stopId)
+            model.dir.to = nil
+            model.dirActiveTo = true
+            model.openDirections()
+        } label: {
+            Label("From here", systemImage: "arrow.up.circle").lineLimit(1)
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel("Directions from \(stop.name)")
     }
 
     /// Why there is no time (stop.js): feed outage, silent scheduled service at this stop, nothing predicted.

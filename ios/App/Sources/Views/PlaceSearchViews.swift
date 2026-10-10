@@ -58,13 +58,13 @@ struct AssumeNote: View {
     var body: some View {
         if state.exact, let fix = state.fix {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Showing results for \u{201C}\(state.q)\u{201D}").font(.footnote).foregroundStyle(.secondary)
+                Text("Showing results for \u{201C}\(state.q)\u{201D}").font(.footnote).foregroundStyle(Palette.text2)
                 Button("Did you mean \(fix.to)?") { onExact(false) }.font(.footnote.weight(.semibold)).frame(minHeight: 44)
             }
             .accessibilityElement(children: .contain)
         } else if !state.exact, let a = state.assumed, a.big {
             VStack(alignment: .leading, spacing: 2) {
-                (Text("Showing results for ").foregroundColor(.secondary) + Text(a.to).bold()).font(.footnote)
+                (Text("Showing results for ").foregroundColor(Palette.text2) + Text(a.to).bold()).font(.footnote)
                 Button("Search for \u{201C}\(a.from)\u{201D} instead") { onExact(true) }.font(.footnote.weight(.semibold)).frame(minHeight: 44)
             }
             .accessibilityElement(children: .contain)
@@ -98,10 +98,10 @@ struct PlaceList: View {
                             if item.offset > 0 { Divider() }
                             Button { onPick(item.element) } label: {
                                 HStack(spacing: 10) {
-                                    Image(systemName: "mappin.and.ellipse").frame(width: 22).foregroundStyle(.secondary).accessibilityHidden(true)
+                                    Image(systemName: "mappin.and.ellipse").frame(width: 22).foregroundStyle(Palette.text2).accessibilityHidden(true)
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(item.element.label).foregroundStyle(.primary).lineLimit(1)
-                                        Text(item.element.sub).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                        Text(item.element.sub).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
                                     }
                                     Spacer(minLength: 0)
                                 }
@@ -111,7 +111,7 @@ struct PlaceList: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    if state.status == .busy { Text("Searching more places\u{2026}").font(.caption).foregroundStyle(.secondary) }
+                    if state.status == .busy { Text("Searching more places\u{2026}").font(.caption).foregroundStyle(Palette.text2) }
                 }
             }
         }
@@ -122,7 +122,7 @@ struct PlaceList: View {
 struct PhotonNote: View {
     var body: some View {
         Text("Places near campus are searched on this iPhone; otherwise only the text you type (or its spelling fix) is sent to photon.komoot.io.")
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption).foregroundStyle(Palette.text2)
     }
 }
 
@@ -130,7 +130,7 @@ struct PhotonNote: View {
 struct Hint: View {
     let text: String
     init(_ text: String) { self.text = text }
-    var body: some View { Text(text).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+    var body: some View { Text(text).font(.subheadline).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true) }
 }
 
 /// A search field like the web's .v-search (magnifier, clear button, 44 pt).
@@ -141,7 +141,7 @@ struct SearchField: View {
     var onSubmit: () -> Void = {}
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+            Image(systemName: "magnifyingglass").foregroundStyle(Palette.text2).accessibilityHidden(true)
             TextField(placeholder, text: $text)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -151,11 +151,11 @@ struct SearchField: View {
                 .accessibilityLabel(placeholder)
                 .accessibilityIdentifier(identifier)
             if !text.isEmpty {
-                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).tapTarget() }
+                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.text2).tapTarget() }
                     .accessibilityLabel("Clear")
             }
         }
         .padding(.horizontal, 12)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
     }
 }

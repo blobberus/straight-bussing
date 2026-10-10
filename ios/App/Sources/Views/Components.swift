@@ -6,21 +6,28 @@ extension LatLon {
     var cl: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: lat, longitude: lon) }
 }
 
-/// Route badge (ui/components.js routeChip): short name on the route color; state never by color alone.
+/// Route badge (ui/components.js routeChip): short name on the route color; state never by color alone. Scales
+/// with Dynamic Type (up to 1.8x); a route color under 3:1 against the card (yellow in light mode, dark blue in
+/// dark mode) gets a thin ring so the chip keeps its edge (docs/DESIGN.md section 1).
 struct RouteChip: View {
     let route: Route?
     var rid: String = ""
     var size: CGFloat = 13
+    @ScaledMetric(relativeTo: .footnote) private var scale: CGFloat = 1
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
         let text = route?.chipText ?? rid
-        Text(text.isEmpty ? "•" : text)
-            .font(.system(size: size, weight: .heavy, design: .rounded))
+        let shape = RoundedRectangle(cornerRadius: Radius.tag, style: .continuous)
+        let faint = Color.contrast(hex: route?.color, against: scheme == .dark ? 0x2C2C2E : 0xFCFCFD) < 3
+        Text(text.isEmpty ? "Bus" : text)
+            .font(.system(size: size * min(scale, 1.8), weight: .heavy, design: .rounded))
             .lineLimit(1)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .frame(minWidth: 24)
             .foregroundStyle(Color.textOn(hex: route?.color))
-            .background(Color(hex: route?.color), in: RoundedRectangle(cornerRadius: 5))
+            .background(Color(hex: route?.color), in: shape)
+            .overlay { if faint { shape.strokeBorder(Palette.text2.opacity(0.6), lineWidth: 1) } }
             .accessibilityLabel("Route \(route?.displayName ?? rid)")
     }
 }
@@ -32,8 +39,9 @@ struct EstTag: View {
         Text(text)
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 5).padding(.vertical, 1)
-            .foregroundStyle(.secondary)
-            .overlay(RoundedRectangle(cornerRadius: 4).stroke(.secondary.opacity(0.5), lineWidth: 0.5))
+            .foregroundStyle(Palette.text2)
+            .overlay(RoundedRectangle(cornerRadius: Radius.tag, style: .continuous).stroke(Palette.text2.opacity(0.5), lineWidth: 0.5))
+            .fixedSize()
     }
 }
 
@@ -46,12 +54,15 @@ struct EtaText: View {
         let m = TimeFmt.minsUntil(t, from: now)
         HStack(alignment: .firstTextBaseline, spacing: 2) {
             if m < 1 {
-                Text((stale ? "~" : "") + "Now").font(.title3.weight(.bold)).foregroundStyle(stale ? Color.secondary : Color.green)
+                Text((stale ? "~" : "") + "Now").font(.title3.weight(.bold)).foregroundStyle(stale ? Palette.text2 : Palette.live)
             } else {
                 Text((stale ? "~" : "") + "\(m)").font(.title3.weight(.bold)).monospacedDigit()
-                Text("min").font(.caption).foregroundStyle(.secondary)
+                Text("min").font(.caption).foregroundStyle(Palette.text2)
             }
         }
+        // the ETA is the key fact of a row: never truncated or squeezed at large text sizes
+        .fixedSize()
+        .layoutPriority(1)
         .accessibilityElement(children: .combine)
         .accessibilityLabel((m < 1 ? "Arriving now" : "\(m) minutes") + (stale ? ", estimate" : ""))
     }
@@ -64,9 +75,9 @@ struct LiveDot: View {
     var body: some View {
         Group {
             switch level {
-            case .fresh: Circle().fill(.green)
-            case .late: Circle().fill(.orange)
-            default: Circle().strokeBorder(Color.secondary, lineWidth: 1.5)
+            case .fresh: Circle().fill(Palette.liveMark)
+            case .late: Circle().fill(Palette.warn)
+            default: Circle().strokeBorder(Palette.text2, lineWidth: 1.5)
             }
         }
         .frame(width: 7, height: 7)
@@ -92,10 +103,10 @@ struct ArrivalRow: View {
         HStack(spacing: 10) {
             RouteChip(route: r, rid: a.rid)
             VStack(alignment: .leading, spacing: 1) {
-                Text(model.longName(a.rid)).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
+                Text(model.longName(a.rid)).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(2)
                 HStack(spacing: 4) {
                     LiveDot(level: model.staleLevel)
-                    Text(lbl.text + extra).font(.caption).foregroundStyle(miss ? Color.primary : Color.secondary).lineLimit(2)
+                    Text(lbl.text + extra).font(.caption).foregroundStyle(miss ? Color.primary : Palette.text2).lineLimit(2)
                 }
             }
             Spacer()
@@ -132,14 +143,48 @@ struct Card<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+            .background(Palette.card, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
     }
+}
+
+/// Loading placeholder shaped like the arrival rows it stands in for (route chip, two lines, ETA), on the same
+/// rhythm (docs/DESIGN.md "States"). Static: no shimmer, so nothing moves under Reduce Motion. VoiceOver reads
+/// one "Loading live data" element per block.
+struct SkeletonRows: View {
+    var count = 3
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<count, id: \.self) { i in
+                if i > 0 { Divider() }
+                HStack(spacing: 10) {
+                    RoundedRectangle(cornerRadius: Radius.tag, style: .continuous).frame(width: 34, height: 20)
+                    VStack(alignment: .leading, spacing: 7) {
+                        Capsule().frame(width: 150, height: 11)
+                        Capsule().frame(width: 96, height: 9)
+                    }
+                    Spacer(minLength: 0)
+                    Capsule().frame(width: 36, height: 18)
+                }
+                .foregroundStyle(Palette.text3.opacity(0.28))
+                .frame(minHeight: 52)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Loading live data")
+    }
+}
+
+/// A List / Form section header in the token secondary color (the system header gray is 3.3:1 on the light sheet).
+struct ListHeader: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View { Text(text).foregroundStyle(Palette.text2) }
 }
 
 struct SectionTitle: View {
     let text: String
     var body: some View {
-        Text(text).font(.footnote.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+        Text(text).font(.footnote.weight(.semibold)).foregroundStyle(Palette.text2).textCase(.uppercase)
             .padding(.top, 10).padding(.leading, 4)
             .accessibilityAddTraits(.isHeader)
     }
@@ -153,7 +198,7 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 6) {
             Text(title).font(.headline)
-            Text(message).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text(message).font(.subheadline).foregroundStyle(Palette.text2).multilineTextAlignment(.center)
             if showOfficial { OfficialContact().padding(.top, 4) }
         }
         .frame(maxWidth: .infinity)
@@ -168,7 +213,7 @@ struct OfficialContact: View {
             Link(destination: URL(string: "tel:7737028181")!) {
                 Label("Call 773.702.8181", systemImage: "phone.fill").frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
+            .primaryButtonStyle()
             Link("Official transportation page", destination: URL(string: "https://safety-security.uchicago.edu/Transportation")!)
                 .font(.subheadline)
                 .frame(minHeight: 44)

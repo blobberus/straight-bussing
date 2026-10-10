@@ -19,21 +19,21 @@ struct TripTimelineView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Trip to \(p.to)").font(.headline).accessibilityAddTraits(.isHeader)
                         HStack(spacing: 4) {
-                            Text(TripText.arriveLine(p, now: model.now)).font(.subheadline).foregroundStyle(.secondary)
+                            Text(TripText.arriveLine(p, now: model.now)).font(.subheadline).foregroundStyle(Palette.text2)
                             if p.arriveT != nil { EstTag(text: "est.") }
                         }
                     }
                     Spacer()
-                    Button("End trip", role: .destructive) { model.endTrip() }
-                        .buttonStyle(.bordered)
-                        .frame(minHeight: 44)
+                    Button("End trip") { model.endTrip() }
+                        .secondaryButtonStyle()
+                        .tint(Palette.danger)
                         .accessibilityIdentifier("endTrip")
                 }
                 .padding(.vertical, 8)
             }
             if p.stale == .old || p.stale == .err {
                 Label("Live data delayed. Bus position and times may be off.", systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote.weight(.semibold)).foregroundStyle(.orange)
+                    .font(.footnote.weight(.semibold)).foregroundStyle(Palette.warn)
                     .accessibilityAddTraits(.updatesFrequently)
             }
             NowCardView(progress: p)
@@ -58,7 +58,7 @@ struct TripTimelineView: View {
                     .buttonStyle(.bordered)
                 PickButton()
             }
-            Text(TripText.footnote(p)).font(.caption).foregroundStyle(.secondary)
+            Text(TripText.footnote(p)).font(.caption).foregroundStyle(Palette.text2)
             if p.stale == .err { OfficialContact() }
         }
     }
@@ -74,14 +74,14 @@ struct NowCardView: View {
         Card {
             HStack(alignment: .top, spacing: 12) {
                 switch c.icon {
-                case .walk: Image(systemName: "figure.walk").font(.title2).foregroundStyle(.blue).frame(width: 32).accessibilityHidden(true)
+                case .walk: Image(systemName: "figure.walk").font(.title2).foregroundStyle(Palette.accent).frame(width: 32).accessibilityHidden(true)
                 case .route(let rid): RouteChip(route: model.route(rid), rid: rid)
                 case .pin: Image(systemName: "mappin.circle.fill").font(.title2).foregroundStyle(.red).frame(width: 32).accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(c.prim).font(.title3.weight(.bold)).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("tripHeadline")
-                    ForEach(c.sec, id: \.self) { Text($0).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                    ForEach(c.sec, id: \.self) { Text($0).font(.subheadline).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true) }
                 }
                 Spacer(minLength: 0)
                 if let t = c.eta { EtaText(t: t, now: model.now, stale: c.etaApprox) }
@@ -105,15 +105,15 @@ struct TripWalkRow: View {
             VStack(spacing: 2) {
                 Image(systemName: done ? "checkmark.circle.fill" : "figure.walk.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(done ? Color.secondary : (active ? Color.blue : Color.gray))
+                    .foregroundStyle(done ? Palette.text2 : (active ? Palette.accent : Palette.text3))
                 Rectangle().fill(.clear).frame(width: 3, height: 20)
-                    .overlay(DottedLine().stroke(Color.gray, style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [1, 6])))
+                    .overlay(DottedLine().stroke(Palette.text3, style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [1, 6])))
             }
             .frame(width: 32)
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(t.head).font(.subheadline.weight(active ? .bold : .medium)).foregroundStyle(done ? .secondary : .primary)
-                if !t.sub.isEmpty { Text(t.sub).font(.caption).foregroundStyle(.secondary) }
+                Text(t.head).font(.subheadline.weight(active ? .bold : .medium)).foregroundStyle(done ? Palette.text2 : Palette.text)
+                if !t.sub.isEmpty { Text(t.sub).font(.caption).foregroundStyle(Palette.text2) }
             }
             Spacer(minLength: 0)
         }
@@ -159,13 +159,13 @@ struct TripBusLeg: View {
                     RouteChip(route: r, rid: leg.rid)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                        Text(meta.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                        Text(meta.joined(separator: " · ")).font(.caption).foregroundStyle(Palette.text2)
                         if !whereLine.isEmpty {
-                            Text(whereLine).font(.caption.weight(.medium)).foregroundStyle(v?.stale == true ? Color.orange : Color.secondary)
+                            Text(whereLine).font(.caption.weight(.medium)).foregroundStyle(v?.stale == true ? Palette.warn : Palette.text2)
                         }
                     }
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(Palette.text3)
                 }
                 .padding(.vertical, 6)
                 .frame(minHeight: 44)
@@ -182,7 +182,7 @@ struct TripBusLeg: View {
                     }
                     ForEach(Array(shown.stops.enumerated()), id: \.element.id) { item in
                         TripStopRow(stop: item.element, k: item.offset, count: shown.stops.count, leg: leg, shown: shown,
-                                    color: color, late: late, hasLead: lead != nil, rowH: rowH)
+                                    color: color, late: late, hasLead: lead != nil, rowH: rowH, textOn: Color.textOn(hex: r?.color))
                     }
                 }
                 if showV, let v {
@@ -211,12 +211,12 @@ struct LeadRow: View {
     var body: some View {
         HStack(spacing: 10) {
             VStack(spacing: 0) {
-                Rectangle().fill(Color.gray.opacity(0.4)).frame(width: 4)
+                Rectangle().fill(Palette.text3.opacity(0.45)).frame(width: 4)
             }
             .frame(width: TripBusLeg.railW)
-            Text(text).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            Text(text).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
             Spacer(minLength: 0)
-            if passed { Text("Passed").font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
+            if passed { Text("Passed").font(.caption.weight(.semibold)).foregroundStyle(Palette.text2) }
         }
         .frame(height: rowH)
         .accessibilityElement(children: .combine)
@@ -235,6 +235,8 @@ struct TripStopRow: View {
     let late: Bool
     let hasLead: Bool
     let rowH: CGFloat
+    /// Text on the route color (white or near-black by luminance).
+    var textOn: Color = .white
 
     /// The rail between row j and j+1 is dimmed before boarding and once the bus has passed it.
     func dimSeg(_ j: Int) -> Bool {
@@ -255,30 +257,33 @@ struct TripStopRow: View {
             HStack(spacing: 10) {
                 ZStack {
                     VStack(spacing: 0) {
-                        Rectangle().fill(k == 0 && !hasLead ? Color.clear : (topDim ? Color.gray.opacity(0.4) : color)).frame(width: 4)
-                        Rectangle().fill(k == count - 1 ? Color.clear : (botDim ? Color.gray.opacity(0.4) : color)).frame(width: 4)
+                        Rectangle().fill(k == 0 && !hasLead ? Color.clear : (topDim ? Palette.text3.opacity(0.45) : color)).frame(width: 4)
+                        Rectangle().fill(k == count - 1 ? Color.clear : (botDim ? Palette.text3.opacity(0.45) : color)).frame(width: 4)
                     }
                     Circle()
-                        .fill(key ? color : Color(.systemBackground))
-                        .overlay(Circle().stroke(passed ? Color.gray : color, lineWidth: key ? 0 : 2.5))
+                        .fill(key ? color : Palette.card)
+                        .overlay(Circle().stroke(passed ? Palette.text3 : color, lineWidth: key ? 0 : 2.5))
                         .frame(width: key ? 18 : 12, height: key ? 18 : 12)
                 }
                 .frame(width: TripBusLeg.railW)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(stop.name)
                         .font(.subheadline.weight(key ? .bold : .regular))
-                        .foregroundStyle(passed || stop.role == .before ? .secondary : .primary)
-                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .foregroundStyle(passed || stop.role == .before ? Palette.text2 : Palette.text)
+                        .lineLimit(2).minimumScaleFactor(0.85)
                     HStack(spacing: 4) {
                         if stop.role == .board { RoleTag(text: "Board here") }
                         if stop.role == .alight { RoleTag(text: "Get off here") }
-                        if let pill { Text(pill).font(.caption2.weight(.bold)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 1).background(color, in: Capsule()) }
+                        if let pill {
+                            Text(pill).font(.caption2.weight(.bold)).foregroundStyle(textOn)
+                                .padding(.horizontal, 6).padding(.vertical, 1).background(color, in: Capsule())
+                        }
                     }
                 }
                 Spacer(minLength: 0)
                 HStack(spacing: 3) {
                     Text(eta.text).font(.subheadline.weight(eta.text == "Now" ? .bold : .semibold)).monospacedDigit()
-                        .foregroundStyle(passed ? Color.secondary : eta.text == "Now" ? Color.green : Color.primary)
+                        .foregroundStyle(passed ? Palette.text2 : eta.text == "Now" && !eta.est && !late ? Palette.live : Palette.text)
                     if eta.est { EstTag(text: "est.") }
                 }
             }
@@ -296,8 +301,9 @@ struct RoleTag: View {
     let text: String
     var body: some View {
         Text(text).font(.caption2.weight(.semibold)).padding(.horizontal, 5).padding(.vertical, 1)
-            .overlay(Capsule().stroke(Color.secondary.opacity(0.6), lineWidth: 1))
-            .foregroundStyle(.secondary)
+            .overlay(RoundedRectangle(cornerRadius: Radius.tag, style: .continuous).stroke(Palette.text2.opacity(0.6), lineWidth: 1))
+            .foregroundStyle(Palette.text2)
+            .fixedSize()
     }
 }
 
@@ -316,10 +322,10 @@ struct BusChip: View {
         }
         .frame(width: Self.w, height: Self.h)
         .foregroundStyle(textColor)
-        .background(color, in: Capsule())
-        .overlay(Capsule().stroke(.white, lineWidth: 2))
+        .background(color, in: RoundedRectangle(cornerRadius: Radius.tag, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.tag, style: .continuous).stroke(.white, lineWidth: 2))
         .opacity(stale ? 0.6 : 1)
-        .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+        .shadow(color: Palette.shadow.opacity(0.25), radius: 2, y: 1)
     }
 }
 
@@ -334,11 +340,11 @@ struct TripDestinationRow: View {
                 Text(progress.to).font(.subheadline.weight(progress.phase == .arrived ? .bold : .semibold))
                 if let a = progress.arriveT {
                     HStack(spacing: 4) {
-                        Text("Arrive about \(TimeFmt.clock(a))").font(.caption).foregroundStyle(.secondary)
+                        Text("Arrive about \(TimeFmt.clock(a))").font(.caption).foregroundStyle(Palette.text2)
                         EstTag(text: "est.")
                     }
                 } else {
-                    Text("Destination").font(.caption).foregroundStyle(.secondary)
+                    Text("Destination").font(.caption).foregroundStyle(Palette.text2)
                 }
             }
             Spacer(minLength: 0)
@@ -359,9 +365,9 @@ struct BusRailMarker: View {
         }
         .padding(.horizontal, 6).frame(height: 24)
         .foregroundStyle(Color.textOn(hex: route?.color))
-        .background(Color(hex: route?.color), in: Capsule())
-        .overlay(Capsule().stroke(.white, lineWidth: 2))
-        .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+        .background(Color(hex: route?.color), in: RoundedRectangle(cornerRadius: Radius.tag, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.tag, style: .continuous).stroke(.white, lineWidth: 2))
+        .shadow(color: Palette.shadow.opacity(0.25), radius: 2, y: 1)
         .accessibilityLabel("Live bus position")
     }
 }

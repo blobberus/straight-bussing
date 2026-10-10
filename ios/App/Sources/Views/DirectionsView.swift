@@ -32,9 +32,9 @@ struct DirectionsView: View {
                 Card {
                     HStack(spacing: 8) {
                         VStack(spacing: 0) {
-                            field(.from, text: $fromText, placeholder: "Start", pin: .green)
+                            field(.from, text: $fromText, placeholder: "Start")
                             Divider().padding(.leading, 28)
-                            field(.to, text: $toText, placeholder: "Destination", pin: .red)
+                            field(.to, text: $toText, placeholder: "Destination")
                         }
                         Button { model.swapEndpoints(); syncTexts() } label: {
                             Image(systemName: "arrow.up.arrow.down").font(.body.weight(.semibold)).tapTarget()
@@ -86,9 +86,14 @@ struct DirectionsView: View {
         }
     }
 
-    func field(_ f: Field, text: Binding<String>, placeholder: String, pin: Color) -> some View {
+    /// Start = hollow ring, destination = the red pin of the map's destination marker (green is for live data only).
+    func field(_ f: Field, text: Binding<String>, placeholder: String) -> some View {
         HStack(spacing: 10) {
-            Circle().fill(pin).frame(width: 10, height: 10).accessibilityHidden(true)
+            Group {
+                if f == .from { Circle().strokeBorder(Palette.text2, lineWidth: 2.5) } else { Circle().fill(.red) }
+            }
+            .frame(width: 11, height: 11)
+            .accessibilityHidden(true)
             TextField(placeholder, text: text)
                 .focused($focus, equals: f)
                 .submitLabel(.search)
@@ -99,7 +104,7 @@ struct DirectionsView: View {
                 .accessibilityLabel("\(placeholder): station or place")
                 .accessibilityIdentifier(f == .from ? "dirFrom" : "dirTo")
             if !text.wrappedValue.isEmpty && focus == f {
-                Button { text.wrappedValue = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).tapTarget() }
+                Button { text.wrappedValue = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.text2).tapTarget() }
                     .accessibilityLabel("Clear")
             }
         }
@@ -126,10 +131,10 @@ struct DirectionsView: View {
                     Button { choose(item.element, for: f) } label: {
                         HStack(spacing: 10) {
                             Image(systemName: item.element.isMe ? "location.fill" : item.element.stopId != nil ? "bus" : "mappin")
-                                .frame(width: 22).foregroundStyle(.secondary).accessibilityHidden(true)
+                                .frame(width: 22).foregroundStyle(Palette.text2).accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(item.element.label).foregroundStyle(.primary).lineLimit(1)
-                                Text(model.placeSubtitle(item.element)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                Text(model.placeSubtitle(item.element)).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
                             }
                             Spacer()
                         }
@@ -163,7 +168,7 @@ struct DirectionsView: View {
         } else if let r = model.dir.result {
             TripBar()
             if model.staleLevel != .fresh {
-                Text("Live data delayed. Bus times may be off.").font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
+                Text("Live data delayed. Bus times may be off.").font(.subheadline.weight(.semibold)).foregroundStyle(Palette.warn)
             }
             if r.options.isEmpty {
                 let running = !model.buses.isEmpty
@@ -185,15 +190,15 @@ struct DirectionsView: View {
                                selected: item.offset == model.dir.selected)
                 }
                 Text("Walking the whole way: \(TripInfo.mins(r.walkOnlyMin)) min (\(r.walkOnlyM) m), \(walkSourceText(r))")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(Palette.text2)
                 refiningNote
                 Text("Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(Palette.text2)
             }
         } else {
             HStack(spacing: 8) {
                 ProgressView()
-                Text("Finding trips\u{2026}").font(.subheadline).foregroundStyle(.secondary)
+                Text("Finding trips\u{2026}").font(.subheadline).foregroundStyle(Palette.text2)
             }
             .frame(maxWidth: .infinity, minHeight: 44)
         }
@@ -205,7 +210,7 @@ struct DirectionsView: View {
     /// Shown while Apple Maps walking routes replace the straight-line estimates.
     @ViewBuilder var refiningNote: some View {
         if model.dir.refining {
-            Text("Checking sidewalk routes\u{2026}").font(.footnote).foregroundStyle(.secondary)
+            Text("Checking sidewalk routes\u{2026}").font(.footnote).foregroundStyle(Palette.text2)
                 .accessibilityIdentifier("dirRefining")
         }
     }
@@ -216,7 +221,7 @@ struct DirectionsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("\(TripInfo.mins(r.walkOnlyMin))").font(.title2.weight(.bold)).monospacedDigit()
-                    Text("min").font(.subheadline).foregroundStyle(.secondary)
+                    Text("min").font(.subheadline).foregroundStyle(Palette.text2)
                     EstTag(text: walkSourceText(r))
                     Spacer()
                     Text("Arrive \(TimeFmt.clock(model.now + r.walkOnlyMin * 60))").font(.subheadline.weight(.semibold))
@@ -224,7 +229,7 @@ struct DirectionsView: View {
                 HStack {
                     Label("Walk the whole way", systemImage: "figure.walk").font(.subheadline.weight(.semibold))
                     Spacer()
-                    Text("\(r.walkOnlyM) m").font(.subheadline).foregroundStyle(.secondary)
+                    Text("\(r.walkOnlyM) m").font(.subheadline).foregroundStyle(Palette.text2)
                 }
             }
             .padding(.vertical, 8)
@@ -240,17 +245,17 @@ struct TripBar: View {
         if let trip = model.activeTrip {
             Card {
                 HStack(spacing: 10) {
-                    Circle().fill(.green).frame(width: 10, height: 10).accessibilityHidden(true)
+                    Circle().fill(Palette.accent).frame(width: 10, height: 10).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Trip to \(trip.label)").font(.subheadline.weight(.semibold))
                         HStack(spacing: 4) {
                             Text(trip.journey.rids.count > 1 ? "Map shows only these routes" : "Map shows only this route")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(Palette.text2)
                             ForEach(trip.journey.rids, id: \.self) { RouteChip(route: model.route($0), rid: $0, size: 11) }
                         }
                     }
                     Spacer()
-                    Button("End trip") { model.endTrip() }.buttonStyle(.bordered).frame(minHeight: 44)
+                    Button("End trip") { model.endTrip() }.secondaryButtonStyle().tint(Palette.danger)
                 }
                 .padding(.vertical, 8)
                 .accessibilityElement(children: .contain)
@@ -276,21 +281,21 @@ struct OptionCard: View {
             Button { model.selectOption(index) } label: {
                 VStack(alignment: .leading, spacing: 6) {
                     if !crit.isEmpty {
-                        Text(crit).font(.caption.weight(.bold)).foregroundStyle(Color.accentColor)
+                        Text(crit).font(.caption.weight(.bold)).foregroundStyle(Palette.accent)
                             .accessibilityIdentifier("criteria.\(index)")
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text("~\(option.totalMin)").font(.title2.weight(.bold)).monospacedDigit()
-                        Text("min").font(.subheadline).foregroundStyle(.secondary)
+                        Text("min").font(.subheadline).foregroundStyle(Palette.text2)
                         EstTag(text: "est.")
                         Spacer()
                         Text("Arrive \(TimeFmt.clock(option.arrive))").font(.subheadline.weight(.semibold))
                     }
                     summary
                     if let lines {
-                        Text(lines.first).font(.caption).foregroundStyle(.secondary)
+                        Text(lines.first).font(.caption).foregroundStyle(Palette.text2)
                         Text(lines.second).font(.caption.weight(lines.leaveNow ? .bold : .regular))
-                            .foregroundStyle(lines.leaveNow ? Color.primary : Color.secondary)
+                            .foregroundStyle(lines.leaveNow ? Color.primary : Palette.text2)
                     }
                 }
                 .contentShape(Rectangle())
@@ -306,29 +311,29 @@ struct OptionCard: View {
                     Button {
                         model.startTrip(option, label: model.dir.to?.label ?? "destination")
                     } label: { Text("Start").font(.headline).frame(maxWidth: .infinity, minHeight: 44) }
-                        .buttonStyle(.borderedProminent)
+                        .primaryButtonStyle()
                         .accessibilityIdentifier("startTrip")
                     Text("Shows only this trip\u{2019}s routes on the map. Follow the bus stop by stop in Current trip, on the Lock Screen and in the Dynamic Island.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Palette.text2)
                 }
             }
         }
         .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(selected ? Color.accentColor : .clear, lineWidth: 2))
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).stroke(selected ? Palette.accent : .clear, lineWidth: 2))
     }
 
     var summary: some View {
         HStack(spacing: 4) {
             ForEach(Array(option.legs.enumerated()), id: \.offset) { item in
-                if item.offset > 0 { Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary) }
+                if item.offset > 0 { Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Palette.text3) }
                 switch item.element {
                 case .walk(let w):
                     HStack(spacing: 1) {
                         Image(systemName: "figure.walk").font(.caption)
                         Text(TripInfo.walkMins(w.min)).font(.caption.weight(.semibold))
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.text2)
                 case .bus(let b):
                     RouteChip(route: model.route(b.rid), rid: b.rid, size: 12)
                 }
@@ -366,7 +371,7 @@ struct StepList: View {
                         }
                         if let sub = s.sub {
                             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                Text(sub).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                                Text(sub).font(.caption).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
                                 if let t = s.subTag { EstTag(text: t) }
                             }
                         }

@@ -3,7 +3,8 @@ import StraightBussingKit
 
 /// My Routes tab (ui/views/myroutes.js): custom route sets (tap = show on the map / stop showing; swipe left or
 /// long-press = Details / Edit / Delete, a full swipe never runs an action, Delete asks first), favorite stations
-/// with their next bus (Edit = reorder / remove), Service alerts, About and Settings.
+/// with their next bus (Edit = reorder / remove), Service alerts and About (Settings is the gear in the search
+/// bar, which is on screen too: one entry per intent).
 struct MyRoutesView: View {
     @Environment(AppModel.self) private var model
     @State private var favEdit = false
@@ -17,11 +18,11 @@ struct MyRoutesView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Save the routes you ride").font(.headline)
                         Text("Group routes into a named set, like your commute, and show just those on the map with one tap.")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                            .font(.subheadline).foregroundStyle(Palette.text2)
                         Button { model.push(.editCustom(nil)) } label: {
                             Label("New custom route", systemImage: "plus").frame(maxWidth: .infinity, minHeight: 44)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .primaryButtonStyle()
                     }
                     .padding(.vertical, 6)
                 }
@@ -44,26 +45,30 @@ struct MyRoutesView: View {
                 }
             } header: {
                 HStack {
-                    Text("Custom routes")
+                    Text("Custom routes").foregroundStyle(Palette.text2)
                     Spacer()
                     if !s.customRoutes.isEmpty {
-                        Button { model.push(.editCustom(nil)) } label: { Label("New", systemImage: "plus") }
-                            .font(.subheadline).textCase(nil)
-                            .accessibilityLabel("New custom route")
+                        Button { model.push(.editCustom(nil)) } label: {
+                            Label("New", systemImage: "plus").frame(minHeight: 44).contentShape(Rectangle())
+                        }
+                        .font(.subheadline).textCase(nil)
+                        .accessibilityLabel("New custom route")
                     }
                 }
             } footer: {
                 if !s.customRoutes.isEmpty {
                     Text("Tap a custom route to show it on the map. Swipe left or touch and hold for details, edit or delete.")
+                        .foregroundStyle(Palette.text2)
                 }
             }
+            .listRowBackground(Palette.card)
 
             Section {
                 if favs.isEmpty {
                     HStack(spacing: 10) {
-                        Image(systemName: "star").font(.title2).foregroundStyle(.orange).accessibilityHidden(true)
+                        Image(systemName: "star").font(.title2).foregroundStyle(Palette.star).accessibilityHidden(true)
                         Text("Open a station on the map and tap Favorite. It will show up here with its next bus.")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                            .font(.subheadline).foregroundStyle(Palette.text2)
                     }
                     .padding(.vertical, 4)
                 }
@@ -74,15 +79,18 @@ struct MyRoutesView: View {
                     .moveDisabled(!favEdit)
             } header: {
                 HStack {
-                    Text("Favorite stations")
+                    Text("Favorite stations").foregroundStyle(Palette.text2)
                     Spacer()
                     if !favs.isEmpty {
-                        Button(favEdit ? "Done" : "Edit") { favEdit.toggle() }
-                            .font(.subheadline).textCase(nil)
-                            .accessibilityValue(favEdit ? "Editing" : "")
+                        Button { favEdit.toggle() } label: {
+                            Text(favEdit ? "Done" : "Edit").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                        }
+                        .font(.subheadline).textCase(nil)
+                        .accessibilityLabel(favEdit ? "Done editing favorites" : "Edit favorites")
                     }
                 }
             }
+            .listRowBackground(Palette.card)
 
             Section {
                 let n = model.activeAlerts.count
@@ -91,13 +99,13 @@ struct MyRoutesView: View {
                         Label {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("Service alerts").foregroundStyle(.primary)
-                                Text(n > 0 ? "\(n) active alert\(n == 1 ? "" : "s")" : "None right now").font(.caption).foregroundStyle(.secondary)
+                                Text(n > 0 ? "\(n) active alert\(n == 1 ? "" : "s")" : "None right now").font(.caption).foregroundStyle(Palette.text2)
                             }
                         } icon: { Image(systemName: "exclamationmark.triangle") }
                         Spacer()
                         if n > 0 {
                             Text("\(n)").font(.caption.weight(.bold)).foregroundStyle(.white)
-                                .padding(.horizontal, 7).padding(.vertical, 2).background(.red, in: Capsule())
+                                .padding(.horizontal, 7).padding(.vertical, 2).background(Palette.dangerFill, in: Capsule())
                                 .accessibilityHidden(true)
                         }
                     }
@@ -107,12 +115,12 @@ struct MyRoutesView: View {
                     Label {
                         VStack(alignment: .leading, spacing: 1) {
                             Text("About this app").foregroundStyle(.primary)
-                            Text("Unofficial. Privacy, theme, official contact").font(.caption).foregroundStyle(.secondary)
+                            Text("Unofficial. Privacy, theme, official contact").font(.caption).foregroundStyle(Palette.text2)
                         }
                     } icon: { Image(systemName: "info.circle") }
                 }
-                Button { model.showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
             }
+            .listRowBackground(Palette.card)
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -138,7 +146,7 @@ struct FavoriteRow: View {
                     Text(name).foregroundStyle(.primary).lineLimit(1)
                     HStack(spacing: 4) {
                         if let a { RouteChip(route: model.route(a.rid), rid: a.rid, size: 11) }
-                        Text(sub).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text(sub).font(.caption).foregroundStyle(Palette.text2).lineLimit(1)
                     }
                 }
                 Spacer()
@@ -166,13 +174,13 @@ struct CustomRouteRow: View {
             HStack(spacing: 12) {
                 Image(systemName: active ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
-                    .foregroundStyle(active ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(active ? Palette.accent : Palette.text2)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(c.name).font(.body.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
                     HStack(spacing: 4) {
-                        if rids.isEmpty { Text("No routes").font(.caption).foregroundStyle(.secondary) }
+                        if rids.isEmpty { Text("No routes").font(.caption).foregroundStyle(Palette.text2) }
                         ForEach(rids.prefix(6), id: \.self) { RouteChip(route: model.route($0), rid: $0, size: 11) }
-                        if rids.count > 6 { Text("+\(rids.count - 6)").font(.caption).foregroundStyle(.secondary) }
+                        if rids.count > 6 { Text("+\(rids.count - 6)").font(.caption).foregroundStyle(Palette.text2) }
                     }
                 }
                 Spacer()
@@ -207,31 +215,36 @@ struct CustomRouteDetailView: View {
                     Button {
                         if on { model.apply(Custom.clearCustom(s)) } else { model.apply(Custom.applyCustom(s, id)); model.fitRoutes(c.rids) }
                     } label: { Text(on ? "Stop showing" : "Show on map").frame(maxWidth: .infinity, minHeight: 44) }
-                        .buttonStyle(.borderedProminent)
+                        .primaryButtonStyle()
                     if on && !Custom.matchesCurrent(s, c) {
-                        Text("You changed the visible routes since applying it.").font(.caption).foregroundStyle(.secondary)
+                        Text("You changed the visible routes since applying it.").font(.caption).foregroundStyle(Palette.text2)
                     }
                     HStack {
                         Button { model.push(.editCustom(id)) } label: { Label("Edit", systemImage: "pencil").frame(maxWidth: .infinity, minHeight: 44) }
                             .buttonStyle(.bordered)
-                        Button(role: .destructive) { model.requestDelete(c, from: "detail") } label: {
+                        // red text on the gray bordered fill: the system destructive red is 3:1 there
+                        Button { model.requestDelete(c, from: "detail") } label: {
                             Label("Delete", systemImage: "trash").frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(.bordered)
+                        .tint(Palette.danger)
                     }
                 }
+                .listRowBackground(Palette.card)
                 Section {
                     if rids.isEmpty {
-                        Text("None of these routes are in the current schedule. Edit to choose others.").font(.subheadline).foregroundStyle(.secondary)
+                        Text("None of these routes are in the current schedule. Edit to choose others.").font(.subheadline).foregroundStyle(Palette.text2)
                     }
                     ForEach(rids, id: \.self) { rid in CustomRouteLine(customId: id, rid: rid, highlighted: c.highlight.contains(rid)) }
                 } header: {
-                    Text("Routes")
+                    Text("Routes").foregroundStyle(Palette.text2)
                 } footer: {
                     if rids.count > 1 {
                         Text(on ? "Highlight dims the other routes in this set on the map." : "Highlights apply while this custom route is showing.")
+                            .foregroundStyle(Palette.text2)
                     }
                 }
+                .listRowBackground(Palette.card)
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
@@ -278,7 +291,7 @@ struct CustomRouteLine: View {
                         Text(model.longName(rid)).foregroundStyle(.primary)
                         HStack(spacing: 4) {
                             if n > 0 { LiveDot() }
-                            Text(run + next).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            Text(run + next).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
                         }
                     }
                     Spacer(minLength: 0)
@@ -316,27 +329,33 @@ struct CustomRouteEditor: View {
         let sched = model.liveOutage ? [] : all.filter { !running.contains($0) && Operating.scheduledNoLive($0, buses: model.buses, service: model.staticData.service, now: model.now) }
         let idle = all.filter { !running.contains($0) && !sched.contains($0) }
         List {
-            Section("Name") {
+            Section {
                 TextField("My route", text: $name).textInputAutocapitalization(.words).accessibilityIdentifier("customName")
+            } header: {
+                Text("Name").foregroundStyle(Palette.text2)
             }
+            .listRowBackground(Palette.card)
             if !error.isEmpty {
-                Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red).font(.subheadline) }
+                Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(Palette.danger).font(.subheadline) }
+                    .listRowBackground(Palette.card)
             }
             group("Running now", running)
             group("Scheduled, no live location", sched)
             group(model.liveOutage ? "Live status unknown" : "Not running", idle)
             Section {
                 HStack {
-                    Button("Cancel") { model.back() }.buttonStyle(.bordered)
+                    Button("Cancel") { model.back() }.secondaryButtonStyle()
                     Spacer()
-                    Button("Save") { save() }.buttonStyle(.borderedProminent).font(.headline).accessibilityIdentifier("customSave")
+                    Button("Save") { save() }.primaryButtonStyle().controlSize(.large).font(.headline).accessibilityIdentifier("customSave")
                 }
                 if let id, let c = model.routeState.customRoutes.first(where: { $0.id == id }) {
-                    Button(role: .destructive) { model.requestDelete(c, from: "edit") } label: {
+                    Button { model.requestDelete(c, from: "edit") } label: {
                         Label("Delete custom route", systemImage: "trash").frame(maxWidth: .infinity, minHeight: 44)
                     }
+                    .tint(Palette.danger)
                 }
             }
+            .listRowBackground(Palette.card)
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -354,7 +373,7 @@ struct CustomRouteEditor: View {
 
     @ViewBuilder func group(_ title: String, _ rids: [String]) -> some View {
         if !rids.isEmpty {
-            Section(title) {
+            Section {
                 ForEach(rids, id: \.self) { rid in
                     Button {
                         if picked.contains(rid) { picked.remove(rid) } else { picked.insert(rid) }
@@ -365,14 +384,17 @@ struct CustomRouteEditor: View {
                             Text(model.longName(rid)).foregroundStyle(.primary)
                             Spacer()
                             Image(systemName: picked.contains(rid) ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(picked.contains(rid) ? Color.accentColor : Color.secondary)
+                                .foregroundStyle(picked.contains(rid) ? Palette.accent : Palette.text2)
                         }
                         .frame(minHeight: 44)
                     }
                     .accessibilityValue(picked.contains(rid) ? "Selected" : "Not selected")
                     .accessibilityAddTraits(picked.contains(rid) ? .isSelected : [])
                 }
+            } header: {
+                Text(title).foregroundStyle(Palette.text2)
             }
+            .listRowBackground(Palette.card)
         }
     }
 

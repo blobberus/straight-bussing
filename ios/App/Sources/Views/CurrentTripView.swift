@@ -54,7 +54,7 @@ struct CurrentTripView: View {
             Card {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("No trip in progress").font(.headline)
-                    Text("Search for a destination above, choose a route and tap Start.").font(.subheadline).foregroundStyle(.secondary)
+                    Text("Search for a destination above, choose a route and tap Start.").font(.subheadline).foregroundStyle(Palette.text2)
                 }
                 .padding(.vertical, 10)
                 .accessibilityElement(children: .combine)
@@ -85,7 +85,7 @@ struct CurrentTripView: View {
             Button { model.locate() } label: {
                 Label("Use my location", systemImage: "location.fill").frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
+            .primaryButtonStyle()
             .accessibilityHint("Your location stays on this iPhone")
         }
     }
@@ -122,11 +122,11 @@ struct CurrentTripView: View {
                         if item.offset > 0 { Divider() }
                         Button { model.push(.stop(item.element.id)) } label: {
                             HStack(spacing: 10) {
-                                Image(systemName: "bus").frame(width: 22).foregroundStyle(.secondary).accessibilityHidden(true)
+                                Image(systemName: "bus").frame(width: 22).foregroundStyle(Palette.text2).accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(item.element.name).foregroundStyle(.primary)
                                     Text((model.staticData.stopRoutes[item.element.id] ?? []).map(model.shortName).joined(separator: ", "))
-                                        .font(.caption).foregroundStyle(.secondary)
+                                        .font(.caption).foregroundStyle(Palette.text2)
                                 }
                                 Spacer(minLength: 0)
                             }
@@ -154,7 +154,7 @@ struct CurrentTripView: View {
             Card {
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Showing stops near").font(.caption).foregroundStyle(.secondary)
+                        Text("Showing stops near").font(.caption).foregroundStyle(Palette.text2)
                         Text(a.label).font(.subheadline.weight(.semibold))
                     }
                     Spacer()
@@ -185,7 +185,7 @@ struct CurrentTripView: View {
         }
         if guide && !stops.isEmpty {
             Text("Leave times use a walking estimate (80 m a minute) and live bus times. Allow extra time.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(Palette.text2)
         }
         if model.silentService { NoServiceView() }   // say why the cards have no times
     }
@@ -193,7 +193,7 @@ struct CurrentTripView: View {
     @ViewBuilder var soonList: some View {
         if !model.liveLoaded {
             SectionTitle(text: "Arriving soon")
-            Hint("Loading live data\u{2026}")
+            Card { SkeletonRows(count: 3) }
         } else {
             let soon = soonest
             if soon.isEmpty {
@@ -272,21 +272,22 @@ struct StopCard: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(stop.name).font(hero ? .headline : .subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(2)
-                        Text(TripInfo.walkText(stop.d)).font(.caption).foregroundStyle(.secondary)
+                        Text(TripInfo.walkText(stop.d)).font(.caption).foregroundStyle(Palette.text2)
                     }
                     Spacer()
-                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(Palette.text3).accessibilityHidden(true)
                 }
                 .frame(minHeight: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityHint("Opens the stop")
             if !model.liveLoaded {
-                Hint("Loading live data\u{2026}").padding(.bottom, 8)
+                Divider()
+                SkeletonRows(count: hero ? 2 : 1)
             } else if list.isEmpty {
                 HStack(spacing: 6) {
                     Text(model.liveOutage ? "Live times unavailable" : model.silentService ? "No live times right now" : "No upcoming arrivals")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(.subheadline).foregroundStyle(Palette.text2)
                     Spacer(minLength: 0)
                     ForEach((model.staticData.stopRoutes[stop.id] ?? []).filter { !model.hidden.contains($0) }, id: \.self) {
                         RouteChip(route: model.route($0), rid: $0, size: 11)
@@ -327,7 +328,7 @@ struct SoonRow: View {
             RouteChip(route: model.route(a.rid), rid: a.rid)
             VStack(alignment: .leading, spacing: 1) {
                 Text(stopName).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
-                Text(model.route(a.rid)?.long ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(model.route(a.rid)?.long ?? "").font(.caption).foregroundStyle(Palette.text2).lineLimit(1)
             }
             Spacer()
             EtaText(t: a.t, now: model.now, stale: model.isStale)
@@ -370,14 +371,14 @@ struct FavoritesCard: View {
         return Button { model.push(.stop(id)) } label: {
             HStack(spacing: 10) {
                 if let a { RouteChip(route: model.route(a.rid), rid: a.rid) }
-                else { Image(systemName: "star.fill").foregroundStyle(.orange).frame(width: 24).accessibilityHidden(true) }
+                else { Image(systemName: "star.fill").foregroundStyle(Palette.star).frame(width: 24).accessibilityHidden(true) }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(name).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
-                    if let a { Text(model.route(a.rid)?.long ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                    if let a { Text(model.route(a.rid)?.long ?? "").font(.caption).foregroundStyle(Palette.text2).lineLimit(1) }
                 }
                 Spacer()
                 if let a { EtaText(t: a.t, now: model.now, stale: model.isStale) }
-                else { Text(unknown ? "No live times" : model.liveLoaded ? "No buses soon" : "").font(.caption).foregroundStyle(.secondary) }
+                else { Text(unknown ? "No live times" : model.liveLoaded ? "No buses soon" : "").font(.caption).foregroundStyle(Palette.text2) }
             }
             .frame(minHeight: 48).contentShape(Rectangle())
         }
@@ -396,17 +397,17 @@ struct AlertsBanner: View {
         if model.liveLoaded, let b = LiveText.alertBanner(model.activeAlerts) {
             Button { model.push(.alerts) } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.warn).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(b.head).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                        Text(b.line).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                        Text(b.line).font(.subheadline).foregroundStyle(Palette.text2).lineLimit(2)
                     }
                     Spacer()
-                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(Palette.text3).accessibilityHidden(true)
                 }
                 .padding(12)
                 .frame(minHeight: 44)
-                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+                .background(Palette.warnBg, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)

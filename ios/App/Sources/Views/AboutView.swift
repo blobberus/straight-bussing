@@ -19,8 +19,8 @@ struct AboutView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Straight Bussing is an unofficial student project.").font(.headline)
                         Text("It is not affiliated with or endorsed by the University or by Passio. Arrival times are predictions and can be wrong.")
-                            .font(.subheadline).foregroundStyle(.secondary)
-                        Text("For safety rides or anything urgent, use the official service:").font(.subheadline).foregroundStyle(.secondary)
+                            .font(.subheadline).foregroundStyle(Palette.text2)
+                        Text("For safety rides or anything urgent, use the official service:").font(.subheadline).foregroundStyle(Palette.text2)
                         OfficialContact()
                     }
                     .padding(.vertical, 10)
@@ -41,7 +41,7 @@ struct AboutView: View {
                 }
                 SectionTitle(text: "How times work")
                 Text("Arrival times come from the live shuttle feed. Ride, wait and total times in Directions are estimates from schedules and live predictions, and each one says where it came from. If the feed is late or down, the app tells you.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Palette.text2)
                 SectionTitle(text: "Credits")
                 Card {
                     VStack(alignment: .leading, spacing: 8) {
@@ -54,14 +54,14 @@ struct AboutView: View {
                     .padding(.vertical, 10)
                 }
                 Text("Version \(version)\(scheduleDate.map { " · Schedule data from \($0)" } ?? "")")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(Palette.text2)
                 Text("Unofficial. Not affiliated with the University. Official service: 773.702.8181.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(Palette.text2)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Palette.sheet)
     }
 
     var scheduleDate: String? {
@@ -73,7 +73,7 @@ struct AboutView: View {
 
     func bullet(_ s: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("•").foregroundStyle(.secondary)
+            Text("\u{2022}").foregroundStyle(Palette.text2).accessibilityHidden(true)
             Text(s).font(.subheadline)
         }
     }

@@ -9,7 +9,7 @@ struct BottomSheet<Content: View>: View {
     @ViewBuilder var content: Content
     @GestureState private var drag: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    static var shape: UnevenRoundedRectangle { UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16) }
+    static var shape: UnevenRoundedRectangle { UnevenRoundedRectangle(topLeadingRadius: Radius.sheet, topTrailingRadius: Radius.sheet, style: .continuous) }
 
     static func height(for d: Detent, available: CGFloat) -> CGFloat {
         switch d {
@@ -24,7 +24,7 @@ struct BottomSheet<Content: View>: View {
         let h = min(available, max(Self.height(for: .peek, available: available) - 40, base - drag))
         VStack(spacing: 0) {
             Capsule()
-                .fill(Color.secondary.opacity(0.45))
+                .fill(Palette.text2.opacity(0.45))
                 .frame(width: 38, height: 5)
                 .padding(.top, 7)
                 .padding(.bottom, 4)
@@ -51,8 +51,8 @@ struct BottomSheet<Content: View>: View {
         // SwiftUI render the whole sheet offscreen on every drag frame; on a filled shape it is cheap.
         .background(
             Self.shape
-                .fill(Color(.systemGroupedBackground))
-                .shadow(color: .black.opacity(0.18), radius: 10, y: -2)
+                .fill(Palette.sheet)
+                .shadow(color: Palette.shadow.opacity(0.18), radius: 10, y: -2)
         )
         .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.86), value: detent)
     }
@@ -84,8 +84,8 @@ struct SheetContent: View {
                 }
                 Text(model.title)
                     .font(.title2.weight(.bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("sheetTitle")
                 Spacer()
@@ -101,18 +101,21 @@ struct SheetContent: View {
         switch model.page {
         case .stop(let id):
             Button { model.toggleFavorite(id) } label: {
-                Image(systemName: model.isFav(id) ? "star.fill" : "star").font(.title3).foregroundStyle(.orange).tapTarget()
+                Image(systemName: model.isFav(id) ? "star.fill" : "star").font(.title3).foregroundStyle(Palette.star).tapTarget()
             }
             .accessibilityLabel(model.isFav(id) ? "Remove from favorites" : "Add to favorites")
             .accessibilityValue(model.isFav(id) ? "Favorited" : "")
             .accessibilityIdentifier("favButton")
         case nil where model.tab == .current:
             // the next bus at the nearest stop, one glance (web metaNearby "53RD · 4 min")
-            Text(model.nearbyMeta).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).monospacedDigit()
+            Text(model.nearbyMeta).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text2).monospacedDigit()
+                .fixedSize()
                 .accessibilityLabel(model.nearbyMeta.isEmpty ? "" : "Next bus at the nearest stop: " + model.nearbyMeta)
         case nil where model.tab == .routes:
-            Button(model.editingOrder ? "Done" : "Edit map order") { model.editingOrder.toggle() }
-                .font(.subheadline.weight(.semibold))
+            Button { model.editingOrder.toggle() } label: {
+                Text(model.editingOrder ? "Done" : "Edit map order").font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 44).contentShape(Rectangle())
+            }
         default:
             EmptyView()
         }

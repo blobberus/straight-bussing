@@ -27,11 +27,23 @@ extension Color {
         var s = (hex ?? "").trimmingCharacters(in: .whitespaces)
         if s.hasPrefix("#") { s.removeFirst() }
         let rgb = (s.count == 6 ? UInt32(s, radix: 16) : nil) ?? 0x555555
+        return luminance(rgb) > 0.4 ? Color(red: 0.067, green: 0.067, blue: 0.078) : .white
+    }
+
+    /// WCAG relative luminance of 0xRRGGBB.
+    static func luminance(_ rgb: UInt32) -> Double {
         func lin(_ c: UInt32) -> Double {
             let x = Double(c) / 255
             return x <= 0.03928 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4)
         }
-        let l = 0.2126 * lin((rgb >> 16) & 0xFF) + 0.7152 * lin((rgb >> 8) & 0xFF) + 0.0722 * lin(rgb & 0xFF)
-        return l > 0.4 ? Color(red: 0.067, green: 0.067, blue: 0.078) : .white
+        return 0.2126 * lin((rgb >> 16) & 0xFF) + 0.7152 * lin((rgb >> 8) & 0xFF) + 0.0722 * lin(rgb & 0xFF)
+    }
+
+    /// WCAG contrast ratio of a '#RRGGBB' color against 0xRRGGBB (route chips under 3:1 get a ring).
+    static func contrast(hex: String?, against bg: UInt32) -> Double {
+        var s = (hex ?? "").trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("#") { s.removeFirst() }
+        let a = luminance((s.count == 6 ? UInt32(s, radix: 16) : nil) ?? 0x555555), b = luminance(bg)
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
     }
 }

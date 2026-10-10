@@ -7,13 +7,17 @@ import StraightBussingKit
 struct RootView: View {
     @Environment(AppModel.self) private var model
     static let tabBarHeight: CGFloat = 56
+    /// Measured height of the floating chrome above the sheet (search bar, status pill, context bar):
+    /// a long stale message or large text makes it taller, and the sheet's full detent must stay below it.
+    @State private var chromeH: CGFloat = 50
 
     var body: some View {
         @Bindable var model = model
         GeometryReader { geo in
             let inDirections = model.page == .directions
-            let ctx = ContextBar.shows(model) && model.detent != .full
-            let topReserved: CGFloat = inDirections ? 8 : 64 + (model.statusPill == nil ? 0 : 46) + (ctx ? 50 : 0)
+            // On the Routes list the list's own bar says the same thing with the same button (one action per intent).
+            let ctx = ContextBar.shows(model) && model.detent != .full && !(model.tab == .routes && model.page == nil)
+            let topReserved: CGFloat = chromeH > 1 ? chromeH + 14 : 8
             let available = max(200, geo.size.height - Self.tabBarHeight - topReserved)
             let sheetH = BottomSheet<EmptyView>.height(for: model.detent, available: available)
             ZStack(alignment: .bottom) {
@@ -23,9 +27,14 @@ struct RootView: View {
                     .safeAreaPadding(.bottom, sheetH + Self.tabBarHeight)
                     .ignoresSafeArea()
                 VStack(spacing: 8) {
-                    if !inDirections { SearchBar() }
-                    StatusPill()
-                    if ctx && !inDirections { ContextBar() }
+                    VStack(spacing: 8) {
+                        if !inDirections { SearchBar() }
+                        StatusPill()
+                        if ctx && !inDirections { ContextBar() }
+                    }
+                    .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { h in
+                        if abs(h - chromeH) > 0.5 { chromeH = h }
+                    }
                     if model.detent != .full { LocateButton().frame(maxWidth: .infinity, alignment: .trailing) }
                     Spacer(minLength: 0)
                 }
@@ -65,7 +74,7 @@ struct SearchBar: View {
             Button { model.dirActiveTo = true; model.openDirections() } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").font(.body.weight(.semibold))
-                    Text("Search for a destination").foregroundStyle(.secondary)
+                    Text("Search for a destination").foregroundStyle(Palette.text2)
                     Spacer()
                 }
                 .padding(.leading, 16)
@@ -82,7 +91,9 @@ struct SearchBar: View {
             .accessibilityLabel("Settings")
         }
         .background(.regularMaterial, in: Capsule())
-        .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+        .shadow(color: Palette.shadow.opacity(0.15), radius: 8, y: 2)
+        // map chrome: grows with text size, but not so far that it hides the map (the sheet holds the content)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 
@@ -94,19 +105,23 @@ struct StatusPill: View {
         if let p = model.statusPill {
             HStack(spacing: 8) {
                 Image(systemName: icon(p)).accessibilityHidden(true)
-                Text(p.text).font(.footnote.weight(.semibold)).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                // safety text: never truncated (the sheet makes room, RootView measures this stack)
+                Text(p.text).font(.footnote.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 if p.retry {
-                    Button("Retry") { Task { await model.pollOnce() } }
-                        .font(.footnote.weight(.bold))
-                        .frame(minWidth: 44, minHeight: 32)
-                        .accessibilityLabel("Retry loading live data")
+                    Button { Task { await model.pollOnce() } } label: {
+                        Text("Retry").font(.footnote.weight(.bold)).underline()
+                            .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Retry loading live data")
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, 7)
-            .foregroundStyle(p.kind == .err ? Color.white : p.kind == .warn ? Color.black : Color.primary)
-            .background(pillStyle(p), in: RoundedRectangle(cornerRadius: 12))
-            .shadow(color: .black.opacity(0.12), radius: 4, y: 1)
+            .padding(.horizontal, 12).padding(.vertical, p.retry ? 0 : 7)
+            .foregroundStyle(p.kind == .err ? Color.white : p.kind == .warn ? Self.onYellow : Color.primary)
+            .background(pillStyle(p), in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+            .shadow(color: Palette.shadow.opacity(0.12), radius: 4, y: 1)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.updatesFrequently)
             .accessibilityIdentifier("statusPill")
@@ -121,9 +136,14 @@ struct StatusPill: View {
         }
     }
 
+    /// Dark text on the yellow pill in both themes (12:1).
+    static let onYellow = Palette.fixed(0x111114)
+
+    /// Feed error: the danger fill (white 5.7:1). Delayed data: system yellow, the strongest warning on the map
+    /// (deliberately louder than the web's gold tint; rider safety first).
     func pillStyle(_ p: LiveText.Pill) -> AnyShapeStyle {
         switch p.kind {
-        case .err: return AnyShapeStyle(Color(red: 0.72, green: 0.11, blue: 0.11))
+        case .err: return AnyShapeStyle(Palette.dangerFill)
         case .warn: return AnyShapeStyle(Color.yellow.opacity(0.95))
         case .info: return AnyShapeStyle(.regularMaterial)
         }
@@ -144,25 +164,28 @@ struct ContextBar: View {
         HStack(spacing: 8) {
             if let j = s.journey, !j.rids.isEmpty {
                 let rids = j.rids.filter { model.route($0) != nil }
-                (Text("Only showing routes for: ").foregroundColor(.secondary) + Text(j.label).fontWeight(.semibold))
+                (Text("Only showing routes for: ").foregroundColor(Palette.text2) + Text(j.label).fontWeight(.semibold))
                     .font(.footnote).lineLimit(2)
                 ForEach(rids.prefix(Self.maxChips), id: \.self) { RouteChip(route: model.route($0), rid: $0, size: 11) }
-                if rids.count > Self.maxChips { Text("+\(rids.count - Self.maxChips)").font(.caption).foregroundStyle(.secondary) }
+                if rids.count > Self.maxChips { Text("+\(rids.count - Self.maxChips)").font(.caption).foregroundStyle(Palette.text2) }
                 Spacer(minLength: 0)
-                Button("Show all") { model.endJourney() }
-                    .font(.footnote.weight(.bold)).frame(minWidth: 44, minHeight: 36)
-                    .accessibilityHint("Shows every route on the map again")
+                Button { model.endJourney() } label: {
+                    Text("Show all").font(.footnote.weight(.bold)).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                }
+                .accessibilityHint("Shows every route on the map again")
             } else if let c = RouteVisibility.activeCustomRoute(s) {
-                (Text("My route: ").foregroundColor(.secondary) + Text(c.name).fontWeight(.semibold)).font(.footnote).lineLimit(2)
+                (Text("My route: ").foregroundColor(Palette.text2) + Text(c.name).fontWeight(.semibold)).font(.footnote).lineLimit(2)
                 Spacer(minLength: 0)
-                Button("Clear") { model.apply(Custom.clearCustom(model.routeState)) }
-                    .font(.footnote.weight(.bold)).frame(minWidth: 44, minHeight: 36)
-                    .accessibilityLabel("Clear my route \(c.name)")
+                Button { model.apply(Custom.clearCustom(model.routeState)) } label: {
+                    Text("Clear").font(.footnote.weight(.bold)).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                }
+                .accessibilityLabel("Clear my route \(c.name)")
             }
         }
-        .padding(.horizontal, 12).padding(.vertical, 4)
-        .background(.regularMaterial, in: Capsule())
-        .shadow(color: .black.opacity(0.12), radius: 4, y: 1)
+        .padding(.leading, 12).padding(.trailing, 4)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+        .shadow(color: Palette.shadow.opacity(0.12), radius: 4, y: 1)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("contextBar")
     }
@@ -180,14 +203,14 @@ struct ToastBanner: View {
             if let text = model.toast {
                 Button { model.dismissToast() } label: {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: model.toastIcon).foregroundStyle(Color.accentColor).accessibilityHidden(true)
+                        Image(systemName: model.toastIcon).foregroundStyle(Palette.accent).accessibilityHidden(true)
                         Text(text).font(.subheadline).foregroundStyle(.primary).multilineTextAlignment(.leading)
                         Spacer(minLength: 0)
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-                    .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                    .shadow(color: Palette.shadow.opacity(0.18), radius: 10, y: 3)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(text)
@@ -212,15 +235,16 @@ struct LocateButton: View {
             Image(systemName: model.user == nil ? "location" : "location.fill")
                 .font(.title3)
                 .frame(width: 44, height: 44)
-                .background(.regularMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+                .shadow(color: Palette.shadow.opacity(0.15), radius: 6, y: 2)
         }
         .accessibilityLabel("Show my location")
     }
 }
 
-/// Bottom navigation: Current trip / Routes / My Routes. The Current trip tab counts active service alerts
-/// (web alert count badge); selected state is also the label weight and an accessibility trait, not color alone.
+/// Bottom navigation: Current trip / Routes / My Routes. The selected tab is also the label weight and an
+/// accessibility trait, not color alone. Like the system tab bar, the labels stop growing at the largest
+/// standard text size and offer the Large Content Viewer (touch and hold) at accessibility sizes.
 struct TabBar: View {
     @Environment(AppModel.self) private var model
     var body: some View {
@@ -232,14 +256,19 @@ struct TabBar: View {
                         Text(t.title).font(.caption2.weight(model.tab == t ? .bold : .medium))
                     }
                     .frame(maxWidth: .infinity, minHeight: RootView.tabBarHeight)
-                    .foregroundStyle(model.tab == t ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(model.tab == t ? Palette.accent : Palette.text2)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(t.title)
                 .accessibilityIdentifier("tab.\(t.rawValue)")
                 .accessibilityAddTraits(model.tab == t ? .isSelected : [])
+                .accessibilityShowsLargeContentViewer {
+                    Label(t.title, systemImage: t.icon)
+                }
             }
         }
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .background(.bar, ignoresSafeAreaEdges: .bottom)
         .overlay(alignment: .top) { Divider() }
     }

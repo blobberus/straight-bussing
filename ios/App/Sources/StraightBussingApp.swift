@@ -10,6 +10,8 @@ struct StraightBussingApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                // one accent for every action, selection and switch (toggles default to green, which means live data)
+                .tint(Palette.accent)
                 .preferredColorScheme(model.colorScheme)
                 .task { model.start() }
                 .onOpenURL { url in

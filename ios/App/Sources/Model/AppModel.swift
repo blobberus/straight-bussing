@@ -2,6 +2,7 @@ import Foundation
 import MapKit
 import Observation
 import SwiftUI
+import UIKit
 import StraightBussingKit
 
 enum Tab: String, CaseIterable, Identifiable {
@@ -337,14 +338,14 @@ final class AppModel {
         guard let minLat = ok.map(\.lat).min(), let maxLat = ok.map(\.lat).max(),
               let minLon = ok.map(\.lon).min(), let maxLon = ok.map(\.lon).max() else { return }
         let span = MKCoordinateSpan(latitudeDelta: max(0.006, (maxLat - minLat) * 1.35), longitudeDelta: max(0.006, (maxLon - minLon) * 1.35))
-        withAnimation(.easeInOut(duration: 0.6)) {
+        withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.6)) {
             mapCamera.position = .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2), span: span))
         }
     }
 
     func flyTo(_ p: LatLon?, span: Double = 0.008) {
         guard let p, p.isValid else { return }
-        withAnimation(.easeInOut(duration: 0.6)) {
+        withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.6)) {
             mapCamera.position = .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon),
                                                             span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)))
         }

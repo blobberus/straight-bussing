@@ -20,19 +20,19 @@ struct AlertsView: View {
                     }
                     if model.liveFailed {
                         Label("Alerts may be out of date: the shuttle feed is not responding.", systemImage: "exclamationmark.triangle")
-                            .font(.footnote).foregroundStyle(.orange)
+                            .font(.footnote).foregroundStyle(Palette.warn)
                     }
                 }
                 Card {
                     Button { model.push(.about) } label: {
                         HStack(spacing: 10) {
-                            Image(systemName: "info.circle").foregroundStyle(.secondary).accessibilityHidden(true)
+                            Image(systemName: "info.circle").foregroundStyle(Palette.text2).accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("About this app").foregroundStyle(.primary)
-                                Text("Unofficial. Privacy, theme, official contact").font(.caption).foregroundStyle(.secondary)
+                                Text("Unofficial. Privacy, theme, official contact").font(.caption).foregroundStyle(Palette.text2)
                             }
                             Spacer()
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(Palette.text3).accessibilityHidden(true)
                         }
                         .frame(minHeight: 48).contentShape(Rectangle())
                     }
@@ -57,17 +57,17 @@ struct AlertRow: View {
         Card {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: severe ? "exclamationmark.triangle.fill" : "info.circle")
-                    .font(.title3).foregroundStyle(severe ? Color.orange : Color.secondary)
+                    .font(.title3).foregroundStyle(severe ? Palette.warn : Palette.text2)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.subheadline.weight(.semibold))
                     if !alert.description.isEmpty && alert.description != alert.header {
-                        Text(alert.description).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Text(alert.description).font(.subheadline).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
                     }
                     if !rids.isEmpty || !when.isEmpty {
                         HStack(spacing: 4) {
                             ForEach(rids, id: \.self) { RouteChip(route: model.route($0), rid: $0, size: 11) }
-                            if !when.isEmpty { Text(when).font(.caption).foregroundStyle(.secondary) }
+                            if !when.isEmpty { Text(when).font(.caption).foregroundStyle(Palette.text2) }
                         }
                     }
                 }

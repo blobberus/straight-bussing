@@ -24,7 +24,7 @@ struct PickView: View {
                     Toggle(isOn: Binding(get: { model.pickOnly }, set: { model.pickOnly = $0 })) {
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Only show the chosen station's routes")
-                            Text("Hides other routes on the map until you clear the station").font(.caption).foregroundStyle(.secondary)
+                            Text("Hides other routes on the map until you clear the station").font(.caption).foregroundStyle(Palette.text2)
                         }
                     }
                     .frame(minHeight: 44)
@@ -65,10 +65,10 @@ struct PickView: View {
     func modeRow(_ m: PickMode, _ title: String, _ sub: String, _ icon: String) -> some View {
         Button { setMode(m) } label: {
             HStack(spacing: 12) {
-                Image(systemName: icon).frame(width: 24).foregroundStyle(Color.accentColor).accessibilityHidden(true)
+                Image(systemName: icon).frame(width: 24).foregroundStyle(Palette.accent).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).foregroundStyle(.primary)
-                    Text(sub).font(.caption).foregroundStyle(.secondary)
+                    Text(sub).font(.caption).foregroundStyle(Palette.text2)
                 }
                 Spacer()
             }
@@ -98,7 +98,7 @@ struct PickView: View {
                 Card {
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("Stops within 1.5 km of").font(.caption).foregroundStyle(.secondary)
+                            Text("Stops within 1.5 km of").font(.caption).foregroundStyle(Palette.text2)
                             Text(a.label).font(.subheadline.weight(.semibold))
                         }
                         Spacer()
@@ -162,11 +162,11 @@ struct PickView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(s.name).foregroundStyle(.primary)
-                                Text((s.d >= 0 ? TripInfo.walkText(s.d) + " · " : "") + (model.staticData.stopRoutes[s.id] ?? []).map(model.shortName).joined(separator: ", "))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                Text((s.d >= 0 ? Self.walkShort(s.d) + " · " : "") + (model.staticData.stopRoutes[s.id] ?? []).map(model.shortName).joined(separator: ", "))
+                                    .font(.caption).foregroundStyle(Palette.text2)
                             }
                             Spacer()
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(Palette.text3).accessibilityHidden(true)
                         }
                         .frame(minHeight: 48).contentShape(Rectangle())
                     }
@@ -176,10 +176,15 @@ struct PickView: View {
         }
     }
 
+    /// "2 min walk (119 m)": the walk without a middle dot, so the routes after it make one dot per line.
+    static func walkShort(_ d: Double) -> String {
+        "\(TripInfo.mins(Geo.walkMin(d * Geo.walkDetour))) min walk (\(Int(JS.round(d))) m)"
+    }
+
     func modeButton(_ m: PickMode, _ title: String, primary: Bool) -> some View {
         Group {
             if primary {
-                Button { setMode(m) } label: { Text(title).frame(maxWidth: .infinity, minHeight: 44) }.buttonStyle(.borderedProminent)
+                Button { setMode(m) } label: { Text(title).frame(maxWidth: .infinity, minHeight: 44) }.primaryButtonStyle()
             } else {
                 Button { setMode(m) } label: { Text(title).frame(maxWidth: .infinity, minHeight: 44) }.buttonStyle(.bordered)
             }

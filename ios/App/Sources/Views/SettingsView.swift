@@ -14,7 +14,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Appearance") { ThemePicker() }
+                Section { ThemePicker() } header: { ListHeader("Appearance") }
                 alertsSection
                 busAlerts
                 Section {
@@ -22,13 +22,16 @@ struct SettingsView: View {
                                                                        set: { v in model.updateNotify { $0.liveActivity = v } }))
                     NavigationLink("Preview Live Activity") { LiveActivityPreviewView() }
                 } header: {
-                    Text("iPhone app")
+                    ListHeader("iPhone app")
                 } footer: {
                     Text("A Live Activity shows your bus on the Lock Screen and in the Dynamic Island: stops away, a self-updating countdown and the next stops. It updates while the app is open; locked-phone updates need a push server (planned).")
+                        .foregroundStyle(Palette.text2)
                 }
-                Section("Privacy") {
-                    Text("No account, no ads, no tracking. Your location stays on this iPhone; only the start and end of a walking route, rounded to about 10 m, go to Apple Maps for sidewalk directions. Station and place search run on this iPhone; only when that finds fewer than 5 matches is the typed text sent to photon.komoot.io. Downloads: the public shuttle feed and Apple Maps.")
+                Section {
+                    Text("No account, no ads, no tracking. Your live location is never sent anywhere; the only location data that leaves this iPhone is the start and end of a walking leg, rounded to about 10 m, sent to Apple Maps for sidewalk directions. Station and place search run on this iPhone; only when that finds fewer than 5 matches is the typed text sent to photon.komoot.io. Downloads: the public shuttle feed and Apple Maps.")
                         .font(.subheadline)
+                } header: {
+                    ListHeader("Privacy")
                 }
                 Section {
                     NavigationLink {
@@ -36,11 +39,12 @@ struct SettingsView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 1) {
                             Text("About this app")
-                            Text("Unofficial. Privacy, official contact").font(.caption).foregroundStyle(.secondary)
+                            Text("Unofficial. Privacy, official contact").font(.caption).foregroundStyle(Palette.text2)
                         }
                     }
                 }
             }
+            .tint(Palette.accent)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -55,7 +59,7 @@ struct SettingsView: View {
         let alerts = model.activeAlerts
         return Section {
             if !model.liveLoaded {
-                Text("Checking for service alerts\u{2026}").foregroundStyle(.secondary)
+                Text("Checking for service alerts\u{2026}").foregroundStyle(Palette.text2)
             } else if alerts.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("No active alerts")
@@ -65,20 +69,20 @@ struct SettingsView: View {
             ForEach(alerts) { a in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(a.header.isEmpty ? "Service alert" : a.header).font(.subheadline.weight(.semibold))
-                    if !a.description.isEmpty { Text(a.description).font(.caption).foregroundStyle(.secondary) }
+                    if !a.description.isEmpty { Text(a.description).font(.caption).foregroundStyle(Palette.text2) }
                     let when = LiveText.alertPeriod(a, now: model.now)
-                    if !when.isEmpty { Text(when).font(.caption).foregroundStyle(.secondary) }
+                    if !when.isEmpty { Text(when).font(.caption).foregroundStyle(Palette.text2) }
                 }
                 .accessibilityElement(children: .combine)
             }
             if model.liveLoaded && model.liveFailed {
                 Label("Alerts may be out of date: the shuttle feed is not responding.", systemImage: "exclamationmark.triangle")
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.caption).foregroundStyle(Palette.warn)
             }
         } header: {
             HStack {
-                Text("Service alerts")
-                if model.liveLoaded && !alerts.isEmpty { Text("\(alerts.count) active").foregroundStyle(.orange) }
+                ListHeader("Service alerts")
+                if model.liveLoaded && !alerts.isEmpty { Text("\(alerts.count) active").foregroundStyle(Palette.warn) }
             }
         }
     }
@@ -96,9 +100,9 @@ struct SettingsView: View {
                     Text("Station")
                     Spacer()
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text(stop?.name ?? "Choose").foregroundStyle(.secondary).lineLimit(1)
+                        Text(stop?.name ?? "Choose").foregroundStyle(Palette.text2).lineLimit(1)
                         if let id = n.stopId, let addr = model.staticData.addresses[id]?.address {
-                            Text(addr).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Text(addr).font(.caption).foregroundStyle(Palette.text2).lineLimit(1)
                         }
                     }
                 }
@@ -110,7 +114,7 @@ struct SettingsView: View {
                 Toggle(isOn: Binding(get: { model.notify.oneStop }, set: { v in model.updateNotify { $0.oneStop = v } })) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("1 stop away")
-                        Text("Also when your stop is next").font(.caption).foregroundStyle(.secondary)
+                        Text("Also when your stop is next").font(.caption).foregroundStyle(Palette.text2)
                     }
                 }
                 Picker("When the bus is", selection: Binding(get: { model.notify.minutes }, set: { v in model.updateNotify { $0.minutes = v } })) {
@@ -119,18 +123,21 @@ struct SettingsView: View {
                 Toggle(isOn: Binding(get: { model.notify.inApp }, set: { v in model.updateNotify { $0.inApp = v } })) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("In-app alerts while open")
-                        Text("A banner at the top of the app").font(.caption).foregroundStyle(.secondary)
+                        Text("A banner at the top of the app").font(.caption).foregroundStyle(Palette.text2)
                     }
                 }
                 status(id)
                 permissionRow
-                Button("Turn off bus alerts", role: .destructive) { model.turnOffBusAlerts() }
+                // the system destructive red is 3.6:1 on the row; the token red passes in both themes
+                Button("Turn off bus alerts") { model.turnOffBusAlerts() }
+                    .tint(Palette.danger)
                     .accessibilityIdentifier("busAlertsOff")
             }
         } header: {
-            Text("Bus alerts")
+            ListHeader("Bus alerts")
         } footer: {
             Text("Notify me when my bus is near a station. Times are estimates from live predictions. Alerts work only while the app is open; lock-screen alerts need a push server (planned).")
+                .foregroundStyle(Palette.text2)
         }
     }
 
@@ -139,13 +146,13 @@ struct SettingsView: View {
         let serve = model.staticData.stopRoutes[stopId] ?? []
         let watched = Set(Notify.watchedRoutes(model.notify, staticData: model.staticData, hidden: model.hidden))
         let hidden = Set(model.hidden)
-        Text(model.notify.rids.isEmpty ? "Routes (any visible route)" : "Routes").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+        Text(model.notify.rids.isEmpty ? "Routes (any visible route)" : "Routes").font(.footnote.weight(.semibold)).foregroundStyle(Palette.text2)
         ForEach(serve, id: \.self) { rid in
             Toggle(isOn: Binding(get: { watched.contains(rid) }, set: { _ in model.toggleAlertRoute(rid) })) {
                 HStack(spacing: 8) {
                     RouteChip(route: model.route(rid), rid: rid)
                     Text(model.longName(rid))
-                    if hidden.contains(rid) { Text("hidden").font(.caption).foregroundStyle(.secondary) }
+                    if hidden.contains(rid) { Text("hidden").font(.caption).foregroundStyle(Palette.text2) }
                 }
             }
         }
@@ -158,7 +165,7 @@ struct SettingsView: View {
     @ViewBuilder func status(_ stopId: String) -> some View {
         if model.liveLoaded && (model.staleLevel == .err || model.staleLevel == .old) {
             Label("Live data is unavailable, so bus alerts are paused.", systemImage: "exclamationmark.triangle")
-                .font(.caption).foregroundStyle(.orange)
+                .font(.caption).foregroundStyle(Palette.warn)
         } else if let first = Notify.stopsAway(staticData: model.staticData, live: model.live, stopId: stopId,
                                                 rids: Notify.watchedRoutes(model.notify, staticData: model.staticData, hidden: model.hidden),
                                                 now: model.now).first {
@@ -168,12 +175,12 @@ struct SettingsView: View {
                 RouteChip(route: model.route(first.rid), rid: first.rid)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(away + (when.isEmpty ? "" : " \u{00B7} " + when)).font(.subheadline.weight(.semibold))
-                    Text("Next stop: \(first.nextStopName). From live predictions.").font(.caption).foregroundStyle(.secondary)
+                    Text("Next stop: \(first.nextStopName). From live predictions.").font(.caption).foregroundStyle(Palette.text2)
                 }
             }
             .accessibilityElement(children: .combine)
         } else if model.liveLoaded {
-            Text("No bus is heading there right now.").font(.caption).foregroundStyle(.secondary)
+            Text("No bus is heading there right now.").font(.caption).foregroundStyle(Palette.text2)
         }
     }
 
@@ -182,12 +189,12 @@ struct SettingsView: View {
         switch model.notifPermission {
         case .granted:
             Label("Alerts arrive as notifications while the app is open.", systemImage: "bell.badge")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(Palette.text2)
         case .denied:
             VStack(alignment: .leading, spacing: 3) {
                 Label("Notifications are off", systemImage: "bell.slash").font(.subheadline.weight(.semibold))
                 Text("Notifications for Straight Bussing are turned off in iOS Settings, so alerts show as a banner inside the app while it is open.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Palette.text2)
             }
             .accessibilityElement(children: .combine)
             Button("Open iOS Settings") {
@@ -228,17 +235,17 @@ struct StationPicker: View {
             if q.isEmpty {
                 let favs = model.routeState.favStops.filter { S.stops[$0] != nil }
                 if !favs.isEmpty {
-                    Section("Favorites") { ForEach(favs, id: \.self) { id in row(id, S.stops[id]?.name ?? id, sub: nil) } }
+                    Section(header: ListHeader("Favorites")) { ForEach(favs, id: \.self) { id in row(id, S.stops[id]?.name ?? id, sub: nil) } }
                 }
                 if let near {
                     Section { row(near.id, near.name, sub: "Nearest station \u{00B7} \(TripInfo.mins(near.d / Geo.walkMetersPerMin)) min walk") }
                 }
                 let all = S.stops.values.filter { !(S.stopRoutes[$0.id] ?? []).isEmpty }.sorted { $0.name < $1.name }
-                Section("Stations") { ForEach(all) { s in row(s.id, s.name, sub: nil) } }
+                Section(header: ListHeader("Stations")) { ForEach(all) { s in row(s.id, s.name, sub: nil) } }
             } else if results.isEmpty {
-                Text("No stations match.").foregroundStyle(.secondary)
+                Text("No stations match.").foregroundStyle(Palette.text2)
             } else {
-                Section("Matching stations") { ForEach(results, id: \.id) { m in row(m.id, m.name, sub: nil) } }
+                Section(header: ListHeader("Matching stations")) { ForEach(results, id: \.id) { m in row(m.id, m.name, sub: nil) } }
             }
             if model.notify.stopId != nil {
                 Section { Button("Cancel") { dismiss() } }
@@ -256,13 +263,13 @@ struct StationPicker: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name).foregroundStyle(.primary)
-                    if let sub { Text(sub).font(.caption).foregroundStyle(.secondary) }
+                    if let sub { Text(sub).font(.caption).foregroundStyle(Palette.text2) }
                     HStack(spacing: 3) {
                         ForEach(model.staticData.stopRoutes[id] ?? [], id: \.self) { RouteChip(route: model.route($0), rid: $0, size: 10) }
                     }
                 }
                 Spacer()
-                if model.notify.stopId == id { Image(systemName: "checkmark").foregroundStyle(Color.accentColor).accessibilityLabel("Selected") }
+                if model.notify.stopId == id { Image(systemName: "checkmark").foregroundStyle(Palette.accent).accessibilityLabel("Selected") }
             }
             .frame(minHeight: 44)
         }

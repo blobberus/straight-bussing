@@ -19,14 +19,13 @@ struct LiveActivityPreviewView: View {
                 if let s = snapshot {
                     let title = "To \(model.activeTrip?.label ?? "destination")"
                     label("Lock Screen")
+                    // a flat dark stand-in for the wallpaper (the system draws the real one); the frame radii here
+                    // copy the system's Lock Screen card and Dynamic Island, not the app's radius scale
                     LiveTripLockScreenView(title: title, state: s)
                         .padding(14)
                         .environment(\.colorScheme, .dark)
                         .foregroundStyle(.white)
-                        .background(
-                            LinearGradient(colors: [Color(red: 0.15, green: 0.18, blue: 0.32), Color(red: 0.32, green: 0.18, blue: 0.36)],
-                                           startPoint: .topLeading, endPoint: .bottomTrailing),
-                            in: RoundedRectangle(cornerRadius: 22))
+                        .background(Self.wallpaper, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                         .accessibilityIdentifier("liveActivityLockScreen")
                     label("Dynamic Island · compact")
                     HStack {
@@ -57,7 +56,7 @@ struct LiveActivityPreviewView: View {
                             Text("est. · Unofficial")
                         }
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Palette.text2)
                     }
                     .padding(16)
                     .environment(\.colorScheme, .dark)
@@ -67,21 +66,28 @@ struct LiveActivityPreviewView: View {
                     Circle().fill(Color(hex: s.routeColor)).frame(width: 14, height: 14)
                         .frame(width: 36, height: 36).background(.black, in: Circle())
                     if model.liveActivity.isSupported {
-                        Button(model.liveActivity.isRunning ? "Live Activity running" : "Start Live Activity") {
-                            model.liveActivity.start(title: title, state: s)
+                        if model.liveActivity.isRunning {
+                            Label("Live Activity running on the Lock Screen", systemImage: "checkmark.circle.fill")
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text2)
+                                .frame(minHeight: 44)
+                        } else {
+                            Button("Start Live Activity") {
+                                model.liveActivity.start(title: title, state: s)
+                            }
+                            .primaryButtonStyle()
+                            .controlSize(.large)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(model.liveActivity.isRunning)
                     }
                     Text("Times are estimates. The countdown ticks on its own; stops away updates while the app is open (push updates need the server).")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Palette.text2)
                 } else {
                     EmptyStateView(title: "No trip started", message: "Plan a trip in Directions and tap Start to see its Live Activity.")
                 }
             }
             .padding(16)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Palette.sheet)
+        .tint(Palette.accent)
         .navigationTitle("Live Activity")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -89,7 +95,9 @@ struct LiveActivityPreviewView: View {
         }
     }
 
+    static let wallpaper = Color(red: 0.16, green: 0.17, blue: 0.22)
+
     func label(_ s: String) -> some View {
-        Text(s).font(.footnote.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+        Text(s).font(.footnote.weight(.semibold)).foregroundStyle(Palette.text2).textCase(.uppercase)
     }
 }

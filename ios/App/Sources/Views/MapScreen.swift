@@ -122,11 +122,11 @@ struct StopDot: View {
         Button(action: action) {
             ZStack {
                 if ring {
-                    Circle().stroke(Color.accentColor, lineWidth: 3).frame(width: 26, height: 26)
-                        .background(Circle().fill(Color.accentColor.opacity(0.18)))
+                    Circle().stroke(Palette.accent, lineWidth: 3).frame(width: 26, height: 26)
+                        .background(Circle().fill(Palette.accent.opacity(0.18)))
                 }
                 if isFav {
-                    Image(systemName: "star.circle.fill").font(.system(size: 18)).foregroundStyle(.white, .orange)
+                    Image(systemName: "star.circle.fill").font(.system(size: 18)).foregroundStyle(.white, Palette.starBadge)
                         .opacity(faded ? 0.45 : 1)
                 } else {
                     Circle().fill(.white).frame(width: 9, height: 9).overlay(Circle().stroke(.gray, lineWidth: 2))
@@ -159,9 +159,9 @@ struct BusMarker: View {
                 .minimumScaleFactor(0.6)
                 .foregroundStyle(Color.textOn(hex: route?.color))
                 .frame(width: 30, height: 24)
-                .background(Color(hex: route?.color), in: RoundedRectangle(cornerRadius: 7))
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(.white, lineWidth: 2))
-                .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                .background(Color(hex: route?.color), in: RoundedRectangle(cornerRadius: Radius.badge, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Radius.badge, style: .continuous).stroke(.white, lineWidth: 2))
+                .shadow(color: Palette.shadow.opacity(0.3), radius: 2, y: 1)
         }
         .opacity(stale ? 0.5 : 1)
         .accessibilityLabel("\(route?.displayName ?? "Shuttle") bus\(stale ? ", location may be old" : "")")
