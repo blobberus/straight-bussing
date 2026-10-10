@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Write index.html for the simulator preview folder (screenshots + recordings), published by CI on the
-`ios-preview` branch and served by GitHub Pages under /ios/.
+"""Write index.html for the simulator preview folder (screenshots + recordings + the App Store screenshot set in
+store/), published by CI on the `ios-preview` branch and served by GitHub Pages under /ios/.
 Usage: python3 ios/scripts/gallery.py <dir> [--sha SHA] [--run URL] [--device NAME] [--appetize JSON]"""
 import argparse
 import datetime
@@ -27,6 +27,21 @@ CAPTIONS = {
     "16-alerts": "Service alerts: severity, routes, time window (demo alert)",
     "17-pick": "Routes to station: nearest stops ringed on the map",
     "18-search": "Place search with a spelling fix: 'regnstien' -> Showing results for Regenstein",
+    "19-custom": "Custom route detail: showing on the map, routes with live status, Highlight",
+    "20-editor": "Custom route editor: name, routes grouped by live status, Save / Delete",
+    "21-order": "Routes: Edit map order (drag handles, routes higher are drawn on top)",
+    "22-settingsdemo": "Settings: Simulated buses (demo) switch, privacy policy link",
+    "23-simulated-settings": "Simulated buses switched on in Settings: the demo banner appears (UI test, no -demo)",
+    "24-simulated-routes": "Simulated buses: the demo banner with Turn off on every tab (UI test)",
+}
+
+STORE_CAPTIONS = {
+    "01-arrivals": "Live map and the next buses at the nearest stop",
+    "02-directions": "Directions: walk + shuttle options, every time marked est.",
+    "03-trip": "Trip in progress: follow your bus stop by stop",
+    "04-liveactivity": "Live Activity on the Lock Screen and in the Dynamic Island",
+    "05-route": "Route detail: stops, next times, where the buses are",
+    "06-stop": "Stop: live arrivals and directions",
 }
 
 
@@ -50,6 +65,33 @@ def main():
                 "show while shuttles run; use simulated buses at night. Free plan: about 30 minutes a month in total.</p>")
     except (OSError, ValueError, KeyError):
         pass
+    store = ""
+    sd = os.path.join(a.dir, "store")
+    if os.path.isdir(sd):
+        try:
+            with open(os.path.join(sd, "sizes.json"), encoding="utf-8") as f:
+                sizes = json.load(f)
+        except (OSError, ValueError):
+            sizes = {}
+        try:
+            with open(os.path.join(sd, "device.txt"), encoding="utf-8") as f:
+                device = f.read().strip()
+        except OSError:
+            device = ""
+        figs = []
+        for f in sorted(x for x in os.listdir(sd) if x.endswith(".png")):
+            key = f[:-4].rsplit("-", 1)[0]
+            wh = sizes.get(f)
+            dim = f"{wh[0]} x {wh[1]}" if wh else ""
+            cap = STORE_CAPTIONS.get(key, key)
+            figs.append(f'<figure><a href="store/{html.escape(f)}"><img src="store/{html.escape(f)}" alt="{html.escape(cap)}" loading="lazy"></a>'
+                        f"<figcaption>{html.escape(cap)}<br>{html.escape(dim)}</figcaption></figure>")
+        if figs:
+            store = ('<h2 style="margin-top:1.4rem">App Store screenshots</h2>'
+                     f'<p class="meta">6.9-inch display set{(" from " + html.escape(device)) if device else ""}, light mode, PNG without alpha '
+                     "(App Store Connect scales it down for smaller iPhones). Simulated buses, labeled in every frame as in the app. "
+                     "Click a picture for the full-size file.</p>"
+                     f'<div class="pair store">{"".join(figs)}</div>')
     files = sorted(f for f in os.listdir(a.dir) if f.endswith(".png"))
     uit = os.path.join(a.dir, "uitest")
     if os.path.isdir(uit):
@@ -87,6 +129,7 @@ h1 {{ font-size: 1.6rem; margin: .2rem 0; }} h2 {{ font-size: 1rem; margin: 0 0 
 .pair, .videos {{ display: flex; gap: 10px; flex-wrap: wrap; }}
 figure {{ margin: 0; flex: 1 1 140px; text-align: center; }} figcaption {{ font-size: .8rem; opacity: .7; }}
 img, video {{ width: 100%; max-width: 300px; border-radius: 18px; box-shadow: 0 2px 10px #0003; }}
+.store figure {{ flex: 0 1 180px; }}
 footer, .meta {{ font-size: .85rem; opacity: .8; }}
 .btn {{ display: inline-block; padding: 10px 16px; margin: 0 8px 8px 0; border-radius: 12px; background: #0a66d8; color: #fff; text-decoration: none; font-weight: 600; }}
 </style></head><body>
@@ -100,12 +143,13 @@ shuttles are running. Unofficial student project, not affiliated with the Univer
 {live}<h2>Walk-through recordings</h2><div class="videos">{videos or "<p>No recording in this build.</p>"}</div>
 <h2 style="margin-top:1.4rem">Screens</h2>
 <div class="grid">{"".join(cards)}</div>
+{store}
 <footer><p>Map: Apple Maps (MapKit). Campus places: OpenStreetMap contributors (ODbL). Live and schedule data: public Passio GTFS feeds.</p></footer>
 </body></html>
 """
     with open(os.path.join(a.dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(page)
-    print(f"index.html: {len(groups)} screens, {videos.count('<video')} videos")
+    print(f"index.html: {len(groups)} screens, {videos.count('<video')} videos, {store.count('<figure')} App Store screenshots")
 
 
 if __name__ == "__main__":

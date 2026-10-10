@@ -541,6 +541,10 @@ extension AppModel {
                 showLiveActivityPreview = true
             case "about": select(.myroutes); push(.about)
             case "alerts": push(.alerts)
+            case "custom": select(.myroutes); apply(Custom.applyCustom(routeState, "demo-commute")); push(.customRoute("demo-commute"))
+            case "editor": select(.myroutes); push(.editCustom("demo-commute"))
+            case "order": select(.routes); editingOrder = true
+            case "settingsdemo": showSettings = true   // SettingsView scrolls to the Demo section
             case "pick": pickMode = .loc; push(.pick)
             case "search":
                 openDirections()
@@ -570,6 +574,8 @@ extension AppModel {
         await pause(3)
         select(.myroutes)
         await pause(2.5)
+        push(.alerts)
+        await pause(2)
         showSettings = true
         await pause(3)
         showSettings = false
