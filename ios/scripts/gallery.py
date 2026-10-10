@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Write index.html for the simulator preview folder (screenshots + recordings), published by CI on the
 `ios-preview` branch and served by GitHub Pages under /ios/.
-Usage: python3 ios/scripts/gallery.py <dir> [--sha SHA] [--run URL] [--device NAME]"""
+Usage: python3 ios/scripts/gallery.py <dir> [--sha SHA] [--run URL] [--device NAME] [--appetize JSON]"""
 import argparse
 import datetime
 import html
+import json
 import os
 
 CAPTIONS = {
@@ -32,7 +33,20 @@ def main():
     ap.add_argument("--sha", default="")
     ap.add_argument("--run", default="")
     ap.add_argument("--device", default="")
+    ap.add_argument("--appetize", default="", help="appetize.json from appetize.py: adds the 'Try it live' links")
     a = ap.parse_args()
+    live = ""
+    try:
+        with open(a.appetize, encoding="utf-8") as f:
+            lk = json.load(f)["links"]
+        live = (f'<h2>Try it live in your browser</h2><p class="live"><a class="btn" href="{html.escape(lk["live"])}">Open the app (live buses)</a> '
+                f'<a class="btn" href="{html.escape(lk["demo"])}">Open with simulated buses</a> '
+                f'<a href="{html.escape(lk["dark"])}">dark mode</a></p>'
+                '<p class="meta">The same native app streamed from a Mac simulator by Appetize.io (works on Windows). '
+                "Tap to start; the session ends after a minute idle. The location is set to campus. Live buses only "
+                "show while shuttles run; use simulated buses at night. Free plan: about 30 minutes a month in total.</p>")
+    except (OSError, ValueError, KeyError):
+        pass
     files = sorted(f for f in os.listdir(a.dir) if f.endswith(".png"))
     uit = os.path.join(a.dir, "uitest")
     if os.path.isdir(uit):
@@ -71,6 +85,7 @@ h1 {{ font-size: 1.6rem; margin: .2rem 0; }} h2 {{ font-size: 1rem; margin: 0 0 
 figure {{ margin: 0; flex: 1 1 140px; text-align: center; }} figcaption {{ font-size: .8rem; opacity: .7; }}
 img, video {{ width: 100%; max-width: 300px; border-radius: 18px; box-shadow: 0 2px 10px #0003; }}
 footer, .meta {{ font-size: .85rem; opacity: .8; }}
+.btn {{ display: inline-block; padding: 10px 16px; margin: 0 8px 8px 0; border-radius: 12px; background: #0a66d8; color: #fff; text-decoration: none; font-weight: 600; }}
 </style></head><body>
 <h1>Straight Bussing: iPhone app (SwiftUI draft)</h1>
 <p class="meta">{meta}</p>
@@ -79,7 +94,7 @@ macOS runners, in demo mode: buses are generated from the published schedule so 
 shuttles are running. Unofficial student project, not affiliated with the University. Official service: 773.702.8181.</p>
 <p>Web app: <a href="../">blobberus.github.io/straight-bussing</a> · Source and docs:
 <a href="https://github.com/blobberus/straight-bussing/tree/main/ios">ios/</a> (README explains the architecture and how to run it on a Mac).</p>
-<h2>Walk-through recordings</h2><div class="videos">{videos or "<p>No recording in this build.</p>"}</div>
+{live}<h2>Walk-through recordings</h2><div class="videos">{videos or "<p>No recording in this build.</p>"}</div>
 <h2 style="margin-top:1.4rem">Screens</h2>
 <div class="grid">{"".join(cards)}</div>
 <footer><p>Map: Apple Maps (MapKit). Campus places: OpenStreetMap contributors (ODbL). Live and schedule data: public Passio GTFS feeds.</p></footer>

@@ -120,6 +120,21 @@ Main Quad, separate wiped prefs), `-screen current|trip|routes|route|myroutes|di
 3. Uploads everything as the `ios-simulator-preview` artifact; on `main` force-pushes it (with `index.html` from
    `scripts/gallery.py`) to the orphan branch `ios-preview` and triggers `pages.yml`, which copies that branch into
    `_site/ios/` (the web app deploys exactly as before when the branch is missing).
+4. On `main`, if the repo secret `APPETIZE_API_TOKEN` exists, `scripts/appetize.py` uploads the same simulator `.app`
+   to Appetize.io and the gallery gets "Try it live" buttons (live buses / simulated buses via `-demo` / dark mode).
+
+## See it without a Mac (Windows)
+
+Apple's Simulator only runs on macOS, so there is no local option on Windows. Two ways to look at the app:
+- **Screenshots and recordings** of every CI build: https://blobberus.github.io/straight-bussing/ios/ (no setup).
+- **Use it live in the browser** (tap, scroll, search; real Passio data): Appetize.io streams the CI's simulator build
+  from their Macs. One-time setup: free account at https://appetize.io, create an API token, then
+  `gh secret set APPETIZE_API_TOKEN` (paste the token). The next iOS CI run on `main` creates the app; later runs
+  update the same app (found by bundle id), so the link stays the same. The link is printed in the run summary and on
+  the gallery page. Free plan: 30 streaming minutes a month in total, shared by everyone who opens the link; sessions
+  end after 60 s idle. Location is set to campus by the link (`location=`); simulated buses: `launchArgs=["-demo"]`.
+  Not testable in a simulator: Live Activities on the Lock Screen of a real phone, notifications in the background,
+  GPS accuracy, performance. Those need a real iPhone (`conversion to appstore.md`).
 
 ## Done vs stub
 

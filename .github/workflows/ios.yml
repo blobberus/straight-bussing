@@ -1,8 +1,9 @@
 name: iOS app (build, test, simulator preview)
-# Native SwiftUI draft in ios/ (see ios/README.md). Free macOS runners (public repo). No signing, no secrets.
+# Native SwiftUI draft in ios/ (see ios/README.md). Free macOS runners (public repo). No signing; one optional secret (APPETIZE_API_TOKEN).
 # kit: swift test for StraightBussingKit. app: XcodeGen -> build -> UI tests -> simulator screenshots +
 # recordings -> artifact; on main also force-pushes them to the orphan `ios-preview` branch and redeploys
-# Pages, which serves them at https://blobberus.github.io/straight-bussing/ios/
+# Pages, which serves them at https://blobberus.github.io/straight-bussing/ios/ . With the APPETIZE_API_TOKEN secret,
+# main builds also go to Appetize.io: the same simulator app, usable live in any browser (ios/README.md).
 on:
   push:
     branches: [main]
@@ -105,10 +106,20 @@ jobs:
         run: |
           bash ios/scripts/simulate.sh "ios/build/dd/Build/Products/Debug-iphonesimulator/StraightBussing.app" \
             "${{ steps.sim.outputs.udid }}" preview
+      - name: Live simulator in the browser (Appetize.io; skipped until the APPETIZE_API_TOKEN secret exists)
+        if: always() && steps.build.outcome == 'success' && github.ref == 'refs/heads/main'
+        continue-on-error: true              # a third-party outage must never fail the build
+        env:
+          APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+          APPETIZE_PUBLIC_KEY: ${{ vars.APPETIZE_PUBLIC_KEY }}
+        run: |
+          mkdir -p preview
+          python3 ios/scripts/appetize.py "ios/build/dd/Build/Products/Debug-iphonesimulator/StraightBussing.app" \
+            --out preview/appetize.json --note "Straight Bussing ${GITHUB_SHA::7}"
       - name: Gallery page
         if: always() && steps.build.outcome == 'success'
         run: |
-          python3 ios/scripts/gallery.py preview --sha "$GITHUB_SHA" \
+          python3 ios/scripts/gallery.py preview --sha "$GITHUB_SHA" --appetize preview/appetize.json \
             --run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --device "${{ steps.sim.outputs.name }}"
       - name: Upload preview artifact
         if: always()
