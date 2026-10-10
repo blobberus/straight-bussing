@@ -91,7 +91,7 @@ public enum TripInfo {
         guard let fb = o.legs.firstIndex(where: { $0.bus != nil }), let bus = o.legs[fb].bus, let tb = times[fb] else { return nil }
         let board = bus.board.name.isEmpty ? "the stop" : bus.board.name
         let busAt = TimeFmt.clock(tb.b)
-        let l1 = o.legs[0].walk.map { "Walk \(walkMins($0.min)) min to \(board) · bus \(busAt)" } ?? "No walk: board at \(board) · bus \(busAt)"
+        let l1 = o.legs[0].walk.map { "Walk \(walkMins($0.min)) min to \(board) · bus \(busAt)" } ?? "Board at \(board), no walk · bus \(busAt)"
         let wt = walkTotal(o), leave = leaveInfo(o, now: now)
         let incl = wt > 0 ? "includes \(walkMins(wt)) min walking" : "no walking"
         let l2 = leave.map { $0.text + " · " + incl } ?? (incl.prefix(1).uppercased() + incl.dropFirst())
@@ -125,7 +125,7 @@ public enum TripInfo {
         var out: [Step] = []
         if let b = legs.first?.bus {
             let start = !b.board.name.isEmpty ? b.board.name : (fromLabel ?? "").isEmpty ? "the stop" : fromLabel!
-            var s = Step(kind: .walk, title: [Run("No walk: start at "), Run(start, bold: true)])
+            var s = Step(kind: .walk, title: [Run("Start at "), Run(start, bold: true), Run(", no walk needed")])
             if let f = fromLabel, !f.isEmpty, f != b.board.name { s.sub = "\(f) is right by the stop" }
             out.append(s)
         }
@@ -149,13 +149,14 @@ public enum TripInfo {
                 out.append(Step(kind: .bus(b.rid),
                                 title: [Run("Bus arrives at "), Run(b.board.name, bold: true), Run(" "), Run(TimeFmt.clock(t.b), bold: true)],
                                 tag: b.waitLive ? "live" : "est.",
-                                sub: "Wait ~\(w < 1 ? "<1" : String(w)) min · Ride ~\(r) min to \(b.alight.name) (\(TimeFmt.clock(t.a))) · \(sp) stop\(sp > 1 ? "s" : "") · \(sourceText(b.source))",
+                                sub: "Wait ~\(w < 1 ? "<1" : String(w)) min, then ride ~\(r) min (\(sp) stop\(sp > 1 ? "s" : "")) to \(b.alight.name), \(TimeFmt.clock(t.a)) · \(sourceText(b.source))",
                                 subTag: "est."))
             }
         }
         if let last = legs.last?.bus {
             let al = last.alight.name.isEmpty ? "the stop" : last.alight.name
-            out.append(Step(kind: .walk, title: [Run("No walk: get off at "), Run(al, bold: true), Run(dest != al ? ", \(dest) is right there" : "")]))
+            out.append(Step(kind: .walk, title: [Run("Get off at "), Run(al, bold: true), Run(", no walk needed")],
+                            sub: dest != al ? "\(dest) is right there" : nil))
         }
         let wt = walkTotal(o)
         out.append(Step(kind: .arrive, title: [Run("Arrive at "), Run(dest, bold: true), Run(" about "), Run(TimeFmt.clock(o.arrive), bold: true)],
@@ -168,7 +169,7 @@ public enum TripInfo {
         let wt = walkTotal(o)
         let names = o.busLegs.map { routes[$0.rid]?.short.isEmpty == false ? routes[$0.rid]!.short : $0.rid }.joined(separator: " then ")
         let lines = optionLines(o, now: now).map { "\($0.first). \($0.second)" } ?? ""
-        let crit = criteria.isEmpty ? "" : " (" + criteria.replacingOccurrences(of: " · ", with: ", ") + ")"
+        let crit = criteria.isEmpty ? "" : " (" + criteria + ")"
         let s = "Option \(index + 1)\(crit): about \(o.totalMin) minutes including \(wt > 0 ? walkMins(wt) + " minutes walking" : "no walking"), arrive \(TimeFmt.clock(o.arrive))\(names.isEmpty ? "" : ", take " + names). \(lines) Estimate."
         return s.replacingOccurrences(of: "<1 min", with: "under 1 min")
     }
@@ -234,7 +235,7 @@ public enum LiveText {
         return ""
     }
 
-    /// Alert period for Settings: "4:12 PM – 6:00 PM" / "Oct 12 4:12 PM – ..." / "Until ..." / "Since ...".
+    /// Alert period for Settings: "4:12 PM to 6:00 PM" / "Oct 12 4:12 PM to ..." / "Until ..." / "Since ...".
     public static func alertPeriod(_ a: ServiceAlert, now: Double, calendar: Calendar = .current) -> String {
         guard let p = a.activePeriods.first(where: { w in (w.start == nil || w.start == 0 || w.start! <= now) && (w.end == nil || w.end == 0 || w.end! >= now) }) else { return "" }
         let start = p.start ?? 0, end = p.end ?? 0
@@ -244,7 +245,7 @@ public enum LiveText {
             let c = TimeFmt.clock(t, timeZone: calendar.timeZone)
             return calendar.isDate(Date(timeIntervalSince1970: t), inSameDayAs: today) ? c : dayLabel(t, calendar: calendar) + " " + c
         }
-        if start != 0 && end != 0 { return "\(f(start)) \u{2013} \(f(end))" }
+        if start != 0 && end != 0 { return "\(f(start)) to \(f(end))" }
         return end != 0 ? "Until \(f(end))" : "Since \(f(start))"
     }
 
@@ -404,10 +405,9 @@ public enum RouteText {
         return (key == today ? "today" : (Schedule.dayName[key] ?? key) + "s", list)
     }
 
-    /// "7 AM–9 AM: 3 buses · 9 AM–5 PM: 2 buses".
-    public static func hoursText(_ list: [Schedule.HourCount]) -> String {
-        Schedule.groupHours(list).map { "\(Schedule.hourLabel($0.from))\u{2013}\(Schedule.hourLabel($0.to)): \($0.buses) bus\($0.buses > 1 ? "es" : "")" }
-            .joined(separator: " · ")
+    /// One line per group: "7 AM to 9 AM: 3 buses" (route.js buses-by-hour list).
+    public static func hoursLines(_ list: [Schedule.HourCount]) -> [String] {
+        Schedule.groupHours(list).map { "\(Schedule.hourLabel($0.from)) to \(Schedule.hourLabel($0.to)): \($0.buses) bus\($0.buses > 1 ? "es" : "")" }
     }
 
     /// Today's hours note for a calendar exception: " (reduced schedule)" / " (schedule change)" / " (extra service)".

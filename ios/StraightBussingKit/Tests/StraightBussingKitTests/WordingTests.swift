@@ -41,7 +41,7 @@ final class TripInfoTests: XCTestCase {
         XCTAssertEqual(s[0].plain, "Walk 3 min (240 m) to Main & 1st"); XCTAssertEqual(s[0].tag, "estimate")
         XCTAssertEqual(s[0].sub, "Leave by \(TimeFmt.clock(NOW + 420)) to catch the \(TimeFmt.clock(NOW + 600)) bus")
         XCTAssertEqual(s[1].plain, "Bus arrives at Main & 1st " + TimeFmt.clock(NOW + 600)); XCTAssertEqual(s[1].tag, "live")
-        XCTAssertEqual(s[1].sub, "Wait ~4 min · Ride ~8 min to Hospital (\(TimeFmt.clock(NOW + 1080))) · 2 stops · from live bus prediction")
+        XCTAssertEqual(s[1].sub, "Wait ~4 min, then ride ~8 min (2 stops) to Hospital, \(TimeFmt.clock(NOW + 1080)) · from live bus prediction")
         XCTAssertEqual(s[2].plain, "Walk 2 min (160 m) to Hospital entrance")
         XCTAssertEqual(s[3].plain, "Arrive at Hospital entrance about " + TimeFmt.clock(NOW + 1200))
         XCTAssertEqual(s[3].sub, "About 20 min in total, including 5 min walking"); XCTAssertEqual(s[3].subTag, "est.")
@@ -55,11 +55,13 @@ final class TripInfoTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(TripInfo.optionLines(short, now: NOW)).first.hasPrefix("Walk <1 min to Main & 1st"))
         let busOnly = option([bus(waitLive: false)], NOW + 1080)
         let l = try XCTUnwrap(TripInfo.optionLines(busOnly, now: NOW))
-        XCTAssertTrue(l.first.hasPrefix("No walk: board at Main & 1st")); XCTAssertEqual(l.second, "No walking")
-        let bs = TripInfo.steps(busOnly, now: NOW, fromLabel: "Main & 1st", toLabel: "Hospital entrance").map(\.plain)
-        XCTAssertEqual(bs.first, "No walk: start at Main & 1st")
-        XCTAssertTrue(bs.contains("No walk: get off at Hospital, Hospital entrance is right there"))
+        XCTAssertTrue(l.first.hasPrefix("Board at Main & 1st, no walk")); XCTAssertEqual(l.second, "No walking")
+        let steps = TripInfo.steps(busOnly, now: NOW, fromLabel: "Main & 1st", toLabel: "Hospital entrance")
+        let bs = steps.map(\.plain)
+        XCTAssertEqual(bs.first, "Start at Main & 1st, no walk needed")
+        XCTAssertTrue(steps.contains { $0.plain == "Get off at Hospital, no walk needed" && $0.sub == "Hospital entrance is right there" })
         XCTAssertFalse(bs.joined().contains("Leave"), "no leave time without a live bus")
+        for st in steps { XCTAssertLessThanOrEqual((st.sub ?? "").components(separatedBy: "\u{00B7}").count - 1, 1, "one middle dot per line") }
     }
 
     func testCatchNote() {

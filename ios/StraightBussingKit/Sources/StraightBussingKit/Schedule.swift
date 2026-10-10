@@ -8,7 +8,9 @@ public enum Schedule {
     public static let dayName = ["mon": "Monday", "tue": "Tuesday", "wed": "Wednesday", "thu": "Thursday",
                                  "fri": "Friday", "sat": "Saturday", "sun": "Sunday"]
     static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    static let dash = "\u{2013}"
+    /// Ranges without dash characters (docs/DESIGN.md "Copy"): clock times "7:00 AM to 11:30 PM", days "Mon-Fri".
+    static let to = " to "
+    static let dayRange = "-"
     public static let chicago = TimeZone(identifier: "America/Chicago")!
 
     static let chicagoCal: Calendar = { var c = Calendar(identifier: .gregorian); c.timeZone = chicago; return c }()
@@ -66,10 +68,10 @@ public enum Schedule {
         return raw.compactMap { x in x.count >= 2 && mins(x[0]) != nil && mins(x[1]) != nil ? (x[0], x[1]) : nil }
     }
 
-    /// '7:00 AM – 11:30 PM' (windows joined with ', '), or 'No service'.
+    /// '7:00 AM to 11:30 PM' (windows joined with ', '), or 'No service'.
     static func spanLabel(_ day: ServiceDay?) -> String {
         let s = spansOf(day)
-        return s.isEmpty ? "No service" : s.map { clock12($0.0) + " " + dash + " " + clock12($0.1) }.joined(separator: ", ")
+        return s.isEmpty ? "No service" : s.map { clock12($0.0) + to + clock12($0.1) }.joined(separator: ", ")
     }
 
     /// The service entry for a route.
@@ -108,7 +110,7 @@ public enum Schedule {
         public var label: String
     }
 
-    /// Regular week, consecutive days with the same hours grouped ('Mon–Fri', 'Every day').
+    /// Regular week, consecutive days with the same hours grouped ('Mon-Fri', 'Every day').
     public static func weekSummary(_ service: ServiceData?, _ rid: String) -> [WeekRow] {
         guard let r = routeService(service, rid) else { return [] }
         let labels = dayKeys.map { spanLabel(r.days[$0]) }
@@ -118,7 +120,7 @@ public enum Schedule {
         while i < 7 {
             var j = i
             while j + 1 < 7 && labels[j + 1] == labels[i] { j += 1 }
-            out.append(WeekRow(days: dayShort[dayKeys[i]]! + (j > i ? dash + dayShort[dayKeys[j]]! : ""), label: labels[i]))
+            out.append(WeekRow(days: dayShort[dayKeys[i]]! + (j > i ? dayRange + dayShort[dayKeys[j]]! : ""), label: labels[i]))
             i = j + 1
         }
         return out

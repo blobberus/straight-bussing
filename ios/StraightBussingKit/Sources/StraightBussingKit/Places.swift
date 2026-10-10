@@ -3,7 +3,7 @@ import Foundation
 /// A local place search hit (data/places.js searchLocal item).
 public struct PlaceHit: Hashable, Sendable, Identifiable {
     public var label: String
-    /// 'Kind · address · N min walk to <stop>'.
+    /// 'Kind, address · N min walk to <stop>' (one middle dot per line).
     public var sub: String
     public var lat: Double
     public var lon: Double
@@ -287,7 +287,8 @@ public struct PlaceIndex: Sendable {
         let s = hit.0, p = hit.1.p
         let stop = p.stopIndex >= 0 && p.stopIndex < data.stops.count ? data.stops[p.stopIndex] : ""
         let walk = "\(p.walk) min walk to \(stop.isEmpty ? "a shuttle stop" : stop)"
-        let sub = [p.kind != "Place" ? p.kind : "", p.address, walk].filter { !$0.isEmpty }.joined(separator: " · ")
+        let what = [p.kind != "Place" ? p.kind : "", p.address].filter { !$0.isEmpty }.joined(separator: ", ")
+        let sub = [what, walk].filter { !$0.isEmpty }.joined(separator: " · ")
         return PlaceHit(label: p.name, sub: sub, lat: p.lat, lon: p.lon, walk: p.walk, stop: stop, score: Int(JS.round(s)))
     }
 

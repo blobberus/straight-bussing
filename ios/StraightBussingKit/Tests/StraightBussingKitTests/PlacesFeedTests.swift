@@ -25,7 +25,7 @@ final class PlacesTests: XCTestCase {
 
     func testChipotleChickfilaMediciNearestFirst() {
         let chip = idx.search("chipotle")
-        XCTAssertEqual(chip.map { $0.sub.components(separatedBy: " · ")[1] }, ["1522 E 53rd St", "806 W 63rd St"])
+        XCTAssertEqual(chip.map { $0.sub.components(separatedBy: " · ")[0] }, ["Fast food, 1522 E 53rd St", "Fast food, 806 W 63rd St"], "kind, address · walk")
         XCTAssertTrue(chip[0].sub.hasSuffix("1 min walk to Harper Court (NE Corner)"))
         XCTAssertEqual(idx.search("chickfila").first?.label, "Chick-fil-A", "spaces and hyphens ignored")
         XCTAssertEqual(idx.search("chick fil a").first?.label, "Chick-fil-A")

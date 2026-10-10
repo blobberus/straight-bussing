@@ -3,7 +3,7 @@ import XCTest
 
 /// Port of web/tests/route-schedule.js (fixture = web/tests/route-fixtures.js serviceFixture).
 final class ScheduleTests: XCTestCase {
-    let D = "\u{2013}"
+    let D = "to"
 
     static func day(_ first: String, _ last: String, _ buses: [Int], _ spans: [[String]]? = nil) -> ServiceDay {
         ServiceDay(first: first, last: last, trips: 10, buses: buses, spans: spans ?? [[first, last]])
@@ -70,7 +70,7 @@ final class ScheduleTests: XCTestCase {
     }
 
     func testWeekSummaryGroupsEqualDays() {
-        XCTAssertEqual(Schedule.weekSummary(S, "D"), [.init(days: "Mon\(D)Fri", label: "7:00 AM \(D) 7:25 PM"), .init(days: "Sat\(D)Sun", label: "No service")])
+        XCTAssertEqual(Schedule.weekSummary(S, "D"), [.init(days: "Mon-Fri", label: "7:00 AM \(D) 7:25 PM"), .init(days: "Sat-Sun", label: "No service")])
         XCTAssertEqual(Schedule.weekSummary(S, "N"), [.init(days: "Every day", label: "4:00 PM \(D) 4:29 AM")])
         XCTAssertEqual(Schedule.weekSummary(S, "zz"), [])
     }
@@ -111,7 +111,7 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(feed.start.count, 10)
         for rid in svc.routes.keys {
             for w in Schedule.weekSummary(svc, rid) {
-                XCTAssertTrue(w.label == "No service" || w.label.range(of: #"\d:\d\d [AP]M \x{2013} \d"#, options: .regularExpression) != nil,
+                XCTAssertTrue(w.label == "No service" || w.label.range(of: #"\d:\d\d [AP]M to \d"#, options: .regularExpression) != nil,
                               "\(rid) label \(w.label)")
             }
             for d in svc.routes[rid]!.days.values { XCTAssertEqual(d.buses?.count, 24, "\(rid) buses[24]") }

@@ -60,9 +60,11 @@ public enum Rank {
         return sorted.map { r in var o = r.o; o.meets = r.meets; return o }
     }
 
-    /// "Least walking · Earliest arrival" ('' for none), in priority order.
+    /// "Least walking, earliest arrival" ('' for none), in priority order.
     public static func criteriaText(_ meets: [Criterion]) -> String {
-        Criterion.allCases.filter { meets.contains($0) }.map(\.label).joined(separator: " · ")
+        Criterion.allCases.filter { meets.contains($0) }.enumerated()
+            .map { $0.offset == 0 ? $0.element.label : $0.element.label.prefix(1).lowercased() + $0.element.label.dropFirst() }
+            .joined(separator: ", ")
     }
 
     /// Identity of an option's bus legs (route, stops, boarding time).

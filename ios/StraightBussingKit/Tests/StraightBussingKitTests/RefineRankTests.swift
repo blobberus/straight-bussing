@@ -117,7 +117,7 @@ final class RankTests: XCTestCase {
 
     func testCriteriaPriority() {
         XCTAssertEqual(Criterion.allCases.map(\.rawValue), ["walk", "arrive", "wait"])
-        XCTAssertEqual(Rank.criteriaText([.wait, .walk]), "Least walking · Shortest wait")
+        XCTAssertEqual(Rank.criteriaText([.wait, .walk]), "Least walking, shortest wait")
         XCTAssertEqual(Rank.criteriaText([]), "")
     }
 
