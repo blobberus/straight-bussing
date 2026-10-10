@@ -8,6 +8,36 @@
  */
 
 const actions = new Map();
+/** How long a tap made before its action / view module loaded stays worth running (slow networks). */
+export const PENDING_MS = 20000;
+// The search bar, gear and tabs are on screen before the view modules load. The LAST such tap (action or
+// view, one slot shared with ui/router.js) runs once when it registers; any newer tap that runs drops it.
+let held = null;   // { key: 'action:<name>' | 'view:<id>', run, until }
+
+/**
+ * Hold a tap whose action or view has not registered yet (replaces any earlier held tap).
+ * @param {string} key 'action:<name>' or 'view:<id>'
+ * @param {() => void} run
+ */
+export function holdTap(key, run) {
+  held = { key, run, until: Date.now() + PENDING_MS };
+}
+
+/** A newer tap took effect: the held one no longer means anything. */
+export function dropHeldTap() {
+  held = null;
+}
+
+/**
+ * `key` just registered: run its held tap once (next tick) if it is still fresh.
+ * @param {string} key
+ */
+export function releaseHeldTap(key) {
+  if (!held || held.key !== key) return;
+  const h = held;
+  held = null;
+  if (Date.now() <= h.until) setTimeout(h.run, 0);
+}
 
 /**
  * Register an action handler. A later registration replaces an earlier one, unless
@@ -24,6 +54,7 @@ export function registerAction(name, fn, opts = {}) {
     console.warn("registerAction: replacing action", name);
   }
   actions.set(name, fn);
+  releaseHeldTap("action:" + name);   // the user already tapped it while the app was still loading
   return true;
 }
 
@@ -42,14 +73,22 @@ export function hasAction(name) {
  * @param {Object} dataset
  * @param {Event|null} event
  * @param {Object} ctx
- * @returns {boolean} true if a handler ran (even if it threw)
+ * @returns {boolean} true if a handler ran (even if it threw); false = not registered yet, held (see holdTap)
  */
 export function runAction(name, dataset, event, ctx) {
   const fn = actions.get(name);
   if (!fn) {
-    console.warn("unknown action", name);
+    const ds = { ...(dataset || {}) };   // a snapshot: the element may be re-rendered before it runs
+    holdTap("action:" + name, () => { const f = actions.get(name); if (f) call(name, f, ds, null, ctx); });
+    console.warn("action not loaded yet (runs once it is):", name);
     return false;
   }
+  dropHeldTap();   // this tap wins over an older one still waiting for its module
+  call(name, fn, dataset, event, ctx);
+  return true;
+}
+
+function call(name, fn, dataset, event, ctx) {
   try {
     const r = fn(dataset || {}, event || null, ctx);
     if (r && typeof r.catch === "function") {
@@ -62,7 +101,6 @@ export function runAction(name, dataset, event, ctx) {
     console.error("action " + name, e);
     if (ctx && ctx.toast) ctx.toast("Something went wrong. Please try again.");
   }
-  return true;
 }
 
 function isDisabled(el) {
@@ -161,4 +199,5 @@ export function bindActions(root, getCtx) {
 /** Test helper: forget all actions. */
 export function _resetActions() {
   actions.clear();
+  held = null;
 }

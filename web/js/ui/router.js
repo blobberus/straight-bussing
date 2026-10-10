@@ -9,6 +9,7 @@
  * Call initRouter({store, setDetent, getDetent}) once at boot (main.js). Views call
  * registerView(...) at import time and navigate()/back() from actions.
  */
+import { holdTap, dropHeldTap, releaseHeldTap } from "./actions.js";
 
 /** Root (tab) view ids. */
 export const TABS = Object.freeze(["nearby", "routes", "myroutes"]);
@@ -46,6 +47,7 @@ export function registerView(id, def) {
   if (!id || !def || typeof def !== "object") throw new Error("registerView: bad arguments for " + id);
   if (views.has(id)) console.warn("registerView: replacing view", id);
   views.set(id, def);
+  releaseHeldTap("view:" + id);   // a tab tapped while this module was still loading (ui/actions.js holdTap)
 }
 
 /**
@@ -139,14 +141,16 @@ function applyDetent(d) {
  * Go to a view. Root views reset the back stack; sub views push the current location.
  * @param {string} view registered view id
  * @param {{stopId?:string, routeId?:string, detent?:'peek'|'half'|'full'}&Object} [p] extra keys are kept in currentParams()
- * @returns {boolean} false if the view is unknown or the router is not initialised
+ * @returns {boolean} false if the view is unknown (not loaded yet: held, it runs once it registers) or the router is not initialised
  */
 export function navigate(view, p = {}) {
   const def = views.get(view);
   if (!store || !def) {
-    console.warn("navigate: unknown view or router not initialised:", view);
+    if (store && view) { const q = { ...(p || {}) }; holdTap("view:" + view, () => navigate(view, q)); }   // slow network: its module is still loading
+    console.warn("navigate: view not loaded yet or router not initialised:", view);
     return false;
   }
+  dropHeldTap();   // the user went somewhere: an older tap still waiting for its module no longer applies
   p = p || {};
   const s = store.get();
   const stopId = p.stopId != null ? String(p.stopId) : null;
@@ -179,6 +183,7 @@ export function navigate(view, p = {}) {
 export function back() {
   if (!store) return false;
   const s = store.get();
+  if (stack.length || !TABS.includes(s.view)) dropHeldTap();   // going back cancels a tap still waiting for its module
   if (stack.length) {
     const e = stack.pop();
     params = e.params || {};
