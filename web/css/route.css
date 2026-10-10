@@ -4,8 +4,7 @@
 .r-today { margin: -4px 0 var(--s2); }
 .r-k { font-weight: 600; color: var(--text); margin-right: 4px; }
 .r-sched { font-weight: 600; color: var(--text-2); }
-.r-sched.is-on { color: var(--live-text, var(--live)); }
-.r-sched.is-on::before { content: "\25CF "; }            /* dot + words: state not by color alone */
+.r-sched.is-on { color: var(--text); }   /* schedule data, not live: never the live green or its dot (the words carry the state) */
 
 /* where the buses are (text, also the accessible description of the rail) */
 .r-buslist { list-style: none; margin: var(--s2) 0; padding: 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }

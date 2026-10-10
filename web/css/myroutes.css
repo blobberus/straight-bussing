@@ -95,11 +95,11 @@
 .mr-morebtn { color: var(--text-2); margin-right: var(--s1); }
 .mr-acts { position: absolute; top: 0; right: 0; bottom: 0; width: 216px; display: flex; visibility: hidden; transition: visibility 0s linear var(--d-sheet); }
 .mr-swipe.is-open .mr-acts, .mr-swipe.is-drag .mr-acts { visibility: visible; transition-delay: 0s; }   /* hidden when closed: no red bleed at the card's rounded corners */
-.mr-act { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: var(--tap); margin: 0; padding: 0; border: 0; border-radius: 0; color: #fff; font: inherit; font-size: var(--fs-cap); font-weight: 650; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.mr-act { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: var(--tap); margin: 0; padding: 0; border: 0; border-radius: 0; color: var(--on-accent); font: inherit; font-size: var(--fs-cap); font-weight: 650; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .mr-act .ic { width: 20px; height: 20px; }
 .mr-act--info { background: #636366; }
 .mr-act--edit { background: var(--accent-fill); }
-.mr-act--del { background: #d70015; }
+.mr-act--del { background: var(--danger-fill); }
 .mr-act:focus-visible { outline: 3px solid var(--text); outline-offset: -3px; }
 .mr-hint { margin-top: var(--s2); }
 .mr-dacts { margin: var(--s2) 0 var(--s3); }

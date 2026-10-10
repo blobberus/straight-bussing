@@ -118,7 +118,7 @@ button.row:active { background: var(--surface-press); transform: scale(.98); }
 /* numeric badge */
 .badge {
   display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px;
-  background: var(--danger); color: #fff; font-size: var(--fs-cap); line-height: 18px; font-weight: 700; text-align: center;
+  background: var(--danger-fill); color: var(--on-danger); font-size: var(--fs-cap); line-height: 18px; font-weight: 700; text-align: center;
 }
 
 /* pills + source tags */

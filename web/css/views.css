@@ -38,7 +38,7 @@ button.v-row:active { transform: scale(.98); opacity: .8; }
 .v-btn:active { transform: scale(.98); }
 .v-btn:focus-visible, .v-link:focus-visible, .v-eye:focus-visible, .v-dswap:focus-visible, .v-fchip-x:focus-visible, .v-chipbtn:focus-visible, .v-segbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .v-btn--primary { background: var(--accent-fill); color: var(--on-accent); min-height: 48px; }
-.v-btn--danger { background: var(--danger); color: #fff; min-height: 48px; }
+.v-btn--danger { background: var(--danger-fill); color: var(--on-danger); min-height: 48px; }
 .v-confirm-b { margin: var(--s2) 0 0; }
 .v-confirm-acts { margin-top: var(--s4); }
 .v-btn--secondary { background: var(--surface); color: var(--accent); min-height: 48px; }

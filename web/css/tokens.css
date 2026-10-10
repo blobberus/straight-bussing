@@ -21,6 +21,8 @@
   --warn-bg: #fff4e0;
   --danger: #c4291c;
   --danger-bg: #fdeceb;
+  --danger-fill: #c4291c;    /* red FILLS (Delete, count badge): white text 5.7:1 in both themes */
+  --on-danger: #ffffff;
   --seg-on: #ffffff;
   --scrim: rgba(0, 0, 0, .4);
   --marker-ring: rgba(0, 0, 0, .28);
@@ -128,6 +130,7 @@
     --warn-bg: #3a2a10;
     --danger: #ff6961;
     --danger-bg: #3a1a18;
+    --danger-fill: #c4291c;   /* not --danger (#ff6961): white on it is 2.8:1 */
     --seg-on: #636366;
     --scrim: rgba(0, 0, 0, .55);
     --marker-ring: rgba(0, 0, 0, .55);
@@ -157,6 +160,7 @@
   --warn-bg: #3a2a10;
   --danger: #ff6961;
   --danger-bg: #3a1a18;
+  --danger-fill: #c4291c;
   --seg-on: #636366;
   --scrim: rgba(0, 0, 0, .55);
   --marker-ring: rgba(0, 0, 0, .55);

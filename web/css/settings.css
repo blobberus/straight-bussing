@@ -40,7 +40,7 @@
 .st-sw input { position: absolute; right: 0; top: 50%; width: 51px; height: 31px; margin: -15.5px 0 0; opacity: 0; cursor: pointer; z-index: 1; }
 .st-knob { flex: none; position: relative; width: 51px; height: 31px; border-radius: 16px; background: var(--hairline-strong); transition: background-color var(--d-press) var(--ease); }
 .st-knob::after { content: ""; position: absolute; left: 2px; top: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform var(--d-press) var(--ease); }
-.st-sw input:checked + .st-knob { background: var(--live); }
+.st-sw input:checked + .st-knob { background: var(--accent); }   /* the one accent: green means live data only */
 .st-sw input:checked + .st-knob::after { transform: translateX(20px); }
 .st-sw input:focus-visible + .st-knob { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* state is not color alone: an "I" bar marks the on position */
@@ -49,7 +49,7 @@
 /* status */
 .st-status { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); }
 .st-status .v-grow > span { display: block; }
-.st-ok { vertical-align: -3px; color: var(--live); }
+.st-ok { vertical-align: -3px; color: var(--accent); }
 
 /* Settings overlay (ui/settings-overlay.js): a card stacked exactly over the full-detent sheet, so
    the sheet's title and tabs are covered; .sto-scrim dims everything still visible behind it.

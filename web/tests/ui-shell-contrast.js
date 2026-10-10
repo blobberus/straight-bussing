@@ -66,3 +66,44 @@ test("high contrast / forced colors: on-off state of check circles and segments 
   const forced = comp.slice(comp.indexOf("@media (forced-colors: active)"));
   ok(/\.themeseg button\[aria-checked="true"\][^{]*\{[^}]*Highlight/.test(forced), "selected theme segment marked with Highlight in forced colors");
 });
+
+// Taste audit 2026-10-10 (docs/DESIGN-AUDIT-2026-10-10.md section 4): every button, toggle, tag, badge and the field
+// placeholder color stay >= 4.5:1 in light and dark with the real CSS. The dark Delete button and the alert count badge
+// were white on #ff6961 (2.82:1) before --danger-fill.
+function buttonsFrame() {
+  return new Promise((resolve) => {
+    const f = document.createElement("iframe");
+    f.style.cssText = "position:absolute;left:-2000px;width:400px;height:900px";
+    // transitions off: a theme switch must not be measured mid-fade (.v-btn animates its background)
+    f.srcdoc = `<!doctype html><html><head>${[...CSS, "myroutes"].map((n) => `<link rel="stylesheet" href="../css/${n}.css">`).join("")}<style>*,*::before,*::after{transition:none!important}</style></head><body>`
+      + `<div style="background:var(--bg-solid)">`
+      + `<button class="v-btn v-btn--primary">Use my location</button><button class="v-btn v-btn--secondary">Routes to station</button>`
+      + `<button class="v-btn v-btn--danger">Delete</button><button class="v-btn v-btn--quiet">Show all</button><button class="v-link">Type an address</button>`
+      + `<button class="cta">Go</button><button class="cta alt">Alt</button><span class="badge">1</span><span class="pill pill-warn">Delayed</span><span class="pill pill-err">Error</span>`
+      + `<span class="mr-showing">Showing on the map</span><button class="mr-hl is-on">Highlight</button><button class="mr-hl">Highlight</button><button class="mr-fav">Favorite</button>`
+      + `<span class="tp-tag tp-tag--board">Board</span><span class="tp-tag tp-tag--alight">Get off</span><span class="v-fchip"><span class="v-fchip-t">Routes to X</span></span>`
+      + `<div class="mr-acts" style="visibility:visible;position:static;width:auto"><button class="mr-act mr-act--info">Details</button><button class="mr-act mr-act--edit">Edit</button><button class="mr-act mr-act--del">Delete</button></div>`
+      + `<span class="t-ph" style="color:var(--text-2);background:var(--surface)">Station name (placeholder color on a field)</span></div>`
+      + `<div class="v-card"><button class="v-btn v-btn--secondary">In a card</button><span class="j-crit">Least walking</span></div>`
+      + `</body></html>`;
+    f.onload = () => setTimeout(() => resolve(f), 50);
+    document.body.appendChild(f);
+  });
+}
+
+test("contrast: buttons, toggles, tags, badges and placeholders are >= 4.5:1 in light and dark (taste audit 2026-10-10)", async () => {
+  const f = await buttonsFrame(), win = f.contentWindow, doc = f.contentDocument, bad = [];
+  let n = 0;
+  for (const theme of ["light", "dark"]) {
+    doc.documentElement.dataset.theme = theme;
+    const base = theme === "dark" ? { r: 28, g: 28, b: 30, a: 1 } : { r: 252, g: 252, b: 253, a: 1 };
+    for (const el of doc.querySelectorAll("button, .badge, .pill, .mr-showing, .tp-tag, .v-fchip-t, .j-crit, .t-ph")) {
+      const bg = bgOf(win, el, base), fg = over(rgba(win.getComputedStyle(el).color), bg), cr = ratio(fg, bg);
+      n++;
+      if (!(cr >= 4.5)) bad.push(`${theme} .${el.className.split(" ").join(".")} "${el.textContent}": ${cr.toFixed(2)}`);
+    }
+  }
+  f.remove();
+  ok(n >= 40, "measured " + n);
+  ok(!bad.length, bad.join("; "));
+});
