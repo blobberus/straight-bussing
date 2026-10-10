@@ -140,7 +140,7 @@ function rank(qw, fuzzy, names = false) {
 function toItem([s, { p }]) {
   const stop = data.stops?.[p[5]] || '';
   const walk = `${p[6]} min walk to ${stop || 'a shuttle stop'}`;
-  return { label: p[0], sub: [p[1] !== 'Place' ? p[1] : '', p[2], walk].filter(Boolean).join(' · '), lat: p[3], lon: p[4], walk: p[6], stop, score: Math.round(s), local: true };
+  return { label: p[0], sub: [[p[1] !== 'Place' ? p[1] : '', p[2]].filter(Boolean).join(', '), walk].filter(Boolean).join(' · '), lat: p[3], lon: p[4], walk: p[6], stop, score: Math.round(s), local: true };
 }
 
 /** Best spelling correction that finds a name-level match clearly better than the typed text (or null). */

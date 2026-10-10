@@ -11,7 +11,9 @@
 export const DAY_KEYS = Object.freeze(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
 const DAY_SHORT = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DASH = "–";
+/* Ranges, no dash characters (docs/DESIGN.md "Copy"): clock times "7:00 AM to 11:30 PM", day spans "Mon-Fri". */
+const TO = " to ";
+const DAY_RANGE = "-";
 
 let fmt = null;
 
@@ -77,10 +79,10 @@ function spansOf(day) {
   return s.filter((x) => Array.isArray(x) && Number.isFinite(mins(x[0])) && Number.isFinite(mins(x[1])));
 }
 
-/** '7:00 AM – 11:30 PM' (windows joined with ', '), or 'No service'. */
+/** '7:00 AM to 11:30 PM' (windows joined with ', '), or 'No service'. */
 function spanLabel(day) {
   const s = spansOf(day);
-  return s.length ? s.map(([a, b]) => clock12(a) + " " + DASH + " " + clock12(b)).join(", ") : "No service";
+  return s.length ? s.map(([a, b]) => clock12(a) + TO + clock12(b)).join(", ") : "No service";
 }
 
 /**
@@ -128,7 +130,7 @@ export function hoursOn(service, rid, unixS) {
 }
 
 /**
- * Regular week, consecutive days with the same hours grouped ('Mon–Fri', 'Every day').
+ * Regular week, consecutive days with the same hours grouped ('Mon-Fri', 'Every day').
  * @param {object} service
  * @param {string} rid
  * @returns {{days:string, label:string}[]}
@@ -142,7 +144,7 @@ export function weekSummary(service, rid) {
   for (let i = 0; i < 7;) {
     let j = i;
     while (j + 1 < 7 && labels[j + 1] === labels[i]) j++;
-    out.push({ days: DAY_SHORT[DAY_KEYS[i]] + (j > i ? DASH + DAY_SHORT[DAY_KEYS[j]] : ""), label: labels[i] });
+    out.push({ days: DAY_SHORT[DAY_KEYS[i]] + (j > i ? DAY_RANGE + DAY_SHORT[DAY_KEYS[j]] : ""), label: labels[i] });
     i = j + 1;
   }
   return out;

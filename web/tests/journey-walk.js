@@ -74,8 +74,9 @@ test("directions: short walks are still mentioned (<1 min), no-walk ends are sai
   unmountDirections(); el.remove();
   ({ el, res } = await dirWith([option([bus({ waitLive: false })], NOW + 1080)]));
   txt = res.textContent;
-  ok(txt.includes("No walk: board at Main & 1st") && txt.includes("No walking"), "card: " + txt);
-  ok(txt.includes("No walk: start at Main & 1st") && txt.includes("No walk: get off at Hospital, Hospital entrance is right there"), txt);
+  ok(txt.includes("Board at Main & 1st, no walk") && txt.includes("No walking"), "card: " + txt);
+  ok(txt.includes("Start at Main & 1st, no walk needed") && txt.includes("Get off at Hospital, no walk needed") && txt.includes("Hospital entrance is right there"), txt);
+  ok(![...res.querySelectorAll(".v-stepsub")].some((e) => (e.textContent.match(/·/g) || []).length > 1), "at most one middle dot per step line");
   ok(!txt.includes("Leave"), "no leave time without a live bus");
   unmountDirections(); el.remove(); resetDir();
 });

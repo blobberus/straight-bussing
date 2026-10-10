@@ -124,10 +124,10 @@ function renderBuses(svc, rid, now) {
   const span = (list[list.length - 1].hour - list[0].hour + 24) % 24 + 1, by = new Map(list.map((x) => [x.hour, x.buses]));
   const bars = Array.from({ length: span }, (_, i) => { const hr = (list[0].hour + i) % 24; return { hour: hr, buses: by.get(hr) || 0 }; });
   const when = key === dayKey(now) ? "today" : DAY_NAME[key] + "s";
-  const groups = groupHours(list).map((g) => `${hourLabel(g.from)}–${hourLabel(g.to)}: ${g.buses} bus${g.buses > 1 ? "es" : ""}`);
+  const groups = groupHours(list).map((g) => `${hourLabel(g.from)} to ${hourLabel(g.to)}: ${g.buses} bus${g.buses > 1 ? "es" : ""}`);
   let h = `<h3 class="r-h3">Scheduled buses by hour, ${esc(when)}</h3><div class="v-card r-hours"><div class="r-bars${bars.length > 14 ? " is-dense" : ""}" aria-hidden="true">`;
   for (const x of bars) h += `<span class="r-bar"><span class="r-barn">${x.buses || ""}</span><span class="r-barfill${x.buses ? "" : " is-zero"}" style="height:${Math.round((x.buses / max) * 70)}%"></span><span class="r-barh">${x.hour % 3 === 0 ? esc(hourLabel(x.hour).replace(" ", "")) : ""}</span></span>`;
-  return h + `</div><p class="v-sec r-bartext">${esc(groups.join(" · "))}</p></div>`;
+  return h + `</div><ul class="v-sec r-bartext">${groups.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>`;
 }
 
 /** Status line under the title: buses running + today's scheduled hours. */

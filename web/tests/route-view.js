@@ -4,7 +4,7 @@ import { renderRoute, renderService, busPositions } from "../js/ui/views/route.j
 import { fixture, NOW } from "./views-fixtures.js";
 import { serviceFixture } from "./route-fixtures.js";
 
-const D = "–";
+const D = "to";   // clock ranges: "7:00 AM to 7:25 PM" (no dash characters, docs/DESIGN.md "Copy")
 const svcState = (over = {}) => fixture({ routeId: "R1", service: serviceFixture(), ...over });
 
 test("route rail: bus approaching the first stop of a line route", () => {
@@ -42,11 +42,12 @@ test("route rail: loop routes wrap (first stop's previous is the last stop)", ()
 test("route: hours & service section from schedule data", () => {
   const h = renderRoute(svcState(), NOW);                     // NOW = Fri 2:00 AM CST
   ok(h.includes("Hours &amp; service"));
-  ok(h.includes(`Mon${D}Fri`) && h.includes(`Sat${D}Sun`) && h.includes("No service"));
+  ok(h.includes("Mon-Fri") && h.includes("Sat-Sun") && h.includes("No service"));
+  ok(!/[–—]/.test(h), "no en / em dash in the route view");
   ok(h.includes("Not scheduled now"), "2 AM is outside 7 AM - 7:25 PM");
   ok(h.includes(`<span class="r-k">Today</span> 7:00 AM ${D} 7:25 PM`));
   ok(h.includes("Scheduled buses by hour, today"));
-  ok(h.includes(`8 AM${D}11 AM: 3 buses`), "accessible text for the bars");
+  ok(h.includes("<li>8 AM to 11 AM: 3 buses</li>"), "accessible text for the bars, one group per line");
   ok(h.includes("official published schedule"), "labeled as schedule data");
   ok(h.includes("No schedule changes in the next 30 days."));
 });

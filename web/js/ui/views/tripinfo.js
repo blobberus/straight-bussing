@@ -2,7 +2,7 @@
  * @module ui/views/tripinfo
  * Trip timing helpers shared by Plan Trip (nearby.js) and Directions (directions.js). Not a view.
  * Makes walking visible: the walk to the first stop and from the last stop are always named in the
- * option card and step list (or "No walk" when the planner dropped a leg under 25 m), totals say they
+ * option card and step list (or "no walk needed" when the planner dropped a leg under 25 m), totals say they
  * include walking, and "Leave now / Leave in N min" guidance is derived from the walking estimate.
  * Every derived time here is an estimate and is labeled so.
  */
@@ -96,7 +96,7 @@ export function optionLines(o, now) {
   const busAt = clock(times[fb].b);
   const l1 = first.type === "walk"
     ? `Walk ${walkMins(first.min)} min to ${board} · bus ${busAt}`
-    : `No walk: board at ${board} · bus ${busAt}`;
+    : `Board at ${board}, no walk · bus ${busAt}`;
   const wt = walkTotal(o), leave = leaveInfo(o, now);
   const incl = wt > 0 ? `includes ${walkMins(wt)} min walking` : "no walking";
   const l2 = (leave ? leave.text + " · " : "") + (leave ? incl : incl.charAt(0).toUpperCase() + incl.slice(1));
@@ -121,7 +121,7 @@ export function stepsHTML(o, now, state, { fromLabel, toLabel } = {}) {
   const sub = (h) => `<span class="v-sec v-stepsub">${h}</span>`;
   const steps = [];
   if (legs[0]?.type === "bus") {
-    steps.push(li(WALK_IC, `No walk: start at <b>${esc(legs[0].board?.name || fromLabel || "the stop")}</b>` + (fromLabel && fromLabel !== legs[0].board?.name ? sub(`${esc(fromLabel)} is right by the stop`) : ""), "j-walk"));
+    steps.push(li(WALK_IC, `Start at <b>${esc(legs[0].board?.name || fromLabel || "the stop")}</b>, no walk needed` + (fromLabel && fromLabel !== legs[0].board?.name ? sub(`${esc(fromLabel)} is right by the stop`) : ""), "j-walk"));
   }
   legs.forEach((l, i) => {
     if (l.type === "walk") {
@@ -138,11 +138,11 @@ export function stepsHTML(o, now, state, { fromLabel, toLabel } = {}) {
     }
     const t = times[i], w = Math.round(l.wait || 0), r = mins(l.ride);
     steps.push(li(routeChip(l.rid, state.routes), `Bus arrives at <b>${esc(l.board?.name || "")}</b> <b class="v-clock">${esc(clock(t.b))}</b> ${tag(l.waitLive ? "live" : "est.")}`
-      + sub(`Wait ~${w < 1 ? "&lt;1" : w} min &middot; Ride ~${r} min to ${esc(l.alight?.name || "")} (${esc(clock(t.a))}) &middot; ${l.stopsPassed || 1} stop${(l.stopsPassed || 1) > 1 ? "s" : ""} &middot; ${esc(SRC[l.source] || "estimate")} ${tag("est.")}`)));
+      + sub(`Wait ~${w < 1 ? "&lt;1" : w} min, then ride ~${r} min (${l.stopsPassed || 1} stop${(l.stopsPassed || 1) > 1 ? "s" : ""}) to ${esc(l.alight?.name || "")}, ${esc(clock(t.a))} &middot; ${esc(SRC[l.source] || "estimate")} ${tag("est.")}`)));
   });
   if (legs[n - 1]?.type === "bus") {
     const al = legs[n - 1].alight?.name || "the stop";
-    steps.push(li(WALK_IC, `No walk: get off at <b>${esc(al)}</b>` + (dest !== al ? `, ${esc(dest)} is right there` : ""), "j-walk"));
+    steps.push(li(WALK_IC, `Get off at <b>${esc(al)}</b>, no walk needed` + (dest !== al ? sub(`${esc(dest)} is right there`) : ""), "j-walk"));
   }
   const wt = walkTotal(o);
   steps.push(li('<span class="v-pin v-pin--b"></span>', `Arrive at <b>${esc(dest)}</b> about <b class="v-clock">${esc(clock(o.arrive))}</b>`

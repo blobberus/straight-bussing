@@ -87,12 +87,12 @@ export function rankOptions(options) {
 }
 
 /**
- * Short label of what an option minimizes, e.g. "Least walking · Earliest arrival" ('' for none).
+ * Short label of what an option minimizes, e.g. "Least walking, earliest arrival" ('' for none).
  * @param {string[]} meets criterion ids
  * @returns {string}
  */
 export function criteriaText(meets) {
-  return CRITERIA.filter((c) => (meets || []).includes(c.id)).map((c) => c.label).join(" · ");
+  return CRITERIA.filter((c) => (meets || []).includes(c.id)).map((c, i) => (i ? c.label.charAt(0).toLowerCase() + c.label.slice(1) : c.label)).join(", ");
 }
 
 /** Identity of an option's bus legs (route, stops, boarding time): the same trip found twice. */

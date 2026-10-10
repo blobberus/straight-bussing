@@ -95,7 +95,7 @@ export function searchPlaces(q, {signal}): Promise<{items:[{label, sub, lat, lon
 // 2026-10-08: searchPlaces asks the LOCAL index first (data/places.js over web/data/places.json: named places within a 30-minute walk of the
 // 82 campus stops, from OpenStreetMap via tools/build_places.py, ODbL): punctuation/space-insensitive ("chickfila"), prefixes, 1 typo,
 // categories (coffee, grocery, apartments), whole-word name matches first, then nearest stop. Items carry {local:true, walk, stop, score}
-// and sub "Kind · address · N min walk to <stop>". Photon is called only when the local index has < 5 matches; mergePlaces() puts local
+// and sub "Kind, address · N min walk to <stop>" (one middle dot per line, docs/DESIGN.md "Copy"). Photon is called only when the local index has < 5 matches; mergePlaces() puts local
 // first and drops Photon duplicates (within 150 m, one name contains the other); Photon results > 3 km away end with "N km from campus".
 // data/places.js: norm(s), scorePlace, searchLocal(q,{limit}), loadPlaces(fetch?) (never throws), setPlaces(data|null) for tests.
 ```
@@ -133,7 +133,7 @@ export async function refineWalking(option, {walkRoute, now, data, from, to, pre
 ```
 Planner rules (port from v1, keep behaviors): walk 80 m/min x1.2 detour estimate (WALK_M_PER_MIN, WALK_DETOUR in core/geo.js), max walk 800 m each end, widened to 1600 m (MAX_WALK_FAR) when no option exists within 800 m; every walk costs m/80 min however short (only walks under 1 m get no step); wait counts from when you reach the stop (t0 + walk), and for the second bus from after the transfer walk; direct + one transfer (transfer walk <= 150 m), loop routes wrap, ride time prefers same-trip live prediction (tripUpdates at alight stop minus at board stop), then `predict.rideMinutes`, then distance/18 km/h; wait = live next arrival at board stop after you arrive, else headway estimate; discard options absurdly longer than walking; direct trips contribute, per route, the best (board, alight) pair for EACH criterion below; ranked by `core/rank.js`; max 4 options (`PLANNER.MAX_OPTS`); every number is an estimate.
 
-Ranking (`core/rank.js`, owner rule 2026-10-08): criteria in priority order **1. least walking** (sum of walk-leg minutes), **2. earliest arrival**, **3. shortest wait** (sum of bus-leg waits). An option *meets* a criterion when within a tolerance of the best (walk 0.5 min, arrival 1 min, wait 1 min). Sort: highest-priority criterion met (none = last), then more criteria met, then walk, arrive, wait. Options carry `meets:[ids]`; Directions re-ranks after `refineWalking` and shows `criteriaText(meets)` as a small line on each card ("Least walking · Earliest arrival") when there are 2+ options.
+Ranking (`core/rank.js`, owner rule 2026-10-08): criteria in priority order **1. least walking** (sum of walk-leg minutes), **2. earliest arrival**, **3. shortest wait** (sum of bus-leg waits). An option *meets* a criterion when within a tolerance of the best (walk 0.5 min, arrival 1 min, wait 1 min). Sort: highest-priority criterion met (none = last), then more criteria met, then walk, arrive, wait. Options carry `meets:[ids]`; Directions re-ranks after `refineWalking` and shows `criteriaText(meets)` as a small line on each card ("Least walking, earliest arrival") when there are 2+ options.
 ```js
 // core/rank.js
 export const CRITERIA   // [{id:'walk'|'arrive'|'wait', label, tol}]
@@ -256,8 +256,8 @@ recomputed on zoom, honoring reduced motion (static), never intercepting taps.
 // core/schedule.js (pure; Chicago local time; never throws; null/[] when no data)
 routeService(service, rid): object|null
 dayKey(unixS): 'mon'..'sun'                         // America/Chicago
-hoursOn(service, rid, unixS): {first, last, label:'7:00 AM – 11:30 PM', exception?:'removed'|'added'}|null   // that date, exceptions applied
-weekSummary(service, rid): [{days:'Mon–Fri', label:'7:00 AM – 11:30 PM'}|{days:'Sat', label:'No service'}]   // groups equal days
+hoursOn(service, rid, unixS): {first, last, label:'7:00 AM to 11:30 PM', exception?:'removed'|'added'}|null   // that date, exceptions applied
+weekSummary(service, rid): [{days:'Mon-Fri', label:'7:00 AM to 11:30 PM'}|{days:'Sat', label:'No service'}]   // no dash characters in visible text   // groups equal days
 busesByHour(service, rid, dayKey): [{hour, buses}]  // only hours with service
 upcomingChanges(service, rid, unixS, horizonDays=30): [{date, label:'Thu, Nov 26', text:'No service'|'Extra service'}]
 isScheduledNow(service, rid, unixS): boolean|null

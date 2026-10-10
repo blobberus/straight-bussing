@@ -48,7 +48,7 @@
 .r-bars.is-dense .r-barn { display: none; }
 .r-barfill.is-zero { min-height: 1px; background: var(--hairline-strong); }
 .r-barh { position: absolute; left: -6px; bottom: -15px; font-size: 10px; line-height: 1; color: var(--text-2); white-space: nowrap; }
-.r-bartext { margin: var(--s2) 0 0; font-size: var(--fs-cap); line-height: var(--lh-cap); }
+.r-bartext { margin: var(--s2) 0 0; padding: 0; list-style: none; font-size: var(--fs-cap); line-height: var(--lh-cap); }   /* one hour group per line */
 
 @media (prefers-reduced-motion: reduce) { .r-bus { transition: none; } }
 @media (prefers-contrast: more) { .r-seg { background: currentColor; } .r-bus { outline: 1px solid currentColor; } }

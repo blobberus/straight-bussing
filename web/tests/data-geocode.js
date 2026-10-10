@@ -209,7 +209,8 @@ test('places: normalization ignores case, accents, punctuation and spaces', () =
 test('places: Chipotle, chickfila (no hyphens), Medici (whole word beats Medicine), nearest first', () => {
   setPlaces(PLACES);
   const chip = searchLocal('chipotle');
-  eq(chip.map((x) => x.sub.split(' · ')[1]), ['1522 E 53rd St', '806 W 63rd St'], 'Hyde Park one first (1 min walk)');
+  eq(chip.map((x) => x.sub.split(' · ')[0].split(', ').pop()), ['1522 E 53rd St', '806 W 63rd St'], 'Hyde Park one first (1 min walk)');
+  ok(chip.every((x) => x.sub.split(' · ').length <= 2), 'at most one middle dot: "Kind, address · N min walk to stop"');
   ok(chip[0].sub.endsWith('1 min walk to Harper Court (NE Corner)') && chip[0].local, 'walk to the nearest stop');
   eq(searchLocal('chickfila')[0]?.label, 'Chick-fil-A', 'spaces and hyphens ignored');
   eq(searchLocal('chick fil a')[0]?.label, 'Chick-fil-A');

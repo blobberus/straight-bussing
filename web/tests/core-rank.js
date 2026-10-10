@@ -13,7 +13,7 @@ const keys = (list) => list.map((o) => o.key);
 
 test("rank: criteria are walking, arrival, wait in that priority", () => {
   eq(CRITERIA.map((c) => c.id), ["walk", "arrive", "wait"]);
-  eq(criteriaText(["wait", "walk"]), "Least walking · Shortest wait", "labels follow priority order");
+  eq(criteriaText(["wait", "walk"]), "Least walking, shortest wait", "labels follow priority order, one sentence (no stacked dots)");
   eq(criteriaText([]), "");
 });
 

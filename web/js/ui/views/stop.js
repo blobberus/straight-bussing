@@ -54,7 +54,7 @@ export function favButton(id, on) {
 export function renderStop(state, now = nowS()) {
   if (!state.staticLoaded) return skeleton(4);
   const id = state.stopId, st = state.stops?.[id];
-  if (!st) return emptyState("Stop not found", "This stop is not in the current schedule.") + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="stop:home">Back to Nearby</button>';
+  if (!st) return emptyState("Stop not found", "This stop is not in the current schedule.") + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="stop:home">Back to Current trip</button>';
   const hidden = effectiveHidden(state);
   const all = [...new Set(state.stopRoutes?.[id] || [])];
   const shown = all.filter((r) => !hidden.includes(r)), hid = all.filter((r) => hidden.includes(r));

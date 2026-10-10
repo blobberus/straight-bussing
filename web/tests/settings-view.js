@@ -36,7 +36,7 @@ test("settings: render has appearance, alerts, bus alerts, iPhone row, about; es
 test("settings: alerts inline with escaping and period; empty state has official contact", () => {
   const a = { header_text: { translation: [{ text: "Detour <b>now</b>", language: "en" }] }, description_text: "Use 55th", active_period: [{ start: NOW - 60, end: NOW + 3600 }] };
   const h = alertsHTML(fixture({ alerts: [a] }), NOW);
-  ok(h.includes("Detour &lt;b&gt;now&lt;/b&gt;") && h.includes("Use 55th") && h.includes("–"));
+  ok(h.includes("Detour &lt;b&gt;now&lt;/b&gt;") && h.includes("Use 55th") && h.includes(" to ") && !/[–—]/.test(h), "period reads '4:00 PM to 5:00 PM'");
   const e = alertsHTML(fixture({ alerts: [] }), NOW);
   ok(e.includes("No active alerts") && e.includes("773.702.8181"));
   ok(alertsHTML(fixture({ liveLoaded: false }), NOW).includes("Checking"));

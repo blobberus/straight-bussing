@@ -4,7 +4,7 @@ import { localParts, clock12, dayKey, hoursOn, weekSummary, busesByHour, upcomin
 import { serviceFixture, utc } from "./route-fixtures.js";
 
 const S = serviceFixture();
-const D = "\u2013";
+const D = "to";   // clock ranges: "7:00 AM to 7:25 PM" (no dash characters, docs/DESIGN.md "Copy")
 
 test("schedule: Chicago local parts across DST", () => {
   const a = localParts(utc("2026-10-08T07:00:00Z"));            // 02:00 CDT Thursday
@@ -39,7 +39,7 @@ test("schedule: hoursOn applies calendar exceptions", () => {
 });
 
 test("schedule: weekSummary groups equal days", () => {
-  eq(weekSummary(S, "D"), [{ days: `Mon${D}Fri`, label: `7:00 AM ${D} 7:25 PM` }, { days: `Sat${D}Sun`, label: "No service" }]);
+  eq(weekSummary(S, "D"), [{ days: "Mon-Fri", label: `7:00 AM ${D} 7:25 PM` }, { days: "Sat-Sun", label: "No service" }]);
   eq(weekSummary(S, "N"), [{ days: "Every day", label: `4:00 PM ${D} 4:29 AM` }]);
   eq(weekSummary(S, "zz"), []);
 });
@@ -90,7 +90,7 @@ test("schedule: real data/service.json is well formed", async () => {
   ok(/^\d{4}-\d{2}-\d{2}$/.test(svc.feed.start) && /^\d{4}-\d{2}-\d{2}$/.test(svc.feed.end), "feed window");
   for (const rid of ids) {
     ok(routeService(svc, rid), "entry " + rid);
-    for (const w of weekSummary(svc, rid)) ok(w.label === "No service" || /\d:\d\d [AP]M \u2013 \d/.test(w.label), rid + " label " + w.label);
+    for (const w of weekSummary(svc, rid)) ok(w.label === "No service" || /\d:\d\d [AP]M to \d/.test(w.label), rid + " label " + w.label);
     for (const d of Object.values(svc.routes[rid].days)) if (d) eq(d.buses.length, 24, rid + " buses[24]");
   }
 });

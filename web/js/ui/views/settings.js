@@ -44,7 +44,7 @@ function period(a, now) {
   const day = (t) => d(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const same = (t) => d(t).toDateString() === d(now).toDateString();
   const f = (t) => (same(t) ? clock(t) : `${day(t)} ${clock(t)}`);
-  if (p.start && p.end) return `${f(p.start)} – ${f(p.end)}`;
+  if (p.start && p.end) return `${f(p.start)} to ${f(p.end)}`;
   return p.end ? `Until ${f(p.end)}` : `Since ${f(p.start)}`;
 }
 
