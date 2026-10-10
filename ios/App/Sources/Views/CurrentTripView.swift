@@ -76,7 +76,7 @@ struct CurrentTripView: View {
                     .font(.headline)
                 Text(model.locState == .denied
                      ? "You can still search a destination or browse routes and stations. Turn location on in iOS Settings to see nearby stops."
-                     : "Your location stays on this iPhone.")
+                     : "Your location stays on this iPhone; only a rounded walking start goes to Apple Maps for directions.")
                     .font(.subheadline).foregroundStyle(.secondary)
                 if model.locState != .denied {
                     Button { model.locate() } label: {

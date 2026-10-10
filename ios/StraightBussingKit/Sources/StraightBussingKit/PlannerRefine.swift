@@ -1,7 +1,7 @@
 import Foundation
 
-/// A pedestrian router (sidewalk directions). The app passes `nil` today (straight-line estimates only, so
-/// nothing leaves the device); a MapKit `MKDirections` walking router can be plugged in later.
+/// A pedestrian router (sidewalk directions). The app passes `WalkRouteCache.router` around MapKit
+/// `MKDirections` walking (nil in `-demo`, so CI screenshots stay deterministic); nil = straight-line estimates.
 public typealias WalkRouter = @Sendable (_ from: LatLon, _ to: LatLon) async throws -> WalkResult?
 
 extension Planner {

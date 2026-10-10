@@ -29,9 +29,10 @@ struct AboutView: View {
                 SectionTitle(text: "Privacy")
                 Card {
                     VStack(alignment: .leading, spacing: 8) {
-                        bullet("No account, no ads, no tracking. Your location, if you allow it, stays on this iPhone.")
+                        bullet("No account, no ads, no tracking. Your location, if you allow it, stays on this iPhone, except as the rounded start of a walking route (below).")
                         bullet("Station and place search (places within a 30-minute walk of campus stops) run on this iPhone; nothing you type is sent anywhere.")
-                        bullet("The only network requests are the public shuttle feeds (passio3.com) and Apple Maps tiles.")
+                        bullet("Network requests: the public shuttle feeds (passio3.com), and Apple Maps for the map and for walking directions.")
+                        bullet("Walking directions: the start and end of each walking leg (your location, when a trip starts there), rounded to about 10 m, are sent to Apple Maps to follow sidewalks. If that fails, a straight-line estimate is used and labeled \u{201C}estimate\u{201D}.")
                         bullet("Settings (theme, hidden routes, custom routes, favorites) are saved on this iPhone only.")
                     }
                     .padding(.vertical, 10)

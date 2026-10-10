@@ -108,9 +108,16 @@ public struct TripOption: Codable, Hashable, Sendable, Identifiable {
 public struct PlanResult: Hashable, Sendable {
     public var now: Double
     public var options: [TripOption]
-    /// Walking the whole way (straight line x 1.2).
+    /// Walking the whole way (straight line x 1.2; the sidewalk route once `Planner.refinePlan` ran).
     public var walkOnlyM: Int
     public var walkOnlyMin: Double
+    /// Sidewalk path for walking the whole way (router), nil for the straight estimate.
+    public var walkOnlyCoords: [LatLon]? = nil
+    public var walkOnlySource: WalkResult.Source = .estimate
+    /// `Planner.refinePlan` ran (walk legs went through the router).
+    public var refined = false
+    /// Every option was dropped by the refinement: the buses leave before you could reach the stop.
+    public var missedAll = false
 }
 
 /// Raw candidate before ranking (planner -> pickOptions).

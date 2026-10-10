@@ -40,7 +40,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.navigation
         ITSAppUsesNonExemptEncryption: false
-        NSLocationWhenInUseUsageDescription: "Shows the shuttle stops nearest to you and walking times. Your location stays on this iPhone."
+        NSLocationWhenInUseUsageDescription: "Shows the shuttle stops nearest to you and walking times. Your location is not stored or tracked; walking directions send only a rounded start point to Apple Maps."
         NSSupportsLiveActivities: true
         UILaunchScreen:
           UIColorName: LaunchBackground

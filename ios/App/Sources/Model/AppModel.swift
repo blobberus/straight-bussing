@@ -47,6 +47,8 @@ struct DirectionsState {
     var to: Endpoint?
     var result: PlanResult?
     var selected = 0
+    /// Sidewalk routes are being fetched for `result` ("Checking sidewalk routes…").
+    var refining = false
 }
 
 /// A started trip (Directions > option > Start).
@@ -110,6 +112,8 @@ final class AppModel {
     @ObservationIgnored let liveActivity = LiveActivityController()
     @ObservationIgnored let mapCamera = MapCameraModel()
     @ObservationIgnored let busAlerter = BusAlerter()
+    /// Sidewalk routes (Apple Maps walking directions) behind the Kit's cache; nil in `-demo` (deterministic CI).
+    @ObservationIgnored let walkCache: WalkRouteCache?
     @ObservationIgnored var toastTask: Task<Void, Never>?
     @ObservationIgnored var pollTask: Task<Void, Never>?
     @ObservationIgnored var clockTask: Task<Void, Never>?
@@ -175,6 +179,7 @@ final class AppModel {
     init(config: LaunchConfig = .parse()) {
         self.config = config
         self.prefsStore = Prefs(demo: config.demo)
+        self.walkCache = config.demo ? nil : WalkRouteCache(fetch: { a, b in try await AppleWalkDirections.route(a, b) })
     }
 
     var colorScheme: ColorScheme? {
@@ -337,6 +342,22 @@ final class AppModel {
         let fav = Set(favs)
         let stops = ids.compactMap { S.stops[$0] }.sorted { $0.id < $1.id }.map { MapStop(stop: $0, isFav: fav.contains($0.id)) }
         return MapLayers(lines: lines, stops: stops, hidden: hidden)
+    }
+
+    // MARK: Trip geometry (cached)
+
+    @ObservationIgnored private var roadMemo: [String: [LatLon]] = [:]
+
+    /// A bus leg as drawn on the map: along the route's road shape between its stops (Kit `BusLeg.roadPath`,
+    /// the web's map/map.js renderPlan), never a straight stop-to-stop line while the stops are on the shape.
+    /// Cached per leg and static data version, so the map body can call it on every redraw.
+    func roadPath(_ leg: BusLeg) -> [LatLon] {
+        let key = "\(staticVersion)|\(leg.rid)|\(leg.board.id ?? "")>\(leg.alight.id ?? "")|\(leg.stopIds.joined(separator: ","))|\(leg.board.lat),\(leg.board.lon)>\(leg.alight.lat),\(leg.alight.lon)"
+        if let p = roadMemo[key] { return p }
+        let p = leg.roadPath(shapes: staticData.shapes, routeStops: staticData.routeStops)
+        if roadMemo.count > 64 { roadMemo.removeAll() }
+        roadMemo[key] = p
+        return p
     }
 
     // MARK: Derived

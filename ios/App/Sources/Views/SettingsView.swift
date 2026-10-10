@@ -43,7 +43,7 @@ struct SettingsView: View {
                     Text("A Live Activity shows your bus on the Lock Screen and in the Dynamic Island: stops away, a self-updating countdown and the next stops. It updates while the app is open; locked-phone updates need a push server (planned).")
                 }
                 Section("Privacy") {
-                    Text("No account, no ads, no tracking. Your location stays on this iPhone. Station and place search run on this iPhone. Only the public shuttle feed is downloaded.")
+                    Text("No account, no ads, no tracking. Your location stays on this iPhone; only the start and end of a walking route, rounded to about 10 m, go to Apple Maps for sidewalk directions. Station and place search run on this iPhone. Downloads: the public shuttle feed and Apple Maps.")
                         .font(.subheadline)
                 }
                 Section {

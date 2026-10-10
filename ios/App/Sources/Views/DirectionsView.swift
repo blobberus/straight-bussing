@@ -146,16 +146,19 @@ struct DirectionsView: View {
                 let idle: String = model.liveOutage ? "The live shuttle feed can't be reached, so we can't tell which buses are running."
                     : (model.silentService ? model.silentText() : nil) ?? "No shuttles are running right now."
                 EmptyStateView(title: "No practical shuttle route right now",
-                               message: running ? "Nothing runs close enough to both places." : idle,
+                               message: r.missedAll ? "The next buses leave before you could reach the stop."
+                                   : running ? "Nothing runs close enough to both places." : idle,
                                showOfficial: !running)
                 walkOnlyCard(r)
+                refiningNote
             } else {
                 ForEach(Array(r.options.enumerated()), id: \.element.key) { item in
                     OptionCard(option: item.element, index: item.offset, showCriteria: r.options.count > 1,
                                selected: item.offset == model.dir.selected)
                 }
-                Text("Walking the whole way: \(Int(r.walkOnlyMin.rounded())) min (\(r.walkOnlyM) m), estimate")
+                Text("Walking the whole way: \(Int(r.walkOnlyMin.rounded())) min (\(r.walkOnlyM) m), \(walkSourceText(r))")
                     .font(.footnote).foregroundStyle(.secondary)
+                refiningNote
                 Text("Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -168,6 +171,17 @@ struct DirectionsView: View {
         }
     }
 
+    /// Where walking times come from (web directions.js walkTag): Apple Maps sidewalks or the straight line.
+    func walkSourceText(_ r: PlanResult) -> String { r.walkOnlySource == .router ? "sidewalk route" : "estimate" }
+
+    /// Shown while Apple Maps walking routes replace the straight-line estimates.
+    @ViewBuilder var refiningNote: some View {
+        if model.dir.refining {
+            Text("Checking sidewalk routes\u{2026}").font(.footnote).foregroundStyle(.secondary)
+                .accessibilityIdentifier("dirRefining")
+        }
+    }
+
     func walkOnlyCard(_ r: PlanResult) -> some View {
         Card {
             HStack {
@@ -175,7 +189,7 @@ struct DirectionsView: View {
                 Text("Walk the whole way").font(.subheadline.weight(.semibold))
                 Spacer()
                 Text("\(Int(r.walkOnlyMin.rounded())) min · \(r.walkOnlyM) m").font(.subheadline)
-                EstTag(text: "estimate")
+                EstTag(text: walkSourceText(r))
             }
             .frame(minHeight: 44)
         }

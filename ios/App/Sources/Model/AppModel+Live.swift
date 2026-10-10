@@ -173,11 +173,13 @@ extension AppModel {
         replan()
     }
 
-    /// New endpoints: plan on a background thread, then select the first option and frame it on the map.
+    /// New endpoints: plan on a background thread, then select the first option and frame it on the map, then
+    /// swap in sidewalk routes (`refineDirections`). Cancelling the task (new endpoints) drops both results.
     @discardableResult
     func replan() -> Task<Void, Never>? {
         planTask?.cancel()
         planTask = nil
+        if dir.refining { dir.refining = false }
         guard let f = dir.from, let t = dir.to else {
             if dir.result != nil { dir.result = nil }
             return nil
@@ -191,9 +193,31 @@ extension AppModel {
             self.dir.result = r
             self.dir.selected = 0
             if let o = r.options.first { self.fit(self.planPoints(o)) }
+            await self.refineDirections(r, from: f, to: t)
         }
         planTask = task
         return task
+    }
+
+    /// Sidewalk routes for the plan on screen (web directions.js replan): the straight-line estimates show first,
+    /// then the routed walks replace them (never shorter than the straight line, every time still "est."),
+    /// options are re-ranked and dropped if their bus would now be missed, and the walk-only line is routed.
+    /// Keeps the card the rider picked (by route key); a newer plan (cancelled task, new endpoints) wins.
+    func refineDirections(_ r: PlanResult, from f: Endpoint, to t: Endpoint) async {
+        guard let router = walkCache?.router else { return }
+        dir.refining = true
+        let data = plannerData, predict = predictor
+        let refined = await Planner.refinePlan(r, from: f.coord, to: t.coord, walkRoute: router, data: data, predict: predict)
+        guard !Task.isCancelled, dir.from == f, dir.to == t, let cur = dir.result else { return }
+        let opts = cur.options
+        let oldKey = opts.indices.contains(dir.selected) ? opts[dir.selected].key : nil
+        let picked = dir.selected != 0
+        let sel = (picked ? oldKey.flatMap { k in refined.options.firstIndex { $0.key == k } } : nil) ?? 0
+        dir.result = refined
+        dir.selected = sel
+        dir.refining = false
+        // re-ranking can put another route first: frame that one
+        if refined.options.indices.contains(sel), refined.options[sel].key != oldKey { fit(planPoints(refined.options[sel])) }
     }
 
     /// Minimum seconds between background re-plans of the open Directions.
@@ -204,14 +228,18 @@ extension AppModel {
     /// selected option (by route key), never moves the map, skipped while a new-endpoint plan is running.
     func refreshDirections() {
         // `dir.result` is nil while a new-endpoint plan runs (replan clears it), so this never races it.
-        guard page == .directions, let f = dir.from, let t = dir.to, dir.result != nil,
+        guard page == .directions, let f = dir.from, let t = dir.to, dir.result != nil, !dir.refining,
               dirRefreshTask == nil, !liveState.failed else { return }
         let wall = Date().timeIntervalSince1970
         guard wall - lastDirRefresh >= Self.dirRefreshS else { return }
         lastDirRefresh = wall
         dirRefreshTask = Task { [weak self] in
             guard let self else { return }
-            let r = await self.computePlan(from: f.coord, to: t.coord)
+            var r = await self.computePlan(from: f.coord, to: t.coord)
+            if let router = self.walkCache?.router {   // cached sidewalk routes: the walks stay routed
+                r = await Planner.refinePlan(r, from: f.coord, to: t.coord, walkRoute: router, data: self.plannerData,
+                                             predict: self.predictor)
+            }
             self.dirRefreshTask = nil
             // Drop it if the endpoints changed meanwhile (a fresh plan is coming) or Directions closed.
             guard self.page == .directions, self.dir.from == f, self.dir.to == t, let old = self.dir.result else { return }
@@ -229,11 +257,12 @@ extension AppModel {
         }.value
     }
 
+    /// Everything the map draws for an option (sidewalk walks, road-following bus legs), for framing it.
     func planPoints(_ o: TripOption) -> [LatLon] {
         o.legs.flatMap { l -> [LatLon] in
             switch l {
-            case .walk(let w): return [w.from.coord, w.to.coord]
-            case .bus(let b): return b.path
+            case .walk(let w): return w.coords ?? [w.from.coord, w.to.coord]
+            case .bus(let b): return roadPath(b)
             }
         }
     }

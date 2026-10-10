@@ -19,6 +19,13 @@ struct MapScreen: View {
         return nil
     }
 
+    /// Directions with no shuttle option: the walk the whole way (sidewalk route once refined), like the web.
+    var walkOnly: [LatLon]? {
+        guard model.activeTrip == nil, model.page == .directions, let r = model.dir.result, r.options.isEmpty,
+              let f = model.dir.from?.coord, let t = model.dir.to?.coord else { return nil }
+        return r.walkOnlyCoords ?? [f, t]
+    }
+
     var body: some View {
         @Bindable var camera = model.mapCamera
         let layers = model.mapLayers
@@ -33,14 +40,20 @@ struct MapScreen: View {
                     MapPolyline(coordinates: (item.element.coords ?? [item.element.from.coord, item.element.to.coord]).map(\.cl))
                         .stroke(.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [2, 7]))
                 }
+                // bus legs along the route's road shape between the stops (Kit Geometry.alongShape), cached
                 ForEach(Array(o.busLegs.enumerated()), id: \.offset) { item in
-                    MapPolyline(coordinates: item.element.path.map(\.cl))
+                    MapPolyline(coordinates: model.roadPath(item.element).map(\.cl))
                         .stroke(Color(hex: model.route(item.element.rid)?.color), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                 }
                 if let last = o.legs.last {
                     let end = last.walk?.to.coord ?? last.bus?.alight.coord ?? LatLon(lat: 0, lon: 0)
                     Marker("Destination", systemImage: "mappin", coordinate: end.cl).tint(.red)
                 }
+            }
+            if let w = walkOnly, let end = w.last {
+                MapPolyline(coordinates: w.map(\.cl))
+                    .stroke(.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [2, 7]))
+                Marker("Destination", systemImage: "mappin", coordinate: end.cl).tint(.red)
             }
             ForEach(layers.stops) { s in
                 Annotation(s.stop.name, coordinate: s.stop.coord.cl, anchor: .center) {
