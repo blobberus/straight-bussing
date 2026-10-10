@@ -130,6 +130,13 @@ def test_coverage_math():
     assert gaps == [(now - 7200, now - 2400)], gaps
     start, frac, gaps = m.coverage(runs[:2], now, complete=False)
     assert start == now - 86400 and gaps[0][0] == now - 86400
+    # a run parked behind another in its concurrency slot: created 2.5 h ago, logged 1.5 h to 20 min ago
+    held = dict(run_started_at=iso(now - 9000), created_at=iso(now - 9000), updated_at=iso(now - 1000),
+                status="completed", conclusion="success")
+    assert m.parked(held, now) and not m.parked(runs[1], now) and not m.parked(runs[0], now)
+    held["log_window"] = (now - 5400, now - 1200)
+    start, frac, gaps = m.coverage([held], now, complete=True)
+    assert abs(frac - 4200 / 9000) < 1e-6 and gaps == [(now - 9000, now - 5400), (now - 1200, now)], (frac, gaps)
 
 
 def test_local_end_to_end():

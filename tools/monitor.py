@@ -145,11 +145,36 @@ def has_rows(p):
 
 
 # ---------------------------------------------------------------- status
+def parked(r, now):
+    """True when a run's timestamps can't be its logging window: it waited in its concurrency slot behind
+    another run (GitHub reports run_started_at = creation time) or its job ran far longer than a normal run."""
+    s = epoch(r.get("run_started_at") or r["created_at"])
+    if r["status"] == "in_progress":
+        return now - s > RUN_S + 600
+    return r["status"] == "completed" and r["conclusion"] == "success" and epoch(r["updated_at"]) - s > RUN_S + 600
+
+
+def log_window(run_id, token, now):
+    """(start, end) of the run's 'Log arrivals' step from the jobs API (end = now while it runs), or None."""
+    try:
+        for j in gh(f"/repos/{REPO}/actions/runs/{run_id}/jobs", token).get("jobs", []):
+            for st in j.get("steps") or []:
+                if str(st.get("name", "")).startswith("Log arrivals") and st.get("started_at"):
+                    return epoch(st["started_at"]), epoch(st["completed_at"]) if st.get("completed_at") else now
+    except Exception:
+        pass
+    return None
+
+
 def coverage(runs, now, complete, window=86400):
-    """-> (window_start, fraction covered, [(gap_start, gap_end)]) from successful/in-progress runs."""
+    """-> (window_start, fraction covered, [(gap_start, gap_end)]) from successful/in-progress runs.
+    A run with r["log_window"] = (start, end) (from log_window(), set for parked runs) uses it as is."""
     iv = []
     for r in runs:
         s = epoch(r.get("run_started_at") or r["created_at"])
+        if r.get("log_window") and r["status"] in ("in_progress", "completed") and r.get("conclusion") in (None, "success"):
+            iv.append(tuple(r["log_window"]))
+            continue
         if r["status"] == "in_progress":
             e = min(now, s + RUN_S)
         elif r["status"] == "completed" and r["conclusion"] == "success":
@@ -243,6 +268,8 @@ def status(ctx, a):
                 issues.append((2, "the last 3 runs failed", "read the failing step log (see monitoring.md 'Runs failing')"))
             elif any(r["conclusion"] == "failure" and now - epoch(r["created_at"]) < 86400 for r in done):
                 issues.append((1, "a run failed in the last 24 h", "read its log (monitoring.md 'Runs failing')"))
+            for r in [r for r in runs if now - epoch(r["created_at"]) < 86400 + 2 * RUN_S and parked(r, now)][:12]:
+                r["log_window"] = log_window(r["id"], token, now)   # a few per day; bounded API use
             start, frac, gaps = coverage(runs, now, total <= len(runs))
             print(f"coverage  {frac:.0%} of the time since {ts(start)[:16]} (approx; successful + running runs)")
             for g0, g1 in gaps[-5:]:
