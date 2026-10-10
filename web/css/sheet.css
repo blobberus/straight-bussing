@@ -6,7 +6,7 @@
    It sits on top of the bottom navigation (#tabs.bottomnav, --nav-h); the search bar floats above it.
    ui/sheet.js sets data-detent (peek|half|full) and --drag (px, live finger offset) on .sheet. */
 .sheet {
-  position: fixed; z-index: 1000; left: 0; right: 0; bottom: var(--nav-h);
+  position: fixed; z-index: var(--z-sheet); left: 0; right: 0; bottom: var(--nav-h);
   height: var(--v-max);
   display: flex; flex-direction: column;
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
@@ -38,7 +38,7 @@
 .sheet.dragging .grab { cursor: grabbing; }
 .grab::before { /* the visible 36x5 grabber */
   content: ""; position: absolute; left: 50%; top: 8px;
-  width: 36px; height: 5px; margin-left: -18px; border-radius: 3px;
+  width: 36px; height: 5px; margin-left: -18px; border-radius: var(--r-pill);
   background: var(--hairline-strong);
 }
 .grab::after { content: ""; position: absolute; left: 0; right: 0; top: -8px; bottom: -8px; } /* 44px hit area */

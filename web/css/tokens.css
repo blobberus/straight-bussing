@@ -61,11 +61,28 @@
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px;
   --tap: 44px;
 
-  /* radii */
-  --r-sheet: 20px;
-  --r-card: 14px;
-  --r-control: 12px;
-  --r-chip: 999px;
+  /* radii: the ONE scale (docs/DESIGN.md "Radius scale"); never write a literal radius in a component */
+  --r-pill: 999px;     /* fully round: search bar, nav indicator, toggles (Favorite, Highlight), switches, count badges, pills */
+  --r-sheet: 20px;     /* sheet, Settings card, dialogs */
+  --r-card: 14px;      /* cards, option cards, alert banners */
+  --r-control: 12px;   /* buttons, inputs, segmented controls, locate button, status pill, context chip */
+  --r-inner: 10px;     /* a control nested in a 12px control with a 2-3px inset: segment thumb, Clear, Retry */
+  --r-badge: 9px;      /* route badge = the bus marker's shape (route identity) */
+  --r-tag: 6px;        /* small tags: est. / live / sidewalk route, small route chips, bus chips on timelines */
+  --r-chip: var(--r-pill);   /* legacy alias */
+
+  /* stacking: the ONE z-index scale (docs/DESIGN.md "Layers"); local 1 / 2 inside a component is fine */
+  --z-map: 0;
+  --z-sheet: 1000;
+  --z-nav: 1010;          /* bottom navigation */
+  --z-chip: 1090;         /* map context chip */
+  --z-float: 1100;        /* status pill, locate button */
+  --z-search: 1105;       /* floating search bar */
+  --z-overlay-scrim: 1140;
+  --z-overlay: 1150;      /* Settings */
+  --z-dialog: 1200;       /* #dlg scrim + card */
+  --z-toast: 1300;
+  --z-frame: 5000;        /* desktop phone frame decorations (never take taps) */
 
   /* motion */
   --d-press: 120ms;

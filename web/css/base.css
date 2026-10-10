@@ -28,22 +28,22 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 }
 
 /* map canvas fills the viewport behind everything */
-#map { position: fixed; inset: 0; z-index: 0; background: var(--surface); }
+#map { position: fixed; inset: 0; z-index: var(--z-map); background: var(--surface); }
 
 /* Google-Maps-style chrome. Top: a floating search bar (tap = plan a trip; settings gear at its right
    end). Under it, from the left: map credit line, status pill, context chip; on the right the locate
    button. Bottom: the navigation bar (#tabs) with the sheet resting on it. */
 .topbar {
-  position: fixed; z-index: 1105;
+  position: fixed; z-index: var(--z-search);
   top: calc(var(--safe-t) + 10px); left: calc(var(--safe-l) + 12px); right: calc(var(--safe-r) + 12px);
 }
 .searchbar {
-  display: flex; align-items: center; height: 48px; padding: 0 2px 0 4px; border-radius: 24px;
+  display: flex; align-items: center; height: 48px; padding: 0 2px 0 4px; border-radius: var(--r-pill);
   background: var(--bg-solid); box-shadow: var(--shadow-float);
 }
 .searchbar-btn {
   flex: 1; min-width: 0; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px;
-  border-radius: 22px; color: var(--text-2); font-size: 1rem; line-height: 1.25rem; text-align: left;
+  border-radius: var(--r-pill); color: var(--text-2); font-size: 1rem; line-height: 1.25rem; text-align: left;
 }
 .searchbar-btn svg { flex: none; color: var(--text); }
 .searchbar-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -56,24 +56,24 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 #app[data-view="directions"] .topbar { display: none; }
 
 .bottomnav {
-  position: fixed; z-index: 1010; left: 0; right: 0; bottom: 0; height: var(--nav-h);
+  position: fixed; z-index: var(--z-nav); left: 0; right: 0; bottom: 0; height: var(--nav-h);
   display: grid; grid-template-columns: repeat(3, 1fr); align-items: stretch; gap: 4px;
   padding: 4px calc(var(--safe-r) + 8px) var(--safe-b) calc(var(--safe-l) + 8px);
   background: var(--bg-solid); border-top: 1px solid var(--hairline);
 }
 .bottomnav button {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  min-height: var(--tap); border-radius: 12px; color: var(--text-2);
+  min-height: var(--tap); border-radius: var(--r-control); color: var(--text-2);
   font-size: .75rem; line-height: 1rem; font-weight: 600;
 }
-.bottomnav .bn-ic { display: grid; place-items: center; width: 56px; height: 30px; border-radius: 15px; }
+.bottomnav .bn-ic { display: grid; place-items: center; width: 56px; height: 30px; border-radius: var(--r-pill); }
 .bottomnav button[aria-current="page"] { color: var(--accent); }
 .bottomnav button[aria-current="page"] .bn-ic { background: rgba(0, 102, 214, .14); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .bottomnav button:active .bn-ic { background: var(--surface); }
 
 /* locate button: right side, under the search bar */
 .fab {
-  position: fixed; z-index: 1100;
+  position: fixed; z-index: var(--z-float);
   top: var(--chip-top); right: calc(var(--safe-r) + 12px);
   width: var(--tap); height: var(--tap); border-radius: var(--r-control);
   display: grid; place-items: center;
@@ -100,7 +100,7 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 
 /* status pill: stale / error / no service. Never color alone: always text. */
 .statuspill {
-  position: fixed; z-index: 1100;
+  position: fixed; z-index: var(--z-float);
   top: var(--chip-top); left: calc(var(--safe-l) + 12px); right: calc(var(--safe-r) + 68px);
   display: flex; align-items: center; gap: var(--s2);
   min-height: var(--tap); padding: 6px 6px 6px 14px; border-radius: var(--r-control);
@@ -112,7 +112,7 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 .statuspill.err { background: var(--danger-bg); color: var(--danger); }
 .statuspill.info { background: var(--bg-solid); color: var(--text); }
 .statuspill .pillbtn {
-  flex: none; min-width: var(--tap); min-height: 32px; padding: 0 12px; border-radius: 9px;
+  flex: none; min-width: var(--tap); min-height: 32px; padding: 0 12px; border-radius: var(--r-inner);
   background: var(--bg-solid); color: var(--accent); font-weight: 600;
   position: relative;
 }
@@ -121,12 +121,12 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 /* map context bar: why the map shows fewer routes (journey / custom route), with a way out.
    Sits under the status pill (which always stays visible) and above the sheet. */
 .ctxbar {
-  position: fixed; z-index: 1090;
+  position: fixed; z-index: var(--z-chip);
   top: var(--chip-top); left: calc(var(--safe-l) + 12px); right: calc(var(--safe-r) + 68px);
   /* one slim 32px chip under the search bar; hidden at the full detent (above), and the
      Clear / Show all button keeps a 44px hit area via ::after */
   display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
-  min-height: 32px; padding: 3px 3px 3px 12px; border-radius: 10px;
+  min-height: 32px; padding: 3px 3px 3px 12px; border-radius: var(--r-control);
   font-size: .8125rem; line-height: 1rem;
   background: var(--bg-solid); color: var(--text); box-shadow: var(--shadow-float);
 }
@@ -147,7 +147,7 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 .ctxbar .ctx-chips { display: flex; flex: none; flex-wrap: nowrap; gap: 3px; align-items: center; }
 .ctxbar .ctx-more { font-size: var(--fs-cap); color: var(--text-2); font-weight: 600; }
 .ctxbar .ctx-btn {
-  position: relative; flex: none; min-width: 0; min-height: 26px; padding: 0 10px; border-radius: 7px;
+  position: relative; flex: none; min-width: 0; min-height: 26px; padding: 0 10px; border-radius: var(--r-inner);
   background: var(--bg-solid); color: var(--accent); font-weight: 600; font-size: .8125rem;
   box-shadow: inset 0 0 0 1px var(--hairline-strong);
 }
@@ -156,7 +156,7 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 
 /* non-blocking toast (errors, confirmations) */
 .toast {
-  position: fixed; z-index: 1300; left: 50%;
+  position: fixed; z-index: var(--z-toast); left: 50%;
   top: var(--chip-top);
   max-width: min(calc(var(--app-w) * .92), 420px); padding: 10px 16px; border-radius: var(--r-control);
   background: var(--text); color: var(--bg-solid);
@@ -216,7 +216,7 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
     box-shadow: 0 0 0 1px rgba(0, 0, 0, .28), 0 0 0 9px #1d1d1f, 0 0 0 10px rgba(0, 0, 0, .35), 0 28px 70px rgba(0, 0, 0, .28);
   }
   /* Dynamic Island + home indicator (decorative, never take taps) */
-  .app::after, .app::before { content: ""; position: absolute; z-index: 5000; left: 50%; pointer-events: none; }
+  .app::after, .app::before { content: ""; position: absolute; z-index: var(--z-frame); left: 50%; pointer-events: none; }
   .app::after { top: 11px; width: 124px; height: 36px; margin-left: -62px; border-radius: 18px; background: #000; }
   .app::before { bottom: 8px; width: 134px; height: 5px; margin-left: -67px; border-radius: 3px; background: rgba(0, 0, 0, .8); }
 }

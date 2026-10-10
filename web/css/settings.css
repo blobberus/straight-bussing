@@ -3,7 +3,7 @@
 .st-note { margin-top: var(--s3); }
 .st-pad { margin: var(--s2) 0; }
 .st-label { display: block; margin: var(--s3) 0 var(--s1); font-weight: 600; }
-.st-count { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--warn-bg); color: var(--warn); font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 600; vertical-align: 1px; }
+.st-count { margin-left: 6px; padding: 1px 8px; border-radius: var(--r-pill); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 600; vertical-align: 1px; }
 .st-theme { margin: var(--s1) 0; }
 
 /* alerts */
@@ -38,7 +38,7 @@
 
 /* switch: native checkbox stays focusable/clickable on top, the knob is drawn behind it */
 .st-sw input { position: absolute; right: 0; top: 50%; width: 51px; height: 31px; margin: -15.5px 0 0; opacity: 0; cursor: pointer; z-index: 1; }
-.st-knob { flex: none; position: relative; width: 51px; height: 31px; border-radius: 16px; background: var(--hairline-strong); transition: background-color var(--d-press) var(--ease); }
+.st-knob { flex: none; position: relative; width: 51px; height: 31px; border-radius: var(--r-pill); background: var(--hairline-strong); transition: background-color var(--d-press) var(--ease); }
 .st-knob::after { content: ""; position: absolute; left: 2px; top: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform var(--d-press) var(--ease); }
 .st-sw input:checked + .st-knob { background: var(--accent); }   /* the one accent: green means live data only */
 .st-sw input:checked + .st-knob::after { transform: translateX(20px); }
@@ -53,17 +53,17 @@
 
 /* Settings overlay (ui/settings-overlay.js): a card stacked exactly over the full-detent sheet, so
    the sheet's title and tabs are covered; .sto-scrim dims everything still visible behind it.
-   JS sets top/left/width/bottom in #app layout px. z: scrim 1140 and card 1150 sit above the sheet
-   (1000) and floating chrome (1100), below the dialog scrim (1200) and toasts (1300). */
+   JS sets top/left/width/bottom in #app layout px. z (tokens.css --z-*): scrim and card sit above the sheet
+   and floating chrome, below the dialog scrim and toasts. */
 .sto-scrim {
-  position: fixed; inset: 0; z-index: 1140;
+  position: fixed; inset: 0; z-index: var(--z-overlay-scrim);
   background: rgba(0, 0, 0, .38); opacity: 0;
   transition: opacity var(--d-sheet) var(--ease-exit);
 }
 .sto-scrim.is-in { opacity: 1; }
 .sto-scrim[hidden] { display: none; }
 .sto {
-  position: fixed; z-index: 1150; left: 0; right: 0; bottom: 0; top: 30%;
+  position: fixed; z-index: var(--z-overlay); left: 0; right: 0; bottom: 0; top: 30%;
   display: flex; flex-direction: column;
   background: var(--bg-solid); color: var(--text);
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
