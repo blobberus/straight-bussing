@@ -230,21 +230,23 @@ actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 
 ### iOS has, web missing (for the web agent)
 
-| iOS file | Behavior the web lacks or does differently |
-|---|---|
-| `Model/LiveActivityController.swift`, `Shared/LiveTripViews.swift`, `Widget/` | Trip Live Activity on the Lock Screen and in the Dynamic Island (web Settings only stores the preference, "Coming to the iPhone app") |
-| `Views/LiveActivityPreviewView.swift`, Settings "Preview Live Activity" | In-app preview of the Lock Screen / Dynamic Island layouts |
-| `Model/BusAlerts.swift`, `Views/SettingsView.swift` permissionRow | Bus alerts: a system notification when allowed, the in-app banner only when notifications are off (web shows the toast AND a system notification); wording "Alerts arrive as notifications while the app is open." / "Notifications are off … so alerts show as a banner inside the app while it is open." + "Open iOS Settings" / "Allow notifications" (web: "System notifications are allowed (while the app is open).", "…blocked in your browser settings.", "Allow system notifications") |
-| `Views/SettingsView.swift` footer | "Alerts work only while the app is open; lock-screen alerts need a push server (planned)." (web: "On the web, alerts only work while Straight Bussing is open…") |
-| `Views/RoutesView.swift` RouteRow.subtitle | "Not running · Today 7:00 AM – 11:30 PM" (web says only "Not running") |
-| `Views/DirectionsView.swift` OptionCard | Start hint adds "Follow the bus stop by stop in Current trip, on the Lock Screen and in the Dynamic Island." |
-| `Views/MyRoutesView.swift` | Long-press context menu Details / Edit / Delete (web: "•••" More button); favorites reorder by drag (web: up / down buttons); a Settings row (web: gear only) |
-| `Views/CurrentTripView.swift` locBlock | Location denied offers "Open iOS Settings" (web: "Try location again") |
-| `Views/RootView.swift` StatusPill | Distinct icons per state (feed error, delayed, no live locations, no shuttles) |
-| `Views/BottomSheet.swift` | VoiceOver adjustable "Resize panel" (Collapsed / Half / Expanded) |
-| `Model/AppModel+Live.swift` refreshDirections | Directions options re-plan in the background at most every 8 s (web re-plans on every live change) |
-| `Model/LaunchConfig.swift`, Kit `DemoFeed.swift` | `-demo` mode with simulated buses and a "Demo mode: simulated buses" alert (web: test pages only) |
-| `Views/RouteDetailView.swift` | Route detail stop rows each say "next bus in N min" / "no prediction" to VoiceOver as one element |
+Web status as of 2026-10-10 (web parity port; contracts in docs/ARCHITECTURE.md "2026-10-10: web parity with the iPhone app").
+
+| iOS file | Behavior the web lacks or does differently | Web |
+|---|---|---|
+| `Model/LiveActivityController.swift`, `Shared/LiveTripViews.swift`, `Widget/` | Trip Live Activity on the Lock Screen and in the Dynamic Island (web Settings only stores the preference, "Coming to the iPhone app") | skipped: iOS only |
+| `Views/LiveActivityPreviewView.swift`, Settings "Preview Live Activity" | In-app preview of the Lock Screen / Dynamic Island layouts | skipped: iOS only |
+| `Model/BusAlerts.swift`, `Views/SettingsView.swift` permissionRow | Bus alerts: a system notification when allowed, the in-app banner only when notifications are off (web shows the toast AND a system notification); wording "Alerts arrive as notifications while the app is open." / "Notifications are off … so alerts show as a banner inside the app while it is open." + "Open iOS Settings" / "Allow notifications" (web: "System notifications are allowed (while the app is open).", "…blocked in your browser settings.", "Allow system notifications") | ported: one alert each (`ui/notifier.js deliveryFor`): banner while the page is in front, notification in the background when allowed (polling continues in a background tab then), banner fallback; iOS permission lines adapted ("Notifications are off", "Allow notifications" + hint); no "Open iOS Settings" |
+| `Views/SettingsView.swift` footer | "Alerts work only while the app is open; lock-screen alerts need a push server (planned)." (web: "On the web, alerts only work while Straight Bussing is open…") | ported: "Alerts work only while Straight Bussing is open; in a background tab they can arrive late. …" |
+| `Views/RoutesView.swift` RouteRow.subtitle | "Not running · Today 7:00 AM – 11:30 PM" (web says only "Not running") | ported: "Not running · Today 7:00 AM to 11:30 PM" (copy rule "to") |
+| `Views/DirectionsView.swift` OptionCard | Start hint adds "Follow the bus stop by stop in Current trip, on the Lock Screen and in the Dynamic Island." | ported the web part: "… Follow the bus stop by stop in Current trip." |
+| `Views/MyRoutesView.swift` | Long-press context menu Details / Edit / Delete (web: "•••" More button); favorites reorder by drag (web: up / down buttons); a Settings row (web: gear only) | skipped: swipe + More cover the same actions (a long press fights text selection and the swipe), up / down buttons stay, a Settings row would repeat the always-visible gear (one label per intent) |
+| `Views/CurrentTripView.swift` locBlock | Location denied offers "Open iOS Settings" (web: "Try location again") | skipped: iOS only (a web page can't open browser settings) |
+| `Views/RootView.swift` StatusPill | Distinct icons per state (feed error, delayed, no live locations, no shuttles) | ported (`ui/pill.js`): wifi off / clock alert / antenna off / bus, always with the words |
+| `Views/BottomSheet.swift` | VoiceOver adjustable "Resize panel" (Collapsed / Half / Expanded) | ported: grabber `role="slider"` "Resize panel" Collapsed / Half / Expanded, arrows, Page Up / Down, Home / End |
+| `Model/AppModel+Live.swift` refreshDirections | Directions options re-plan in the background at most every 8 s (web re-plans on every live change) | ported (`core/throttle.js`): at most every 8 s with one trailing run, picked card kept, map never moves, skipped while the feed fails |
+| `Model/LaunchConfig.swift`, Kit `DemoFeed.swift` | `-demo` mode with simulated buses and a "Demo mode: simulated buses" alert (web: test pages only) | ported: `?demo=1` (`data/demo.js`, banner on every screen, never stored, never mixed with live data). Difference: the web simulates the routes the schedule has in service now (all routes only when none is); no fixed location or seeded routes |
+| `Views/RouteDetailView.swift` | Route detail stop rows each say "next bus in N min" / "no prediction" to VoiceOver as one element | already on the web (one labeled button per stop, same words); now also "seen N min ago" for a stale bus, tested |
 
 ### Still not on iOS
 

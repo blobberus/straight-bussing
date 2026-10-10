@@ -85,6 +85,7 @@ Data marks (chart bars, the 8 px legend square, the switch's on mark) and the de
 | `--z-search` | 1105 | floating search bar |
 | `--z-overlay-scrim` / `--z-overlay` | 1140 / 1150 | Settings scrim / card |
 | `--z-dialog` | 1200 | `#dlg` scrim + card |
+| `--z-demo` | 1250 | demo-mode banner (`?demo=1` only; above dialogs and Settings so it is on every screen) |
 | `--z-toast` | 1300 | toast |
 | `--z-frame` | 5000 | desktop phone frame decorations (never take taps) |
 
@@ -131,6 +132,8 @@ segments scale .97-.98 (opacity only under reduced motion). Every target is >= 4
 - Empty (no service): "No shuttles running right now" + next service start time if known + link "Official schedule". Show the route list dimmed. Only when the schedule agrees: if the feed is fresh but empty while a route is scheduled, say "No live locations right now" / "Scheduled, no live location" and name the scheduled routes and end times instead (`docs/ARCHITECTURE.md` "2026-10-10").
 - No arrivals at stop: "No upcoming arrivals" with the last scheduled time.
 - Stale (feed >60s old): amber pill under header: "Live data delayed. Times may be off." ETAs switch to --text-2 and gain "~". After 5 min: replace live badges with "Scheduled" and show "Last live update 6:42 PM".
+- Status pill icons (2026-10-10, iOS parity): feed error = wifi off, delayed / out of date = clock with an alert mark, no live locations while routes are scheduled = antenna off, no shuttles running = bus. Always with the words.
+- Demo mode (`?demo=1`): a solid `--warn` strip with `--bg-solid` text above the search bar on every screen, "Demo mode: simulated buses" + Exit demo; the layout moves down by `--demo-h`.
 - Offline/error: sheet keeps last good data, shows --danger-tinted banner "Can't reach the shuttle feed. Retrying" with Retry button (44px). Never clear lists on a failed poll.
 - Permission denied (location): inline, one line, explains how to enable; app stays fully usable.
 - Footer everywhere in About: "Unofficial. Not affiliated with the University. Official app / 773.702.8181."
@@ -140,7 +143,7 @@ segments scale .97-.98 (opacity only under reduced motion). Every target is >= 4
 - Text contrast >= 4.5:1, UI/graphics >= 3:1 in both themes (values above checked). Never convey status by color alone: pair with text ("Live", "Scheduled") or shape.
 - Touch targets >= 44x44 (chips can be 28px visually with padded hit area). 8px min gap.
 - `@media (prefers-reduced-motion: reduce)`: remove pulse, shimmer, bus glide; sheet snaps with 120ms fade only.
-- Sheet is `role="dialog"` non-modal; grabber is a `button` with `aria-label="Resize panel"` and `aria-expanded`; also arrow-key/Enter cycling detents. Visible `:focus-visible` 2px accent outline offset 2.
+- Sheet is `role="dialog"` non-modal; the grabber is an adjustable control (2026-10-10, iOS parity): `role="slider"`, `aria-label="Resize panel"`, values Collapsed / Half / Expanded (`aria-valuetext`); arrows and Page Up / Down step, Home = Collapsed, End = Expanded, Enter / Space and taps cycle. Visible `:focus-visible` 2px accent outline offset 2.
 - ETA rows: single `aria-label`, e.g. "Route 6, to Campus North, arrives in 4 minutes, live". `aria-live="polite"` only on the stale/error banner, not on ETA updates.
 - Support Dynamic Type via `rem` sizes; layout must hold at 200% text. Respect `prefers-contrast: more` (hairline -> solid, drop blur).
 

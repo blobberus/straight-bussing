@@ -53,6 +53,7 @@ export function nearestStops(stops, point, {max, maxM, routeStops?}): [{id,name,
 export function bearing(a,b): degrees
 // core/storage.js
 export function load(key, fallback), save(key, value)   // JSON, try/catch, prefix 'sb:'
+export function useMemoryOverlay(on), memoryOverlay()   // demo mode (?demo=1): reads see saved prefs, writes/removes stay in memory for the page (nothing stored)
 // core/events.js
 export const bus = { on(name, fn)->off, emit(name, payload) }   // events: 'sheet:inset' {px}, 'toast' {text}
 // core/store.js
@@ -86,7 +87,11 @@ View-local state (picker query, directions fields) lives in that view module, no
 // data/static.js
 export async function loadStatic(store, {base?, fetch?}?): Promise<{failed:string[]}>   // never rejects   // fetch data/routes.json stops.json shapes.json route_stops.json (+ stop_addresses.json optional); derive stopRoutes; set staticLoaded
 // data/live.js
-export function startLive(store, {intervalMs=10000, ...}): {stop(), pollNow(), failures(), delay()}   // polls the 3 Passio JSON feeds (BASE https://passio3.com/chicago/passioTransit/gtfs/realtime/<name>.json?_=ts, cache:'no-store'), sets live fields; failure keeps last data and sets failed:true; pause when document.hidden, poll on visible
+export function startLive(store, {intervalMs=10000, fetch?, keepAlive?, ...}): {stop(), pollNow(), failures(), delay()}   // polls the 3 Passio JSON feeds (BASE https://passio3.com/chicago/passioTransit/gtfs/realtime/<name>.json?_=ts, cache:'no-store'), sets live fields; failure keeps last data and sets failed:true; pause when document.hidden (unless keepAlive() is true: bus alerts with notifications allowed), poll on visible; fetch = the demo feed in demo mode
+// data/demo.js (demo mode only, 2026-10-10; port of the iOS Kit DemoFeed.swift)
+export function demoRoutes(state, nowS): {rids, scheduled}   // routes scheduled now (service.json); none scheduled -> every route (scheduled:false)
+export function demoFeeds(state, nowS, {epoch, segments?, cache?}): {vehiclePositions, tripUpdates, serviceAlerts}   // Passio-shaped GTFS-rt JSON: per route its scheduled peak (busCount, 1..3) evenly spaced, moving along the road shape (map/geometry.js alongShape) on segments.json times (else 18 km/h), trip updates for the next 14 stops, one "Demo mode: simulated buses" alert; deterministic in (nowS - epoch)
+export function demoFetch(store, {now?, epoch?, segments?}): fetchLike   // answers the 3 feed URLs from demoFeeds after static data loads; never touches the network (no mixing with live data); other URLs 404
 // data/geocode.js
 export function searchPlaces(q, {signal}): Promise<{items:[{label, sub, lat, lon}], error?:string}>   // never throws (error: 'aborted'|'timeout'|'network'|'http <status>'|'bad response'); <3 chars -> {items:[]} with no request; in-memory cache; 400 ms debounce helper debounce(fn, ms) exported too (.cancel(), .flush())
 // Photon gets only the typed text + fixed constants (never the user's location): bias lat 41.7886 lon -87.5987 (UChicago), zoom=10, location_bias_scale=0.2, Illinois bbox -91.52,36.97,-87.49,42.51, limit=15, lang=en.
@@ -182,6 +187,7 @@ export function registerAction(name, fn)    // fn(dataset, event, ctx); markup u
 // ui/components.js (pure HTML-string builders, all escape inputs)
 export const routeChip(rid, routes), etaBlock(unixS, {stale}), arrivalRow(a, state), stopRow(...), emptyState(title, body), skeleton(n), pill(kind, text), segmented(items), estTag(source)
 // ui/sheet.js: createSheet({sheetEl, contentEl, headEl}) -> {setDetent(d), getDetent(), onChange(fn)}  3 detents peek/half/full, pointer-event drag with velocity snap + rubber band, keyboard (arrows/Esc), >=768 px = left panel; emits bus 'sheet:inset' {px} on every settle/drag end
+//   grabber (#grab, a div): role="slider" "Resize panel", aria-valuenow 0..2 + aria-valuetext DETENT_TEXT (Collapsed / Half / Expanded); arrows / Page Up / Page Down step, Home = Collapsed, End = Expanded, Enter / Space cycle (2026-10-10, iOS adjustable action)
 // ui/theme.js: initTheme(store) -> applies data-theme, matchMedia, mount(el) segmented Auto/Light/Dark, onChange(fn(isDark))
 ```
 Rendering loop (D1 `main.js`): on store change -> current view `render(state)` -> set `content.innerHTML` only if string differs from last (preserve scrollTop; never rebuild while a text input inside content has focus). Views with `mount` render once on entry and then **own their DOM**: they subscribe to the store and patch regions in place; main.js never rebuilds them (that would replace a button between pointerdown and click) and calls `refresh()` every 15 s so countdowns tick.
@@ -285,7 +291,7 @@ stopsAway(state, stopId, rid?): [{rid, tripId, vehicleId, stopsAway:int, etaS:un
 dueAlerts(state, prevFired:Set<string>, nowS): {alerts:[{key, kind:'twoStops'|'oneStop'|'minutes', title, body}], fired:Set}   // dedup per trip+kind
 liveStatus(state, nowS): {title, minutes, nextStop, stopsAway}|null   // what a lock-screen Live Activity would show
 ```
-Web: `ui/notifier.js` (SETTINGS) watches the store while the page is open and shows in-app banners (bus 'toast') and, if the user granted it, a browser Notification; it never claims to work in the background. Settings is a modal overlay (`ui/settings-overlay.js`, SETTINGS) opened and toggled by the top-right gear (action `settings:open`): it lifts the sheet to "full" and covers the WHOLE sheet (grab, title, tabs: owner wants nothing of Plan Trip to look like part of Settings), a scrim (`.sto-scrim`) dims what is still visible behind it and closes Settings on tap, the sheet header and content are inert; "Done" top right; also covers the bottom navigation (`#tabs` inert, `navBottom` in `overlayBox`); closes on Escape / navigation / the sheet leaving full, traps focus and restores the previous detent. View id `settings` is a compatibility shim only.
+Web: `ui/notifier.js` (SETTINGS) watches the store while the page is open and delivers ONE alert per trip + kind (2026-10-10, `deliveryFor({front, perm, inApp})`): the in-app banner (bus 'toast') while the page is visible and focused, a silent browser Notification (service-worker `showNotification` fallback) while it is in the background and the user allowed them; a notification that cannot show falls back to the banner; the "In-app alerts while open" switch turns the banner off. `startNotifier(...).background()` (station set + permission granted) makes main.js keep polling in a background tab (`startLive` keepAlive). Settings wording follows iOS (permission lines "Alerts show as a banner while you use the app, and as a notification while it is open in the background." / "Notifications are off" + why; footer "Alerts work only while Straight Bussing is open; ..."); it never claims to work once the page is closed. Settings is a modal overlay (`ui/settings-overlay.js`, SETTINGS) opened and toggled by the top-right gear (action `settings:open`): it lifts the sheet to "full" and covers the WHOLE sheet (grab, title, tabs: owner wants nothing of Plan Trip to look like part of Settings), a scrim (`.sto-scrim`) dims what is still visible behind it and closes Settings on tap, the sheet header and content are inert; "Done" top right; also covers the bottom navigation (`#tabs` inert, `navBottom` in `overlayBox`); closes on Escape / navigation / the sheet leaving full, traps focus and restores the previous detent. View id `settings` is a compatibility shim only.
 | SETTINGS | ui/views/settings.js, ui/settings-overlay.js, ui/notifier.js, core/notify.js, css/settings.css, tests/settings-* + settings.test.html |
 | IPHONE | `conversion to appstore.md`, docs/IOS.md, docs/APPSTORE.md |
 
@@ -347,3 +353,24 @@ Collected data showed the Passio feed fresh but empty from about midnight to 4:3
 - **Feed outage** (`liveUnknown`): unchanged ("Live times unavailable", "Live status unknown"); it wins over the rules above.
 Hidden routes still prevent the "no shuttles" claim but are not named ("Some hidden routes are scheduled now, ..."). `renderRoutes`,
 `listHTML`, `groupRoutes` (now `{running, scheduled, idle, hidden}`) and `renderEditor` take an optional `now` (tests).
+
+### 2026-10-10: web parity with the iPhone app (ios/README.md "iOS has, web missing")
+- **Routes list**: a "Not running" row adds today's scheduled hours (`routes.js idleText`: "Not running · Today 7:00 AM to
+  11:30 PM", `hoursOn` label, nothing added on a no-service day), like iOS RouteRow.
+- **Status pill** (`ui/pill.js`, out of main.js): `pillState(s, now, {bootS, graceS})` -> `{kind, icon, msg, retry}` with icon
+  `feed` (error) / `delay` (late, old) / `silent` (scheduled, no live locations) / `idle` (no shuttles); `createPill(els)`
+  renders it into `#pill` (`#pillIcon` slot, aria-hidden) and keeps `--pill-h`. Words unchanged.
+- **Bus alerts**: one delivery per alert (Settings section above).
+- **Directions**: live updates re-plan through `core/throttle.js` `createThrottle(run, {everyMs, gate, now, later})` at most every
+  `DIR_REFRESH_S` (8 s, iOS dirRefreshS) with one trailing run (the newest data is never dropped); skipped while the feed fails,
+  deferred while a new-endpoint plan still refines; the picked card is kept by key and the map never moves. `directions.js`
+  exports `liveReplan` and `deps.wallMs` / `deps.later` (test clock).
+- **Demo mode** (`core/demo.js` DEMO = `?demo=1` exactly; nothing else turns it on, nothing is stored): main.js starts
+  `ui/demo.js startDemo` (banner `#demobar` first in `#app`, `html.is-demo` -> `--demo-h` 40 px moves the chrome down, `--z-demo`
+  1250 keeps it above Settings and dialogs; "Exit demo" = `exitDemoHref`) with `startLive(store, {intervalMs: 5000, fetch:
+  demoFetch(store)})`; no notifier, no service worker registration; sw.js never caches `?demo` requests; storage writes stay in
+  memory; Settings says "Bus alerts are off in demo mode: the buses are simulated." Tests: `tests/demo.test.html` (real app
+  at index.html?demo=1, no stubs), `tests/data-demo.js`.
+- **Accessibility**: the grabber is a slider (ui/sheet.js above); route detail stop buttons carry one label "Name, next bus in
+  N min" / ", no prediction" (+ ", a bus is heading here, seen N min ago"), everything else in the row is aria-hidden.
+- **Map**: `css/map.css` `--sb-accent` = `var(--accent-fill)` (light) / `var(--accent)` (dark), no separate map blue.
