@@ -19,16 +19,17 @@ Direction: Apple Maps / Citymapper. The map is the product; chrome is quiet, whi
 
 | Token | Light | Dark |
 |---|---|---|
-| --bg (sheet) | #FFFFFF at 86% + blur(24px) saturate(1.8) | #1C1C1E at 82% + same blur |
-| --bg-solid (fallback, no backdrop-filter) | #FFFFFF | #1C1C1E |
+| --bg (sheet) | #FCFCFD at 86% + blur(24px) saturate(1.8) | #1C1C1E at 82% + same blur |
+| --bg-solid (fallback, no backdrop-filter) | #FCFCFD (off-white, never pure #FFF) | #1C1C1E |
 | --surface (rows, chips) | #F2F2F7 | #2C2C2E |
 | --text | #111114 | #F5F5F7 |
 | --text-2 | #5C5C63 (6.4:1) | #A1A1A8 (6.9:1) |
 | --hairline | rgba(60,60,67,.18) | rgba(84,84,88,.55) |
 | --accent (actions, location dot) | #0A84FF -> use #0066D6 for text on light (5.6:1) | #409CFF |
-| --live (real-time pulse/ETA "Now") | #1E9E4A | #32D74B |
+| --live (real-time pulse/ETA "Now"; ONLY live data) | #1E9E4A | #32D74B |
 | --warn (stale, alerts) | #B25E00 on #FFF4E0 | #FFB340 on #3A2A10 |
-| --danger (error) | #C4291C | #FF6961 |
+| --danger (error text) | #C4291C | #FF6961 |
+| --danger-fill (red fills: Delete, count badge; white text 5.7:1) | #C4291C | #C4291C |
 
 Route colors come from GTFS `route_color`. Guarantee label contrast: pick white or #111 text by luminance; if a route color is under 3:1 against the sheet, draw its chip with a 1.5px --text-2 ring.
 
@@ -45,9 +46,56 @@ Type: `font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui,
 
 Max 3 sizes per screen. No all-caps labels except chips.
 
-Spacing: 4pt grid: 4, 8, 12, 16, 20, 24. Sheet side padding 16. Row height min 56. Radii: sheet top 20, cards 14, chips 999, map controls 12, markers circular. Shadows: sheet `0 -8px 32px rgba(0,0,0,.14)`; floating controls `0 2px 10px rgba(0,0,0,.16)`; dark mode swap shadows for a 1px --hairline border. No other shadows.
+Spacing: 4pt grid: 4, 8, 12, 16, 20, 24. Sheet side padding 16. Row height min 56. Radii: see "Radius scale" below. Shadows: sheet `0 -8px 32px`, floating controls `0 2px 10px`, plus the small component shadows (segment thumb, switch knob, timeline bus chip, Settings card), all tinted with `--shadow-rgb` (cool slate 30, 32, 45; never `rgba(0,0,0)`) through the `--shadow-*` tokens; dark mode swaps the sheet / floating shadows for a 1px --hairline border. No other shadows.
 
 Motion: durations 120 (press/fade), 220 (content swap), 320 (sheet settle). Easing: `cubic-bezier(.2,.8,.2,1)` for enters, `cubic-bezier(.4,0,1,1)` exits; sheet release uses a spring approximation `cubic-bezier(.32,.72,0,1)` 320ms. Animate only `transform` and `opacity`. Press state: scale(.98) + --surface darken. Live pulse on bus dot: one 2s ring, off under reduced motion.
+
+## 1b. System rules (set by the taste audit, docs/DESIGN-AUDIT-2026-10-10.md; `css/tokens.css` holds the values)
+
+**Color lock.** One accent (`--accent` text / `--accent-fill` fills) for every action, selection and switch. Green (`--live`)
+means live GPS / prediction data and nothing else (no green switches, no green "Scheduled now"). Route colors are data,
+never decoration or accent. Red fills use `--danger-fill`; `--danger` is for error text. Gold (the `--warn` hue) is also the
+favorite star, always with the star shape. No pure #000 / #fff surfaces or shadows: light surfaces are #FCFCFD, shadows and
+scrims use `--shadow-rgb`. White is allowed only as text / marks on a saturated fill (accent, danger, route color) and as map
+marker rings. Every button, toggle, tag and placeholder is >= 4.5:1 in light and dark (`tests/ui-shell-contrast.js`).
+
+**Radius scale** (tokens; never a literal radius in a component, focus rings follow their element):
+
+| Token | px | Used for |
+|---|---|---|
+| `--r-pill` | 999 | search bar, nav indicator, toggles (Favorite, Highlight), switches, count badges, pills, grabber |
+| `--r-sheet` | 20 | sheet, Settings card, dialogs |
+| `--r-card` | 14 | cards, option cards, alert banners |
+| `--r-control` | 12 | buttons, inputs, segmented controls, locate button, status pill, context chip |
+| `--r-inner` | 10 | a control nested 2-3 px inside a 12 px control: segment thumb, Clear, Retry |
+| `--r-badge` | 9 | route badge, the same shape as the bus marker (route identity) |
+| `--r-tag` | 6 | est. / live / sidewalk route tags, small route chips, bus chips on timelines |
+
+Data marks (chart bars, the 8 px legend square, the switch's on mark) and the desktop phone frame keep their own radii.
+
+**Layers** (z-index tokens; a component may use 1 / 2 locally):
+
+| Token | z | Layer |
+|---|---|---|
+| `--z-map` | 0 | map (Leaflet panes stack inside it) |
+| `--z-sheet` | 1000 | bottom sheet |
+| `--z-nav` | 1010 | bottom navigation |
+| `--z-chip` | 1090 | map context chip |
+| `--z-float` | 1100 | status pill, locate button |
+| `--z-search` | 1105 | floating search bar |
+| `--z-overlay-scrim` / `--z-overlay` | 1140 / 1150 | Settings scrim / card |
+| `--z-dialog` | 1200 | `#dlg` scrim + card |
+| `--z-toast` | 1300 | toast |
+| `--z-frame` | 5000 | desktop phone frame decorations (never take taps) |
+
+**Copy.** No em dash or en dash anywhere in visible text: clock ranges read "4:00 PM to 4:29 AM", compact day ranges
+"Mon-Fri". At most one middle dot per line; more parts become a sentence (commas) or separate lines. Plain functional
+sentences; name tabs by their current label ("Current trip"). One label per intent on a screen (one "use my location"
+action, not a suggestion plus a button). Button labels fit on one line at 393 px; stack buttons instead of wrapping a label.
+
+**States and feedback.** Loading skeletons have the shape of the rows they stand in for (`skeleton()`: route badge, two
+lines, ETA). Every control has a press state: text buttons dim, icon buttons take the pressed fill, buttons / rows / toggles /
+segments scale .97-.98 (opacity only under reduced motion). Every target is >= 44 px (extend small ones with `::after`).
 
 ## 2. Map
 

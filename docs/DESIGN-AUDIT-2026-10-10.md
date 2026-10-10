@@ -26,9 +26,42 @@ dialog, Settings overlay (top, scrolled), About, Alerts, feed error, empty feed 
 sweep (every literal `border-radius`, `z-index`, shadow, pure color, `:active`) and a string sweep of every view module.
 Headless Edge paints vector map tiles only sometimes; the UI and map overlays always paint.
 
-## Findings
+## Status
 
-Status is filled in at the end of the pass (commit hashes in "Fixed").
+Every finding below is **fixed** except the ones under "Left deliberately". Commits (all "Design: ..." on main, 2026-10-10):
+
+| Commit subject (abbreviated) | Findings |
+|---|---|
+| no dash characters or stacked middle dots in visible text; plainer copy | 1.1-1.3, 2.1-2.5, 15.1, 15.2 |
+| one accent, green only for live data; red fills pass AA in dark | 3.1-3.3, 4.1, 10.1 |
+| one radius scale and one z-index scale, as tokens | 5.1-5.4, 12.1 |
+| off-white surfaces, tinted shadows and scrims | 11.1-11.3 |
+| press feedback on every control; 44px appearance segments and official links | 9.1, 14.1, 14.2 |
+| loading skeleton shaped like the rows it stands in for | 8.1 |
+| one location action in Directions, no wrapped About CTA, SVG star | 6.1, 7.1, 13.1 |
+
+The rules are now written down in `docs/DESIGN.md` "1b. System rules" (color lock, radius scale, layers, copy, states).
+New regression tests: button / toggle / tag / badge / placeholder contrast in both themes (46 measurements,
+`ui-shell-contrast.js`), no dash in the route view and alert period, at most one middle dot per step line and place
+subline, row-shaped skeleton, one "use my location" action in Directions.
+
+### Before / after (same scenes, light + dark)
+
+- Route detail: "Today 4:00 PM – 4:29 AM · ●Scheduled now" (green) became "Today 4:00 PM to 4:29 AM · Scheduled now" in
+  plain text; the hours card reads "Every day 4:00 PM to 4:29 AM"; buses-by-hour is four short lines instead of one line
+  with three dots and en-dashes.
+- Directions bus step: three middle dots became "Wait ~5 min, then ride ~4 min (2 stops) to S. Drexel Ave & E 53rd St,
+  3:41 AM · from live bus prediction"; "No walk: get off at X" became "Get off at X, no walk needed".
+- Directions with no location: the "My location / Allow location access" row under the focused destination is gone; only
+  "Start from my location" remains.
+- My Routes delete confirm (dark): Delete was white on salmon #ff6961 (hard to read), now white on #c4291c; the swipe-tray
+  Delete and the alert count badge use the same red.
+- Settings: the lock-screen switch is accent blue (was green); alert period "6:20 AM to 8:20 AM".
+- About: "Call 773.702.8181" and "Official transportation page" are two full-width buttons; the second no longer wraps.
+- Applied custom route: the context chip has the 12 px corners of the locate button next to it.
+- Loading: three gray bars became three placeholder rows (badge, two lines, ETA) on the same 56 px rhythm.
+
+## Findings
 
 ### 1. Em-dash / en-dash ban (skill 9.G)
 
