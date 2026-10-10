@@ -9,7 +9,7 @@ struct LiveActivityPreviewView: View {
     @Environment(\.dismiss) private var dismiss
 
     var snapshot: LiveTripSnapshot? {
-        if let p = model.tripProgress { return p.snapshot(staticData: model.staticData) }
+        if let p = model.tripFollow { return p.snapshot(staticData: model.staticData, now: model.now) }
         return nil
     }
 

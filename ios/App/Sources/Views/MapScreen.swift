@@ -55,16 +55,34 @@ struct MapScreen: View {
                     .stroke(.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [2, 7]))
                 Marker("Destination", systemImage: "mappin", coordinate: end.cl).tint(.red)
             }
+            // direction-of-travel chevrons along 1-3 focused routes (decorative, never intercept taps)
+            ForEach(layers.chevrons) { c in
+                Annotation("", coordinate: c.coord, anchor: .center) {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(.white)
+                        .padding(2)
+                        .background(c.color, in: Circle())
+                        .rotationEffect(.degrees(c.bearing))
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+                .annotationTitles(.hidden)
+            }
             ForEach(layers.stops) { s in
                 Annotation(s.stop.name, coordinate: s.stop.coord.cl, anchor: .center) {
-                    StopDot(isFav: s.isFav) { model.push(.stop(s.id)) }
-                        .accessibilityLabel("Stop \(s.stop.name)")
+                    StopDot(isFav: s.isFav, faded: plan != nil, ring: ringed.contains(s.id)) { model.stopTapped(s.id) }
+                        .accessibilityLabel(s.isFav ? "Favorite stop \(s.stop.name)" : "Stop \(s.stop.name)")
                 }
                 .annotationTitles(.hidden)
             }
             ForEach(buses) { b in
                 Annotation(b.label, coordinate: b.coord.cl, anchor: .center) {
-                    BusMarker(route: model.route(b.rid), bearing: b.bearing, stale: b.stale)
+                    Button { model.busTapped(b.rid) } label: {
+                        BusMarker(route: model.route(b.rid), bearing: b.bearing, stale: b.stale).frame(minWidth: 44, minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens the route")
                 }
                 .annotationTitles(.hidden)
             }
@@ -79,23 +97,42 @@ struct MapScreen: View {
         }
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
         .mapControls { MapCompass() }
+        // a tap on empty map lowers the sheet to peek (web onMapTap). Simultaneous, so it never blocks the stop / bus
+        // buttons; `mapTapped` ignores a tap that also hit one of them.
+        .simultaneousGesture(TapGesture().onEnded { model.mapTapped() })
         .accessibilityLabel("Shuttle map")
+    }
+
+    /// Stops with a ring: the Routes to station candidates, else the open stop (web highlightStops / setSelectedStop).
+    var ringed: Set<String> {
+        if !model.pickHighlights.isEmpty { return Set(model.pickHighlights) }
+        if case .stop(let id)? = model.page { return [id] }
+        return []
     }
 }
 
 struct StopDot: View {
     var isFav: Bool
+    /// A plan is drawn: favorite stars step back (web map/favorites.js).
+    var faded = false
+    /// Highlighted (Routes to station candidate or the open stop).
+    var ring = false
     var action: () -> Void
     var body: some View {
         Button(action: action) {
             ZStack {
+                if ring {
+                    Circle().stroke(Color.accentColor, lineWidth: 3).frame(width: 26, height: 26)
+                        .background(Circle().fill(Color.accentColor.opacity(0.18)))
+                }
                 if isFav {
                     Image(systemName: "star.circle.fill").font(.system(size: 18)).foregroundStyle(.white, .orange)
+                        .opacity(faded ? 0.45 : 1)
                 } else {
                     Circle().fill(.white).frame(width: 9, height: 9).overlay(Circle().stroke(.gray, lineWidth: 2))
                 }
             }
-            .frame(width: 30, height: 30)
+            .frame(width: 44, height: 44)   // 44 pt tap target (web: 44 px halo)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

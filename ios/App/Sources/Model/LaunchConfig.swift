@@ -4,7 +4,7 @@ import StraightBussingKit
 /// Launch arguments (used by CI to drive the simulator deterministically):
 ///   -demo                 simulated buses (DemoFeed), fixed location on campus, separate prefs storage
 ///   -screen <name>        open a screen: current | trip | routes | route | myroutes | directions | stop |
-///                         settings | liveactivity | about
+///                         settings | liveactivity | about | alerts | pick | search
 ///   -detent peek|half|full
 ///   -tour                 walk through the main screens automatically (for the screen recording)
 ///   -theme light|dark     force the color scheme

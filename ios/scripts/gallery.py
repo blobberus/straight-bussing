@@ -9,11 +9,11 @@ import json
 import os
 
 CAPTIONS = {
-    "01-current": "Current trip: nearest stops with live arrivals (no trip started)",
+    "01-current": "Current trip: favorites, nearest stops with Leave-in guidance (no trip started)",
     "02-trip": "Trip started: Google-Maps-style stop timeline with the live bus",
     "03-trip-full": "Trip timeline, sheet expanded: walk, bus stops with ETAs, walk",
     "04-directions": "Directions: options ranked least walking > earliest arrival > shortest wait",
-    "05-routes": "Routes: eye toggles, Show all / Hide all, Edit map order",
+    "05-routes": "Routes: eye toggles, Show all / Hide all, Edit map order, groups by live status",
     "06-route": "Route detail: stops with next ETA, buses on the rail, hours & service",
     "07-myroutes": "My Routes: custom routes (tap = show on map), favorites",
     "08-stop": "Stop detail: live arrivals, routes, directions from / to here",
@@ -24,6 +24,9 @@ CAPTIONS = {
     "13-myroutes-delete-confirm": "Delete asks for confirmation (UI test)",
     "14-place-search": "On-device place search: 'chipotle' (UI test)",
     "15-trip-started": "Directions > Start > trip timeline (UI test)",
+    "16-alerts": "Service alerts: severity, routes, time window (demo alert)",
+    "17-pick": "Routes to station: nearest stops ringed on the map",
+    "18-search": "Place search with a spelling fix: 'regnstien' -> Showing results for Regenstein",
 }
 
 

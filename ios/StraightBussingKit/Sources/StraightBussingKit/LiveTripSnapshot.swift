@@ -10,7 +10,7 @@ public struct LiveTripSnapshot: Codable, Hashable, Sendable {
     public var routeTextColor: String
     public var boardName: String
     public var alightName: String
-    /// TripProgress.Phase raw value.
+    /// TripFollow.Phase raw value (walk-to-stop | waiting | on-bus | arrived).
     public var phase: String
     public var headline: String
     /// Stops until the boarding stop (before boarding).
@@ -80,42 +80,5 @@ public struct LiveTripSnapshot: Codable, Hashable, Sendable {
         for (a, b) in [(" Street", " St"), (" Avenue", " Ave"), (" Station", " Sta"), (" (NE Corner)", ""), (" (NW Corner)", ""),
                        (" (SE Corner)", ""), (" (SW Corner)", "")] { out = out.replacingOccurrences(of: a, with: b) }
         return out
-    }
-}
-
-extension TripProgress {
-    /// The Live Activity content for this progress (nil on walk-only trips).
-    public func snapshot(staticData: StaticData) -> LiveTripSnapshot? {
-        guard let seg = currentSegment else { return nil }
-        let r = staticData.routes[seg.rid]
-        let target: Double
-        switch phase {
-        case .walkToStop, .waiting, .transfer: target = seg.boardEta
-        case .riding: target = seg.alightEta
-        case .walkToDestination, .arrived: target = arrive
-        }
-        let anchor = seg.busRow ?? seg.boardIndex
-        let start = max(0, min(anchor - 1, seg.rows.count - 6))
-        let end = min(seg.rows.count, start + 6)
-        let window = Array(seg.rows[start..<end])
-        var pos: Double? = nil
-        if let b = seg.busRow { pos = max(-0.5, Double(b - start) - (1 - seg.busFrac)) }
-        func idx(_ i: Int) -> Int? { i >= start && i < end ? i - start : nil }
-        // Same rule as `texts`: before boarding without a located bus, the headline is "Next X at Y in about N min".
-        var lead: String? = nil
-        switch phase {
-        case .walkToStop, .waiting, .transfer:
-            if !(seg.stopsAway != nil && seg.located) { lead = "Next \(r?.chipText ?? seg.rid) at \(seg.rows[seg.boardIndex].name)" }
-        default:
-            break
-        }
-        return LiveTripSnapshot(routeShort: r?.chipText ?? seg.rid, routeName: r?.displayName ?? seg.rid,
-                                routeColor: r?.color ?? "#555555", routeTextColor: r?.textColor ?? "#FFFFFF",
-                                boardName: seg.rows[seg.boardIndex].name, alightName: seg.rows[seg.alightIndex].name,
-                                phase: phase.rawValue, headline: headline, stopsAway: seg.stopsAway,
-                                stopsLeft: seg.boarded ? seg.stopsLeft : nil, target: target,
-                                stopNames: window.map { LiveTripSnapshot.shortName($0.name) }, busPosition: pos,
-                                boardIndex: idx(seg.boardIndex), alightIndex: idx(seg.alightIndex), live: seg.live, asOf: now,
-                                headlineLead: lead)
     }
 }

@@ -3,7 +3,7 @@ import Foundation
 import StraightBussingKit
 
 /// Live Activity for a started trip ("bus N stops away"). Member of the app and the widget extension.
-/// ContentState is the Kit's `LiveTripSnapshot` (computed by `TripProgress.snapshot`), so the lock screen,
+/// ContentState is the Kit's `LiveTripSnapshot` (computed by `TripFollow.snapshot`), so the lock screen,
 /// the Dynamic Island and the in-app preview all show the same numbers.
 ///
 /// Updates: while the app runs in the foreground it calls `Activity.update` when the content changes (asOf

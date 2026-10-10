@@ -44,6 +44,9 @@ public enum Geo {
         public var lat: Double
         public var lon: Double
         public var d: Double
+        public init(id: String, name: String, lat: Double, lon: Double, d: Double) {
+            self.id = id; self.name = name; self.lat = lat; self.lon = lon; self.d = d
+        }
     }
 
     /// Nearest stops to a point by straight-line distance.

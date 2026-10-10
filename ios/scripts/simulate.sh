@@ -40,6 +40,9 @@ for mode in light dark; do
   shot 09-settings     "$mode" 8  -screen settings
   shot 10-liveactivity "$mode" 10 -screen liveactivity
   shot 11-about        "$mode" 8  -screen about -detent full
+  shot 16-alerts       "$mode" 8  -screen alerts
+  shot 17-pick         "$mode" 9  -screen pick
+  shot 18-search       "$mode" 9  -screen search -detent full
 done
 
 record() {   # record <appearance>

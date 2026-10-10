@@ -125,11 +125,17 @@ extension AppModel {
     }
 
     /// In-app banner (RootView `ToastBanner`), also read out by VoiceOver.
-    func showToast(_ text: String) {
+    func showToast(_ text: String) { showBanner(text, icon: "bell.fill", seconds: Self.toastS) }
+
+    /// A short confirmation ("Saved to My Routes", "Bus alerts turned off"; web ctx.toast), also read out.
+    func showInfo(_ text: String) { showBanner(text, icon: "checkmark.circle.fill", seconds: 3) }
+
+    func showBanner(_ text: String, icon: String, seconds: Double) {
+        toastIcon = icon
         toast = text
         UIAccessibility.post(notification: .announcement, argument: text)
         toastTask?.cancel()
-        let ns = UInt64(Self.toastS * 1_000_000_000)
+        let ns = UInt64(seconds * 1_000_000_000)
         toastTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: ns)
             guard let self, !Task.isCancelled else { return }

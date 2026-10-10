@@ -25,10 +25,13 @@ enum Tab: String, CaseIterable, Identifiable {
 
 /// Pages pushed on a tab inside the bottom sheet (the web's router views).
 enum SheetPage: Hashable {
-    case route(String), stop(String), customRoute(String), editCustom(String?), about, directions
+    case route(String), stop(String), customRoute(String), editCustom(String?), about, directions, alerts, pick
 }
 
 enum Detent: Int, CaseIterable { case peek, half, full }
+
+/// How Routes to station finds the station (web pick.js modes): current location, by name, near a place.
+enum PickMode: String { case loc, sel, addr }
 
 /// A directions endpoint (the web's {lat, lon, label, stop?, me?}).
 struct Endpoint: Hashable, Sendable {
@@ -51,11 +54,20 @@ struct DirectionsState {
     var refining = false
 }
 
-/// A started trip (Directions > option > Start).
+/// A started trip (Directions > option > Start). `journey` is what the timeline follows (web store.journey).
 struct ActiveTrip: Equatable {
     var option: TripOption
     var label: String
     var startedAt: Double
+    var journey: TripJourney
+}
+
+/// A direction-of-travel chevron along a focused route (web map: 1-3 focused routes).
+struct MapChevron: Identifiable {
+    let id: String
+    let coord: CLLocationCoordinate2D
+    let bearing: Double
+    let color: Color
 }
 
 /// The map camera in its own observable: fits and user pans only redraw the Map, never views reading AppModel.
@@ -80,11 +92,12 @@ struct MapStop: Identifiable {
     var id: String { stop.id }
 }
 
-/// Route lines (bottom -> top) and the stops served by a visible route.
+/// Route lines (bottom -> top), the stops served by a visible route, and travel-direction chevrons.
 struct MapLayers {
     var lines: [MapLine] = []
     var stops: [MapStop] = []
     var hidden: Set<String> = []
+    var chevrons: [MapChevron] = []
 }
 
 /// A bus marker. `stale` (report older than 60 s) is computed when live data or the clock updates, so the map
@@ -114,6 +127,11 @@ final class AppModel {
     @ObservationIgnored let busAlerter = BusAlerter()
     /// Sidewalk routes (Apple Maps walking directions) behind the Kit's cache; nil in `-demo` (deterministic CI).
     @ObservationIgnored let walkCache: WalkRouteCache?
+    /// Photon address search (only when the on-device index has < 5 matches); nil in `-demo` (no network in CI shots).
+    @ObservationIgnored let placeSearcher: PlaceSearcher?
+    /// When a stop or bus on the map was last tapped (a map tap right after it is not an "empty map" tap).
+    @ObservationIgnored var lastAnnotationTap: Double = 0
+    @ObservationIgnored var lastUserForDirections: LatLon?
     @ObservationIgnored var toastTask: Task<Void, Never>?
     @ObservationIgnored var pollTask: Task<Void, Never>?
     @ObservationIgnored var clockTask: Task<Void, Never>?
@@ -156,8 +174,12 @@ final class AppModel {
     var theme = "auto"
     /// System notification permission for bus alerts (checked at launch and on every return to the app).
     var notifPermission: BusAlerter.Permission = .unknown
-    /// In-app banner text (bus alerts when system notifications are not allowed).
+    /// In-app banner text (bus alerts when system notifications are not allowed, and short confirmations).
     var toast: String?
+    /// SF Symbol of the banner ("bell.fill" for bus alerts).
+    var toastIcon = "bell.fill"
+    /// The status pill under the search bar (web main.js renderPill), written only when it changes.
+    var statusPill: LiveText.Pill?
     // User
     var user: LatLon?
     var locState: LocationProvider.State = .unknown
@@ -169,10 +191,29 @@ final class AppModel {
     var showLiveActivityPreview = false
     var editingOrder = false
     var confirmDelete: CustomRoute?
+    /// Where to land after a confirmed delete: "list" | "detail" | "edit" (web deleteWithConfirm `from`).
+    var confirmDeleteFrom = "list"
+    /// Stops ring-highlighted on the map by Routes to station (nothing until a mode is chosen).
+    var pickHighlights: [String] = []
+    /// "Only show the chosen station's routes" (session preference, web pick.js PREF.only).
+    var pickOnly = false
+    /// A place standing in for your location on Current trip ("Showing stops near X").
+    var nearAnchor: Endpoint?
+    /// The Directions field being edited (map stop taps fill it, web onStopTap).
+    var dirActiveTo = true
+    /// "My location" was chosen but location is off (Directions says so).
+    var dirMeDenied = false
+    /// A "My location" endpoint waiting for the first fix: true = destination, false = start.
+    @ObservationIgnored var pendingMe: Bool?
+    /// Routes to station mode (nil = the chooser; nothing highlighted until a mode is chosen).
+    var pickMode: PickMode?
+    /// Demo screenshots: text typed into Directions on open (`-screen search`).
+    var demoQuery: String?
     // Directions + trip
     var dir = DirectionsState()
     var activeTrip: ActiveTrip?
-    var tripProgress: TripProgress?
+    /// The started trip followed against live data (Kit `TripFollow`, web core/tripprogress.js).
+    var tripFollow: TripFollow?
     // Clock for countdowns
     var now = Date().timeIntervalSince1970
 
@@ -180,6 +221,7 @@ final class AppModel {
         self.config = config
         self.prefsStore = Prefs(demo: config.demo)
         self.walkCache = config.demo ? nil : WalkRouteCache(fetch: { a, b in try await AppleWalkDirections.route(a, b) })
+        self.placeSearcher = config.demo ? nil : PlaceSearcher()
     }
 
     var colorScheme: ColorScheme? {
@@ -246,13 +288,14 @@ final class AppModel {
         case .directions, .about, .editCustom: detent = .full
         case .route(let rid): detent = .half; fitRoute(rid)   // only choosing a route moves the map (web main.js openRoute)
         case .stop: if detent == .peek { detent = .half }     // stop taps keep the user's map view
-        case .customRoute: detent = .half
+        case .customRoute, .alerts, .pick: detent = .half
         }
         syncMapFocus()
     }
 
     func back() {
         guard !path.isEmpty else { return }
+        if path.last == .pick { pickHighlights = [] }
         paths[tab]?.removeLast()
         syncMapFocus()
     }
@@ -276,6 +319,8 @@ final class AppModel {
         case .editCustom(let id): return id == nil ? "New custom route" : "Edit custom route"
         case .about: return "About"
         case .directions: return "Directions"
+        case .alerts: return "Alerts"
+        case .pick: return "Routes to station"
         case nil: return tab.title
         }
     }
@@ -341,7 +386,39 @@ final class AppModel {
         for (rid, list) in S.routeStops where !hidden.contains(rid) { ids.formUnion(list) }
         let fav = Set(favs)
         let stops = ids.compactMap { S.stops[$0] }.sorted { $0.id < $1.id }.map { MapStop(stop: $0, isFav: fav.contains($0.id)) }
-        return MapLayers(lines: lines, stops: stops, hidden: hidden)
+        // 1-3 focused routes get direction-of-travel chevrons (GTFS shape point order = travel direction)
+        var chevrons: [MapChevron] = []
+        if let f = vis.focus, (1...3).contains(f.count) {
+            for rid in f where !hidden.contains(rid) {
+                let color = Color(hex: S.routes[rid]?.color)
+                for (li, line) in (S.shapes[rid] ?? []).enumerated() {
+                    for (k, c) in chevronPoints(line).enumerated() {
+                        chevrons.append(MapChevron(id: "\(rid)-\(li)-\(k)", coord: c.at.cl, bearing: c.bearing, color: color))
+                    }
+                }
+            }
+        }
+        return MapLayers(lines: lines, stops: stops, hidden: hidden, chevrons: chevrons)
+    }
+
+    /// Chevron spots every `spacingM` meters along a polyline, each with the travel bearing there.
+    static func chevronPoints(_ line: [LatLon], spacingM: Double = 320) -> [(at: LatLon, bearing: Double)] {
+        var out: [(at: LatLon, bearing: Double)] = []
+        guard line.count >= 2 else { return out }
+        var carry = spacingM / 2
+        for i in 1..<line.count {
+            let a = line[i - 1], b = line[i]
+            let d = Geo.hav(a, b)
+            guard d > 0 else { continue }
+            var pos = carry
+            while pos <= d {
+                let f = pos / d
+                out.append((LatLon(lat: a.lat + (b.lat - a.lat) * f, lon: a.lon + (b.lon - a.lon) * f), Geo.bearing(a, b)))
+                pos += spacingM
+            }
+            carry = pos - d
+        }
+        return out
     }
 
     // MARK: Trip geometry (cached)
@@ -388,6 +465,24 @@ final class AppModel {
     }
     var activeAlerts: [ServiceAlert] { Arrivals.activeAlerts(alerts, now: now) }
     func isFav(_ stopId: String) -> Bool { routeState.favStops.contains(stopId) }
+    /// Live data is delayed or down (arrival times get "~", rows say "Live, delayed" / "Last known").
+    var isStale: Bool { staleLevel != .fresh }
+    /// Short route name for chips and sentences (web nameOf: short, else long, else id).
+    func shortName(_ rid: String) -> String {
+        guard let r = route(rid) else { return rid }
+        return !r.short.isEmpty ? r.short : !r.long.isEmpty ? r.long : rid
+    }
+    /// Long route name (web longName: long, else short, else id).
+    func longName(_ rid: String) -> String { route(rid)?.displayName ?? rid }
+
+    /// Header text right of "Current trip": the next bus at the nearest stop ("53RD · 4 min"; web metaNearby).
+    var nearbyMeta: String {
+        guard liveLoaded, let p = user ?? nearAnchor?.coord,
+              let s = StationSearch.near(staticData, p, maxM: 5000, max: 1, hidden: Set(hidden)).first,
+              let a = arrivals(at: s.id).first else { return "" }
+        let m = TimeFmt.minsUntil(a.t, from: now)
+        return shortName(a.rid) + " · " + (m < 1 ? "Now" : (isStale ? "~" : "") + "\(m) min")
+    }
 
     /// The merged live state for Kit functions called from views (built from the observed slices, so the
     /// calling view redraws when they change).

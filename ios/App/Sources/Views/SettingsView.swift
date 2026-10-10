@@ -2,36 +2,20 @@ import SwiftUI
 import UIKit
 import StraightBussingKit
 
-/// Settings (top-right gear, ui/views/settings.js): theme, service alerts, bus-near alerts, iPhone-only Live
-/// Activity switch + preview, privacy, About.
+/// Settings (top-right gear, ui/views/settings.js): appearance, service alerts, bus alerts ("notify me when my bus
+/// is near <station>": station, routes, 2 stops / 1 stop / N min, in-app banner + system notifications), the
+/// iPhone-only Live Activity switch + preview, privacy, About.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    static let minuteChoices = [0, 2, 5, 10]
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Appearance") {
-                    Picker("Theme", selection: Binding(get: { model.theme }, set: { model.setTheme($0) })) {
-                        Text("Auto").tag("auto")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
-                    }
-                    .pickerStyle(.segmented)
-                }
-                Section {
-                    let alerts = model.activeAlerts
-                    if alerts.isEmpty { Text("No active service alerts.").foregroundStyle(.secondary) }
-                    ForEach(alerts) { a in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(a.header.isEmpty ? "Service alert" : a.header).font(.subheadline.weight(.semibold))
-                            if !a.description.isEmpty { Text(a.description).font(.caption).foregroundStyle(.secondary) }
-                        }
-                    }
-                } header: {
-                    Text("Service alerts")
-                }
+                Section("Appearance") { ThemePicker() }
+                alertsSection
                 busAlerts
                 Section {
                     Toggle("Trip status on Lock Screen", isOn: Binding(get: { model.notify.liveActivity },
@@ -43,11 +27,18 @@ struct SettingsView: View {
                     Text("A Live Activity shows your bus on the Lock Screen and in the Dynamic Island: stops away, a self-updating countdown and the next stops. It updates while the app is open; locked-phone updates need a push server (planned).")
                 }
                 Section("Privacy") {
-                    Text("No account, no ads, no tracking. Your location stays on this iPhone; only the start and end of a walking route, rounded to about 10 m, go to Apple Maps for sidewalk directions. Station and place search run on this iPhone. Downloads: the public shuttle feed and Apple Maps.")
+                    Text("No account, no ads, no tracking. Your location stays on this iPhone; only the start and end of a walking route, rounded to about 10 m, go to Apple Maps for sidewalk directions. Station and place search run on this iPhone; only when that finds fewer than 5 matches is the typed text sent to photon.komoot.io. Downloads: the public shuttle feed and Apple Maps.")
                         .font(.subheadline)
                 }
                 Section {
-                    NavigationLink("About Straight Bussing") { AboutView().navigationTitle("About") }
+                    NavigationLink {
+                        AboutView().navigationTitle("About")
+                    } label: {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("About this app")
+                            Text("Unofficial. Privacy, official contact").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
             .navigationTitle("Settings")
@@ -58,41 +49,131 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: Service alerts
+
+    var alertsSection: some View {
+        let alerts = model.activeAlerts
+        return Section {
+            if !model.liveLoaded {
+                Text("Checking for service alerts\u{2026}").foregroundStyle(.secondary)
+            } else if alerts.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("No active alerts")
+                    OfficialContact()
+                }
+            }
+            ForEach(alerts) { a in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(a.header.isEmpty ? "Service alert" : a.header).font(.subheadline.weight(.semibold))
+                    if !a.description.isEmpty { Text(a.description).font(.caption).foregroundStyle(.secondary) }
+                    let when = LiveText.alertPeriod(a, now: model.now)
+                    if !when.isEmpty { Text(when).font(.caption).foregroundStyle(.secondary) }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            if model.liveLoaded && model.liveFailed {
+                Label("Alerts may be out of date: the shuttle feed is not responding.", systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+        } header: {
+            HStack {
+                Text("Service alerts")
+                if model.liveLoaded && !alerts.isEmpty { Text("\(alerts.count) active").foregroundStyle(.orange) }
+            }
+        }
+    }
+
+    // MARK: Bus alerts
+
     var busAlerts: some View {
-        Section {
+        let n = model.notify
+        let stop = n.stopId.flatMap { model.staticData.stops[$0] }
+        return Section {
             NavigationLink {
                 StationPicker()
             } label: {
                 HStack {
                     Text("Station")
                     Spacer()
-                    Text(model.notify.stopId.flatMap { model.staticData.stops[$0]?.name } ?? "Choose").foregroundStyle(.secondary).lineLimit(1)
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(stop?.name ?? "Choose").foregroundStyle(.secondary).lineLimit(1)
+                        if let id = n.stopId, let addr = model.staticData.addresses[id]?.address {
+                            Text(addr).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
                 }
             }
-            Toggle("2 stops away", isOn: Binding(get: { model.notify.twoStops }, set: { v in model.updateNotify { $0.twoStops = v } }))
-            Toggle("1 stop away", isOn: Binding(get: { model.notify.oneStop }, set: { v in model.updateNotify { $0.oneStop = v } }))
-            Picker("When the bus is", selection: Binding(get: { model.notify.minutes }, set: { v in model.updateNotify { $0.minutes = v } })) {
-                ForEach([0, 2, 3, 5, 10], id: \.self) { m in Text(m == 0 ? "Off" : "\(m) min away").tag(m) }
-            }
-            if let sid = model.notify.stopId, let first = Notify.stopsAway(staticData: model.staticData, live: model.live, stopId: sid,
-                                                                             rids: Notify.watchedRoutes(model.notify, staticData: model.staticData, hidden: model.hidden),
-                                                                             now: model.now).first {
-                Text("Now: \(model.route(first.rid)?.displayName ?? first.rid) is \(first.stopsAway) stop\(first.stopsAway == 1 ? "" : "s") away\(first.etaS.map { ", " + Notify.minutesText($0, now: model.now) } ?? "")")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            if model.notify.stopId != nil {
-                if model.liveLoaded && (model.staleLevel == .err || model.staleLevel == .old) {
-                    Label("Live data is unavailable, so bus alerts are paused.", systemImage: "exclamationmark.triangle")
-                        .font(.caption).foregroundStyle(.orange)
+            .accessibilityHint(stop == nil ? "Choose a station" : "Change the station")
+            if let id = n.stopId, stop != nil {
+                routesRows(id)
+                Toggle("2 stops away", isOn: Binding(get: { model.notify.twoStops }, set: { v in model.updateNotify { $0.twoStops = v } }))
+                Toggle(isOn: Binding(get: { model.notify.oneStop }, set: { v in model.updateNotify { $0.oneStop = v } })) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("1 stop away")
+                        Text("Also when your stop is next").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
+                Picker("When the bus is", selection: Binding(get: { model.notify.minutes }, set: { v in model.updateNotify { $0.minutes = v } })) {
+                    ForEach(Self.minuteChoices, id: \.self) { m in Text(m == 0 ? "Off" : "\(m) min away").tag(m) }
+                }
+                Toggle(isOn: Binding(get: { model.notify.inApp }, set: { v in model.updateNotify { $0.inApp = v } })) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("In-app alerts while open")
+                        Text("A banner at the top of the app").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                status(id)
                 permissionRow
-                Button("Turn off bus alerts", role: .destructive) { model.setAlertStation(nil) }
+                Button("Turn off bus alerts", role: .destructive) { model.turnOffBusAlerts() }
                     .accessibilityIdentifier("busAlertsOff")
             }
         } header: {
             Text("Bus alerts")
         } footer: {
             Text("Notify me when my bus is near a station. Times are estimates from live predictions. Alerts work only while the app is open; lock-screen alerts need a push server (planned).")
+        }
+    }
+
+    /// The routes watched at the station (any visible route by default; at least one stays on).
+    @ViewBuilder func routesRows(_ stopId: String) -> some View {
+        let serve = model.staticData.stopRoutes[stopId] ?? []
+        let watched = Set(Notify.watchedRoutes(model.notify, staticData: model.staticData, hidden: model.hidden))
+        let hidden = Set(model.hidden)
+        Text(model.notify.rids.isEmpty ? "Routes (any visible route)" : "Routes").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+        ForEach(serve, id: \.self) { rid in
+            Toggle(isOn: Binding(get: { watched.contains(rid) }, set: { _ in model.toggleAlertRoute(rid) })) {
+                HStack(spacing: 8) {
+                    RouteChip(route: model.route(rid), rid: rid)
+                    Text(model.longName(rid))
+                    if hidden.contains(rid) { Text("hidden").font(.caption).foregroundStyle(.secondary) }
+                }
+            }
+        }
+        if !model.notify.rids.isEmpty {
+            Button("Use any visible route") { model.updateNotify { $0.rids = [] } }
+        }
+    }
+
+    /// One-glance status of the nearest bus for the station (settings.js statusHTML).
+    @ViewBuilder func status(_ stopId: String) -> some View {
+        if model.liveLoaded && (model.staleLevel == .err || model.staleLevel == .old) {
+            Label("Live data is unavailable, so bus alerts are paused.", systemImage: "exclamationmark.triangle")
+                .font(.caption).foregroundStyle(.orange)
+        } else if let first = Notify.stopsAway(staticData: model.staticData, live: model.live, stopId: stopId,
+                                                rids: Notify.watchedRoutes(model.notify, staticData: model.staticData, hidden: model.hidden),
+                                                now: model.now).first {
+            let away = first.stopsAway == 0 ? "Your stop is next" : "\(first.stopsAway) stop\(first.stopsAway == 1 ? "" : "s") away"
+            let when = Notify.minutesText(first.etaS, now: model.now)
+            HStack(spacing: 8) {
+                RouteChip(route: model.route(first.rid), rid: first.rid)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(away + (when.isEmpty ? "" : " \u{00B7} " + when)).font(.subheadline.weight(.semibold))
+                    Text("Next stop: \(first.nextStopName). From live predictions.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        } else if model.liveLoaded {
+            Text("No bus is heading there right now.").font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -119,41 +200,71 @@ struct SettingsView: View {
     }
 }
 
-/// Choose the station for bus alerts (favorites first, then search).
+/// Auto / Light / Dark (web ui/theme.js), in Settings and About.
+struct ThemePicker: View {
+    @Environment(AppModel.self) private var model
+    var body: some View {
+        Picker("Theme", selection: Binding(get: { model.theme }, set: { model.setTheme($0) })) {
+            Text("Auto").tag("auto")
+            Text("Light").tag("light")
+            Text("Dark").tag("dark")
+        }
+        .pickerStyle(.segmented)
+    }
+}
+
+/// Choose the station for bus alerts (favorites, the nearest station, then search; settings.js stationHTML).
 struct StationPicker: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
 
     var body: some View {
-        let n = PlaceIndex.norm(query)
-        let served = Set(model.staticData.stopRoutes.keys)
-        let stops = model.staticData.stops.values.filter { served.contains($0.id) && (n.isEmpty || PlaceIndex.norm($0.name).contains(n)) }
-            .sorted { $0.name < $1.name }
+        let S = model.staticData
+        let q = query.trimmingCharacters(in: .whitespaces)
+        let results = q.isEmpty ? [] : StationSearch.settings(S.stops, stopRoutes: S.stopRoutes, q)
+        let near = model.user.flatMap { Geo.nearestStops(S.stops, $0, max: 1, maxM: 1500, routeStops: S.routeStops).first }
         List {
-            if n.isEmpty && !model.routeState.favStops.isEmpty {
-                Section("Favorites") {
-                    ForEach(model.routeState.favStops, id: \.self) { id in row(id, model.staticData.stops[id]?.name ?? id) }
+            if q.isEmpty {
+                let favs = model.routeState.favStops.filter { S.stops[$0] != nil }
+                if !favs.isEmpty {
+                    Section("Favorites") { ForEach(favs, id: \.self) { id in row(id, S.stops[id]?.name ?? id, sub: nil) } }
                 }
+                if let near {
+                    Section { row(near.id, near.name, sub: "Nearest station \u{00B7} \(TripInfo.mins(near.d / Geo.walkMetersPerMin)) min walk") }
+                }
+                let all = S.stops.values.filter { !(S.stopRoutes[$0.id] ?? []).isEmpty }.sorted { $0.name < $1.name }
+                Section("Stations") { ForEach(all) { s in row(s.id, s.name, sub: nil) } }
+            } else if results.isEmpty {
+                Text("No stations match.").foregroundStyle(.secondary)
+            } else {
+                Section("Matching stations") { ForEach(results, id: \.id) { m in row(m.id, m.name, sub: nil) } }
             }
-            Section("Stations") {
-                ForEach(stops) { s in row(s.id, s.name) }
+            if model.notify.stopId != nil {
+                Section { Button("Cancel") { dismiss() } }
             }
         }
         .searchable(text: $query, prompt: "Station name")
         .navigationTitle("Station")
     }
 
-    func row(_ id: String, _ name: String) -> some View {
+    func row(_ id: String, _ name: String, sub: String?) -> some View {
         Button {
             model.setAlertStation(id)
             dismiss()
         } label: {
             HStack {
-                Text(name).foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name).foregroundStyle(.primary)
+                    if let sub { Text(sub).font(.caption).foregroundStyle(.secondary) }
+                    HStack(spacing: 3) {
+                        ForEach(model.staticData.stopRoutes[id] ?? [], id: \.self) { RouteChip(route: model.route($0), rid: $0, size: 10) }
+                    }
+                }
                 Spacer()
-                if model.notify.stopId == id { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                if model.notify.stopId == id { Image(systemName: "checkmark").foregroundStyle(Color.accentColor).accessibilityLabel("Selected") }
             }
+            .frame(minHeight: 44)
         }
     }
 }

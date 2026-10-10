@@ -1,4 +1,6 @@
 import Foundation
+import SwiftUI
+import UIKit
 import StraightBussingKit
 
 /// Loading, polling, location, directions and the started trip.
@@ -38,7 +40,8 @@ extension AppModel {
         location.onUpdate = { [weak self] p, st in
             guard let self, !self.config.demo else { return }
             if self.locState != st { self.locState = st }
-            if let p { self.user = p }
+            if let p { self.user = p; self.userMoved(p) }
+            if st == .denied, self.pendingMe != nil { self.pendingMe = nil; self.dirMeDenied = true }
         }
         if config.demo {
             user = DemoConfig.origin
@@ -108,16 +111,23 @@ extension AppModel {
         refreshStatus()
     }
 
-    /// Stale level and bus marker staleness for `now`, written only when they change.
+    /// Stale level, status pill and bus marker staleness for `now`, written only when they change.
     func refreshStatus() {
         let level = liveState.staleLevel(now: now)
         if staleLevel != level { staleLevel = level }
+        let pill = LiveText.pill(level: level, polled: liveLoaded, lastOk: lastOk, feedTs: feedTs, loaded: liveLoaded,
+                                 busCount: buses.count, silent: silentService)
+        if statusPill != pill { statusPill = pill }
         let t = now
         let markers = liveState.buses.enumerated().map { i, b in
             MapBus(id: b.vehicle.id ?? "bus-\(i)", rid: b.trip.routeId ?? "", label: b.displayLabel, coord: b.coord,
                    bearing: b.bearing, stale: b.timestamp > 0 && t - b.timestamp > 60)
         }
-        if mapBuses != markers { mapBuses = markers }
+        // buses glide to their new position (web drawBuses "smooth glide"), still under reduced motion
+        if mapBuses != markers {
+            if UIAccessibility.isReduceMotionEnabled { mapBuses = markers }
+            else { withAnimation(.easeInOut(duration: 1.0)) { mapBuses = markers } }
+        }
     }
 
     func startClock() {
@@ -161,16 +171,58 @@ extension AppModel {
         return replan()
     }
 
+    /// New endpoints mean a new trip: a started one ends (web directions.js endPlanJourney).
     func setEndpoint(_ which: WritableKeyPath<DirectionsState, Endpoint?>, _ e: Endpoint?) {
+        if activeTrip != nil { endTrip() }
         dir[keyPath: which] = e
         replan()
     }
 
     func swapEndpoints() {
+        if activeTrip != nil { endTrip() }
         let f = dir.from
         dir.from = dir.to
         dir.to = f
         replan()
+    }
+
+    /// "My location" for a Directions field: now when known, else after the location prompt (web useMyLocation).
+    func useMyLocation(to: Bool) {
+        dirMeDenied = false
+        if let u = user {
+            setEndpoint(to ? \DirectionsState.to : \DirectionsState.from, Endpoint(label: "My location", coord: u, isMe: true))
+            return
+        }
+        if locState == .denied { dirMeDenied = true; return }
+        pendingMe = to
+        locate()
+    }
+
+    /// A new location: fill a pending "My location", keep a my-location start current (moves over 50 m re-plan,
+    /// like the web), and re-follow the started trip.
+    func userMoved(_ p: LatLon) {
+        if let to = pendingMe {
+            pendingMe = nil
+            setEndpoint(to ? \DirectionsState.to : \DirectionsState.from, Endpoint(label: "My location", coord: p, isMe: true))
+        } else if page == .directions, dir.from?.isMe == true, Geo.hav(lastUserForDirections ?? dir.from!.coord, p) > 50 {
+            lastUserForDirections = p
+            dir.from = Endpoint(label: "My location", coord: p, isMe: true)
+            replan()
+        }
+        if activeTrip != nil { refreshTrip() }
+    }
+
+    /// A card tapped in Directions: select and frame it; during a trip the timeline follows that option (web
+    /// syncJourney(picked) replaces the stops and bus to follow, even on the same route).
+    func selectOption(_ i: Int) {
+        guard let r = dir.result, r.options.indices.contains(i) else { return }
+        dir.selected = i
+        fit(planPoints(r.options[i]))
+        if let trip = activeTrip, let j = TripJourney.plan(r.options[i], to: trip.label), j.legSignature != trip.journey.legSignature {
+            activeTrip = ActiveTrip(option: r.options[i], label: trip.label, startedAt: trip.startedAt, journey: j)
+            routeState.journey = Journey(rids: j.rids, label: j.label, kind: .plan)
+            refreshTrip(forceActivity: true)
+        }
     }
 
     /// New endpoints: plan on a background thread, then select the first option and frame it on the map, then
@@ -246,6 +298,13 @@ extension AppModel {
             let key = old.options.indices.contains(self.dir.selected) ? old.options[self.dir.selected].key : nil
             self.dir.result = r
             self.dir.selected = key.flatMap { k in r.options.firstIndex { $0.key == k } } ?? min(self.dir.selected, max(0, r.options.count - 1))
+            // a live re-plan never moves the boarding stop of a started trip; only another set of routes replaces it
+            if let trip = self.activeTrip, r.options.indices.contains(self.dir.selected),
+               let j = TripJourney.plan(r.options[self.dir.selected], to: trip.label), Set(j.rids) != Set(trip.journey.rids) {
+                self.activeTrip = ActiveTrip(option: r.options[self.dir.selected], label: trip.label, startedAt: trip.startedAt, journey: j)
+                self.routeState.journey = Journey(rids: j.rids, label: j.label, kind: .plan)
+                self.refreshTrip()
+            }
         }
     }
 
@@ -267,38 +326,139 @@ extension AppModel {
         }
     }
 
-    /// Station + local place suggestions for a typed query (all on device). Pure and nonisolated, so
-    /// DirectionsView runs it off the main thread.
-    nonisolated static func suggestions(_ q: String, user: LatLon?, stops: [Stop], places: PlaceIndex?) -> [Endpoint] {
-        let n = PlaceIndex.norm(q)
+    /// Directions suggestions for a field's text (web directions.js computeSugs): My location, then stations whose
+    /// name has the whole typed word(s), strong nearby places (on-device, whole-word name match), stations that only
+    /// partly match, other places (Photon's merged in). With a spelling assumption, stations are matched with the
+    /// corrected text too. Pure and nonisolated, so it runs off the main thread.
+    nonisolated static func suggestions(_ q: String, user: LatLon?, staticData S: StaticData, places: [PlaceHit],
+                                        assumed: SearchAssumption?) -> [Endpoint] {
+        let t = q.trimmingCharacters(in: .whitespacesAndNewlines)
         var out: [Endpoint] = []
-        if n.isEmpty || "my location".hasPrefix(n), let u = user { out.append(Endpoint(label: "My location", coord: u, isMe: true)) }
-        guard n.count >= 2 else { return out }
-        let hits = stops.filter { PlaceIndex.norm($0.name).contains(n) }.sorted { $0.name < $1.name }.prefix(4)
-        out += hits.map { Endpoint(label: $0.name, coord: $0.coord, stopId: $0.id) }
-        out += (places?.search(q) ?? []).map { Endpoint(label: $0.label, coord: $0.coord, sub: $0.sub) }
+        if t.isEmpty || "my location".hasPrefix(t.lowercased()) {
+            out.append(Endpoint(label: "My location", coord: user ?? LatLon(lat: .nan, lon: .nan), isMe: true,
+                                sub: user != nil ? "Use current location" : "Allow location access"))
+        }
+        guard !t.isEmpty else { return out }
+        let qw = PlaceIndex.norm(t).split(separator: " ").map(String.init)
+        var found = StationSearch.match(S.stops, stopRoutes: S.stopRoutes, t, max: 5)
+        if found.isEmpty, let a = assumed { found = StationSearch.match(S.stops, stopRoutes: S.stopRoutes, a.to, max: 5) }
+        func routesText(_ id: String) -> String {
+            (S.stopRoutes[id] ?? []).map { rid in
+                guard let r = S.routes[rid] else { return rid }
+                return !r.short.isEmpty ? r.short : !r.long.isEmpty ? r.long : rid
+            }.joined(separator: ", ")
+        }
+        let stops = found.map { m -> (e: Endpoint, whole: Bool) in
+            let words = Set(PlaceIndex.norm(m.name).split(separator: " ").map(String.init))
+            return (Endpoint(label: m.name, coord: m.coord, stopId: m.id, sub: "Shuttle stop · " + routesText(m.id)), qw.allSatisfy { words.contains($0) })
+        }
+        let pl = places.map { (e: Endpoint(label: $0.label, coord: $0.coord, sub: $0.sub.isEmpty ? "Place" : $0.sub), strong: $0.local && $0.score >= 85) }
+        out += stops.filter(\.whole).map(\.e) + pl.filter(\.strong).map(\.e) + stops.filter { !$0.whole }.map(\.e) + pl.filter { !$0.strong }.map(\.e)
         return out
     }
 
     func placeSubtitle(_ e: Endpoint) -> String {
-        if e.isMe { return "Current location" }
+        if e.isMe { return e.sub ?? "Current location" }
+        if let sub = e.sub { return sub }
         if let id = e.stopId { return "Shuttle stop" + (staticData.addresses[id].map { " · " + $0.address } ?? "") }
-        return e.sub ?? "Place"
+        return "Place"
+    }
+
+    // MARK: Routes to station (web ui/views/pick.js)
+
+    /// Choose the station: only the routes serving it on the list and map ("Routes to <station>"); with
+    /// "Only show the chosen station's routes" also a station journey hiding the others. Opens Routes.
+    func chooseStation(_ id: String) {
+        var rids: [String] = []
+        for r in staticData.stopRoutes[id] ?? [] where !rids.contains(r) { rids.append(r) }
+        guard !rids.isEmpty else { return }
+        let label = staticData.stops[id]?.name ?? "station"
+        apply(StatePatch(routeFilter: .some(RouteFilter(ids: rids, label: label))))
+        if pickOnly && activeTrip == nil { routeState.journey = stationJourney() }
+        pickHighlights = []
+        pickMode = nil
+        paths[.current] = (paths[.current] ?? []).filter { $0 != .pick }
+        paths[.routes] = []
+        tab = .routes
+        if detent == .peek { detent = .half }
+        syncMapFocus()
+        fit(rids.flatMap { (staticData.shapes[$0] ?? []).flatMap { $0 } })
+    }
+
+    /// Journey for the station filter: its routes the user has not hidden (all of them if every one is hidden).
+    func stationJourney() -> Journey? {
+        guard let f = routeState.routeFilter, !f.ids.isEmpty else { return nil }
+        let hiddenByUser = Set(routeState.hiddenRoutes)
+        let vis = f.ids.filter { !hiddenByUser.contains($0) }
+        return Journey(rids: vis.isEmpty ? f.ids : vis, label: f.label, kind: .station)
+    }
+
+    /// Clear "Routes to <station>" (a station journey ends with it).
+    func clearRouteFilter() {
+        apply(StatePatch(routeFilter: .some(nil)))
+        if routeState.journey?.kind == .station { routeState.journey = nil }
+    }
+
+    /// "Only show these routes" / "Show all routes" for the station filter.
+    func toggleStationJourney() {
+        if routeState.journey?.kind == .station { routeState.journey = nil }
+        else if activeTrip == nil { routeState.journey = stationJourney() }
+    }
+
+    /// "Show all" on the map context bar / journey bar: ends the trip or the station journey (web journey:end).
+    func endJourney() {
+        guard let j = routeState.journey else { return }
+        if j.kind == .plan { endTrip() } else { routeState.journey = nil; apply(StatePatch(routeFilter: .some(nil))) }
+    }
+
+    /// A tap on empty map lowers the sheet to peek (web onMapTap), never right after a stop or bus tap.
+    func mapTapped() {
+        let at = Date().timeIntervalSince1970
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            // a stop / bus tap delivered just before or after this one: that was not the empty map
+            guard let self, self.lastAnnotationTap < at - 0.4 else { return }
+            if self.detent != .peek { self.detent = .peek }
+        }
+    }
+
+    /// A bus tapped on the map opens its route WITHOUT moving the map (web main.js openRoute(rid, false)).
+    func busTapped(_ rid: String) {
+        lastAnnotationTap = Date().timeIntervalSince1970
+        guard staticData.routes[rid] != nil else { return }
+        paths[tab, default: []].append(.route(rid))
+        if detent == .peek { detent = .half }
+        syncMapFocus()
+    }
+
+    /// A stop tapped on the map: picks it in Routes to station or fills the Directions field being edited (web
+    /// onStopTap), else opens the stop.
+    func stopTapped(_ id: String) {
+        lastAnnotationTap = Date().timeIntervalSince1970
+        switch page {
+        case .pick?: chooseStation(id)
+        case .directions?:
+            guard let st = staticData.stops[id] else { return }
+            let e = Endpoint(label: st.name, coord: st.coord, stopId: id)
+            setEndpoint(dirActiveTo ? \DirectionsState.to : \DirectionsState.from, e)
+        default: push(.stop(id))
+        }
     }
 
     // MARK: Trip
 
-    /// Start the selected option: only its routes on the map, Current trip shows the progress timeline,
-    /// and the Live Activity starts (if enabled).
+    /// Start the selected option: only its routes on the map ("Only showing routes for: To X"), Current trip shows
+    /// the progress timeline following the planned bus, and the Live Activity starts (if enabled).
     func startTrip(_ o: TripOption, label: String) {
-        activeTrip = ActiveTrip(option: o, label: label, startedAt: now)
-        routeState.journey = Journey(rids: o.busLegs.map(\.rid), label: label, kind: .plan)
+        guard let j = TripJourney.plan(o, to: label) else { return }
+        activeTrip = ActiveTrip(option: o, label: label, startedAt: now, journey: j)
+        routeState.journey = Journey(rids: j.rids, label: j.label, kind: .plan)
         paths[.current] = []
         tab = .current
         detent = .half
         location.setTripMode(true)
         refreshTrip()
-        if notify.liveActivity, let snap = tripProgress?.snapshot(staticData: staticData) {
+        if notify.liveActivity, let snap = tripFollow?.snapshot(staticData: staticData, now: now) {
             liveActivity.start(title: "To \(label)", state: snap)
             lastActivityPush = (snap: snap, at: Date().timeIntervalSince1970)
         }
@@ -306,19 +466,19 @@ extension AppModel {
     }
 
     func endTrip() {
-        if let snap = tripProgress?.snapshot(staticData: staticData) { liveActivity.end(final: snap) } else { liveActivity.end() }
+        if let snap = tripFollow?.snapshot(staticData: staticData, now: now) { liveActivity.end(final: snap) } else { liveActivity.end() }
         activeTrip = nil
-        tripProgress = nil
+        tripFollow = nil
         lastActivityPush = nil
-        routeState.journey = nil
+        if routeState.journey?.kind == .plan { routeState.journey = nil }
         location.setTripMode(false)
     }
 
     func refreshTrip(forceActivity: Bool = false) {
         guard let trip = activeTrip else { return }
-        let p = TripProgress.compute(option: trip.option, staticData: staticData, live: liveState, now: now)
-        tripProgress = p
-        if let snap = p.snapshot(staticData: staticData) { pushLiveActivity(snap, force: forceActivity) }
+        let p = TripFollow.compute(trip.journey, staticData: staticData, live: liveState, user: user, now: now)
+        if tripFollow != p { tripFollow = p }
+        if let snap = p?.snapshot(staticData: staticData, now: now) { pushLiveActivity(snap, force: forceActivity) }
     }
 
     /// The Live Activity refresh interval when nothing visible changed (it marks itself stale 120 s after the
@@ -378,6 +538,11 @@ extension AppModel {
                 if let o = dir.result?.options.first(where: { !$0.busLegs.isEmpty }) { startTrip(o, label: demoDestination.label) }
                 showLiveActivityPreview = true
             case "about": select(.myroutes); push(.about)
+            case "alerts": push(.alerts)
+            case "pick": pickMode = .loc; push(.pick)
+            case "search":
+                openDirections()
+                demoQuery = "regnstien"
             default: break
             }
             if let d = config.detent { detent = d == "full" ? .full : d == "peek" ? .peek : .half }

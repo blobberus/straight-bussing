@@ -56,7 +56,11 @@ final class SmokeUITests: XCTestCase {
         to.tap()
         to.typeText("chipotle")
         let suggestion = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Chipotle")).firstMatch
-        XCTAssertTrue(suggestion.waitForExistence(timeout: 10), "local place suggestion")
+        if !suggestion.waitForExistence(timeout: 10) {
+            save(app, "14-place-search-failed-light")
+            XCTFail("local place suggestion; tree: " + app.debugDescription.replacingOccurrences(of: "\n", with: " | "))
+            return
+        }
         save(app, "14-place-search-light")
         suggestion.tap()
         let start = app.buttons["startTrip"]
