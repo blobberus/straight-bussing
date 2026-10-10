@@ -10,8 +10,10 @@ XCTest suites that mirror `web/tests`; `ios/App` is the SwiftUI app (map, sheet 
 Routes, My Routes, Settings, About); `ios/Widget` holds the trip Live Activity (Lock Screen + Dynamic Island, option A
 of section 6). XcodeGen (`ios/project.yml`) generates the project on GitHub's free macOS runners
 (`.github/workflows/ios.yml`): Kit tests, app + extension build, UI tests, then simulator screenshots and recordings
-published at https://blobberus.github.io/straight-bussing/ios/ . Still open: push server (P2/P7), notifications
-delivery (P6), widget (P8), signing/TestFlight (P4/P11), UChicago/Passio permission (P0).
+published at https://blobberus.github.io/straight-bussing/ios/ . Bus-near alerts work while the app is open (2026-10-10:
+local notifications, in-app banner fallback, permission asked when a station is chosen; `ios/App/Sources/Model/BusAlerts.swift`).
+Still open: push server (P2/P7, also needed for lock-screen bus alerts), Time Sensitive notifications (P6), widget
+(P8), signing/TestFlight (P4/P11), UChicago/Passio permission (P0).
 
 **Web vs iPhone rule:** iPhone-only capabilities (Live Activities, Dynamic Island, background bus alerts, widgets, time-sensitive notifications) are built in the native layer and are **not shipped to the GitHub Pages site**. The web app only stores the preferences (`state.notify`) and alerts while the page is open. Keep shared logic in plain JS (`web/js/core/*`) so both targets use the same rules.
 
@@ -188,7 +190,7 @@ Apple frameworks: **ActivityKit** (`ActivityAttributes`, `Activity.request(attri
 - [ ] P3 `tools/build_gtfs.py`: `schema_version` (service.json done in v2.1)
 - [ ] P4 Capacitor beta: wrap, safe areas, icons, splash, geolocation, preferences, haptics, deep links; CI to TestFlight
 - [ ] P5 Live Activity, option A: `LiveTrip` plugin + Widget Extension, local start/update/end, self-ticking countdown, stale state, Dynamic Island layouts
-- [ ] P6 Notifications: permission flow, local foreground alerts, Time Sensitive entitlement, Settings rows wired to native
+- [ ] P6 Notifications: permission flow, local foreground alerts, Time Sensitive entitlement, Settings rows wired to native (iOS draft 2026-10-10: all but the Time Sensitive entitlement done)
 - [ ] P7 Server push (option B/C): watches, APNs alert pushes for 2/1 stops, Live Activity push-to-update, privacy label + About text
 - [ ] P8 Widgets: favorite-stop widget (home + lock screen) via App Group
 - [ ] P9 Decision gate: 4.2 feedback from TestFlight/review; SwiftUI rewrite only if needed

@@ -15,7 +15,7 @@ Unofficial student project. Not affiliated with the University. Official service
 ```
 ios/
   StraightBussingKit/     Swift package: all pure logic (port of web/js/core + web/js/data), XCTest suite
-  App/Sources/            SwiftUI app: Model/ (state, polling, prefs, location, Live Activity), Views/
+  App/Sources/            SwiftUI app: Model/ (state, polling, prefs, location, Live Activity, bus alerts), Views/
   App/Resources/          Asset catalog (icon rendered at build time), PrivacyInfo.xcprivacy
   Shared/                 Code in both the app and the widget extension (ActivityAttributes, Live Activity views)
   Widget/                 Widget extension: trip Live Activity (Lock Screen + Dynamic Island)
@@ -88,9 +88,11 @@ Island compact "53RD | 3 stops · 4 min", expanded progress bar + boarding/aligh
   changes, scheduled buses by hour.
 - My Routes: custom routes (tap = show on the map; `.swipeActions` Details / Edit / Delete with
   `allowsFullSwipe: false`; Delete confirms in a dialog), new / save visible routes, editor, favorites, About.
-- Stop detail, Settings (theme, service alerts, bus alerts, Live Activity switch + preview), About (unofficial
-  notice, Call 773.702.8181, official page, privacy, credits "OpenFreeMap · OpenMapTiles · OpenStreetMap" without the
-  copyright sign, plus Apple Maps for the in-app map), Live Activity preview screen.
+- Stop detail, Settings (theme, service alerts, bus alerts with the notification permission state, Live Activity
+  switch + preview), About (unofficial notice, Call 773.702.8181, official page, privacy, credits "OpenFreeMap ·
+  OpenMapTiles · OpenStreetMap" without the copyright sign, plus Apple Maps for the in-app map), Live Activity
+  preview screen. Bus alerts arrive as local notifications while the app is open, or as an in-app banner when
+  notifications are off.
 - Prefs persist in UserDefaults (`Model/Prefs.swift`). Polling every 10 s only while the app is active (30 s
   back-off after 3 failures); stale data is always flagged.
 
@@ -128,7 +130,8 @@ Main Quad, separate wiped prefs), `-screen current|trip|routes|route|myroutes|di
 | Trip timeline (Current trip) | done |
 | Live Activity: Lock Screen + Dynamic Island, started with the trip, updated while the app is open | done (option A) |
 | Live Activity push updates while locked | stub: `LiveActivityController.pushTokenStub` (needs the proxy/push server, conversion to appstore.md sections 6-8) |
-| Bus-near notifications | logic done (`Notify.dueAlerts`), settings UI done; delivering local/push notifications not wired yet |
+| Bus-near alerts while the app is open | done (`Model/BusAlerts.swift`): checked after every poll and settings change, local notifications (banner in the foreground too), in-app banner when notifications are off; permission asked when a station is chosen, re-read on every return to the app; off in `-demo` |
+| Bus-near alerts while locked / in the background | not possible locally (needs the push server, conversion to appstore.md section 7) |
 | Walking directions on sidewalks | stub: straight-line estimates (MKDirections later via `WalkRouter`) |
 | Address search beyond campus places (Photon) | not ported (privacy: on-device only for now) |
 | Favorite-stop home screen widget | not started (P8) |
