@@ -107,12 +107,14 @@ def store_predictions(tr, feed, now, err=None):
         try:
             u = e.get("trip_update") or {}
             trip = (u.get("trip") or {}).get("trip_id")
+            v = u.get("vehicle")                 # buses can share a trip id: keep predictions per bus
+            veh = v.get("id") if isinstance(v, dict) else None
             made = u.get("timestamp") or now
             made = min(made, now)
             for st in u.get("stop_time_update") or []:
                 t = (st.get("arrival") or st.get("departure") or {}).get("time")
                 if trip and t is not None and st.get("stop_id"):
-                    tr.add_prediction(trip, st["stop_id"], made, t, st.get("stop_sequence"))
+                    tr.add_prediction(trip, st["stop_id"], made, t, st.get("stop_sequence"), veh)
         except Exception as ex:
             if err is None:
                 raise

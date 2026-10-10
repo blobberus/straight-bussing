@@ -244,6 +244,60 @@ def prediction_must_be_at_least_120s_old():
     assert tr.pred_for("T1", "C", arr) is None
 
 
+def tu_entity(trip, made, stops, veh=None):
+    """One tripUpdates entity; stops = [(stop_id, stop_sequence, predicted epoch)]."""
+    u = {"trip": {"trip_id": trip}, "timestamp": made,
+         "stop_time_update": [{"stop_id": s, "stop_sequence": q, "arrival": {"time": t}} for s, q, t in stops]}
+    if veh is not None:
+        u["vehicle"] = {"id": veh, "label": "x" + veh}
+    return {"trip_update": u}
+
+
+@test
+def predictions_are_kept_per_vehicle_on_a_shared_trip():
+    """E01 B1: every Downtown Campus Connector bus runs trip 874028. Two buses 25 min apart, both predicted
+    at B in one poll (the second listed last): each arrival must carry its own bus's prediction (before
+    the fix the first bus got the second's, ~+1,500 s off). An update without a vehicle id still counts."""
+    import truth_logger as TL
+    st = fake_static()
+    r1, t1 = simulate(st, ["A", "B", "C"], trip="F", veh="V1")
+    r2, t2 = simulate(st, ["A", "B", "C"], t0=T0 + 1500, trip="F", veh="V2")
+    r3, t3 = simulate(st, ["A", "B", "C"], t0=T0 + 30, trip="G", veh="V3")
+    made = T0 - 200
+    p1, p2, p3 = int(t1[1]) + 5, int(t2[1]) - 7, int(t3[1]) + 9
+    tr = Tracker(st)
+    TL.store_predictions(tr, {"entity": [tu_entity("F", made, [("B", 2, p1)], veh="V1"),
+                                         tu_entity("F", made, [("B", 2, p2)], veh="V2"),
+                                         tu_entity("G", made, [("B", 2, p3)])]}, made)
+    ev = run(tr, sorted(r1 + r2 + r3, key=lambda r: r["vt"]))
+    at_b = {e["veh"]: e for e in ev if e["idx"] == 1}
+    assert sorted(at_b) == ["V1", "V2", "V3"], [(e["veh"], e["idx"]) for e in ev]
+    assert at_b["V1"]["pred"] == (p1, at_b["V1"]["epoch"] - made), at_b["V1"]["pred"]
+    assert at_b["V2"]["pred"] == (p2, at_b["V2"]["epoch"] - made), at_b["V2"]["pred"]
+    assert at_b["V3"]["pred"] == (p3, at_b["V3"]["epoch"] - made), at_b["V3"]["pred"]   # no vehicle id
+    assert tr.pred_for("F", "B", at_b["V1"]["epoch"], veh="V9") is None    # another bus: not V1's or V2's
+
+
+@test
+def loop_terminal_prediction_matches_the_visit_index():
+    """E01 B1: one update predicts the loop terminal A as stop_sequence 1 (leaving) and 5 (back again).
+    The arrival at index 0 must store the seq-1 time, the one at index 4 the seq-5 time (before the fix
+    both got whichever was listed last)."""
+    import truth_logger as TL
+    st = fake_static()
+    reps, truth = simulate(st, ["A", "B", "C", "D", "A"])
+    made = T0 - 300
+    first, last = int(truth[0]) + 3, int(truth[4]) + 4
+    tr = Tracker(st)
+    TL.store_predictions(tr, {"entity": [tu_entity("T1", made, [("A", 1, first), ("B", 2, int(truth[1])),
+                                                                ("C", 3, int(truth[2])), ("D", 4, int(truth[3])),
+                                                                ("A", 5, last)], veh="V1")]}, made)
+    ev = run(tr, reps)
+    assert [e["idx"] for e in ev] == [0, 1, 2, 3, 4], [e["idx"] for e in ev]
+    assert ev[0]["pred"][0] == first and ev[4]["pred"][0] == last, (ev[0]["pred"], ev[4]["pred"], first, last)
+    assert ev[1]["pred"][0] == int(truth[1])
+
+
 @test
 def chicago_dst_rule():
     cases = {datetime(2026, 7, 1, 12, tzinfo=timezone.utc): "2026-07-01 07:00",

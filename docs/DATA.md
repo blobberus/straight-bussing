@@ -21,7 +21,8 @@ trip (stops in between may have been skipped) · `dist_prev_m` metres along the 
 (`web/data/shapes.json`; else haversine x 1.15) · `segment_s` = epoch - prev_arrival_epoch (includes the
 previous dwell) · `speed_mps` = dist / (segment_s - previous dwell), blank if > 30 m/s · `dwell_s` time
 stopped here (0 = drove through, blank = unknown) · `passio_pred_epoch` Passio's newest prediction for this
-trip+stop made >= 120 s before the arrival, `passio_pred_lead_s` = epoch - when it was made · `source`
+bus + trip + stop (at a loop terminal: the one with the matching stop_sequence) made >= 120 s before the
+arrival, `passio_pred_lead_s` = epoch - when it was made · `source`
 `transition` | `proximity`. Rows are appended when the bus leaves the stop, so files are only roughly sorted.
 
 ## Detection (`tools/arrival_detector.py`, every 10 s on Passio `vehiclePositions` + `tripUpdates`)

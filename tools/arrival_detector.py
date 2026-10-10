@@ -17,24 +17,41 @@ class Tracker:
     def __init__(self, st):
         self.st = st
         self.v = {}                                            # (veh, trip) -> state
-        self.preds = defaultdict(lambda: deque(maxlen=400))    # (trip, stop_id) -> (made, predicted)
+        self.preds = defaultdict(lambda: deque(maxlen=400))    # (veh|None, trip, stop_id) -> (made, predicted, seq)
         self.trip_seq = {}                                     # trip -> {stop_id: {stop_sequence}}
         self.last_arr = {}                                     # veh -> (stop_id, epoch, prev dict) of last arrival
 
     # ---- Passio predictions (tripUpdates) ----
-    def add_prediction(self, trip, stop_id, made, predicted, seq=None):
-        d = self.preds[(trip, stop_id)]
-        if not d or d[-1] != (made, predicted):
-            d.append((made, predicted))
+    @staticmethod
+    def _veh(veh):
+        return None if veh is None or veh == "" else str(veh)
+
+    def add_prediction(self, trip, stop_id, made, predicted, seq=None, veh=None):
+        """Keyed per vehicle (trip_update.vehicle.id): buses can share a trip id (every Downtown Campus
+        Connector bus runs one frequency trip), and their predictions must not overwrite each other.
+        Updates without a vehicle id are kept under veh None."""
+        try:
+            seq = None if seq is None else int(seq)
+        except (TypeError, ValueError):
+            seq = None
+        d = self.preds[(self._veh(veh), trip, stop_id)]
+        if not d or d[-1] != (made, predicted, seq):
+            d.append((made, predicted, seq))
         if seq is not None:
-            self.trip_seq.setdefault(trip, {}).setdefault(stop_id, set()).add(int(seq))
+            self.trip_seq.setdefault(trip, {}).setdefault(stop_id, set()).add(seq)
             while len(self.trip_seq) > 3000:
                 del self.trip_seq[next(iter(self.trip_seq))]
 
-    def pred_for(self, trip, stop_id, epoch):
-        """Most recent prediction made >= MIN_PRED_AGE s before epoch -> (pred_epoch, lead_s) | None."""
+    def pred_for(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False):
+        """Most recent prediction made >= MIN_PRED_AGE s before epoch -> (pred_epoch, lead_s) | None.
+        This vehicle's own predictions, else the trip's predictions that came without a vehicle id. At a
+        loop stop (in the route twice) only a prediction whose stop_sequence is idx + 1 counts (or that
+        has no sequence): one update predicts the terminal both as stop 1 and as stop N."""
         best = None
-        for made, pred in self.preds.get((trip, stop_id), ()):
+        d = self.preds.get((self._veh(veh), trip, stop_id)) or self.preds.get((None, trip, stop_id), ())
+        for made, pred, seq in d:
+            if loop_stop and seq is not None and idx is not None and seq != idx + 1:
+                continue
             if made <= epoch - MIN_PRED_AGE and abs(pred - epoch) < 3600:
                 best = (made, pred)
         return (best[1], epoch - best[0]) if best else None
@@ -289,8 +306,10 @@ class Tracker:
                 sv, av = t, None
             elif sv is not None and av is None:
                 av = t
+        loop_stop = self.st.route_stops[route].count(sid) > 1
         s["pend"] = {"epoch": epoch, "route": route, "trip": key[1], "veh": key[0], "idx": idx, "source": source,
-                     "prev": prev, "dwell": None, "pred": self.pred_for(key[1], sid, epoch),
+                     "prev": prev, "dwell": None,
+                     "pred": self.pred_for(key[1], sid, epoch, veh=key[0], idx=idx, loop_stop=loop_stop),
                      "stop_vt": sv, "after_vt": av}
         s["prev"] = {"idx": idx, "epoch": epoch, "dwell": None}
         self.last_arr[key[0]] = (sid, epoch, s["prev"])
