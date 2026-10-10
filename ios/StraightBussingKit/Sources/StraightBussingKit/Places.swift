@@ -55,7 +55,9 @@ public struct PlaceRecord: Hashable, Sendable {
 public struct PlacesData: Decodable, Sendable {
     public var stops: [String]
     public var p: [PlaceRecord]
-    public init(stops: [String], p: [PlaceRecord]) { self.stops = stops; self.p = p }
+    /// When tools/build_places.py made the file ("2026-10-09T17:17Z"); decides which copy is newer.
+    public var generated: String?
+    public init(stops: [String], p: [PlaceRecord], generated: String? = nil) { self.stops = stops; self.p = p; self.generated = generated }
 
     struct Row: Decodable {
         var value: PlaceRecord?
@@ -78,9 +80,10 @@ public struct PlacesData: Decodable, Sendable {
                 : PlaceRecord(name, kind, addr, lat, lon, si.isFinite ? Int(si) : -1, walk.isFinite ? Int(walk) : 0, terms, aliases)
         }
     }
-    enum CodingKeys: String, CodingKey { case stops, p }
+    enum CodingKeys: String, CodingKey { case stops, p, generated }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        generated = try? c.decode(String.self, forKey: .generated)
         stops = (try? c.decode([String].self, forKey: .stops)) ?? []
         p = try c.decode(LossyList<Row>.self, forKey: .p).items.compactMap(\.value)
     }
@@ -116,8 +119,30 @@ public struct PlaceIndex: Sendable {
     ]
 
     /// A searchable form of the name: the real name first, then nicknames. `text` = as written.
-    struct Form: Sendable { var words: [String]; var sq: String; var text: String }
-    struct Entry: Sendable { var p: PlaceRecord; var forms: [Form]; var all: [String] }
+    /// `words` / `sq` are normalized (ASCII a-z 0-9); `wb` / `sqb` are their bytes, made once for the search loops.
+    struct Form: Sendable {
+        var words: [String]; var sq: String; var text: String
+        var wb: [[UInt8]]; var sqb: [UInt8]
+        init(words: [String], sq: String, text: String) {
+            self.words = words; self.sq = sq; self.text = text
+            wb = words.map { Array($0.utf8) }; sqb = Array(sq.utf8)
+        }
+    }
+    struct Entry: Sendable {
+        var p: PlaceRecord; var forms: [Form]; var all: [String]
+        var allB: [[UInt8]]
+        init(p: PlaceRecord, forms: [Form], all: [String]) {
+            self.p = p; self.forms = forms; self.all = all; allB = all.map { Array($0.utf8) }
+        }
+    }
+    /// A query prepared once per ranking pass: normalized words, their bytes, squashed bytes, synonym bytes.
+    struct Query {
+        var words: [String]; var wb: [[UInt8]]; var sqb: [UInt8]; var syn: [[[UInt8]]]
+        init(_ qw: [String]) {
+            words = qw; wb = qw.map { Array($0.utf8) }; sqb = Array(qw.joined().utf8)
+            syn = qw.map { (PlaceIndex.synonyms[$0] ?? []).map { Array($0.utf8) } }
+        }
+    }
     /// A nickname match ranks just below the same exact / prefix match on the real name.
     static let aliasPenalty = 0.5
     /// Per name word the query does not mention (max 3): "univ of chicago" prefers the shorter name.
@@ -189,9 +214,12 @@ public struct PlaceIndex: Sendable {
     }
 
     public var count: Int { index.count }
+    /// `generated` of the places.json this index was built from.
+    public var generated: String? { data.generated }
 
     /// Lowercase, strip accents and punctuation, "&" -> "and", words separated by single spaces.
     public static func norm(_ s: String) -> String {
+        if let fast = normASCII(s) { return fast }
         var scalars = String.UnicodeScalarView()
         for u in s.decomposedStringWithCanonicalMapping.unicodeScalars where !(0x300...0x36F).contains(u.value) { scalars.append(u) }
         let stripped = String(scalars).lowercased()
@@ -211,6 +239,51 @@ public struct PlaceIndex: Sendable {
         return out
     }
 
+    /// `norm` for pure-ASCII text (nearly every name): the same steps on bytes, without Unicode decomposition.
+    /// nil when the text has any non-ASCII character (then the general path runs).
+    static func normASCII(_ s: String) -> String? {
+        var out: [UInt8] = []
+        out.reserveCapacity(s.utf8.count)
+        var pendingSpace = false
+        func letter(_ c: UInt8) {
+            if pendingSpace && !out.isEmpty { out.append(0x20) }
+            pendingSpace = false
+            out.append(c)
+        }
+        for var c in s.utf8 {
+            if c >= 0x80 { return nil }
+            if c >= 0x41 && c <= 0x5A { c += 0x20 }   // A-Z -> a-z
+            if c == 0x26 {                            // "&" -> " and "
+                pendingSpace = true
+                letter(0x61); letter(0x6E); letter(0x64)
+                pendingSpace = true
+                continue
+            }
+            if c == 0x27 || c == 0x60 || c == 0x2E { continue }   // ' ` .
+            if (c >= 0x61 && c <= 0x7A) || (c >= 0x30 && c <= 0x39) { letter(c) } else { pendingSpace = true }
+        }
+        return String(decoding: out, as: UTF8.self)
+    }
+
+    /// `w` starts with `q` (bytes).
+    @inline(__always) static func hasPrefix(_ w: [UInt8], _ q: [UInt8]) -> Bool {
+        if q.count > w.count { return false }
+        for i in 0..<q.count where w[i] != q[i] { return false }
+        return true
+    }
+
+    /// `q` occurs somewhere in `w` (bytes).
+    static func contains(_ w: [UInt8], _ q: [UInt8]) -> Bool {
+        let n = w.count, m = q.count
+        if m == 0 { return true }
+        if m > n { return false }
+        outer: for i in 0...(n - m) {
+            for k in 0..<m where w[i + k] != q[k] { continue outer }
+            return true
+        }
+        return false
+    }
+
     /// Edit distance <= 1 (insert, delete, substitute or swap two neighbours).
     static func near1(_ a: [UInt8], _ b: [UInt8]) -> Bool {
         if a == b { return true }
@@ -228,12 +301,17 @@ public struct PlaceIndex: Sendable {
 
     /// Best weight of one query word against words: 1 exact, .85 prefix, .7 one typo, 0 none.
     static func wordWeight(_ q: String, _ words: [String], fuzzy: Bool = true) -> Double {
+        wordWeight(Array(q.utf8), words.map { Array($0.utf8) }, fuzzy: fuzzy)
+    }
+
+    /// `wordWeight` on normalized bytes (normalized text is ASCII, so byte counts are letter counts).
+    static func wordWeight(_ q: [UInt8], _ words: [[UInt8]], fuzzy: Bool = true) -> Double {
         var best = 0.0
-        let qb = Array(q.utf8)
+        let qn = q.count
         for w in words {
             if w == q { return 1 }
-            if q.count >= 2 && w.hasPrefix(q) { best = max(best, 0.85) }
-            else if fuzzy && q.count >= 5 && w.count >= 4 && near1(qb, Array(w.utf8)) { best = max(best, 0.7) }
+            if qn >= 2 && hasPrefix(w, q) { best = max(best, 0.85) }
+            else if fuzzy && qn >= 5 && w.count >= 4 && best < 0.7 && near1(q, w) { best = 0.7 }
         }
         return best
     }
@@ -243,36 +321,54 @@ public struct PlaceIndex: Sendable {
     ///   - fuzzy: allow one typo per word
     ///   - names: names and nicknames only (no category / address matches)
     static func scorePlace(_ e: Entry, _ qw: [String], _ qsq: String, fuzzy: Bool = true, names: Bool = false) -> Double {
+        scorePlace(e, Query(qw), fuzzy: fuzzy, names: names)
+    }
+
+    /// `scorePlace` for a prepared query (bytes compared, nothing allocated per place unless words match).
+    static func scorePlace(_ e: Entry, _ q: Query, fuzzy: Bool = true, names: Bool = false) -> Double {
         var best = 0.0
+        let qn = q.sqb.count
         for (k, f) in e.forms.enumerated() {
             let alias = k > 0 ? aliasPenalty : 0
             var s = 0.0
-            if f.sq == qsq { s = 100 - alias }
-            else if qsq.count >= 3 && f.sq.hasPrefix(qsq) { s = whole - alias }
+            if f.sqb == q.sqb { s = 100 - alias }
+            else if qn >= 3 && hasPrefix(f.sqb, q.sqb) { s = whole - alias }
             else {
-                let ws = qw.map { wordWeight($0, f.words, fuzzy: fuzzy) }
-                if ws.allSatisfy({ $0 > 0 }) {
-                    let rest = f.words.filter { w in !qw.contains { w.hasPrefix($0) } }.count
-                    s = 60 + 25 * (ws.reduce(0, +) / Double(ws.count)) + (ws[0] == 1 && f.words.first == qw[0] ? 3 : 0)
+                // every query word must match a word of this name (sum and first weight, summed in order)
+                var all = true, sum = 0.0, first = 0.0
+                for (i, w) in q.wb.enumerated() {
+                    let x = wordWeight(w, f.wb, fuzzy: fuzzy)
+                    if x <= 0 { all = false; break }
+                    sum += x
+                    if i == 0 { first = x }
+                }
+                if all {
+                    let rest = f.wb.filter { w in !q.wb.contains { hasPrefix(w, $0) } }.count
+                    s = 60 + 25 * (sum / Double(q.wb.count)) + (first == 1 && f.words.first == q.words[0] ? 3 : 0)
                         - unmatchedPenalty * Double(min(3, rest))
-                } else if qsq.count >= 4 && f.sq.contains(qsq) {
+                } else if qn >= 4 && contains(f.sqb, q.sqb) {
                     s = 70
                 }
             }
             best = max(best, s)
         }
         if best > 0 || names { return best }
-        let xs = qw.map { q in max(wordWeight(q, e.all, fuzzy: fuzzy), (synonyms[q] ?? []).map { wordWeight($0, e.all, fuzzy: false) }.max() ?? 0) }
-        if xs.allSatisfy({ $0 > 0 }) { return 45 + 20 * (xs.reduce(0, +) / Double(xs.count)) }
-        return 0
+        var sum = 0.0
+        for (i, w) in q.wb.enumerated() {
+            var x = wordWeight(w, e.allB, fuzzy: fuzzy)
+            for syn in q.syn[i] where x < 1 { x = max(x, wordWeight(syn, e.allB, fuzzy: false)) }
+            if x <= 0 { return 0 }
+            sum += x
+        }
+        return q.wb.isEmpty ? 0 : 45 + 20 * (sum / Double(q.wb.count))
     }
 
     /// Hits for normalized query words, best first (score, then walk, then name).
     func rank(_ qw: [String], fuzzy: Bool, names: Bool = false) -> [(Double, Entry)] {
-        let qsq = qw.joined()
+        let q = Query(qw)
         var hits: [(Double, Entry)] = []
         for e in index {
-            let s = Self.scorePlace(e, qw, qsq, fuzzy: fuzzy, names: names)
+            let s = Self.scorePlace(e, q, fuzzy: fuzzy, names: names)
             if s >= Self.minScore { hits.append((s, e)) }
         }
         let en = Locale(identifier: "en_US")

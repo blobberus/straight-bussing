@@ -49,11 +49,22 @@ public enum Spell {
     static func isDigit(_ c: UInt8) -> Bool { c >= 0x30 && c <= 0x39 }
     static func hasDigit(_ s: String) -> Bool { s.utf8.contains(where: isDigit) }
 
-    static func sub(_ x: UInt8, _ y: UInt8) -> Double {
+    static func subSlow(_ x: UInt8, _ y: UInt8) -> Double {
         if x == y { return 0 }
         if adjacent(x, y) { return nearKey }
         if vowels.contains(x) && vowels.contains(y) { return vowelCost }
         return isDigit(x) || isDigit(y) ? 1.5 : 1
+    }
+
+    /// `subSlow` for every ASCII pair (index x << 7 | y), built once: the distance loop does no lookups.
+    static let subTable: [Double] = {
+        var t = [Double](repeating: 1, count: 128 * 128)
+        for x in 0..<128 { for y in 0..<128 { t[x << 7 | y] = subSlow(UInt8(x), UInt8(y)) } }
+        return t
+    }()
+
+    static func sub(_ x: UInt8, _ y: UInt8) -> Double {
+        x < 128 && y < 128 ? subTable[Int(x) << 7 | Int(y)] : subSlow(x, y)
     }
 
     static func indel(_ s: [UInt8], _ k: Int) -> Double {
@@ -63,12 +74,18 @@ public enum Spell {
     /// Fewest edits two words can be apart judging by their letters alone (cheap filter before the full distance).
     static func lowerBound(_ a: [UInt8], _ b: [UInt8]) -> Int {
         var hist = [Int](repeating: 0, count: 128)
+        return a.withUnsafeBufferPointer { pa in b.withUnsafeBufferPointer { pb in lowerBound(pa, pb, &hist) } }
+    }
+
+    /// `lowerBound` with a caller's all-zero 128-entry histogram (left all zero again).
+    static func lowerBound(_ a: UnsafeBufferPointer<UInt8>, _ b: UnsafeBufferPointer<UInt8>, _ hist: inout [Int]) -> Int {
         for c in a { hist[Int(c & 127)] += 1 }
         var common = 0
         for c in b {
             let k = Int(c & 127)
             if hist[k] > 0 { hist[k] -= 1; common += 1 }
         }
+        for c in a { hist[Int(c & 127)] = 0 }
         return max(a.count, b.count) - common
     }
 
@@ -79,24 +96,52 @@ public enum Spell {
     }
 
     static func distance(_ a: [UInt8], _ b: [UInt8], limit: Int) -> Distance {
+        var scratch = Scratch()
+        return a.withUnsafeBufferPointer { pa in b.withUnsafeBufferPointer { pb in distance(pa, pb, limit: limit, &scratch) } }
+    }
+
+    /// Buffers reused across the distance calls of one search (no allocation per vocabulary word).
+    struct Scratch {
+        var C: [Double] = []
+        var E: [Int] = []
+        var ia: [Double] = []
+        var ib: [Double] = []
+        var hist = [Int](repeating: 0, count: 128)
+    }
+
+    /// The `indel` cost of every position of `s` into `out` (same rule: next to the same letter = doubled).
+    static func indels(_ s: UnsafeBufferPointer<UInt8>, _ out: inout [Double]) {
+        let n = s.count
+        if out.count < n { out = [Double](repeating: 0, count: n) }
+        for k in 0..<n { out[k] = (k > 0 && s[k] == s[k - 1]) || (k + 1 < n && s[k] == s[k + 1]) ? doubleCost : 1 }
+    }
+
+    static func distance(_ a: UnsafeBufferPointer<UInt8>, _ b: UnsafeBufferPointer<UInt8>, limit: Int, _ sc: inout Scratch) -> Distance {
         let n = a.count, m = b.count, w = m + 1
         if abs(n - m) > limit { return .far }
-        if lowerBound(a, b) > limit { return .far }
-        var C = [Double](repeating: 0, count: (n + 1) * w)
-        var E = [Int](repeating: 0, count: (n + 1) * w)
-        if m > 0 { for j in 1...m { C[j] = C[j - 1] + indel(b, j - 1); E[j] = j } }
+        if lowerBound(a, b, &sc.hist) > limit { return .far }
+        let size = (n + 1) * w
+        // move the buffers out (no copy-on-write while they are written), back in at the end
+        var C = sc.C, E = sc.E, ia = sc.ia, ib = sc.ib
+        sc.C = []; sc.E = []; sc.ia = []; sc.ib = []
+        defer { sc.C = C; sc.E = E; sc.ia = ia; sc.ib = ib }
+        if C.count < size { C = [Double](repeating: 0, count: size); E = [Int](repeating: 0, count: size) }
+        indels(a, &ia)
+        indels(b, &ib)
+        C[0] = 0; E[0] = 0
+        if m > 0 { for j in 1...m { C[j] = C[j - 1] + ib[j - 1]; E[j] = j } }
         if n > 0 {
             for i in 1...n {
-                let r = i * w, up = r - w, x = a[i - 1]
-                C[r] = C[up] + indel(a, i - 1); E[r] = i
+                let r = i * w, up = r - w, x = a[i - 1], dA = ia[i - 1]
+                C[r] = C[up] + dA; E[r] = i
                 var rowMin = E[r]
                 if m > 0 {
                     for j in 1...m {
                         let y = b[j - 1]
                         var best = C[up + j - 1] + sub(x, y), ed = E[up + j - 1] + (x == y ? 0 : 1)
-                        let del = C[up + j] + indel(a, i - 1)
+                        let del = C[up + j] + dA
                         if del < best { best = del; ed = E[up + j] + 1 }
-                        let ins = C[r + j - 1] + indel(b, j - 1)
+                        let ins = C[r + j - 1] + ib[j - 1]
                         if ins < best { best = ins; ed = E[r + j - 1] + 1 }
                         if i > 1 && j > 1 && x != y && x == b[j - 2] && a[i - 2] == y {
                             let t = C[up - w + j - 2] + swapCost
@@ -117,6 +162,15 @@ public enum Spell {
         public var count: [String: Int]
         public var sorted: [String]
         public var byLen: [Int: [String]]
+        /// UTF-8 bytes of `sorted` and of `byLen` (same order), made once for the distance loops.
+        var sortedBytes: [[UInt8]] = []
+        var byLenBytes: [Int: [[UInt8]]] = [:]
+
+        init(count: [String: Int], sorted: [String], byLen: [Int: [String]]) {
+            self.count = count; self.sorted = sorted; self.byLen = byLen
+            sortedBytes = sorted.map { Array($0.utf8) }
+            byLenBytes = byLen.mapValues { $0.map { Array($0.utf8) } }
+        }
     }
 
     /// Vocabulary from normalized texts (lowercase words separated by single spaces).
@@ -163,18 +217,25 @@ public enum Spell {
                 order.append(word)
             }
         }
-        for L in (wb.count - lim)...(wb.count + lim) {
-            for c in v.byLen[L] ?? [] {
-                let d = distance(wb, Array(c.utf8), limit: lim)
-                if d.edits <= lim { add(c, d, 0) }
+        var sc = Scratch()
+        wb.withUnsafeBufferPointer { pw in
+            for L in (wb.count - lim)...(wb.count + lim) {
+                guard let words = v.byLen[L] else { continue }
+                let bytes = v.byLenBytes[L] ?? []
+                for (k, c) in words.enumerated() {
+                    let cb = k < bytes.count ? bytes[k] : Array(c.utf8)
+                    let d = cb.withUnsafeBufferPointer { distance(pw, $0, limit: lim, &sc) }
+                    if d.edits <= lim { add(c, d, 0) }
+                }
             }
-        }
-        if last {
-            for c in v.sorted {
-                let cb = Array(c.utf8)
-                if cb.count <= wb.count + 1 { continue }
-                let d = distance(wb, Array(cb[0..<wb.count]), limit: 1)
-                if d.edits <= 1 { add(c, d, prefixCost) }
+            if last {
+                for (k, c) in v.sorted.enumerated() {
+                    let cb = k < v.sortedBytes.count ? v.sortedBytes[k] : Array(c.utf8)
+                    if cb.count <= wb.count + 1 { continue }
+                    // the word's beginning, as long as what was typed
+                    let d = cb.withUnsafeBufferPointer { distance(pw, UnsafeBufferPointer(rebasing: $0[0..<wb.count]), limit: 1, &sc) }
+                    if d.edits <= 1 { add(c, d, prefixCost) }
+                }
             }
         }
         let list = order.compactMap { found[$0] }.stableSorted { a, b in

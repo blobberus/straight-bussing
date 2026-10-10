@@ -81,11 +81,28 @@ public struct FeedClient: Sendable {
     public static let defaultBase = URL(string: "https://passio3.com/chicago/passioTransit/gtfs/realtime/")!
     public static let feeds = ["vehiclePositions", "tripUpdates", "serviceAlerts"]
 
+    /// The session for the live feeds: ephemeral with no URL cache (every poll has a new cache-busting URL, so
+    /// the shared session would write a new cache entry to disk every 10 s for nothing), no cookies, request
+    /// and resource timeouts, and no waiting for connectivity (an offline poll fails at once, so the status pill
+    /// says so instead of hanging). One session for the app's life keeps the HTTP/2 connection warm between polls.
+    public static let liveSession: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.urlCache = nil
+        c.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        c.httpCookieStorage = nil
+        c.httpShouldSetCookies = false
+        c.timeoutIntervalForRequest = 8
+        c.timeoutIntervalForResource = 15
+        c.waitsForConnectivity = false
+        c.httpMaximumConnectionsPerHost = 4
+        return URLSession(configuration: c)
+    }()
+
     public var base: URL
     public var loader: HTTPDataLoader
     public var timeout: TimeInterval
 
-    public init(base: URL = FeedClient.defaultBase, loader: HTTPDataLoader = URLSession.shared, timeout: TimeInterval = 8) {
+    public init(base: URL = FeedClient.defaultBase, loader: HTTPDataLoader = FeedClient.liveSession, timeout: TimeInterval = 8) {
         self.base = base; self.loader = loader; self.timeout = timeout
     }
 

@@ -51,6 +51,18 @@ final class WalkRoutingTests: XCTestCase, PlannerFixture {
         XCTAssertEqual(peeked, r)
     }
 
+    func testCacheIsCappedOldestFirst() async {
+        let log = Log()
+        let cache = WalkRouteCache(fetch: fake(log))
+        let n = WalkRouteCache.maxEntries + 40
+        for i in 0..<n { _ = await cache.route(LatLon(lat: A.lat + Double(i) * 0.001, lon: A.lon), B) }
+        let count = await cache.count
+        XCTAssertEqual(count, WalkRouteCache.maxEntries, "bounded memory")
+        let first = await cache.peek(A, B), last = await cache.peek(LatLon(lat: A.lat + Double(n - 1) * 0.001, lon: A.lon), B)
+        XCTAssertNil(first, "oldest walk dropped first")
+        XCTAssertNotNil(last, "newest kept")
+    }
+
     func testImplausibleRoutesGiveTheEstimate() async {
         for factor in [0.5, 7.0] {
             let cache = WalkRouteCache(fetch: fake(Log(), factor: factor))

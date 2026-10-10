@@ -58,6 +58,7 @@ public enum Planner {
     struct RideCore { var min: Double; var source: RideSource; var conf: Double; var p10: Double?; var p90: Double? }
     struct Ride { var core: RideCore; var alightT: Double }
     struct WalkCand { var i: Int; var id: String; var m: Double; var min: Double }
+    struct RideKey: Hashable { var rid: String; var from: Int; var to: Int }
 
     /// Per-plan helpers closed over the data.
     final class Ctx {
@@ -66,7 +67,9 @@ public enum Planner {
         let predict: RidePredictor?
         var live: [String: [(t: Double, tu: TripUpdate)]] = [:]
         var nBuses: [String: Int] = [:]
-        var rideCache: [String: RideCore] = [:]
+        /// Keyed by route + first and last path index: `pathIdx` makes the path from those alone.
+        var rideCache: [RideKey: RideCore] = [:]
+        var cycleCache: [String: Double] = [:]
 
         init(data: PlannerData, predict: RidePredictor?, walkMins: [String: Double]) {
             stops = data.stops
@@ -95,6 +98,13 @@ public enum Planner {
             return m
         }
 
+        func cycleMin(_ rid: String, _ seq: Seq) -> Double {
+            if let c = cycleCache[rid] { return c }
+            let c = cycleMin(seq)
+            cycleCache[rid] = c
+            return c
+        }
+
         func cycleMin(_ seq: Seq) -> Double {
             let n = seq.ids.count
             var m = pathM(seq, Array(0..<n))
@@ -118,7 +128,7 @@ public enum Planner {
                 return Wait(min: max(0, (L.t - readyT) / 60), live: true, t: L.t, tu: L.tu)
             }
             guard let n = nBuses[rid], n > 0 else { return nil }
-            let min = Swift.min(Planner.headwayCap, Swift.max(1, cycleMin(seq) / Double(n) / 2))
+            let min = Swift.min(Planner.headwayCap, Swift.max(1, cycleMin(rid, seq) / Double(n) / 2))
             return Wait(min: min, live: false, t: readyT + min * 60, tu: nil)
         }
 
@@ -128,7 +138,7 @@ public enum Planner {
             if w.live, let tu = w.tu, let tb = tripAt(tu, b, w.t) {
                 return Ride(core: RideCore(min: max(1, (tb - w.t) / 60), source: .live, conf: 0.8), alightT: tb)
             }
-            let key = rid + "|" + path.map(String.init).joined(separator: ",")
+            let key = RideKey(rid: rid, from: path[0], to: path[path.count - 1])
             var r = rideCache[key]
             if r == nil {
                 if let p = try? predict?.rideMinutes(rid: rid, from: a, to: b, when: w.t), let min = p.min, min.isFinite, min > 0 {

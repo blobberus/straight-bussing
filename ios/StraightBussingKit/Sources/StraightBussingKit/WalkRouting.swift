@@ -6,7 +6,8 @@ import Foundation
 ///  - a route shorter than 0.9 x the straight line - 5 m, longer than 6 x + 200 m, or with a bad path is ignored;
 ///  - minutes = meters / 80 (the planner's pace); the path is wrapped with the two rounded endpoints;
 ///  - a failure, a timeout (3 s) or an implausible route gives the straight-line x 1.2 estimate, retried after
-///    60 s; a routed walk is kept for the session; identical requests share one call; at most 6 in flight.
+///    60 s; a routed walk is kept for the session (at most `maxEntries`, oldest dropped first); identical requests
+///    share one call; at most 6 in flight.
 /// Never throws. `Planner.refineWalking` then keeps a routed walk from being shorter than the straight line.
 public actor WalkRouteCache {
     /// A walk as the platform router returns it: meters along the path and the path.
@@ -20,11 +21,15 @@ public actor WalkRouteCache {
     public static let maxParallel = 6
     public static let failTTL = 60.0
     public static let timeoutS = 3.0
+    /// Cached walks kept (each holds a sidewalk path): a long session must not grow memory without bound.
+    public static let maxEntries = 256
 
     let fetch: Fetch
     let timeout: Double
     let clock: @Sendable () -> Double
     var cache: [String: (res: WalkResult, exp: Double)] = [:]
+    /// Keys of `cache`, oldest first.
+    var order: [String] = []
     var inflight: [String: Task<WalkResult, Never>] = [:]
     var active = 0
     var waiting: [CheckedContinuation<Void, Never>] = []
@@ -55,7 +60,7 @@ public actor WalkRouteCache {
         let a = Self.rounded(from), b = Self.rounded(to), k = Self.key(a, b)
         if let c = cache[k] {
             if c.exp >= clock() { return c.res }
-            cache[k] = nil
+            forget(k)
         }
         if let t = inflight[k] { return await t.value }
         let task = Task { await self.run(a, b, k) }
@@ -80,10 +85,23 @@ public actor WalkRouteCache {
         let routed = await fetchRoute(a, b)
         release()
         let res = routed ?? WalkResult.estimate(a, b)
-        cache[k] = (res: res, exp: routed != nil ? .infinity : clock() + Self.failTTL)
+        remember(k, (res: res, exp: routed != nil ? .infinity : clock() + Self.failTTL))
         inflight[k] = nil
         return res
     }
+
+    func remember(_ k: String, _ v: (res: WalkResult, exp: Double)) {
+        if cache.updateValue(v, forKey: k) == nil { order.append(k) }
+        while cache.count > Self.maxEntries, !order.isEmpty { cache[order.removeFirst()] = nil }
+    }
+
+    func forget(_ k: String) {
+        cache[k] = nil
+        order.removeAll { $0 == k }
+    }
+
+    /// Number of cached walks (tests).
+    public var count: Int { cache.count }
 
     func acquire() async {
         if active < Self.maxParallel { active += 1; return }

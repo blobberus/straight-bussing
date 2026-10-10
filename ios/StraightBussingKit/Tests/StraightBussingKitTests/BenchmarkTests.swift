@@ -179,6 +179,24 @@ final class BenchmarkTests: XCTestCase {
         XCTAssertGreaterThan(sink, 0)
     }
 
+    /// The same, split: typing a name that matches (no spelling correction) ...
+    func testSearchTypingOnly() throws {
+        let idx = try XCTUnwrap(StaticLoader.loadPlaces(from: TS.webData))
+        let qs = Array(Self.keystrokes.prefix(9))
+        var sink = 0
+        measure { for q in qs { sink += idx.find(q).items.count } }
+        XCTAssertGreaterThan(sink, 0)
+    }
+
+    /// ... and misspelled or category queries (the spelling-correction path).
+    func testSearchTyposOnly() throws {
+        let idx = try XCTUnwrap(StaticLoader.loadPlaces(from: TS.webData))
+        let qs = Array(Self.keystrokes.dropFirst(9))
+        var sink = 0
+        measure { for q in qs { sink += idx.find(q).items.count } }
+        XCTAssertGreaterThan(sink, 0)
+    }
+
     func testSearchStations() {
         let S = Self.S
         var sink = 0
