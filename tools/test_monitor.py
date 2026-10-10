@@ -25,7 +25,7 @@ with open(out, "a") as f:
     f.write(row("SHARED", 1791400000))
 end, k = time.time() + a.duration, 0
 while time.time() < end:
-    k += 1      # one bus per chunk: the same bus at the same stop within 120 s would be one arrival
+    k += 1      # one bus per chunk, 400 s apart: the same bus at the same stop within 300 s is one arrival
     with open(out, "a") as f: f.write(row(f"T{os.getpid()}_{k}", 1791400000 + k * 400, f"V{os.getpid()}"))
     time.sleep(0.4)
 '''

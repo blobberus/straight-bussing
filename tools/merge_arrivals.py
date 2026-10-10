@@ -5,12 +5,13 @@
   python tools/merge_arrivals.py --into data/ground_truth/arrivals.csv --dedupe   # one-off, after a rule change
 
 Collector runs overlap on purpose (.github/workflows/collect.yml) so there is never a gap, which
-means two runs can log the same arrival a few seconds apart. A row is a duplicate when vehicle and
-stop match and the epochs are within DUP_S, whatever the trip id and stop_index: two collectors can
-disagree on Passio's trip id (it flaps between ids, and flips at terminals, where a stop is both the
-last index of one trip and index 0 of the next), and on this network a stop repeats within a route
-only at its terminal, so a bus can't be at one stop twice within DUP_S. The kept row is the one with more
-filled fields (a run that just started has no previous stop or Passio prediction yet). Existing
+means two runs can log the same arrival a few seconds apart, or a few minutes apart when they timed
+it differently (E01: 10 pairs 121-300 s apart). A row is a duplicate when vehicle and stop match and
+the epochs are within DUP_S = 300 s, whatever the trip id and stop_index: two collectors can disagree
+on Passio's trip id (it flaps between ids, and flips at terminals, where a stop is both the last index
+of one trip and index 0 of the next), and no loop on this network is shorter than ~15 min (real
+same-trip revisits start at ~16 min), so a bus can't be at one stop twice within DUP_S. The kept row is
+the one with more filled fields (a run that just started has no previous stop or Passio prediction yet). Existing
 lines are never re-serialised, so git diffs stay small. Idempotent: merging the same file twice
 changes nothing. Stdlib only.
 """
@@ -21,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from arrivals_lib import COLUMNS, read_tail
 
-DUP_S = 120          # same vehicle + stop within this many seconds = one arrival
+DUP_S = 300          # same vehicle + stop within this many seconds = one arrival (E01 B4; was 120)
 HEADER = ",".join(COLUMNS) + "\n"
 I_EPOCH, I_VEH, I_STOP = (COLUMNS.index(c) for c in ("epoch", "vehicle_id", "stop_id"))
 

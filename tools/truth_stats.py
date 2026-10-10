@@ -38,8 +38,8 @@ def main():
         visits[(r["vehicle_id"], r["stop_id"])].append(int(r["epoch"]))
     gaps = [b - a for v in visits.values() for a, b in zip(sorted(v), sorted(v)[1:])]
     print(f"sanity: speeds outside 0-20 m/s: {sum(not 0 < x <= 20 for x in sp)}, dist_prev_m <= 0: "
-          f"{sum(x <= 0 for x in dist)}, same bus + stop <= 120 s (merge rule): {sum(g <= 120 for g in gaps)}, "
-          f"121-{SAME_VISIT_S} s: {sum(120 < g <= SAME_VISIT_S for g in gaps)}, "
+          f"{sum(x <= 0 for x in dist)}, same bus + stop <= 120 s (old merge rule): {sum(g <= 120 for g in gaps)}, "
+          f"121-{SAME_VISIT_S} s (merged since E01 B4): {sum(120 < g <= SAME_VISIT_S for g in gaps)}, "
           f"median dwell: {statistics.median(dw) if dw else '-'} s")
     kept, stale, untrusted = clean_dicts(rows)
     kept = {id(r) for r in kept}

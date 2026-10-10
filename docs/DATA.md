@@ -91,7 +91,7 @@ Actions > Variables), or "Disable workflow" in the Actions tab (the keepalive st
 1. checks out main, refreshes `web/data` from the GTFS zip (falls back to the committed copy),
 2. seeds the detector from the tail of the shared CSV, logs 70 min into its own `run.csv`,
 3. merges with `tools/merge_arrivals.py` into a worktree of the orphan `data` branch: duplicates from
-   the overlap (same vehicle + stop within 120 s, whatever trip id or stop_index: collectors can
+   the overlap (same vehicle + stop within 300 s, whatever trip id or stop_index: collectors can
    disagree on Passio's trip id) are dropped, keeping the row with
    more filled fields; the file is archived past 40 MB,
 4. refreshes `web/data/learned.json`, commits `data: arrivals <ts>`, pushes. If another run pushed first

@@ -87,6 +87,19 @@ def test_trip_id_disagreement_is_one_arrival():
     assert body(into) == [row(T0, "A", 4, trip="T1", prev="D"), row(T0 + 310, "C", 2, trip="T8", prev="B")]
 
 
+def test_one_visit_timed_minutes_apart_is_one_arrival():
+    """E01 B4: two collectors timed one visit 121-300 s apart (10 pairs on 2026-10-08/09, 8 with the same
+    trip + index); the 120 s window kept both. A real revisit is >= ~15 min later and is kept."""
+    d = tmp()
+    write(d / "a.csv", [row(T0, "S", 3, veh="V", trip="T1")])
+    write(d / "b.csv", [row(T0 + 141, "S", 3, veh="V", trip="T1"), row(T0 + 960, "S", 3, veh="V", trip="T1")])
+    into = d / "arrivals.csv"
+    merge(into, d / "a.csv")
+    s = merge(into, d / "b.csv")
+    assert s["dup"] == 1 and s["added"] == 1 and s["replaced"] == 0, s
+    assert body(into) == [row(T0, "S", 3, veh="V", trip="T1"), row(T0 + 960, "S", 3, veh="V", trip="T1")]
+
+
 def test_bad_lines_skipped_and_existing_lines_untouched():
     d = tmp()
     into = d / "arrivals.csv"
@@ -101,11 +114,11 @@ def test_bad_lines_skipped_and_existing_lines_untouched():
 def test_rotation_and_dedupe_against_archive():
     d = tmp()
     into = d / "arrivals.csv"
-    write(d / "a.csv", [row(T0 + i * 300, "A", 0, trip=f"T{i}") for i in range(50)])
+    write(d / "a.csv", [row(T0 + i * 900, "A", 0, trip=f"T{i}") for i in range(50)])     # 50 distinct visits
     s = merge(into, d / "a.csv", rotate_mb=0.001)
     assert "rotated" in s and into.read_text(encoding="utf-8") == HEADER, s
     assert len(list((d / "archive").glob("arrivals-*.csv"))) == 1
-    write(d / "b.csv", [row(T0 + 49 * 300 + 3, "A", 0, trip="T49"), row(T0 + 99999, "B", 1)])
+    write(d / "b.csv", [row(T0 + 49 * 900 + 3, "A", 0, trip="T49"), row(T0 + 99999, "B", 1)])
     s = merge(into, d / "b.csv")
     assert s["dup"] == 1 and s["added"] == 1, s
 
