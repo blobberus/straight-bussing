@@ -19,7 +19,7 @@ final class ArrivalsTests: XCTestCase {
     func testArrivalsSortedKeepRecentPast() {
         let r = Arrivals.arrivalsFor(trips: trips, stopId: "S", now: T)
         XCTAssertEqual(r.map { $0.t - T }, [-20, 120, 600, 1800])
-        XCTAssertEqual(r[1], Arrival(rid: "R2", t: T + 120, bus: "202", tripId: "t2"))
+        XCTAssertEqual(r[1], Arrival(rid: "R2", t: T + 120, bus: "202", tripId: "t2", vehicleId: "v2"))
         XCTAssertNil(r[0].bus, "missing label -> nil")
         XCTAssertEqual(r[0].tripId, "t3")
     }
@@ -140,9 +140,10 @@ final class OperatingTests: XCTestCase {
     func testOutOfServiceUnlessLivePredictions() {
         XCTAssertTrue(Operating.isOperating(bus("n", "NIGHT", NOW), ctx()), "night route scheduled")
         XCTAssertFalse(Operating.isOperating(bus("d", "DAY", NOW), ctx()), "day route ended at 21:00")
-        let trips = [TripUpdate.make("late", nil, [("S", NOW + 240)])]
+        // like the web fixture: a trip update without a vehicle (a shared trip id with another bus is SharedTripIdTests)
+        let trips = [TripUpdate(trip: .init(tripId: "late"), stopTimeUpdates: [.init(stopId: "S", arrival: NOW + 240)])]
         XCTAssertTrue(Operating.isOperating(bus("d", "DAY", NOW, trip: "late"), ctx(trips: trips)), "finishing a late last trip")
-        let old = [TripUpdate.make("late", nil, [("S", NOW - 600)])]
+        let old = [TripUpdate(trip: .init(tripId: "late"), stopTimeUpdates: [.init(stopId: "S", arrival: NOW - 600)])]
         XCTAssertFalse(Operating.isOperating(bus("d", "DAY", NOW, trip: "late"), ctx(trips: old)), "only past predictions")
         XCTAssertTrue(Operating.isOperating(bus("x", "X", NOW), ctx()), "route without schedule data is not hidden")
     }

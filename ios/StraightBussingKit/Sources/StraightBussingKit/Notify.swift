@@ -50,9 +50,14 @@ public enum Notify {
         return (loop ? Array(l.dropLast()) : l, loop)
     }
 
+    /// The bus's own trip update: Passio reuses one trip id for several buses, so trip AND vehicle must match
+    /// (the trip id alone only when it is unambiguous or the bus has no vehicle id), else the vehicle's entity.
     static func tripFor(_ trips: [TripUpdate], _ bus: VehiclePosition) -> TripUpdate? {
-        if let tid = bus.trip.tripId, let t = trips.first(where: { $0.trip.tripId == tid }) { return t }
-        if let vid = bus.vehicle.id, let t = trips.first(where: { $0.vehicle.id == vid }) { return t }
+        let tid = bus.trip.tripId, vid = bus.vehicle.id
+        let byTrip = tid == nil ? [] : trips.filter { $0.trip.tripId == tid }
+        if let vid, let t = byTrip.first(where: { $0.vehicle.id == vid }) { return t }
+        if vid == nil || byTrip.count == 1, let t = byTrip.first { return t }
+        if let vid { return trips.first { $0.vehicle.id == vid } }
         return nil
     }
 
@@ -148,7 +153,7 @@ public enum Notify {
                 var body = "\(it.label.isEmpty ? "The bus" : "Bus \(it.label)") to \(stop). Next stop: \(it.nextStopName)."
                 if k != .minutes && !when.isEmpty { body += " Arrives in \(when)." }
                 if level == .late { body += " Live data is delayed." }
-                let key = "\(sid)|\(it.tripId ?? it.vehicleId ?? "")|\(k.rawValue)"
+                let key = "\(sid)|\(it.tripId ?? "")|\(it.vehicleId ?? "")|\(k.rawValue)"   // trip ids are shared by several buses
                 if fired.contains(key) { continue }
                 if k == .twoStops && fired.contains(key.replacingOccurrences(of: "twoStops", with: "oneStop")) { continue }
                 fired.append(key)

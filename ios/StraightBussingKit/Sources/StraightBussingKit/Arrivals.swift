@@ -7,9 +7,11 @@ public struct Arrival: Hashable, Sendable {
     public var t: Double
     /// Vehicle label, if any.
     public var bus: String?
+    /// Trip id alone is not unique: Passio gives several vehicles the same trip id (use tripId + vehicleId).
     public var tripId: String?
-    public init(rid: String, t: Double, bus: String?, tripId: String?) {
-        self.rid = rid; self.t = t; self.bus = bus; self.tripId = tripId
+    public var vehicleId: String?
+    public init(rid: String, t: Double, bus: String?, tripId: String?, vehicleId: String? = nil) {
+        self.rid = rid; self.t = t; self.bus = bus; self.tripId = tripId; self.vehicleId = vehicleId
     }
 }
 
@@ -46,7 +48,7 @@ public enum Arrivals {
             for u in tu.stopTimeUpdates where u.stopId == stopId {
                 let t = u.time
                 if t != 0 && t > now - 30 {
-                    out.append(Arrival(rid: rid, t: t, bus: tu.vehicle.label, tripId: tu.trip.tripId))
+                    out.append(Arrival(rid: rid, t: t, bus: tu.vehicle.label, tripId: tu.trip.tripId, vehicleId: tu.vehicle.id))
                 }
             }
         }
@@ -64,7 +66,7 @@ public enum Arrivals {
             for u in tu.stopTimeUpdates {
                 guard let sid = u.stopId else { continue }
                 let t = u.time
-                if t != 0 { out[sid, default: []].append(Arrival(rid: rid, t: t, bus: tu.vehicle.label, tripId: tu.trip.tripId)) }
+                if t != 0 { out[sid, default: []].append(Arrival(rid: rid, t: t, bus: tu.vehicle.label, tripId: tu.trip.tripId, vehicleId: tu.vehicle.id)) }
             }
         }
         for sid in Array(out.keys) { out[sid] = out[sid]?.stableSorted(by: arrivalOrder) }

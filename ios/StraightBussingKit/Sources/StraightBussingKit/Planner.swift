@@ -161,7 +161,7 @@ public enum Planner {
             return BusLeg(rid: rid, board: pt(ids[0]), alight: pt(ids[ids.count - 1]), stopIds: ids,
                           path: ids.map { stops[$0]!.coord }, stopsPassed: ids.count - 1, wait: w.min, waitLive: w.live,
                           ride: r.core.min, source: r.core.source, conf: r.core.conf, boardT: w.t, alightT: r.alightT,
-                          tripId: w.tu?.trip.tripId, p10: r.core.p10, p90: r.core.p90)
+                          tripId: w.tu?.trip.tripId, vehicleId: w.tu?.vehicle.id, p10: r.core.p10, p90: r.core.p90)
         }
     }
 

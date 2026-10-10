@@ -50,6 +50,9 @@ public struct BusLeg: Codable, Hashable, Sendable {
     public var alightT: Double
     /// Live trip id when the wait comes from a trip update.
     public var tripId: String?
+    /// Vehicle whose prediction the wait came from (Passio reuses trip ids across buses, so the trip id alone
+    /// does not say which bus to follow).
+    public var vehicleId: String? = nil
     public var p10: Double?
     public var p90: Double?
 }

@@ -30,6 +30,7 @@ public enum Operating {
     static func hasLivePrediction(_ bus: VehiclePosition, _ trips: [TripUpdate], _ ref: Double) -> Bool {
         guard let id = bus.trip.tripId else { return false }
         for t in trips where t.trip.tripId == id {
+            if let a = t.vehicle.id, let b = bus.vehicle.id, a != b { continue }   // shared trip id, other bus
             for u in t.stopTimeUpdates {
                 let at = u.time
                 if at != 0 && at >= ref - predGraceS { return true }
