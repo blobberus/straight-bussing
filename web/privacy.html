@@ -69,9 +69,13 @@ is sent. If that fails, a straight-line estimate is used and labeled &ldquo;esti
 <li><b>Maps.</b> On iPhone the map comes from Apple Maps (MapKit), and
 <a href="https://www.apple.com/legal/privacy/">Apple&rsquo;s privacy policy</a> applies to it. On the web, map tiles come from
 <b>tiles.openfreemap.org</b> and the map code from <b>unpkg.com</b>.</li>
-<li><b>The web app itself</b>, including its schedule files, is served by GitHub Pages; GitHub&rsquo;s
+<li><b>Schedule updates (iPhone).</b> At most once a day the app asks <b>blobberus.github.io</b> (the site of the web
+version) whether newer schedule files exist, and downloads them if so. These are plain requests for public files: no
+location, search text or ID is sent. Until a new schedule is checked and complete, the one built into the app is
+used.</li>
+<li><b>The web app itself</b>, including its schedule files, is served from the same site by GitHub Pages; GitHub&rsquo;s
 <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">privacy statement</a>
-applies to those requests.</li>
+applies to those requests and to the iPhone app&rsquo;s schedule updates.</li>
 </ul>
 <p>These services receive only what is listed above and handle it under their own policies. Straight Bussing contains no
 third-party code for analytics, advertising or crash reporting.</p>

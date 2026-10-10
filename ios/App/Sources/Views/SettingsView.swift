@@ -37,7 +37,7 @@ struct SettingsView: View {
                     }
                     demoSection
                     Section {
-                        Text("No account, no ads, no tracking. Your live location is never sent anywhere; the only location data that leaves this iPhone is the start and end of a walking leg, rounded to about 10 m, sent to Apple Maps for sidewalk directions. Station and place search run on this iPhone; only when that finds fewer than 5 matches is the typed text sent to photon.komoot.io. Downloads: the public shuttle feed and Apple Maps.")
+                        Text("No account, no ads, no tracking. Your live location is never sent anywhere; the only location data that leaves this iPhone is the start and end of a walking leg, rounded to about 10 m, sent to Apple Maps for sidewalk directions. Station and place search run on this iPhone; only when that finds fewer than 5 matches is the typed text sent to photon.komoot.io. Downloads: the public shuttle feed, Apple Maps and schedule updates from blobberus.github.io (public files, nothing about you).")
                             .font(.subheadline)
                         Link(destination: SiteLinks.privacy) {
                             Label("Privacy policy", systemImage: "hand.raised")
