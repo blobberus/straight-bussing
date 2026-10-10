@@ -13,7 +13,7 @@ its numbers are **not** decision-grade (§6.5 needs 10 test days).
 
 ## Decision
 **Adopt five analysis-side cleaning rules** in `tools/model_core.py` (`clean_dicts`, used by `load_rows` / `rows_from_dicts`, real rows
-only; `clean=False` gives the old behaviour) and **propose five collector fixes** (below; not applied, the collector is live).
+only; `clean=False` gives the old behaviour) and **propose five collector fixes** (below; B1-B4 applied later on 2026-10-10, B5 open).
 The rules remove 2.3% of segment rows (5,911 -> 5,774) and 41 junk segment keys (233 -> 192), and withhold Passio predictions that cannot be
 attributed to the bus (26% of the segment rows that carry one). Passio's apparent 5-10 min disaster in E00 was **our logger mixing Downtown Campus Connector buses**,
 plus a lead-time selection effect, not Passio. Every Passio number before this experiment (E00, §3.1) overstated its error.
@@ -43,7 +43,9 @@ Other observations: the snapshot has no rows after 2026-10-09 20:28 CDT, althoug
 
 Test sets differ slightly (the rules drop rows), so read the direction, not the decimals. Still one split over ~1.3 days: inconclusive.
 
-## Collector bugs found (proposed patches; NOT applied: `truth_logger.py`, `arrival_detector.py` and `merge_arrivals.py` run live)
+## Collector bugs found (proposed patches; B1-B4 applied 2026-10-10 in `cc40831`, `9eb11c7`, `2ba339c`, `c3831ca`; B5 open)
+Rows logged before those commits keep the defects, so the `load_rows` rules stay. Each fix has its tests in
+`tools/test_truth.py` / `tools/test_merge.py`; deviations from the patches below are explained in the commit messages.
 
 **B1. Passio predictions are keyed by trip + stop only** (`truth_logger.store_predictions`, `Tracker.add_prediction` / `pred_for`).
 Evidence: fixture has 6 `trip_update` entities with trip_id 874028, each with its own `vehicle.id`; DCC error clusters at one and two
@@ -82,6 +84,7 @@ headways. Also at loop terminals the same stop_id appears with stop_sequence 1 a
 (`drain` still works: `d[-1][0]` is `made`.) Test for `test_truth.py`: two vehicles on trip "F", 25 min apart, both predicted at stop S
 in the same poll (the second listed last); the first bus arrives -> its row must carry its own prediction (today: the second bus's,
 error ~ +1,500 s). Second test: one update predicting S at seq 1 (t1) and seq N (tN); an arrival at index 0 must store t1 (today: tN).
+**Applied** in `cc40831` as patched, except `veh` / `idx` / `loop_stop` are keyword arguments after `epoch` (old calls still work).
 
 **B2. Transition rows are timed with the fallback even when the bus never came near the stop** (`update()` -> `_transition` /
 lap branch -> `_approach(..., fb)`). When Passio's stop_id jumps late (or over an unmapped stop such as Midway Metra's 8599), `_approach`
@@ -99,6 +102,7 @@ Metra Stony Island Lot -> 57th St Metra 1-6 s later).
 With `fb = None` and no near report, `_approach` returns None and `_arrive` only marks the index done (no row), as it already does for
 unobserved visits. Test: reports never within 120 m of stop k, stop_id moves k -> k+1 when the bus is 500 m past k -> no row for k
 (today: a row at the midpoint time). Positive control: two reports 50 s apart straddling the stop, both > 120 m away -> row at the midpoint.
+**Applied** in `9eb11c7` as patched (helper `Tracker._spans`); the simulated detection error is unchanged.
 
 **B3. Stale (vehicle, trip) state links across gaps** (`_arrive`: `0 < epoch - pv["epoch"] <= STATE_TTL`; `seed()` restores `prev` from
 shared-CSV rows up to 1 h old; flaps back to an old trip id reuse its state). Evidence: 243 rows (4.0%) whose prev link jumps over other
@@ -121,10 +125,16 @@ Seeding can still link over arrivals that only the overlapping run has logged (t
 analysis rule stays; a merge-side check (blank `prev_*` of an incoming row when the shared file has another row of that vehicle
 between prev and epoch) would fix the file itself. Test: vehicle on trip A (stops 1-3), then trip B for 10 min (stops 4-6), then A again
 near stop 7 -> the row at 7 has no prev pointing at stop 3, and no row is written for A's stale next stop.
+**Applied** in `2ba339c` with changes: the flap reset fires only if the state's last report is > 60 s old (resetting on every flap
+back cost a bus that alternates ids poll by poll most of its transitions: 7x the rows > 10 s off, half the links) and also clears
+`done` / `handed`; prev is never linked over a later arrival of the same bus under another trip id (the stale-link rule above,
+applied at the source); `last_arr` and prev only move forward in time. Simulated flaps of 1-60 polls: 0 stale links after the merge
+(before: up to 36% of the links).
 
 **B4. Merge window 120 s misses one visit logged twice 121-300 s apart** (10 pairs, 8 with the same trip + index). Patch:
 `DUP_S = 300` in `merge_arrivals.py` (no loop on this network is shorter than ~15 min; real same-trip revisits start at ~16 min, e.g.
 Drexel 501404). Test for `test_merge.py`: shared row (V, S, t) + run row (V, S, t + 141, same trip) -> dup; (V, S, t + 960) -> added.
+**Applied** in `c3831ca` as patched. The 10 pairs already on the data branch stay until `merge_arrivals.py --dedupe` is run.
 
 **B5. Only one Passio prediction per arrival is stored**, so Passio cannot be scored at 5, 10 or 15 minutes ahead. Proposal: add columns
 `passio_pred_5m`, `passio_pred_10m` (newest prediction made >= 300 / 600 s before the arrival, same vehicle and sequence rules as B1) at
@@ -144,7 +154,8 @@ whoever owns it.
 - `tools/rk_data_audit.py`: this audit, re-runnable on any snapshot.
 
 ## Follow-ups
-- Apply B1-B4 to the collector (owner of the collection code), each with its test; then the shared-trip and terminal rules can relax.
+- ~~Apply B1-B4 to the collector, each with its test~~ done 2026-10-10 (`cc40831`, `9eb11c7`, `2ba339c`, `c3831ca`); the shared-trip
+  and terminal rules can relax for rows logged after that, once there are enough of them.
 - B5 before any Passio comparison beyond 5 minutes (E06 M2 bias, E09 ship gate at 5-10 min leads).
 - Midway Metra variant: per-trip stop patterns (build_gtfs) before E05; until then its variant trips have no 57th St Metra (NB) rows.
 - E02 field check should include a hold point (Press Building / Stony Island Lot) to see where buses wait.

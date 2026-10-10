@@ -61,7 +61,9 @@ rows are timed while the bus was elsewhere; the same visit is sometimes logged t
 prediction is ambiguous when several buses share a trip id (every Downtown Campus Connector bus runs trip 874028)
 or at a trip's first stop, and `passio_pred_lead_s` is ~2-4 min unless Passio had stopped updating that trip (a
 lead >= 5 min is a failure case, not a 5-minute forecast). `tools/model_core.py` `load_rows` handles all of these
-(`clean_dicts`); read the CSV raw only with that in mind.
+(`clean_dicts`); read the CSV raw only with that in mind. Collector fixes B1-B4 (2026-10-10: `cc40831` per-bus
+predictions, `9eb11c7` far-away transitions, `2ba339c` stale links, `c3831ca` 300 s merge window) stop new rows from
+having the first four; rows logged before keep them, and the lead caveat stays until fixed-lead logging (E01 B5).
 
 ## Run it
 ```

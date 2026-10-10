@@ -114,12 +114,14 @@ Totals: ~4,000-4,500 rows a day, ~30k a week, ~1 MB a day. The CSV rotates to `a
 
 ### 3.3 Data quality issues to fix first (they hurt every model)
 Items 1-5 were audited in **E01 (2026-10-10)**, `experiments/routeknower/E01-data-quality-2026-10-10.md`. `load_rows` now
-applies the E01 rules (`model_core.clean_dicts`); collector fixes B1-B5 are proposed there, not applied yet.
+applies the E01 rules (`model_core.clean_dicts`). Collector fixes **B1-B4 applied 2026-10-10** (`cc40831` per-bus Passio
+keys, `9eb11c7` no far-away transition rows, `2ba339c` no stale links, `c3831ca` merge window 300 s); B5 is open. Rows
+logged before then keep the defects, so the `load_rows` rules stay.
 1. **Downtown Campus Connector**: many distinct (prev, stop) pairs with tiny counts: skipped stops making
    non-adjacent pairs, or route variants. Check `route_stops.json` against live trips (E01).
    **E01:** not a route_stops mismatch (GTFS: one frequency trip 874028, 15 stops = route_stops; full laps detect 93%). 18% of
    DCC links jump over other arrivals of the same bus (one trip id all day keeps stale detector state alive) and 48 rows are
-   mistimed transitions. Stale links are dropped now (DCC segment keys 37 -> 26); detector bugs B2, B3.
+   mistimed transitions. Stale links are dropped now (DCC segment keys 37 -> 26); detector bugs B2, B3 (applied).
 2. **Low detection share on Drexel and Regents Express** in daytime (0.62): missed detections or variants (E01).
    **E01:** mostly the measure: per trip id with the terminal counted twice. Drexel is 0.86 per full vehicle lap; its real
    misses (Goldblatt 56%, Wyler 50%, but 94-100% on other routes at the same stops) follow trip-id flaps of one bus (4327 went
@@ -134,14 +136,16 @@ applies the E01 rules (`model_core.clean_dicts`); collector fixes B1-B5 are prop
    duplicates left, but 51 same-bus same-stop pairs < 120 s apart with different trip ids (collectors disagreeing on
    Passio's trip id, incl. terminal flips). Merge now dedupes on vehicle + stop; 41 rows dropped from the data branch.
    **E01:** 0 left within 120 s; 10 pairs 121-300 s apart are one visit timed twice (analysis keeps the earliest; merge
-   window 300 s proposed, B4).
+   window 300 s since `c3831ca`, B4).
 5. **Passio outliers**: 5-10 minute lead MAE 1,973 s on n = 10 in E00 is almost surely a trip/terminal matching
    issue. Fix before any Passio comparison is trusted.
    **E01:** our logger, not Passio. It keys predictions by trip + stop, but all DCC buses share trip 874028, so they overwrite
    each other (DCC 2-5 min MAE 618 s vs 78 s elsewhere; errors ~one 25-min headway). And only the newest prediction >= 120 s
    old is stored, so a lead >= 5 min means Passio stopped updating that trip: those bins sample failures. `load_rows` now
-   withholds Passio on shared trip ids, trip starts and leads >= 300 s (Passio MAE 147 -> 74 s). Fixed-lead logging (B5)
-   is needed before Passio can be scored beyond 5 minutes.
+   withholds Passio on shared trip ids, trip starts and leads >= 300 s (Passio MAE 147 -> 74 s). Since `cc40831` (B1) the
+   logger keeps predictions per bus and matches the loop-terminal stop_sequence, so rows from then on can relax the
+   shared-trip and trip-start rules once enough exist. Fixed-lead logging (B5) is needed before Passio can be scored
+   beyond 5 minutes.
 6. **Detector truth check**: the +-10 s claim comes from simulation. Validate in the field: 20+ hand-logged arrivals at
    one stop with a phone clock (E02).
 7. **Raw positions were not stored** before 2026-10-10, so the Kalman filter (M8) could not be tested on real data.
@@ -298,7 +302,7 @@ A failed gate keeps the current source for that output; logged as "not yet". No 
 | ID | Experiment | Pre | Output / decision |
 |---|---|---|---|
 | E00 | Pilot backtest on day 1 | T0 | done (inconclusive) |
-| E01 | Data-quality audit: DCC pairs, Drexel/Regents detection share, worst 2% segment times, duplicates, Passio 5-10 min outliers (§3.3 items 1-5) | T0 | **done 2026-10-10**: `load_rows` rules adopted, E00 re-run; collector fixes B1-B5 proposed (owner to apply) |
+| E01 | Data-quality audit: DCC pairs, Drexel/Regents detection share, worst 2% segment times, duplicates, Passio 5-10 min outliers (§3.3 items 1-5) | T0 | **done 2026-10-10**: `load_rows` rules adopted, E00 re-run; collector fixes B1-B4 applied 2026-10-10 (`cc40831`, `9eb11c7`, `2ba339c`, `c3831ca`), B5 open |
 | E02 | Field truth check of the detector (20+ hand-logged arrivals at one stop) | none | confirm or revise the +-10 s claim |
 | E03 | Store raw position polls (CI artifact or local) for M8 | none | **started 2026-10-10**: CI artifact `raw-polls-<run>` (90 days), `tools/raw_fetch.py`; 2+ weeks by Oct 24 |
 | E04 | `data/calendar.json` from the official academic calendar | none | **done 2026-10-08** |
@@ -377,7 +381,7 @@ Reproduce: <exact commands>
 | ID | Date | Data | Result | Decision |
 |---|---|---|---|---|
 | E00 | 2026-10-08 | day 1, 1,636 usable segment rows, 8 routes; train 04:59-11:02, test 11:02-15:00 (row split) | Segment MAE: schedule 111 s, segment-hour median 96 s, shrunk hierarchy 99 s, + EWMA 103 s. Arrival at 2-5 min lead (n = 422): Passio 156 s, schedule 116 s, shrunk hierarchy 97 s. Coverage 74-75%. RMSE ~270 s | **Inconclusive**: one day, row split, 1 test day. Pipeline works on real data. `experiments/routeknower/E00-pilot-2026-10-08.md` |
-| E01 | 2026-10-10 | data commit `ab837cf`: 6,824 rows, 2026-10-08 04:59 to 2026-10-09 20:28 CDT (2 service days) + GTFS zip + tripUpdates fixture | DCC: one frequency trip id for all buses; 18% stale links, 48 mistimed transitions, route_stops correct. Drexel 0.86 per full lap (0.50 per trip id); misses follow trip-id flaps. Midway Metra variant (57th St Metra NB) missing from route_stops. Tails: holds at lots/turnarounds, layovers, stale links, > 20 m/s artefacts. Passio: logger mixes DCC buses (618 s vs 78 s MAE); leads >= 5 min sample Passio failures. Rules cut 2.3% of segments, keys 233 -> 192; backtest 2-5 min Passio 114 -> 62 s, shrunk 63 -> 53 s | **Adopt** `load_rows` rules (analysis side). Collector bugs B1-B5 proposed, not applied. `experiments/routeknower/E01-data-quality-2026-10-10.md` |
+| E01 | 2026-10-10 | data commit `ab837cf`: 6,824 rows, 2026-10-08 04:59 to 2026-10-09 20:28 CDT (2 service days) + GTFS zip + tripUpdates fixture | DCC: one frequency trip id for all buses; 18% stale links, 48 mistimed transitions, route_stops correct. Drexel 0.86 per full lap (0.50 per trip id); misses follow trip-id flaps. Midway Metra variant (57th St Metra NB) missing from route_stops. Tails: holds at lots/turnarounds, layovers, stale links, > 20 m/s artefacts. Passio: logger mixes DCC buses (618 s vs 78 s MAE); leads >= 5 min sample Passio failures. Rules cut 2.3% of segments, keys 233 -> 192; backtest 2-5 min Passio 114 -> 62 s, shrunk 63 -> 53 s | **Adopt** `load_rows` rules (analysis side). Collector bugs B1-B4 applied 2026-10-10 (`cc40831`, `9eb11c7`, `2ba339c`, `c3831ca`); B5 open. `experiments/routeknower/E01-data-quality-2026-10-10.md` |
 | E04 | 2026-10-08 | 2026-27 College Catalog | `data/calendar.json`: Autumn begins Sep 28; Thanksgiving Break Nov 23-27; reading Dec 5-7; finals Dec 8-11; quarter ends Dec 12; Winter Jan 4 - Mar 13; Spring Mar 22 - Jun 5 | **Done**; ship date moved to Nov 20 (§8) |
 | E15 | 2026-10-08 | Traffic Tracker regions 2022-01..2026-04 x MDW METARs (64,551 joined hours) | Hyde Park speeds -2.0 % light rain, -3.5 % heavy rain, -3.5 % snow (95% CIs exclude 0); ~20 wet / ~5 snow service days expected Oct 8-Nov 30 | **Adopt as prior** for M14; weather secondary. `experiments/routeknower/E15-weather-traffic-prior.md` |
 
