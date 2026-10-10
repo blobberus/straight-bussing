@@ -195,3 +195,21 @@ input::placeholder { color: var(--text-2); opacity: 1; }
 .v-favic { width: 56px; text-align: center; color: var(--warn); font-size: 18px; }
 @media (forced-colors: active) { .v-alertbanner { border: 1px solid CanvasText; } }
 @media (prefers-contrast: more) { .v-alertbanner { outline: 1px solid currentColor; } }
+
+/* Press feedback for every control that had none (taste audit 2026-10-10, docs/DESIGN.md "Motion"): text buttons
+   dim, icon buttons get the pressed fill, toggles and segments press in. 120 ms; reduced motion: opacity only. */
+.v-link, .linkbtn, .v-chipbtn { transition: opacity var(--d-press) var(--ease-enter); }
+.v-link:active, .linkbtn:active, .v-chipbtn:active { opacity: .55; }
+.v-eye, .v-dswap, .mr-ibtn, .statuspill .pillbtn { transition: background-color var(--d-press) var(--ease-enter); }
+.v-eye:active, .v-dswap:active, .mr-ibtn:active:not(:disabled), .statuspill .pillbtn:active { background: var(--surface-press); }
+.v-fchip-x:active { background: color-mix(in srgb, var(--on-accent) 20%, transparent); }   /* the x sits on the accent fill */
+.seg button, .themeseg button, .v-segbtn, .mr-fav, .mr-hl, .j-only, .mr-act { transition: transform var(--d-press) var(--ease-enter), background-color var(--d-press), color var(--d-press); }
+.seg button:active, .themeseg button:active, .v-segbtn:active, .mr-fav:active, .mr-hl:active, .j-only:active, .mr-act:active { transform: scale(.97); }
+@media (prefers-reduced-motion: reduce) {
+  .seg button:active, .themeseg button:active, .v-segbtn:active, .mr-fav:active, .mr-hl:active, .j-only:active, .mr-act:active { transform: none; opacity: .7; }
+}
+
+/* 44 px targets: the About / Settings appearance segments are 40 px tall (2 px inset in a 44 px control), and the
+   official phone / page links inside empty states are one text line; both keep their look and get a 44 px hit area */
+.v-segbtn::after { content: ""; position: absolute; inset: -2px 0; }
+.official a { padding: 10px 2px; margin: -10px 0; }
