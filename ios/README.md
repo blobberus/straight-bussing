@@ -50,14 +50,18 @@ data-geocode.js) so the Swift port provably behaves the same.
 | map/geometry.js (`alongShape`) | Geometry.swift | bus legs drawn along the route's road shape between board and alight (`BusLeg.roadPath`); tests mirror web/tests/map-geometry.js plus a golden file of the JavaScript's own paths on 4 real routes |
 | core/rank.js | Rank.swift | least walking > earliest arrival > shortest wait > criteria met; `criteriaText` labels |
 | core/notify.js | Notify.swift | stopsAway, watchedRoutes, dueAlerts, minutesText |
-| core/tripprogress.js (new, web agent) | TripProgress.swift, LiveTripSnapshot.swift | trip timeline + Live Activity content (see below) |
+| core/tripprogress.js, ui/views/journey.js planJourney | TripFollow.swift (`TripFollow`, `TripJourney`) | follow a started trip: planned trip AND vehicle (Passio reuses trip ids), a bus you can still walk to, missed bus from your location, previous-lap loops, plan clock without live data |
+| ui/views/tripprogress.js (words) | TripFollowText.swift (`TripText`), LiveTripSnapshot.swift | now card, walk rows, "Passed", "Bus 101 heading here", lead row, footnote; the Live Activity content from the same followed bus |
+| ui/views/tripinfo.js, ui/components.js liveLabel, main.js pill, stop.js / alerts.js / route.js / pick.js / routes.js helpers | Wording.swift (`TripInfo`, `LiveText`, `StationSearch`, `RouteText`, `Custom.defaultName`) | leave guidance, option lines, step list, status pill, live labels, freshness, alert windows, station matching, bus sentences |
 | data/live.js | LiveModels.swift, FeedClient.swift | tolerant GTFS-rt JSON decoding, async/await URLSession (injectable `HTTPDataLoader`), `LiveState.applying` = the web's poll merge |
 | data/static.js | StaticModels.swift, StaticLoader.swift | each file independent, failures reported |
-| data/places.js | Places.swift | normalization, prefixes, one typo, categories (`PlaceIndex.search`) |
+| data/places.js, data/spell.js | Places.swift, Spell.swift | normalization, prefixes, one typo, nicknames, categories, spelling correction with the `assumed` note (`PlaceIndex.find`) |
+| data/geocode.js | Geocode.swift (`Photon`, `PlaceSearcher`) | Photon only when < 5 local matches (or "Search for … instead"), Illinois only, ranked toward UChicago, local-first merge, corrected text sent, 30-query cache |
 | (demo only) | DemoFeed.swift | deterministic simulated feed generated from the bundled static data |
 
-Not ported on purpose: `data/geocode.js` (Photon): the app searches only on the device. Walking legs use Apple
-Maps instead of the web's OSRM/Valhalla servers: `Model/AppleWalkDirections.swift` (`MKDirections`, walking) behind
+Place search is the web's: on the device first (instant, with spelling fixes), Photon (photon.komoot.io) only when
+the index has fewer than 5 matches or the user taps "Search for … instead", with only the typed text (or its fix)
+sent; off in `-demo`. Walking legs use Apple Maps instead of the web's OSRM/Valhalla servers: `Model/AppleWalkDirections.swift` (`MKDirections`, walking) behind
 the Kit's `WalkRouteCache`, so only the two endpoints of each walking leg, rounded to about 10 m, go to Apple (About,
 Settings and the location prompt say so). Directions shows the straight-line plan first, then swaps in the sidewalk
 routes ("Checking sidewalk routes…"; walk steps say "sidewalk route" or "estimate"), never blocking the plan. Off in
@@ -65,14 +69,18 @@ routes ("Checking sidewalk routes…"; walk steps say "sidewalk route" or "estim
 
 ### Trip progress (owner request 2026-10-09)
 
-When a trip is started (Directions > option > Start), the Current trip tab shows a Google-Maps-style vertical
-timeline (`Views/TripTimelineView.swift`, data from `TripProgress.compute`): the walk to the boarding stop, the
-stops the bus still has to pass before it reaches you (up to 3, like the web's `TRIP.BEFORE`; "Bus is 3 stops
-away"), every stop from boarding to alighting with passed / next / upcoming styling, the live bus marker moving
-between stops, a live ETA per stop from the trip's tripUpdate (same trip id when known, else the next bus of the
-route reaching the boarding stop; a missed bus switches to the next one), then the final walk. Transfers show two
-bus segments. Loop routes are disambiguated with the trip's ETA order. The same data feeds the Live Activity
-(`TripProgress.snapshot` -> `LiveTripSnapshot` = the ActivityKit ContentState): Lock Screen card with a
+When a trip is started (Directions > option > Start), the Current trip tab shows the web's Google-Maps-style
+timeline (`Views/TripTimelineView.swift`, data from `TripFollow.compute`, a port of web core/tripprogress.js, words
+from `TripText`): "Trip to X" with the arrival estimate and End trip, a status card for the phase (walk N min to the
+stop + "Leave in N min, est." / bus N stops away / N stops to your stop / walk to the destination), walk rows, each
+bus leg with up to 3 stops before the boarding stop while the bus is coming, "Board here" / "Get off here",
+"Passed" on passed stops, "Bus 101 heading here", the bus chip on the line between the right stops, live ETAs from
+that bus's own prediction, then the destination, "Trip steps" and an honesty footnote. The planned VEHICLE is
+followed (Passio gives several buses one trip id); if your location is still at the stop after it left, the next
+bus is followed ("Your planned bus has left. Showing the next one."); without live data the plan's clock is
+followed and said so. Picking another card in Directions during a trip makes the timeline follow it; changing an
+endpoint ends the trip. The same data feeds the Live Activity (`TripFollow.snapshot` -> `LiveTripSnapshot` = the
+ActivityKit ContentState): Lock Screen card with a
 self-ticking countdown, the next stops as a progress bar with the bus, "est." and "Unofficial" labels; Dynamic
 Island compact "53RD | 3 stops · 4 min", expanded progress bar + boarding/alighting names, minimal route dot.
 
@@ -82,28 +90,33 @@ Island compact "53RD | 3 stops · 4 min", expanded progress bar + boarding/aligh
   on top, others dimmed), stops (favorites as stars), bus badges with route chip and heading, your location,
   the selected/started trip (bus legs in route color along the road shape between the stops, dashed walks on
   sidewalks, destination pin; the walk-only line when no shuttle helps).
-- Google-Maps-style layout: floating "Search for a destination" bar with the Settings gear, stale-data banner, a
-  custom bottom sheet with three detents (peek / half / full, drag + fling, VoiceOver adjustable) resting on a
-  bottom tab bar: Current trip / Routes / My Routes.
-- Current trip: trip timeline or "No trip in progress", service alert banner, nearest 3 stops with live arrivals
-  (or "Use my location" + "Arriving soon").
-- Directions: on-device station + place suggestions, swap, up to 4 option cards labeled like the web
-  ("Least walking · Earliest arrival"), total, arrival, leg chips, steps with sources, Start.
-- Routes: Edit map order (drag), Show all / Hide all, Running / Not running / Hidden with eye toggles, official
-  contact. Route detail: status, today's hours, stop timeline with next ETA and buses, week hours, calendar
-  changes, scheduled buses by hour.
-- My Routes: custom routes (tap = show on the map; `.swipeActions` Details / Edit / Delete with
-  `allowsFullSwipe: false`; Delete confirms in a dialog), new / save visible routes, editor, favorites, About.
-- Stop detail, Settings (theme, service alerts, bus alerts with the notification permission state, Live Activity
-  switch + preview), About (unofficial notice, Call 773.702.8181, official page, privacy, credits "OpenFreeMap ·
-  OpenMapTiles · OpenStreetMap" without the copyright sign, plus Apple Maps for the in-app map), Live Activity
-  preview screen. Bus alerts arrive as local notifications while the app is open, or as an in-app banner when
-  notifications are off.
+- Google-Maps-style layout: floating "Search for a destination" bar with the Settings gear, the status pill (web
+  wording), the map context bar ("Only showing routes for: …" / "My route: …"), a custom bottom sheet with three
+  detents (peek / half / full, drag + fling, VoiceOver adjustable; a tap on empty map lowers it) resting on a bottom
+  tab bar: Current trip / Routes / My Routes. Short confirmations appear as a banner and are read out.
+- Current trip: alert banner, trip timeline or "No trip in progress" + "Routes to station…", favorites, the nearest
+  stop + "Also nearby" with "Leave in N min, est." guidance, or (no location) station search, "Type an address or
+  place" and "Arriving soon". Header meta "53RD · 4 min".
+- Directions: suggestions (stations, on-device places, Photon when needed, spelling-fix note), swap, up to 4 option
+  cards ("Least walking · Earliest arrival", walk + leave lines), steps with sources, trip bar, Start.
+- Routes to station (pick), Alerts.
+- Routes: Edit map order (drag, VoiceOver Move up / down, Reset order), custom-route / journey bar, station filter
+  chip, Show all / Hide all, Running / Scheduled, no live location / Not running / Hidden with eye toggles, official
+  contact. Route detail: status, today's hours, bus sentences, stop timeline with next ETA, pills, chevrons and buses
+  on the rail, Hours & service (week, schedule changes with route alerts, buses by hour).
+- My Routes: custom routes (tap = show on the map; `.swipeActions` and a long-press menu with Details / Edit /
+  Delete, `allowsFullSwipe: false`; Delete confirms in a dialog), favorites (Edit = reorder / remove), Service
+  alerts, About, Settings; custom route detail with Highlight; editor grouped by live status.
+- Stop detail, Settings (theme, service alerts, bus alerts with routes, in-app switch, status and the notification
+  permission state, Live Activity switch + preview), About (unofficial notice, Call 773.702.8181, official page,
+  appearance, privacy incl. Photon and Apple walking directions, credits "OpenFreeMap · OpenMapTiles ·
+  OpenStreetMap" without the copyright sign, plus Apple Maps), Live Activity preview screen. Bus alerts arrive as
+  local notifications while the app is open, or as an in-app banner when notifications are off.
 - Prefs persist in UserDefaults (`Model/Prefs.swift`). Polling every 10 s only while the app is active (30 s
   back-off after 3 failures); stale data is always flagged.
 
 Launch arguments (used by CI, handy in Xcode's scheme editor too): `-demo` (simulated buses, fixed location on the
-Main Quad, separate wiped prefs), `-screen current|trip|routes|route|myroutes|directions|stop|settings|liveactivity|about`,
+Main Quad, separate wiped prefs), `-screen current|trip|routes|route|myroutes|directions|stop|settings|liveactivity|about|alerts|pick|search`,
 `-detent peek|half|full`, `-tour` (automatic walk-through for the recording), `-theme light|dark`.
 
 ## Build and run on a Mac
@@ -142,23 +155,105 @@ Apple's Simulator only runs on macOS, so there is no local option on Windows. Tw
   Not testable in a simulator: Live Activities on the Lock Screen of a real phone, notifications in the background,
   GPS accuracy, performance. Those need a real iPhone (`conversion to appstore.md`).
 
-## Done vs stub
+## Web parity matrix (2026-10-10)
 
-| Area | Status |
+Every web feature (CLAUDE.md status table, docs/ARCHITECTURE.md contracts, web/js/ui/views/*.js, web/js/ui/*.js,
+web/js/core/*.js) against the iPhone app. "done" = same behavior and wording, adapted to iOS (native sheets, swipe
+actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
+
+| Web feature | iOS status | Notes |
+|---|---|---|
+| Live map: route lines in route color, stops, buses with heading, your location | done (before) | MapKit; draw order + dimming by focus (`mapLayers`) |
+| Non-operating buses hidden everywhere (ghost, unknown route, out of service) | done (before) | Kit `Operating`; shared trip ids now matched by vehicle too |
+| Bus markers glide to their new position | done | 1 s ease, still under Reduce Motion |
+| Bus tap opens its route without moving the map; stop tap keeps the map view | done | `busTapped` / `stopTapped` |
+| Tap on empty map lowers the sheet to peek | done | `.onTapGesture` on the map, ignored right after a stop / bus tap |
+| Direction-of-travel chevrons when 1-3 routes are focused | done | every 320 m along the shape; static, never intercept taps |
+| Favorite stars on the map, faded while a plan is drawn | done | stars before; fading new |
+| Selected stop / Routes to station candidates ringed on the map | done | `pickHighlights`, ring on the open stop |
+| Stop tap fills the Directions field being edited / picks the station in Routes to station | done | web onStopTap |
+| Status pill: "Can't reach the shuttle feed. Retrying. Showing last known data." / "… Don't rely on these times; call 773.702.8181." + Retry, "Live data is out of date (last update 4:12 PM). Times are approximate.", "Live data delayed. Times may be off." | done | same words (`LiveText.pill`); before: own wording |
+| Fresh empty feed: "No shuttles are reporting live locations" (scheduled) vs "No shuttles running right now" | done | silent-service rule (before) now also in the pill |
+| Feed outage is not a service outage ("Live times unavailable", "Live status unknown", "Can't plan shuttle trips right now") | done | Current trip, stop, Routes, route detail, Directions |
+| Silent scheduled service wording (silentText, "Scheduled until 4:29 AM, no live location", "No live times right now") | done (before) | same Kit text as the web |
+| Map context bar: "Only showing routes for: <label>" + chips + Show all; "My route: <name>" + Clear | done | wraps to 2 lines instead of the web's marquee |
+| Search bar + Settings gear; bottom navigation Current trip / Routes / My Routes; 3-detent sheet | done (before) | VoiceOver-adjustable sheet; Reduce Motion now shortens its animation |
+| Current trip: service alert banner ("Service alert" / "N service alerts", first title " and N more") opens Alerts | done | before: opened Settings |
+| Current trip: "No trip in progress" + "Routes to station…" | done | |
+| Current trip: favorites card (3, next bus each, "All favorites") | done | |
+| Current trip: nearest stop (3 arrivals) + "Also nearby" (1 each), within 5 km | done | before: 3 stops within 1.5 km |
+| Arrival rows: "Leave now, est." / "Leave in N min, est." / "Leaves before you can walk there, est." (+1 extra row when none catchable), walking footnote | done | struck-through ETA + words, never color alone |
+| Without location: "Use my location" / "Finding your location…" / "Location is off" + station search + "Type an address or place" (stops near a place, "Showing stops near X" + Clear) + "Arriving soon" | done | denied: "Open iOS Settings" instead of "Try location again" |
+| No-arrival states (outage / "No upcoming arrivals" / silent / "No shuttles running right now") + official contact | done | |
+| Header meta "53RD · 4 min" (next bus at the nearest stop) | done | right of the "Current trip" title |
+| Trip timeline (now card, walk rows, stop rail, "Passed", bus chip, lead row, destination, Trip steps, footnote) | done | `TripFollow` + `TripText` port; before: an independent simpler timeline |
+| Follow the planned bus by VEHICLE, not trip id (web b924f89) | done | Arrival / BusLeg `vehicleId`; notify alert keys; operating predictions |
+| Follow a bus you can catch; missed-bus switch from your location; no instant "arrived" on a vehicle's next trip | done | `TripFollow` tests mirror web core-tripprogress.js |
+| Directions: Start / Destination, swap, My location default | done (before) | "My location" asks for location when needed; "Location is off…" hint |
+| Directions suggestions: whole-word stations, strong local places, partial stations, other places; "Shuttle stop · RL, GL" | done | `AppModel.suggestions` (web computeSugs) |
+| Place search: on-device index, nicknames, spelling fix + "Showing results for X" / "Search for “x” instead" / "Did you mean X?" | done | Kit `Spell`, `PlaceIndex.find`; 94 UChicago queries verified in Kit tests |
+| Photon address search (only < 5 local matches, Illinois only, UChicago-first, 250 ms pause, cancellable, privacy line) | done | Kit `Photon` / `PlaceSearcher`; "Searching places…", "Couldn’t search places right now…"; off in `-demo` |
+| Options: up to 4, least walking > earliest > shortest wait, "what it minimizes" line | done (before) | |
+| Option card lines: "Walk 3 min to X · bus 4:12 PM", "Leave in 7 min (by 4:05 PM) · includes 5 min walking" | done | `TripInfo.optionLines`; VoiceOver sentence like the web aria-label |
+| Step list: "No walk: start at …", "Walk N min (M m) to **X** [sidewalk route/estimate]", "Leave by … to catch the … bus", "Bus arrives at **X** **4:12 PM** [live/est.]", "Wait ~N min · Ride ~N min to Y (clock) · N stops · from live bus prediction [est.]", "Arrive at **X** about **clock**" | done | `TripInfo.steps` |
+| Walk-only card (minutes + source tag, arrive clock, meters) and "Walking the whole way: N min (M m) …" | done | |
+| Trip bar in Directions while a trip is on; picking another card updates the followed trip; changing an endpoint ends it | done | |
+| Sidewalk walking routes and road-following bus legs | done (geometry agent, 0d1f86a) | Apple Maps walking directions instead of OSRM / Valhalla |
+| Routes to station: chooser (current location / select a station / type an address or place), nothing highlighted until chosen, stops within 1.5 km listed + ringed, "Only show the chosen station's routes" switch, other-mode links, all empty states | done | `PickView` (a sheet page instead of the web's dialog) |
+| Routes: "Routes to <station>" filter chip + "Only show these routes" / "Show all routes" | done | station journey cleared with the filter |
+| Routes: custom-route bar ("Make this a custom route" + name "My route N", "Showing <name>" + Clear, "<name> · edited" + Update / Save as new), journey bar "Only showing routes for …" + Show all | done | |
+| Routes: Show all / Hide all (scoped to the station filter; disabled when nothing to do; hidden during a journey) | done | toasts "All routes shown" / "All routes hidden. Show them again here." |
+| Routes: sorted by short name, groups Running / Scheduled, no live location / Not running (Live status unknown) / Hidden (Not on this trip) | done | |
+| Route rows: "Not part of this trip" (no eye), "Hidden from map and times", "N buses running", noLive status, eye toggle with toast | done | iOS adds today's hours to "Not running" (see web missing) |
+| Edit map order: drag, Move up / down, Reset order, "moved to position N" toast | done | VoiceOver actions Move up / Move down |
+| Route detail: status, quiet line, Today hours + "(reduced schedule)" / "(extra service)" + Scheduled now, hidden note (journey variant), official contact when nothing runs | done | |
+| Route detail: "Where the buses are" sentences, "Bus N heading here · seen …" pills, chevrons on the rail, loop note, live/delayed footer | done | |
+| Route detail: Hours & service (week, "Schedule changes" incl. this route's service alerts, buses by hour for today or "Mondays" + hours text) | done | before: no route alerts, chart only today |
+| Stop detail: address (or "Address not available"), "Routes at this stop" (tappable, visible only), Directions to here / From here, arrivals (10, tappable), hidden routes "+N … also stop here" + Show, "Updated 8s ago" / "Last live update … Retrying." | done | Favorite = header star with toast "Added to favorites in My Routes" |
+| Alerts screen: severity icon, title, body, route chips, "Until 4:12 PM" / "Since …", empty + "Alerts may be out of date…" + About row | done | new `AlertsView` |
+| My Routes: custom routes (tap = show / stop showing, fit map, "Showing your usual routes"), swipe Details / Edit / Delete, delete confirm "This custom route will be removed from My Routes. This can’t be undone." + "Deleted “X”" | done | long-press menu too; before: own confirm text |
+| My Routes: empty state "Save the routes you ride", hint text, New button | done | |
+| Favorite stations: next bus, "No upcoming buses on your visible routes", Edit (reorder / remove), empty hint | done | drag + swipe-to-delete in Edit instead of arrow buttons |
+| My Routes: Service alerts row (count badge) + About row | done | iOS also keeps a Settings row |
+| Custom route detail: "Showing on the map · N routes", Show on map / Stop showing, Edit / Delete, per-route status + "· N min at <nearest stop>", Highlight toggles + footers | done | |
+| Custom route editor: name "My route N", groups Running now / Scheduled, no live location / Not running, "Choose at least one route.", Delete custom route; new route is shown on the map + toast | done | before: not applied on save, no groups |
+| Settings: theme; service alerts (count, "Checking for service alerts…", period text, official contact when none, out-of-date note) | done | |
+| Settings: bus alerts (station with address, favorites + nearest station + search; routes checklist "(any visible route)", "hidden", "Use any visible route", "Keep at least one route"; 2 stops / 1 stop "Also when your stop is next" / 2-5-10 min; "In-app alerts while open"; status "N stops away · about N min (est.)" + "Next stop: X. From live predictions."; paused when data is down; Turn off + toast) | done | 3 min choice dropped to match the web |
+| About: unofficial notice, Call 773.702.8181, official page, Appearance, privacy (Photon + walking router lines), how times work, credits, version + schedule date | done | |
+| Toasts for actions (hide / show, favorites, saved, deleted, map order, bus alerts off) | done | also read out by VoiceOver |
+| Back always works | done | every pushed page has Back; Settings is a system sheet (Done / swipe down); no edge-swipe inside the custom sheet |
+| Accessibility: 44 pt targets, labels, Dynamic Type, Reduce Motion, state not by color alone | done (spot-checked in code) | text styles everywhere in the sheet; map markers keep fixed sizes; real-device VoiceOver pass still open |
+| Held tap while loading (3b4a409) | not applicable | native UI is ready before data arrives |
+| Self-update (service worker) / daily GTFS data | partial | code updates come from the App Store; `web/data` is bundled at build time, so new schedules need a new build. A launch-time download of `web/data/*.json` from Pages is feasible (adds a request to github.io; About must say so) and not done |
+| iPhone-sized frame on desktop, PWA install, keyboard shortcuts, browser back | not applicable | |
+| Learned ride times | supported, not shipped (same as web) | |
+
+### iOS has, web missing (for the web agent)
+
+| iOS file | Behavior the web lacks or does differently |
 |---|---|
-| Kit: models, feeds, static data, arrivals, staleness, operating rule, visibility, custom routes, schedule, predictor, planner + refine, ranking, place search, notify, trip progress, demo feed | done, unit-tested |
-| App: map, sheet + tab bar, all main screens, prefs, demo mode, stale banner | done (draft UI, verified on the simulator by CI) |
-| Trip timeline (Current trip) | done |
-| Live Activity: Lock Screen + Dynamic Island, started with the trip, updated while the app is open | done (option A) |
-| Live Activity push updates while locked | stub: `LiveActivityController.pushTokenStub` (needs the proxy/push server, conversion to appstore.md sections 6-8) |
-| Bus-near alerts while the app is open | done (`Model/BusAlerts.swift`): checked after every poll and settings change, local notifications (banner in the foreground too), in-app banner when notifications are off; permission asked when a station is chosen, re-read on every return to the app; off in `-demo` |
-| Bus-near alerts while locked / in the background | not possible locally (needs the push server, conversion to appstore.md section 7) |
-| Bus legs on the map follow the road (route shape between board and alight, never stop-to-stop lines) | done (`Geometry.swift`, `AppModel.roadPath`) |
-| Walking directions on sidewalks | done: `MKDirections` walking via `WalkRouteCache` (straight estimate first, then the route; off in `-demo`) |
-| Address search beyond campus places (Photon) | not ported (privacy: on-device only for now) |
-| Favorite-stop home screen widget | not started (P8) |
-| Learned ride times (learned.json) | supported by `SchedulePredictor`, not bundled yet (web doesn't deploy it either) |
-| Real-device QA, VoiceOver pass, Dynamic Type audit | not started |
+| `Model/LiveActivityController.swift`, `Shared/LiveTripViews.swift`, `Widget/` | Trip Live Activity on the Lock Screen and in the Dynamic Island (web Settings only stores the preference, "Coming to the iPhone app") |
+| `Views/LiveActivityPreviewView.swift`, Settings "Preview Live Activity" | In-app preview of the Lock Screen / Dynamic Island layouts |
+| `Model/BusAlerts.swift`, `Views/SettingsView.swift` permissionRow | Bus alerts: a system notification when allowed, the in-app banner only when notifications are off (web shows the toast AND a system notification); wording "Alerts arrive as notifications while the app is open." / "Notifications are off … so alerts show as a banner inside the app while it is open." + "Open iOS Settings" / "Allow notifications" (web: "System notifications are allowed (while the app is open).", "…blocked in your browser settings.", "Allow system notifications") |
+| `Views/SettingsView.swift` footer | "Alerts work only while the app is open; lock-screen alerts need a push server (planned)." (web: "On the web, alerts only work while Straight Bussing is open…") |
+| `Views/RoutesView.swift` RouteRow.subtitle | "Not running · Today 7:00 AM – 11:30 PM" (web says only "Not running") |
+| `Views/DirectionsView.swift` OptionCard | Start hint adds "Follow the bus stop by stop in Current trip, on the Lock Screen and in the Dynamic Island." |
+| `Views/MyRoutesView.swift` | Long-press context menu Details / Edit / Delete (web: "•••" More button); favorites reorder by drag (web: up / down buttons); a Settings row (web: gear only) |
+| `Views/CurrentTripView.swift` locBlock | Location denied offers "Open iOS Settings" (web: "Try location again") |
+| `Views/RootView.swift` StatusPill | Distinct icons per state (feed error, delayed, no live locations, no shuttles) |
+| `Views/BottomSheet.swift` | VoiceOver adjustable "Resize panel" (Collapsed / Half / Expanded) |
+| `Model/AppModel+Live.swift` refreshDirections | Directions options re-plan in the background at most every 8 s (web re-plans on every live change) |
+| `Model/LaunchConfig.swift`, Kit `DemoFeed.swift` | `-demo` mode with simulated buses and a "Demo mode: simulated buses" alert (web: test pages only) |
+| `Views/RouteDetailView.swift` | Route detail stop rows each say "next bus in N min" / "no prediction" to VoiceOver as one element |
+
+### Still not on iOS
+
+| Area | Why |
+|---|---|
+| Live Activity / bus alerts while the phone is locked | needs the push server (`conversion to appstore.md` sections 6-8); `LiveActivityController.pushTokenStub` |
+| Favorite-stop home screen widget | iOS-only extra (P8), out of scope |
+| Fresh schedule data without an app update | feasible (download `web/data` at launch), not done; see the matrix row above |
+| Real-device QA, VoiceOver pass, Dynamic Type audit on hardware | needs an iPhone |
 
 ## App Store checklist status
 
@@ -167,6 +262,8 @@ Apple's Simulator only runs on macOS, so there is no local option on Windows. Tw
 - [x] Privacy manifest `App/Resources/PrivacyInfo.xcprivacy`: no tracking, no tracking domains, no collected data;
       UserDefaults reason CA92.1. Update it if push tokens are ever sent to a server. Walking-leg endpoints (rounded
       to ~10 m) go to Apple's MapKit directions service, not to us; re-check the App Privacy answers at submission.
+      Typed place text goes to photon.komoot.io only when the on-device index has < 5 matches (never your location);
+      decide at submission whether the App Privacy label lists it as "Search History, not linked to you".
 - [x] Location usage string (`NSLocationWhenInUseUsageDescription`), asked only when the user taps "Use my location";
       location stays on the device. No background location.
 - [x] `NSSupportsLiveActivities`, `ITSAppUsesNonExemptEncryption = NO`, portrait iPhone, `straightbussing://` URL scheme.
