@@ -95,6 +95,22 @@ test('alongShape: projects onto segments (stop between vertices)', () => {
   near(distM(out[2], P(7.5)), 0, 1);
 });
 
+test('alongShape: a wrong pass is replaced by the shortest plausible one', () => {
+  // two-stop sequence on an out-and-back street: the index expectation puts the alight on the return
+  // pass (9 units), but the 1-unit ride on the outbound pass is the plausible one
+  const out = alongShape([outAndBack()], ['A', 'B'], stop('A', 1.5), stop('B', 2.5), [P(1.5), P(2.5)]);
+  near(pathLength(out), U_M, 5, 'one unit, outbound');
+  ok(has(out, P(2)), 'follows the shape vertex between the stops');
+});
+
+test('alongShape: a real detour between close stops keeps the shape (never a straight line)', () => {
+  // up 10, across 1, down 10: stops 1 unit apart, 18 units of street between them, one pass each
+  const u = [P(0, 0), P(0, 10), P(1, 10), P(1, 0)];
+  const out = alongShape([u], ['A', 'B'], stop('A', 0, 1), stop('B', 1, 1), [P(0, 1), P(1, 1)]);
+  ok(has(out, P(0, 10)) && has(out, P(1, 10)), 'drives around the top');
+  near(pathLength(out), 18 * V_M + U_M, 5);
+});
+
 test('alongShape: real data (adjacent stops follow the road, never absurdly long)', async () => {
   const get = (f) => fetch('../data/' + f).then((r) => r.json());
   const [shapes, routeStops, stops] = await Promise.all([get('shapes.json'), get('route_stops.json'), get('stops.json')]);
@@ -114,4 +130,29 @@ test('alongShape: real data (adjacent stops follow the road, never absurdly long
   }
   ok(n > 50, 'enough pairs: ' + n);
   ok(good / n > 0.85, `road-following for ${good}/${n} adjacent pairs`);
+});
+
+test('alongShape: real data (every forward stop pair follows the shape, none straight)', async () => {
+  const get = (f) => fetch('../data/' + f).then((r) => r.json());
+  const [shapes, routeStops, stops] = await Promise.all([get('shapes.json'), get('route_stops.json'), get('stops.json')]);
+  let n = 0;
+  const straight = [];
+  for (const [rid, raw] of Object.entries(routeStops)) {
+    if (!shapes[rid]) continue;
+    const loop = raw.length > 2 && raw[0] === raw[raw.length - 1];
+    const seq = (loop ? raw.slice(0, -1) : raw).filter((id) => stops[id]);
+    for (let i = 0; i < seq.length; i++) {
+      for (let j = 0; j < seq.length; j++) {
+        if (i === j || (!loop && j < i)) continue;
+        const ids = [];
+        for (let k = i; ; k = loop ? (k + 1) % seq.length : k + 1) { ids.push(seq[k]); if (k === j) break; }
+        const fb = ids.map((id) => [stops[id].lat, stops[id].lon]);
+        const out = alongShape(shapes[rid], raw, { id: seq[i], ...stops[seq[i]] }, { id: seq[j], ...stops[seq[j]] }, fb);
+        n++;
+        if (out.length === fb.length && out.every((p, q) => p[0] === fb[q][0] && p[1] === fb[q][1])) straight.push(rid + ' ' + seq[i] + '>' + seq[j]);
+      }
+    }
+  }
+  ok(n > 500, 'enough pairs: ' + n);
+  eq(straight, [], 'stop pairs drawn as straight stop-to-stop lines');
 });

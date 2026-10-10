@@ -162,6 +162,9 @@ fitTo(points|bounds, {maxZoom})  flyTo({lat,lon}, zoom)
 onStopTap(fn) onBusTap(fn) onUserMove(fn)
 // map/geometry.js (pure, unit-tested)
 export function alongShape(shapeLines, routeStopsList, board, alight, fallbackLatLngs): latlngs
+// 2026-10-10: a slice > 2.5 x the stop path + 500 m takes the shortest plausible pass pair, else is KEPT (North drives 5 km
+// between stops 600 m apart); the straight fallback is only for stops > 200 m off the shape or a backwards ride on a
+// non-loop. iOS: Kit Geometry.swift is a faithful port (golden test against this file's output).
 ```
 Layer groups must never be rebuilt when nothing changed (diff by a cheap signature) so polling doesn't flicker.
 

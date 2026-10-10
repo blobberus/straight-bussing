@@ -290,6 +290,15 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
   ok(/sidewalk route/.test(steps), "walking leg labeled sidewalk route: " + steps);
   ok(txt(content()).includes("Bus times are estimates from schedules and live predictions."), "estimate note");
   await waitFor(() => $$("#map path.sb-walk").length > 0 && $$("#map .sb-plan-casing").length > 0, "plan drawn on the map (walk + bus legs)");
+  // the bus leg follows the route's road shape (map/geometry.js alongShape), never straight stop-to-stop links
+  const bus = [];
+  SB.map.eachLayer((l) => { if (l instanceof W.L.Polyline && l.options.pane === "sbPlan" && !/sb-walk/.test(l.options.className || "")) bus.push(l.getLatLngs()); });
+  ok(bus.length >= 1, "bus leg drawn");
+  const shapePts = Object.values(state().shapes).flat(2);
+  for (const ll of bus) {
+    const inner = ll.slice(1, -1), onShape = inner.filter((p) => shapePts.some((s) => Math.abs(s[0] - p.lat) < 1e-6 && Math.abs(s[1] - p.lng) < 1e-6));
+    ok(inner.length >= 3 && onShape.length >= inner.length - 2, `bus leg along the road shape: ${onShape.length}/${inner.length} inner points are shape vertices`);
+  }
 });
 
 test("theme: About's Auto / Light / Dark updates the page and the map", async () => {

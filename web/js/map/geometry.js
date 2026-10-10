@@ -139,6 +139,20 @@ function slice(line, a, b, closed) {
   return [a.pt, ...line.slice(a.seg + 1), ...head, b.pt];
 }
 
+/** Shortest board-to-alight path over every (board pass, alight pass) pair, or null. */
+function shortestPass(line, bCands, aCands, closed, b0, a0) {
+  let best = null, bestL = Infinity;
+  for (const b of bCands) {
+    for (const a of aCands) {
+      const s = slice(line, b, a, closed);
+      if (!s) continue;
+      const p = dedupe([b0, ...s, a0]), l = pathLength(p);
+      if (p.length >= 2 && l < bestL) { best = p; bestL = l; }
+    }
+  }
+  return best;
+}
+
 function dedupe(pts) {
   const out = [];
   for (const p of pts) {
@@ -152,9 +166,10 @@ function dedupe(pts) {
  * Road-following path for a bus ride: the slice of the route's shape between the boarding and
  * alighting stops. Out-and-back shapes (one street driven both ways) are disambiguated by the stops'
  * positions in the route's stop sequence; loop routes (first stop id == last) wrap through the start.
- * Falls back to `fallbackLatLngs` (normalized) when the stops are not on the shape, the ride would go
- * backwards on a non-loop, or the result is implausibly long; with no usable fallback, a straight
- * board-alight line.
+ * A slice far longer than the fallback is replaced by the shortest pass pair when that one is plausible,
+ * else kept (the route really detours there). Falls back to `fallbackLatLngs` (normalized) only when the
+ * stops are not on the shape (> 200 m) or the ride would go backwards on a non-loop; with no usable
+ * fallback, a straight board-alight line.
  * @param {Array<Array<[number, number]>>} shapeLines shapes[rid]
  * @param {string[]} routeStopsList routeStops[rid]
  * @param {{id:string, lat:number, lon:number}} board
@@ -212,10 +227,16 @@ export function alongShape(shapeLines, routeStopsList, board, alight, fallbackLa
     if (!seg) return fb;
     const out = dedupe([b0, ...seg, a0]);
     if (out.length < 2) return fb;
-    // sanity: a wildly longer path than the stop-to-stop fallback means we picked the wrong pass
+    // sanity: a path far longer than the stop-to-stop fallback may mean we picked the wrong pass, so take
+    // the shortest pass pair if that one is plausible. If none is, the bus really drives the long way
+    // between these stops (North: 5 km of shape between two stops 600 m apart): keep the shape, never a
+    // straight stop-to-stop line.
     if (realFb) {
-      const fl = pathLength(fb);
-      if (fl > 0 && pathLength(out) > 2.5 * fl + 500) return fb;
+      const fl = pathLength(fb), lim = 2.5 * fl + 500;
+      if (fl > 0 && pathLength(out) > lim) {
+        const alt = shortestPass(line, cb.cands, ca.cands, closed, b0, a0);
+        if (alt && pathLength(alt) <= lim) return alt;
+      }
     }
     return out;
   } catch (e) {
