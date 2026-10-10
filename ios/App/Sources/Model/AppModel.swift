@@ -130,6 +130,11 @@ final class AppModel {
     @ObservationIgnored let walkCache: WalkRouteCache?
     /// Photon address search (only when the on-device index has < 5 matches); nil in `-demo` (no network in CI shots).
     @ObservationIgnored let placeSearcher: PlaceSearcher?
+    /// Downloaded schedule files (Library/Caches/schedule); nil in `-demo` (bundled data only, no network).
+    @ObservationIgnored let scheduleStore: ScheduleStore?
+    @ObservationIgnored var scheduleTask: Task<Void, Never>?
+    /// A downloaded schedule waiting for a safe moment to replace the one in use (see `applyPendingSchedule`).
+    @ObservationIgnored var pendingStatic: StaticLoader.Loaded?
     /// When a stop or bus on the map was last tapped (a map tap right after it is not an "empty map" tap).
     @ObservationIgnored var lastAnnotationTap: Double = 0
     @ObservationIgnored var lastUserForDirections: LatLon?
@@ -154,6 +159,8 @@ final class AppModel {
     var staticFailed: [String] = []
     /// Bumped whenever `staticData` is replaced (part of the map layer cache key).
     var staticVersion = 0
+    /// The schedule in use: bundled with the app, or a newer validated download from the web app's site.
+    var scheduleSource: ScheduleSource = .bundled
     var places: PlaceIndex?
     var predictor: SchedulePredictor?
     // Live: each slice is assigned only when it changes (see `applyLive`).
@@ -229,6 +236,7 @@ final class AppModel {
         self.prefsStore = Prefs(demo: config.demo)
         self.walkCache = config.demo ? nil : WalkRouteCache(fetch: { a, b in try await AppleWalkDirections.route(a, b) })
         self.placeSearcher = config.demo ? nil : PlaceSearcher()
+        self.scheduleStore = config.demo ? nil : ScheduleStore.standard
     }
 
     var colorScheme: ColorScheme? {
@@ -399,7 +407,10 @@ final class AppModel {
             for rid in f where !hidden.contains(rid) {
                 let color = Color(hex: S.routes[rid]?.color)
                 for (li, line) in (S.shapes[rid] ?? []).enumerated() {
-                    for (k, c) in chevronPoints(line).enumerated() {
+                    // every 320 m like the web, but at most `maxChevrons` per line: each one is a SwiftUI
+                    // annotation view, and the longest routes (33 km) would otherwise add 100 each
+                    let spacing = max(320, Geometry.pathLength(line) / Double(maxChevrons))
+                    for (k, c) in chevronPoints(line, spacingM: spacing).enumerated() {
                         chevrons.append(MapChevron(id: "\(rid)-\(li)-\(k)", coord: c.at.cl, bearing: c.bearing, color: color))
                     }
                 }
@@ -407,6 +418,9 @@ final class AppModel {
         }
         return MapLayers(lines: lines, stops: stops, hidden: hidden, chevrons: chevrons)
     }
+
+    /// Chevrons per shape line at most (3 focused routes: at most about 120 annotations).
+    static let maxChevrons = 40
 
     /// Chevron spots every `spacingM` meters along a polyline, each with the travel bearing there.
     static func chevronPoints(_ line: [LatLon], spacingM: Double = 320) -> [(at: LatLon, bearing: Double)] {

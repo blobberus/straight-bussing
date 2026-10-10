@@ -22,15 +22,19 @@ extension AppModel {
             return
         }
         // JSON parsing and the place index are pure work on Sendable values: keep them off the main thread.
-        let staticTask = Task.detached(priority: .userInitiated) { StaticLoader.load(from: dir) }
-        let placesTask = Task.detached(priority: .utility) { StaticLoader.loadPlaces(from: dir) }
-        let loaded = await staticTask.value
-        staticData = loaded.data
-        staticFailed = loaded.failed
+        // The schedule is the newest valid copy on the device (a download from the web app's site, else the
+        // bundled one); checking the site for a newer one waits until the app is up (`refreshSchedule`).
+        let store = scheduleStore
+        let staticTask = Task.detached(priority: .userInitiated) { ScheduleStore.loadBest(bundled: dir, store: store) }
+        let placesTask = Task.detached(priority: .utility) { ScheduleStore.loadBestPlaces(bundled: dir, store: store) }
+        let best = await staticTask.value
+        staticData = best.loaded.data
+        staticFailed = best.loaded.failed
+        scheduleSource = best.source
         staticVersion += 1
         finishBoot()
         places = await placesTask.value
-        if config.demo { applyLaunchScreen() }
+        if config.demo { applyLaunchScreen() } else { refreshSchedule() }
     }
 
     /// Everything that needs the static data: predictor, prefs, location, clock, polling.
@@ -58,13 +62,16 @@ extension AppModel {
 
     // MARK: Polling
 
+    /// The static data is in (or failed): polling and the clock may run.
+    var bootDone: Bool { !staticData.isEmpty || !staticFailed.isEmpty }
+
     func resumePolling() {
-        guard pollTask == nil, !staticData.isEmpty || !staticFailed.isEmpty else { return }   // after boot
+        guard pollTask == nil, bootDone else { return }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.pollOnce()
-                let delay: Double = self.feedSimulated ? 5 : (self.failures >= 3 ? 30 : 10)
+                let delay = self.pollDelay
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
         }
@@ -73,6 +80,34 @@ extension AppModel {
     func pausePolling() {
         pollTask?.cancel()
         pollTask = nil
+    }
+
+    /// Seconds between polls while the app is open: 10 like the web; 20 in Low Power Mode (still far inside the
+    /// 60 s "can't reach" limit, so every freshness flag works the same); 30 after 3 failures in a row; 5 with
+    /// simulated buses. In the background nothing polls (`didEnterBackground`).
+    var pollDelay: Double {
+        if feedSimulated { return 5 }
+        if failures >= 3 { return 30 }
+        return ProcessInfo.processInfo.isLowPowerModeEnabled ? 20 : 10
+    }
+
+    /// Back in the app: the clock and the freshness flags first (data from before the break must never look
+    /// fresh while the first new poll is on its way), then polling, the clock tick, permissions, schedule check.
+    func didBecomeActive() {
+        now = Date().timeIntervalSince1970
+        refreshStatus()
+        resumePolling()
+        if clockTask == nil && bootDone { startClock() }
+        refreshNotifPermission()
+        refreshSchedule()
+    }
+
+    /// Leaving the app: one fresh Live Activity update, then no polling and no clock tick in the background.
+    func didEnterBackground() {
+        flushLiveActivity()
+        pausePolling()
+        clockTask?.cancel()
+        clockTask = nil
     }
 
     func pollOnce() async {
@@ -85,6 +120,8 @@ extension AppModel {
             let withAlerts = started - lastAlertsPoll >= Self.alertsEveryS
             poll = await FeedClient().poll(alerts: withAlerts)
             guard gen == feedGeneration else { return }   // switched to simulated buses meanwhile: never mix
+            // paused mid-request (the app left): a cancelled request is not a feed failure, drop it
+            if Task.isCancelled { return }
             if withAlerts, (try? poll.alerts.get()) != nil { lastAlertsPoll = started }   // a failed fetch retries next poll
         }
         let t = Date().timeIntervalSince1970
@@ -93,6 +130,43 @@ extension AppModel {
         refreshTrip()
         refreshDirections()
         checkBusAlerts()
+        if pendingStatic != nil { applyPendingSchedule() }
+    }
+
+    // MARK: Schedule updates (newer web/data from the web app's site; ScheduleUpdate.swift in the Kit)
+
+    /// Ask the site for a newer schedule if the daily check is due (the Kit's `ScheduleUpdater` keeps the
+    /// date of the last check, so calling this on every return to the app costs one small file read). Never in
+    /// `-demo`; never blocks anything: the download, the validation and the new place index run off the main
+    /// thread, and the result is swapped in only when it is safe.
+    func refreshSchedule() {
+        guard let store = scheduleStore, scheduleTask == nil, bootDone else { return }
+        let current = staticData.generated, currentPlaces = places?.generated
+        let updater = ScheduleUpdater(store: store)
+        scheduleTask = Task { [weak self] in
+            let r = await updater.run(current: current, currentPlaces: currentPlaces, now: Date().timeIntervalSince1970)
+            guard let self else { return }
+            self.scheduleTask = nil
+            if let p = r.places { self.places = p }
+            if let d = r.data {
+                self.pendingStatic = d
+                self.applyPendingSchedule()
+            }
+        }
+    }
+
+    /// Swap in a downloaded schedule while nothing in progress was planned with the old one: not during a
+    /// started trip or with Directions open (then after a later poll). Prefs, map order and favorites stay.
+    func applyPendingSchedule() {
+        guard let d = pendingStatic, activeTrip == nil, page != .directions else { return }
+        pendingStatic = nil
+        staticData = d.data
+        staticFailed = d.failed
+        scheduleSource = .downloaded
+        staticVersion += 1
+        predictor = SchedulePredictor(segments: staticData.segments, routeStops: staticData.routeStops)
+        if routeState.routeIds != staticData.routeIds { routeState.routeIds = staticData.routeIds }
+        refreshStatus()
     }
 
     /// Publish a merged poll: every observed slice is assigned only when it differs, so a view that reads

@@ -30,12 +30,13 @@ struct MapScreen: View {
         @Bindable var camera = model.mapCamera
         let layers = model.mapLayers
         let buses = model.mapBuses.filter { !layers.hidden.contains($0.rid) }
+        let drawn = plan, ring = ringed   // once per body, not once per stop
         Map(position: $camera.position) {
             ForEach(layers.lines) { l in
                 MapPolyline(coordinates: l.coords)
                     .stroke(l.color, style: StrokeStyle(lineWidth: l.width, lineCap: .round, lineJoin: .round))
             }
-            if let o = plan {
+            if let o = drawn {
                 ForEach(Array(o.walkLegs.enumerated()), id: \.offset) { item in
                     MapPolyline(coordinates: (item.element.coords ?? [item.element.from.coord, item.element.to.coord]).map(\.cl))
                         .stroke(.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [2, 7]))
@@ -71,7 +72,8 @@ struct MapScreen: View {
             }
             ForEach(layers.stops) { s in
                 Annotation(s.stop.name, coordinate: s.stop.coord.cl, anchor: .center) {
-                    StopDot(isFav: s.isFav, faded: plan != nil, ring: ringed.contains(s.id)) { model.stopTapped(s.id) }
+                    StopDot(id: s.id, isFav: s.isFav, faded: drawn != nil, ring: ring.contains(s.id)) { model.stopTapped(s.id) }
+                        .equatable()
                         .accessibilityLabel(s.isFav ? "Favorite stop \(s.stop.name)" : "Stop \(s.stop.name)")
                 }
                 .annotationTitles(.hidden)
@@ -111,13 +113,22 @@ struct MapScreen: View {
     }
 }
 
-struct StopDot: View {
+/// Equatable on what it shows (the tap closure is new on every map body, so without this SwiftUI would redraw all
+/// ~90 stops whenever buses move). Annotation content must not read the model from the environment: MapKit hosts
+/// it outside the normal view tree.
+struct StopDot: View, Equatable {
+    var id: String
     var isFav: Bool
     /// A plan is drawn: favorite stars step back (web map/favorites.js).
     var faded = false
     /// Highlighted (Routes to station candidate or the open stop).
     var ring = false
     var action: () -> Void
+
+    static func == (a: StopDot, b: StopDot) -> Bool {
+        a.id == b.id && a.isFav == b.isFav && a.faded == b.faded && a.ring == b.ring
+    }
+
     var body: some View {
         Button(action: action) {
             ZStack {

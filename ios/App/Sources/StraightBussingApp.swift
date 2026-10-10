@@ -21,15 +21,14 @@ struct StraightBussingApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             // Never poll in the background: live data is only fetched while the app is open. On the way out,
-            // one forced Live Activity update so the Lock Screen starts from fresh numbers. Back in the app,
-            // re-read the notification permission (it may have changed in iOS Settings).
+            // one forced Live Activity update so the Lock Screen starts from fresh numbers. Back in the app, the
+            // freshness flags are re-checked at once, then polling resumes; the notification permission is
+            // re-read (it may have changed in iOS Settings) and the daily schedule check runs if due.
             if phase == .active {
-                model.checkSimulatedOnReturn()
-                model.resumePolling()
-                model.refreshNotifPermission()
+                model.checkSimulatedOnReturn()   // simulated buses end after a long absence
+                model.didBecomeActive()
             } else if phase == .background {
-                model.flushLiveActivity()
-                model.pausePolling()
+                model.didEnterBackground()
                 model.noteBackground()
             }
         }
