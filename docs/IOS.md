@@ -1,9 +1,23 @@
-# iPhone app path
+# iPhone app
 
-The full plan lives in **`conversion to appstore.md`** (repo root): web vs iPhone feature map, Capacitor steps, Live Activity / Dynamic Island design, bus-near and 2/1-stop notifications, plugin + extension plan, review risks, phased checklist. Costs and the Guideline 4.2 analysis: `docs/APPSTORE.md`.
+The iPhone app is a **native SwiftUI + MapKit app in `ios/`** (it replaced the earlier plan to wrap the web app with
+Capacitor). It has the web app's features and words, plus a trip Live Activity on the Lock Screen and in the Dynamic
+Island, local bus alerts and on-device place search. No Mac is needed to work on it: GitHub's macOS runners build,
+test and screenshot it on every push to `ios/`.
 
-Quick summary:
-1. **Now: PWA.** Safari -> Share -> Add to Home Screen (see RUN.md). Free, instant updates. The web app stores notification preferences and alerts only while open.
-2. **TestFlight / App Store: Capacitor wrap + native Swift extensions** (Live Activity, widget, notifications). Needs a Mac with Xcode (or a cloud Mac / CI) and a $99/yr Apple Developer account. Locked-phone bus alerts need a small push server.
-3. iPhone-only features are not pushed to the GitHub Pages site.
-4. Do not submit publicly before UChicago/Passio permission is in writing.
+| Need | Where |
+|---|---|
+| Code layout, how the Swift Kit maps to the web modules, web parity matrix, CI, App Store checklist | `ios/README.md` |
+| See it without a Mac: simulator screenshots (light, dark, App Store 6.9-inch set) and recordings | https://blobberus.github.io/straight-bussing/ios/ |
+| Submit to the App Store: account, signing in CI, metadata, review risks and replies | `docs/APPSTORE-SUBMIT.md` |
+| Costs and the guideline 4.2 analysis | `docs/APPSTORE.md` |
+| Feature plan: Live Activity updates, push server for locked-phone alerts, widgets | `conversion to appstore.md` |
+| Design rules and the iOS tokens | `docs/DESIGN.md` "1b. System rules", `ios/Shared/Palette.swift`, `ios/DESIGN-AUDIT-2026-10-10.md` |
+| Privacy policy and support pages (also linked in the app) | https://blobberus.github.io/straight-bussing/privacy.html, `/support.html` |
+
+Quick facts:
+1. **Web app first.** The PWA stays the free, instant-update version: Safari > Share > Add to Home Screen (`docs/RUN.md`).
+2. **No shuttles running?** Settings > Demo > Simulated buses (demo) shows labeled, made-up buses (for App Review and
+   testing at night); it is never saved and never mixed with live data.
+3. **Locked-phone updates** (Live Activity and bus alerts while the app is closed) need a push server; planned.
+4. **Do not submit publicly** before UChicago Transportation / Passio permission is in writing.

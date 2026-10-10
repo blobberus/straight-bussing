@@ -17,7 +17,9 @@ locally, `pushType: nil`), local notifications, when-in-use location only, no ba
 (no tracking, no collected data), `ITSAppUsesNonExemptEncryption = NO`, 1024 px opaque icon, unofficial notice and
 773.702.8181 in About and empty states. CI builds **unsigned simulator** builds on `macos-15`.
 
-Gaps this research found (each becomes a step below):
+Gaps this research found (each becomes a step below; 2 to 5 were closed on 2026-10-10, see
+`ios/DESIGN-AUDIT-2026-10-10.md` section 16: privacy and support pages linked in the app, the simulated-bus switch,
+a 6.9-inch screenshot set from CI):
 1. **CI Xcode is too old to upload.** Since 2026-04-28, uploads "must be built with Xcode 26 or later using an SDK for
    iOS 26" ([upcoming requirements](https://developer.apple.com/news/upcoming-requirements/)). The `macos-15` image
    defaults to Xcode 16.4; the `macos-26` image defaults to Xcode 26.6 and ships fastlane 2.239.0
@@ -46,7 +48,7 @@ Gaps this research found (each becomes a step below):
 | D4 | The UChicago / Passio permission question (UNRESOLVED) | **Ask now (step 1). TestFlight for yourself while waiting. Submit publicly only with a written "no objection"**, as `CLAUDE.md` and `conversion to appstore.md` already require. | See section 4, risk 1. This is the one thing that can get the app rejected or removed later, and the App Store Connect "Content Rights" question asks you to state that you have the rights. |
 | D5 | Countries | **United States only** | The app is only useful in Chicago. Every account must still declare EU trader status, but if you don't distribute in the EU you are not a trader, so no address or phone is published ([DSA trader requirements](https://developer.apple.com/help/app-store-connect/manage-compliance-information/manage-european-union-digital-services-act-trader-requirements/)). |
 | D6 | What version 1.0 contains | **The current feature set** (local Live Activity, bus alerts while the app is open, no server) | Without a server nothing about the rider leaves the phone, so the privacy label is "Data Not Collected" and there is no backend to keep alive during review. Server push (P7) can come in 1.1 with an updated label. |
-| D7 | Reviewer access to buses at any hour | **Add a clearly labeled "Preview with simulated buses" switch** (off by default, banner while on) | Guideline 2.1 requires that reviewers can see the full app; a recording alone may not be enough. Simulated buses must never look real (ship checklist item 1). |
+| D7 | Reviewer access to buses at any hour | **Add a clearly labeled "Preview with simulated buses" switch** (off by default, banner while on). Built 2026-10-10: Settings > Demo > "Simulated buses (demo)" | Guideline 2.1 requires that reviewers can see the full app; a recording alone may not be enough. Simulated buses must never look real (ship checklist item 1). |
 
 ## 2. Costs
 
@@ -103,7 +105,8 @@ Claude can adapt:
   publishes for the shuttle system. The attached email from [name, title, office] dated [date] confirms they have no
   objection. The app is unofficial, uses no university trademarks, and links to the official service."
 - 2.1 (empty map): "Shuttles run [hours] Central Time on weekdays. To see live-looking buses at any time, open Settings,
-  turn on Preview with simulated buses (labeled as simulated on every screen). A recording of real service is at [link]."
+  turn on Demo > Simulated buses (demo) (every screen then says "Demo mode: simulated buses"). A recording of real
+  service is at [link]."
 - 4.2: list the native features (MapKit map, Live Activity on the Lock Screen and Dynamic Island, local stop alerts,
   on-device place search, offline schedules, favorites and custom routes, VoiceOver labels).
 
@@ -311,8 +314,8 @@ Claude can adapt:
       ```
       Straight Bussing is a free, unofficial tracker for the campus shuttles in Hyde Park, Chicago. No login.
       Live data: shuttles run about [hours] Central Time. Outside those hours, or far from Chicago, the map
-      correctly shows no buses and the app says so. To see every feature at any time: Settings > Preview with
-      simulated buses (off by default; every screen is labeled "Simulated").
+      correctly shows no buses and the app says so. To see every feature at any time: Settings > Demo > Simulated
+      buses (demo) (off by default; every screen is labeled "Demo mode: simulated buses").
       Try: Directions > search "Regenstein" > choose an option > Start. This starts a Live Activity (Lock Screen
       and Dynamic Island) and the trip timeline. Settings > Bus alerts > choose a Station: local notifications
       while the app is open.
