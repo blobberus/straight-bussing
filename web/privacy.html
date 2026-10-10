@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy: Straight Bussing</title>
+<meta name="description" content="Privacy policy of Straight Bussing, the free unofficial campus shuttle tracker for iPhone and the web. No account, no tracking, nothing collected.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<style>
+/* Static page, no scripts, no external requests. Colors follow web/css/tokens.css. */
+:root { color-scheme: light dark; --bg: #fcfcfd; --text: #111114; --text-2: #5c5c63; --accent: #0066d6; --hairline: rgba(60, 60, 67, .18); --surface: #f2f2f7; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --text: #f5f5f7; --text-2: #a1a1a8; --accent: #409cff; --hairline: rgba(84, 84, 88, .55); --surface: #2c2c2e; } }
+body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 680px; margin: 0 auto; padding: 24px 20px 48px; }
+h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 4px; letter-spacing: -0.02em; }
+h2 { font-size: 1.15rem; margin: 2rem 0 .5rem; }
+p, li { margin: .5rem 0; }
+ul { padding-left: 1.2rem; }
+.meta { color: var(--text-2); font-size: .94rem; }
+.box { background: var(--surface); border-radius: 14px; padding: 4px 16px; }
+a { color: var(--accent); text-underline-offset: 2px; }
+b { font-weight: 650; }
+footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--hairline); color: var(--text-2); font-size: .94rem; }
+</style>
+</head>
+<body>
+<main>
+<h1>Privacy policy</h1>
+<p class="meta">Straight Bussing, for iPhone and the web. Effective October 10, 2026.</p>
+
+<p>Straight Bussing is a free, unofficial tracker for the campus shuttles in Hyde Park, Chicago, made as a student project.
+It is not affiliated with or endorsed by the University or by Passio. This policy covers the iPhone app and the web app at
+<a href="./">blobberus.github.io/straight-bussing</a>.</p>
+
+<div class="box">
+<p><b>The short version.</b> No account, no ads, no tracking, no analytics. The developer collects nothing, receives
+nothing and has no server. Your live location is never sent anywhere; the only location data that leaves your device is
+the rounded start and end of a walking leg, used for walking directions.</p>
+</div>
+
+<h2>What stays on your device</h2>
+<ul>
+<li><b>Your location</b>, if you allow it, is used on your device to find the stops near you and to time walks. The app
+asks for it only when you tap &ldquo;Use my location&rdquo;, only while the app is open, and works without it (search a station
+or a place instead). You can turn it off at any time: on iPhone in Settings &gt; Privacy &amp; Security &gt; Location
+Services &gt; Straight Bussing; on the web in your browser&rsquo;s site settings.</li>
+<li><b>Your settings</b> (theme, hidden routes, map order, custom routes, favorites, bus alert choices) are saved on your
+device only: in the app&rsquo;s storage on iPhone, removed when you delete the app; in this browser&rsquo;s storage on the
+web, removed when you clear the site&rsquo;s data.</li>
+<li><b>Place search</b> for station names and places within a 30-minute walk of campus stops runs on your device,
+including spelling fixes.</li>
+<li><b>Bus alerts and the trip Live Activity</b> (iPhone) are created on your device as local notifications. There is no
+push server. Notifications are optional and the app works without them.</li>
+</ul>
+
+<h2>What leaves your device, and to whom</h2>
+<ul>
+<li><b>Shuttle data.</b> The app downloads the public shuttle feeds from <b>passio3.com</b> (vehicle positions, arrival
+predictions and service alerts). These requests carry no personal data; like any web request, they show your IP address to
+that server.</li>
+<li><b>Place search.</b> Only when the search on your device finds fewer than 5 matches, or when you tap &ldquo;Search for
+&hellip; instead&rdquo;, is text sent to <b>photon.komoot.io</b> (OpenStreetMap geocoder by komoot): the text you typed, or
+its spelling fix when results are shown for the fix, and nothing else. Never your location.</li>
+<li><b>Walking directions.</b> Only the start and end of each walking leg (your location, when a trip starts there),
+rounded to about 10 m, are sent to follow sidewalks: on iPhone to <b>Apple Maps</b> (MapKit), on the web to
+<b>routing.openstreetmap.de</b> (or <b>valhalla1.openstreetmap.de</b> if that is down). Nothing else about you or your trip
+is sent. If that fails, a straight-line estimate is used and labeled &ldquo;estimate&rdquo;.</li>
+<li><b>Maps.</b> On iPhone the map comes from Apple Maps (MapKit), and
+<a href="https://www.apple.com/legal/privacy/">Apple&rsquo;s privacy policy</a> applies to it. On the web, map tiles come from
+<b>tiles.openfreemap.org</b> and the map code from <b>unpkg.com</b>.</li>
+<li><b>The web app itself</b>, including its schedule files, is served by GitHub Pages; GitHub&rsquo;s
+<a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">privacy statement</a>
+applies to those requests.</li>
+</ul>
+<p>These services receive only what is listed above and handle it under their own policies. Straight Bussing contains no
+third-party code for analytics, advertising or crash reporting.</p>
+
+<h2>Keeping, deleting and changing your mind</h2>
+<ul>
+<li>The developer stores nothing about you, so there is nothing to look up, export or delete on our side.</li>
+<li>To remove everything the app saved on your device, delete the app (iPhone) or clear this site&rsquo;s data (web).</li>
+<li>Location and notifications can be turned off at any time in iOS Settings or your browser; the app keeps working.</li>
+</ul>
+
+<h2>Children</h2>
+<p>The app is for everyone and collects no data from anyone, including children.</p>
+
+<h2>Changes</h2>
+<p>If a future version needs to send more (for example, bus alerts on a locked phone would need a push server), this page,
+the About screen and the App Store privacy details will say so before that version ships. The date above shows the last
+change.</p>
+
+<h2>Contact</h2>
+<p>Questions or concerns about privacy: open an issue at
+<a href="https://github.com/blobberus/straight-bussing/issues">github.com/blobberus/straight-bussing/issues</a>.
+For help with the app, see the <a href="support.html">support page</a>.</p>
+
+<footer>
+<p>Unofficial. Not affiliated with the University. Official shuttle service: <a href="tel:7737028181">773.702.8181</a>.</p>
+</footer>
+</main>
+</body>
+</html>

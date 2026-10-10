@@ -1,8 +1,9 @@
 import SwiftUI
 import StraightBussingKit
 
-/// About (ui/views/about.js): unofficial notice, official phone/link, privacy, how times work, credits
-/// (no copyright sign, like the web's map credit), version + schedule data date.
+/// About (ui/views/about.js): unofficial notice, official phone/link, privacy with the privacy policy and support
+/// links (App Review 5.1.1 wants the policy reachable in the app), how times work, credits (no copyright sign,
+/// like the web's map credit), version + schedule data date.
 struct AboutView: View {
     @Environment(AppModel.self) private var model
 
@@ -38,6 +39,13 @@ struct AboutView: View {
                         bullet("Settings (theme, hidden routes, custom routes, favorites) are saved on this iPhone only.")
                     }
                     .padding(.vertical, 10)
+                }
+                Card {
+                    VStack(spacing: 0) {
+                        linkRow("Privacy policy", "hand.raised", SiteLinks.privacy, id: "aboutPrivacyPolicy")
+                        Divider()
+                        linkRow("Help and bug reports", "questionmark.bubble", SiteLinks.support, id: "aboutSupport")
+                    }
                 }
                 SectionTitle(text: "How times work")
                 Text("Arrival times come from the live shuttle feed. Ride, wait and total times in Directions are estimates from schedules and live predictions, and each one says where it came from. If the feed is late or down, the app tells you.")
@@ -76,5 +84,22 @@ struct AboutView: View {
             Text("\u{2022}").foregroundStyle(Palette.text2).accessibilityHidden(true)
             Text(s).font(.subheadline)
         }
+    }
+
+    /// A row that opens a page of the project site in Safari.
+    func linkRow(_ title: String, _ icon: String, _ url: URL, id: String) -> some View {
+        Link(destination: url) {
+            HStack(spacing: 10) {
+                Image(systemName: icon).frame(width: 24).foregroundStyle(Palette.accent).accessibilityHidden(true)
+                Text(title).foregroundStyle(Palette.accent)
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right").font(.caption.weight(.semibold)).foregroundStyle(Palette.text3)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .accessibilityHint("Opens in Safari")
+        .accessibilityIdentifier(id)
     }
 }

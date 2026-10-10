@@ -206,6 +206,13 @@ struct EmptyStateView: View {
     }
 }
 
+/// Pages on the project site (GitHub Pages): the privacy policy (App Review 5.1.1 asks for an in-app link) and
+/// the support page.
+enum SiteLinks {
+    static let privacy = URL(string: "https://blobberus.github.io/straight-bussing/privacy.html")!
+    static let support = URL(string: "https://blobberus.github.io/straight-bussing/support.html")!
+}
+
 /// Official service contact (shown in About and empty/error states).
 struct OfficialContact: View {
     var body: some View {

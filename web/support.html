@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support: Straight Bussing</title>
+<meta name="description" content="Help for Straight Bussing, the free unofficial campus shuttle tracker: how it works, the official service number, and how to report a bug.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<style>
+/* Static page, no scripts, no external requests. Colors follow web/css/tokens.css. */
+:root { color-scheme: light dark; --bg: #fcfcfd; --text: #111114; --text-2: #5c5c63; --accent: #0066d6; --accent-fill: #0071e3; --hairline: rgba(60, 60, 67, .18); --surface: #f2f2f7; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --text: #f5f5f7; --text-2: #a1a1a8; --accent: #409cff; --hairline: rgba(84, 84, 88, .55); --surface: #2c2c2e; } }
+body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 680px; margin: 0 auto; padding: 24px 20px 48px; }
+h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 4px; letter-spacing: -0.02em; }
+h2 { font-size: 1.15rem; margin: 2rem 0 .5rem; }
+p, li { margin: .5rem 0; }
+ul, ol { padding-left: 1.2rem; }
+.meta { color: var(--text-2); font-size: .94rem; }
+.box { background: var(--surface); border-radius: 14px; padding: 4px 16px; }
+.btn { display: block; text-align: center; padding: 12px 16px; margin: 10px 0; border-radius: 12px; font-weight: 600; text-decoration: none; }
+.btn--primary { background: var(--accent-fill); color: #fff; }
+.btn--secondary { background: var(--surface); color: var(--accent); }
+a { color: var(--accent); text-underline-offset: 2px; }
+b { font-weight: 650; }
+footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--hairline); color: var(--text-2); font-size: .94rem; }
+</style>
+</head>
+<body>
+<main>
+<h1>Straight Bussing support</h1>
+<p class="meta">Free, unofficial campus shuttle tracker for iPhone and the web.</p>
+
+<p>Straight Bussing shows the campus shuttles in Hyde Park, Chicago, on a live map: where each bus is, when the next one
+reaches your stop, and how to get somewhere by walking and shuttle. It is an unofficial student project, not affiliated
+with or endorsed by the University or by Passio. Arrival times are predictions and can be wrong.</p>
+
+<div class="box">
+<p><b>For safety rides or anything urgent, use the official service.</b></p>
+<a class="btn btn--primary" href="tel:7737028181">Call 773.702.8181</a>
+<a class="btn btn--secondary" href="https://safety-security.uchicago.edu/Transportation">Official transportation page</a>
+</div>
+
+<h2>Report a bug or ask a question</h2>
+<p>Open an issue at <a href="https://github.com/blobberus/straight-bussing/issues">github.com/blobberus/straight-bussing/issues</a>
+(a free GitHub account is needed). It helps to include:</p>
+<ol>
+<li>iPhone app or web app, and the version (bottom of About in the app);</li>
+<li>your iPhone model and iOS version, or your browser;</li>
+<li>the screen, the route or stop, and the time it happened;</li>
+<li>what you expected and what you saw (a screenshot helps; crop out anything private).</li>
+</ol>
+
+<h2>Common questions</h2>
+<ul>
+<li><b>No buses on the map.</b> The shuttles may not be running right now; check the route&rsquo;s hours in Routes. If the
+live feed is late or down, a banner under the search bar says so and times are marked as approximate.</li>
+<li><b>Are the times exact?</b> No. Arrival times come from the live shuttle feed; ride, wait and total times are
+estimates from schedules and live predictions, marked &ldquo;est.&rdquo; with their source.</li>
+<li><b>Simulated buses (demo).</b> In the iPhone app, Settings has a switch that shows made-up buses, so you can try every feature when no
+shuttle runs. While it is on, every screen says &ldquo;Demo mode: simulated buses&rdquo;; it turns off when the app
+restarts. Turn it off to see live buses again.</li>
+<li><b>Location.</b> Optional. The app asks only when you tap &ldquo;Use my location&rdquo;; without it you can search a
+station or a place.</li>
+<li><b>Bus alerts and the Lock Screen.</b> Bus alerts and the trip Live Activity update while the app is open; alerts on
+a locked phone would need a push server, which is planned.</li>
+</ul>
+
+<h2>Privacy</h2>
+<p>No account, no ads, no tracking, nothing collected. Details: <a href="privacy.html">privacy policy</a>.</p>
+
+<footer>
+<p>Unofficial. Not affiliated with the University. Official service: <a href="tel:7737028181">773.702.8181</a>.
+Web app: <a href="./">blobberus.github.io/straight-bussing</a>.</p>
+</footer>
+</main>
+</body>
+</html>

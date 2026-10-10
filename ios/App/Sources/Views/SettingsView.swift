@@ -5,7 +5,7 @@ import StraightBussingKit
 /// Settings (top-right gear, ui/views/settings.js): appearance, service alerts, bus alerts ("notify me when my bus
 /// is near <station>": station, routes, 2 stops / 1 stop / N min, in-app banner + system notifications), the
 /// iPhone-only Live Activity switch + preview, simulated buses (demo, for App Review and screenshots at night),
-/// privacy, About.
+/// privacy with the privacy policy link, About.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -39,6 +39,11 @@ struct SettingsView: View {
                     Section {
                         Text("No account, no ads, no tracking. Your live location is never sent anywhere; the only location data that leaves this iPhone is the start and end of a walking leg, rounded to about 10 m, sent to Apple Maps for sidewalk directions. Station and place search run on this iPhone; only when that finds fewer than 5 matches is the typed text sent to photon.komoot.io. Downloads: the public shuttle feed and Apple Maps.")
                             .font(.subheadline)
+                        Link(destination: SiteLinks.privacy) {
+                            Label("Privacy policy", systemImage: "hand.raised")
+                        }
+                        .accessibilityHint("Opens the privacy policy in Safari")
+                        .accessibilityIdentifier("privacyPolicyLink")
                     } header: {
                         ListHeader("Privacy")
                     }
