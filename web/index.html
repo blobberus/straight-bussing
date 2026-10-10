@@ -20,18 +20,18 @@
 <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<link rel="stylesheet" href="css/tokens.css?v=4">
-<link rel="stylesheet" href="css/base.css?v=4">
-<link rel="stylesheet" href="css/sheet.css?v=4">
-<link rel="stylesheet" href="css/components.css?v=4">
-<link rel="stylesheet" href="css/map.css?v=4">
-<link rel="stylesheet" href="css/views.css?v=4">
-<link rel="stylesheet" href="css/routes.css?v=4">
-<link rel="stylesheet" href="css/route.css?v=4">
-<link rel="stylesheet" href="css/myroutes.css?v=4">
-<link rel="stylesheet" href="css/journey.css?v=4">
-<link rel="stylesheet" href="css/trip.css?v=4">
-<link rel="stylesheet" href="css/settings.css?v=4">
+<link rel="stylesheet" href="css/tokens.css?v=5">
+<link rel="stylesheet" href="css/base.css?v=5">
+<link rel="stylesheet" href="css/sheet.css?v=5">
+<link rel="stylesheet" href="css/components.css?v=5">
+<link rel="stylesheet" href="css/map.css?v=5">
+<link rel="stylesheet" href="css/views.css?v=5">
+<link rel="stylesheet" href="css/routes.css?v=5">
+<link rel="stylesheet" href="css/route.css?v=5">
+<link rel="stylesheet" href="css/myroutes.css?v=5">
+<link rel="stylesheet" href="css/journey.css?v=5">
+<link rel="stylesheet" href="css/trip.css?v=5">
+<link rel="stylesheet" href="css/settings.css?v=5">
 </head>
 <body>
 <!-- #app is a plain wrapper on phones; on desktop/tablet css/base.css turns it into a 393x852 iPhone frame (js/ui/frame.js scales it) -->
@@ -55,12 +55,12 @@
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
 </button>
 
-<div id="pill" class="statuspill" role="status" aria-live="polite" hidden><span id="pillText" class="pilltext"></span><button id="pillRetry" class="pillbtn" type="button" data-action="retry" hidden>Retry</button></div>
+<div id="pill" class="statuspill" role="status" aria-live="polite" hidden><span id="pillIcon" class="pillicon" aria-hidden="true"></span><span id="pillText" class="pilltext"></span><button id="pillRetry" class="pillbtn" type="button" data-action="retry" hidden>Retry</button></div>
 <div id="ctxbar" class="ctxbar" role="status" aria-live="polite" hidden></div>
 
 <section id="sheet" class="sheet" data-detent="half" role="dialog" aria-modal="false" aria-labelledby="title">
   <header id="sheetHead" class="sheet-head">
-    <button id="grab" class="grab" type="button" aria-label="Resize panel" aria-expanded="true" aria-controls="content"></button>
+    <div id="grab" class="grab" role="slider" tabindex="0" aria-label="Resize panel" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1" aria-valuetext="Half" aria-controls="content"></div>
     <div class="titleline">
       <button id="back" class="back" type="button" aria-label="Back" hidden>
         <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 2L2 10l8 8"/></svg>
@@ -90,6 +90,6 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
-<script type="module" src="js/main.js?v=4"></script>
+<script type="module" src="js/main.js?v=5"></script>
 </body>
 </html>

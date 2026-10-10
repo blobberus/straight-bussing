@@ -3,7 +3,8 @@
  * Settings content, shown in its own modal overlay (ui/settings-overlay.js), NOT in the sheet. The
  * top-right gear runs action `settings:open`, which opens (or closes) the overlay:
  * appearance (ui/theme.js mount), service alerts inline, bus alerts ("notify me when my bus is near
- * <station>": station, routes, 2 stops / 1 stop / N min, in-app + optional system notifications),
+ * <station>": station, routes, 2 stops / 1 stop / N min; ONE alert each, a banner while the app is in front or a
+ * system notification in the background when allowed, ui/notifier.js deliveryFor; wording as iOS SettingsView),
  * the iPhone-only Live Activity preference, and About. Owns its DOM after mount (regions patched in
  * place, focus kept) so the station search field and checkboxes never lose a tap or keystroke.
  * The router view id "settings" is kept only as a compatibility shim: navigating to it goes back and
@@ -19,6 +20,7 @@ import { activeAlerts, alertText, staleLevel } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { liveStatus, watchedRoutes, minutesText, stopsAway } from "../../core/notify.js";
 import { cleanNotify } from "../../state.js";
+import { DEMO } from "../../core/demo.js";
 import { routeChip, officialLinks } from "../components.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen } from "../settings-overlay.js";
@@ -172,16 +174,21 @@ export function statusHTML(state, now) {
   return `<div class="v-card st-status" role="status">${routeChip(s.rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(away)}${when ? ` · ${esc(when)}` : ""}</span><span class="v-sec">Next stop: ${esc(s.nextStop)}. From live predictions.</span></span></div>`;
 }
 
+/** Footer under the bus alerts (iOS SettingsView footer, adapted to a browser). */
+export const ALERTS_NOTE = "Alerts work only while Straight Bussing is open; in a background tab they can arrive late. Lock-screen alerts and a live trip counter come with the iPhone app.";
+
 /**
- * System notification permission row.
+ * Notification permission row (iOS SettingsView permissionRow, adapted): how alerts will arrive.
  * @param {string} [perm] notificationSupport() value
  * @returns {string}
  */
 export function permHTML(perm = notificationSupport()) {
-  if (perm === "unsupported") return '<p class="v-sec st-pad">This browser can\'t show system notifications. In-app alerts still work while the app is open.</p>';
-  if (perm === "granted") return `<p class="v-sec st-pad">${OK} System notifications are allowed (while the app is open).</p>`;
-  if (perm === "denied") return '<p class="v-sec st-pad">System notifications are blocked in your browser settings.</p>';
-  return '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-st="perm" data-key="perm">Allow system notifications</button>';
+  if (perm === "granted") return `<p class="v-sec st-pad">${OK} Alerts show as a banner while you use the app, and as a notification while it is open in the background.</p>`;
+  const why = perm === "denied" ? "Notifications for Straight Bussing are blocked in your browser settings"
+    : perm === "unsupported" ? "This browser can&rsquo;t show notifications" : "";
+  if (why) return `<div class="st-pad"><p class="v-prim">Notifications are off</p><p class="v-sec">${why}, so alerts show as a banner inside the app while it is open.</p></div>`;
+  return '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-st="perm" data-key="perm" aria-describedby="st-permhint">Allow notifications</button>'
+    + '<p class="v-fine" id="st-permhint">Without notifications, alerts show as a banner inside the app.</p>';
 }
 
 /**
@@ -195,10 +202,10 @@ export function renderSettings(state, now = nowS()) {
   return `<div class="st">
 <h3 class="v-h">Appearance</h3><div class="st-theme" data-region="theme"></div>
 <h3 class="v-h">Service alerts${nAlerts ? ` <span class="st-count">${nAlerts} active</span>` : ""}</h3><div data-region="alerts">${alertsHTML(state, now)}</div>
-<h3 class="v-h">Bus alerts</h3><p class="v-sec st-intro">Notify me when my bus is near a station. Times are estimates from live predictions.</p>
+<h3 class="v-h">Bus alerts</h3><p class="v-sec st-intro">Notify me when my bus is near a station. Times are estimates from live predictions.</p>${DEMO ? '<p class="v-foot v-foot--warn" role="note">Bus alerts are off in demo mode: the buses are simulated.</p>' : ""}
 <div data-region="station">${stationHTML(state)}</div><div data-region="opts">${optsHTML(state)}</div><div data-region="status">${statusHTML(state, now)}</div>
 <div data-region="perm">${permHTML()}</div>
-<p class="v-sec st-note">On the web, alerts only work while Straight Bussing is open. Lock-screen alerts and a live trip counter come with the iPhone app.</p>
+<p class="v-sec st-note">${esc(ALERTS_NOTE)}</p>
 <h3 class="v-h">iPhone app</h3><div class="v-card st-ios">${sw("liveActivity", "Trip status on lock screen", "Live Activity with a minute counter and next stop. Coming to the iPhone app; your choice is saved for later.", n.liveActivity)}</div>
 <div class="v-card"><button type="button" class="v-row" data-action="about:open"><span class="v-grow"><span class="v-prim">About this app</span><span class="v-sec">Unofficial. Privacy, official contact</span></span></button></div>
 </div>`;
@@ -245,7 +252,7 @@ function onClick(e, root, ctx) {
     ctx.toast?.("Bus alerts turned off");
   } else if (what === "anyroute") setNotify(ctx, { rids: [] });
   else if (what === "perm") {
-    requestPermission().then((p) => { patch(root, "perm", permHTML(p)); if (p === "granted") ctx.toast?.("System notifications allowed"); });
+    requestPermission().then((p) => { patch(root, "perm", permHTML(p)); if (p === "granted") ctx.toast?.("Notifications allowed"); });
   }
 }
 

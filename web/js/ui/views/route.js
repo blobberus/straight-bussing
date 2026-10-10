@@ -74,7 +74,7 @@ export function busPositions(state, rid, now) {
     const seen = Number(b.timestamp) || 0, stale = !!seen && now - seen > STALE_BUS_S;
     const label = String(b.vehicle?.label || b.vehicle?.id || "");
     let text = `Bus ${label} ` + (prev === null ? `approaching ${name(next)}` : `between ${name(prev)} and ${name(next)}, heading to ${name(next)}`);
-    if (stale) text += `, location from ${ago(seen)}`;
+    if (stale) text += `, location from ${ago(seen, now)}`;
     out.push({ label, next, prev, frac, stale, seen, text });
   }
   return out;
@@ -180,8 +180,9 @@ export function renderRoute(state, now = nowS()) {
     const a = state.liveLoaded ? arrivalsFor(state, sid, { routeId: rid, nowS: now })[0] : null;
     const eta = etaLabel(a?.t, now, stale), name = state.stops?.[sid]?.name || sid;
     const here = busAt.get(i) || [];
-    const pill = here.map((b) => `<span class="v-tlbus${b.stale ? " is-stale" : ""}" style="background:${color};color:${fg}">Bus ${esc(b.label)} heading here${b.stale ? ` &middot; seen ${esc(ago(b.seen))}` : ""}</span>`).join("");
-    const label = `${name}${eta ? ", next bus " + (eta === "Now" ? "now" : "in " + eta.replace("~", "about ")) : ", no prediction"}${here.length ? ", a bus is heading here" : ""}`;
+    const pill = here.map((b) => `<span class="v-tlbus${b.stale ? " is-stale" : ""}" style="background:${color};color:${fg}">Bus ${esc(b.label)} heading here${b.stale ? ` &middot; seen ${esc(ago(b.seen, now))}` : ""}</span>`).join("");
+    // one element for screen readers (iOS RouteDetailView): name, "next bus in N min" / "no prediction", the bus heading here
+    const old = here.find((b) => b.stale), label = `${name}${eta ? ", next bus " + (eta === "Now" ? "now" : "in " + eta.replace("~", "about ")) : ", no prediction"}${here.length ? ", a bus is heading here" + (old ? `, seen ${ago(old.seen, now)}` : "") : ""}`;
     const last = i === ids.length - 1;
     let rail = last && !loop ? "" : `<span class="r-seg" aria-hidden="true">${CHEVRON}</span>`;
     for (const b of railAt.get(i) || []) {

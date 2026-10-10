@@ -163,6 +163,26 @@ test('live: pauses while hidden, polls immediately on visible', async () => {
   } finally { live.stop(); restore(); }
 });
 
+test('live: keepAlive keeps polling while hidden (bus alerts in a background tab), stops when it turns false', async () => {
+  const store = initial();
+  const f = modal('ok');
+  let keep = true;
+  const live = startLive(store, { intervalMs: 15, fetch: f, keepAlive: () => keep });
+  let restore = () => {};
+  try {
+    await sleep(40);
+    restore = setHidden(true);
+    const n = pollsOf(f);
+    await sleep(120);
+    ok(pollsOf(f) >= n + 2, 'still polling while hidden (' + (pollsOf(f) - n) + ')');
+    keep = false;
+    await sleep(40); // the next scheduled poll sees keepAlive false and stops
+    const m = pollsOf(f);
+    await sleep(100);
+    eq(pollsOf(f), m, 'paused once keepAlive is false');
+  } finally { live.stop(); restore(); }
+});
+
 test('live: started while hidden does nothing until visible', async () => {
   const store = initial();
   const f = modal('ok');

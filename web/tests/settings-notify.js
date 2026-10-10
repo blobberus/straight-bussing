@@ -3,7 +3,7 @@ import { test, eq, ok } from "./lib.js";
 import { fixture, NOW } from "./views-fixtures.js";
 import { createStore } from "../js/core/store.js";
 import { stopsAway, dueAlerts, liveStatus, watchedRoutes, minutesText, routeOrder } from "../js/core/notify.js";
-import { startNotifier } from "../js/ui/notifier.js";
+import { startNotifier, deliveryFor } from "../js/ui/notifier.js";
 import { cleanNotify } from "../js/state.js";
 
 const N = (o = {}) => cleanNotify({ stopId: "S3", ...o });
@@ -82,25 +82,52 @@ test("notify: live status = nearest bus with minutes and next stop", () => {
   eq(liveStatus(st({ notify: N({ stopId: null }) }), NOW), null);
 });
 
-test("notifier: toasts + system notify once per trip/kind across store updates; new station resets", async () => {
+test("notifier: ONE channel per alert: banner in front, system notification in the background (2026-10-10)", () => {
+  // front = page visible AND focused; the "In-app alerts while open" switch only turns the banner off
+  const cases = [
+    [{ front: true, perm: "granted", inApp: true }, "toast"],
+    [{ front: true, perm: "granted", inApp: false }, "system"],
+    [{ front: true, perm: "default", inApp: false }, "none"],
+    [{ front: false, perm: "granted", inApp: true }, "system"],
+    [{ front: false, perm: "granted", inApp: false }, "system"],
+    [{ front: false, perm: "denied", inApp: true }, "toast"],
+    [{ front: false, perm: "unsupported", inApp: false }, "none"],
+  ];
+  for (const [o, want] of cases) eq(deliveryFor(o), want, JSON.stringify(o));
+});
+
+test("notifier: one delivery per trip/kind across store updates (never a toast AND a notification); new station resets", async () => {
   const store = createStore(st({ notify: N({ rids: ["R1"] }) }));
   const toasts = [], sys = [];
-  const n = startNotifier(store, { toast: (t) => toasts.push(t), now: () => NOW, notify: (a) => sys.push(a.key) });
-  eq(toasts.length, 1);
+  let front = true, perm = "granted", sysWorks = true;
+  const n = startNotifier(store, { toast: (t) => toasts.push(t), now: () => NOW, notify: (a) => { if (sysWorks) sys.push(a.key); return sysWorks; },
+    front: () => front, perm: () => perm });
+  eq([toasts.length, sys.length], [1, 0], "in front: the banner only");
   ok(toasts[0].startsWith("Red Line: 2 stops away"));
   store.set({ feedTs: NOW - 1 });
   await new Promise((r) => queueMicrotask(r));
   eq(toasts.length, 1, "no repeat");
-  store.set({ notify: N({ rids: ["R1"], inApp: false }), buses: moveBus(store.get(), 0, { stop_id: "S2" }).buses });
+  front = false;
+  store.set({ buses: moveBus(store.get(), 0, { stop_id: "S2" }).buses });
   await new Promise((r) => queueMicrotask(r));
-  eq([toasts.length, sys.length], [1, 2], "inApp off -> system only");
+  eq([toasts.length, sys.length], [1, 1], "in the background: the system notification only");
+  ok(n.background(), "station set + notifications allowed: keep polling in the background");
+  perm = "default";
+  ok(!n.background(), "not allowed: no background polling");
   store.set({ notify: N({ stopId: "S2", rids: ["R1"] }) });
   await new Promise((r) => queueMicrotask(r));
+  eq([toasts.length, sys.length], [2, 1], "not allowed in the background: the banner (seen on return)");
   ok(n.fired().size >= 1 && [...n.fired()].every((k) => k.startsWith("S2|")), "fresh set for the new station");
-  n.stop();
+  perm = "granted"; sysWorks = false;
   store.set({ notify: N({ stopId: "S3", rids: ["R1"] }) });
   await new Promise((r) => queueMicrotask(r));
-  eq(sys.length, 3, "stopped: nothing more after stop()");
+  eq([toasts.length, sys.length], [3, 1], "a system notification that cannot show falls back to the banner");
+  n.stop();
+  sysWorks = true;
+  store.set({ notify: N({ stopId: "S1", rids: ["R1"] }) });
+  await new Promise((r) => queueMicrotask(r));
+  eq([toasts.length, sys.length], [3, 1], "stopped: nothing more after stop()");
+  ok(!startNotifier(createStore(st({ notify: N({ stopId: null }) })), { toast: () => {}, perm: () => "granted" }).background(), "no station: no background polling");
 });
 
 test("notify: two buses on the SAME trip id each get their own ETA and alert (QA 2026-10-09)", () => {

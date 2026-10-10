@@ -93,3 +93,10 @@ test('patchStyle (online): real OpenFreeMap styles patch cleanly', async () => {
     }
   }
 });
+
+test('map.css: the map blue is the UI accent token (no literal #0a84ff; design audit 2026-10-10)', async () => {
+  const css = await (await fetch('../css/map.css', { cache: 'no-store' })).text();
+  ok(!/#0a84ff/i.test(css), 'no literal #0a84ff left');
+  ok(/\.sb-map\{[^}]*--sb-accent:var\(--accent-fill/.test(css.replace(/\s+/g, '')), 'light map: --accent-fill');
+  ok(/\.sb-map\.sb-dark\{[^}]*--sb-accent:var\(--accent[,)]/.test(css.replace(/\s+/g, '')), 'dark map: --accent');
+});

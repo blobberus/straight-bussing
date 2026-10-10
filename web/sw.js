@@ -1,6 +1,6 @@
 // Service worker: offline app shell. Network-first so deploys show up immediately.
 // Live feeds and map tiles are cross-origin and never touched (stale bus data is unsafe).
-const CACHE = 'sb-v2-30';
+const CACHE = 'sb-v2-31';
 // PRECACHE:BEGIN (generated list; keep one path per line)
 const PRECACHE = [
   './',
@@ -22,6 +22,7 @@ const PRECACHE = [
   'js/state.js',
   'js/core/arrivals.js',
   'js/core/custom.js',
+  'js/core/demo.js',
   'js/core/esc.js',
   'js/core/events.js',
   'js/core/geo.js',
@@ -33,10 +34,12 @@ const PRECACHE = [
   'js/core/schedule.js',
   'js/core/storage.js',
   'js/core/store.js',
+  'js/core/throttle.js',
   'js/core/time.js',
   'js/core/tripprogress.js',
   'js/core/visibility.js',
   'js/core/walk.js',
+  'js/data/demo.js',
   'js/data/geocode.js',
   'js/data/live.js',
   'js/data/places.js',
@@ -53,8 +56,10 @@ const PRECACHE = [
   'js/ui/components.js',
   'js/ui/confirm.js',
   'js/ui/contextbar.js',
+  'js/ui/demo.js',
   'js/ui/frame.js',
   'js/ui/notifier.js',
+  'js/ui/pill.js',
   'js/ui/router.js',
   'js/ui/settings-overlay.js',
   'js/ui/sheet.js',
@@ -118,6 +123,7 @@ self.addEventListener('fetch', (e) => {
   const u = new URL(req.url);
   if (u.origin !== self.location.origin) return; // cross-origin: straight to network, never cached
   if (u.pathname.includes('/tests/') || req.headers.has('range')) return;
+  if (u.searchParams.has('demo')) return; // demo mode (?demo=1) is never stored, not even its page
   const nav = req.mode === 'navigate';
   e.respondWith(
     fetch(req, { cache: 'no-cache' })

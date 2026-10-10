@@ -69,3 +69,25 @@ test("route: hidden note honors journeys; hostile names escaped", () => {
   const x = renderRoute(fixture({ routeId: "R3" }), NOW);
   ok(!x.includes("<script>") && !x.includes("javascript:"), "escaped");
 });
+
+test("route detail: each stop row reads as ONE element: name, next bus in N min / no prediction, bus heading here (iOS parity)", () => {
+  const s = fixture({ routeId: "R1" });
+  s.trips = s.trips.filter((t) => t.trip.trip_id === "t1").map((t) => ({ ...t, stop_time_update: t.stop_time_update.slice(0, 2) }));   // S3: no prediction
+  s.buses = [{ ...s.buses[0], stop_id: "S2", timestamp: NOW - 200 }];   // a stale bus heading to Library
+  const host = document.createElement("div");
+  host.innerHTML = renderRoute(s, NOW);
+  const rows = [...host.querySelectorAll("li.v-tlstop")];
+  eq(rows.length, 3);
+  const labels = rows.map((li) => {
+    const b = li.querySelectorAll("button, a, [tabindex]");
+    eq(b.length, 1, "one focusable element per stop");
+    for (const n of li.querySelectorAll("*")) {
+      if (b[0].contains(n) || n.contains(b[0])) continue;
+      ok(n.closest('[aria-hidden="true"]'), "anything outside the button is hidden from screen readers: " + n.className);
+    }
+    return b[0].getAttribute("aria-label");
+  });
+  eq(labels[0], "Main & 1st, next bus in 2 min");
+  ok(/^Library, next bus in 5 min, a bus is heading here, seen \d+ min ago$/.test(labels[1]), labels[1]);
+  eq(labels[2], "Hospital, no prediction");
+});

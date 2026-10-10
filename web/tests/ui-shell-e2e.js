@@ -26,8 +26,8 @@ export function shellE2E(h, which) {
     return { top: Math.round(s.getBoundingClientRect().top), h: s.offsetHeight, pad: h.W().getComputedStyle($("#content")).paddingBottom, tf: cs.transform };
   });
   const setDetent = (d) => {
-    const g = $("#grab"), key = d === "full" ? "Home" : d === "peek" ? "End" : null;
-    g.dispatchEvent(new (h.W().KeyboardEvent)("keydown", { key: key || "End", bubbles: true }));
+    const g = $("#grab"), key = d === "full" ? "End" : d === "peek" ? "Home" : null;   // slider: Home = Collapsed, End = Expanded
+    g.dispatchEvent(new (h.W().KeyboardEvent)("keydown", { key: key || "Home", bubbles: true }));
     if (!key) g.dispatchEvent(new (h.W().KeyboardEvent)("keydown", { key: "ArrowUp", bubbles: true }));
   };
 

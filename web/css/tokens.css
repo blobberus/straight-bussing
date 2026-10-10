@@ -87,6 +87,7 @@
   --z-overlay-scrim: 1140;
   --z-overlay: 1150;      /* Settings */
   --z-dialog: 1200;       /* #dlg scrim + card */
+  --z-demo: 1250;         /* demo-mode banner (?demo=1): above everything but toasts, on every screen */
   --z-toast: 1300;
   --z-frame: 5000;        /* desktop phone frame decorations (never take taps) */
 
@@ -109,8 +110,9 @@
   --app-w: 100vw;
   --app-h: 100vh;
   /* Google-Maps-style chrome: floating search bar on top, bottom navigation under the sheet */
+  --demo-h: 0px;                                /* demo-mode banner height (html.is-demo, below); 0 normally */
   --nav-h: calc(58px + var(--safe-b));          /* bottom navigation (Current trip / Routes / My Routes) */
-  --top-clear: calc(var(--safe-t) + 66px);      /* below the 48px search bar (10px from the top, 8px gap) */
+  --top-clear: calc(var(--safe-t) + var(--demo-h) + 66px);   /* below the 48px search bar (10px from the top, 8px gap) */
   --chip-top: var(--top-clear);                 /* status pill, context chip and locate button (the map credit sits above the sheet, map/credits.js) */
   /* sheet heights are measured from the top of the bottom navigation. The sheet element is always
      --v-max tall (so a chip or pill appearing never changes its layout); --v-full is shorter while the
@@ -123,6 +125,7 @@
 
   color-scheme: light;
 }
+:root.is-demo { --demo-h: 40px; }   /* ui/demo.js banner: everything on top moves down by its height */
 @supports (height: 100dvh) {
   :root { --app-h: 100dvh; }
 }

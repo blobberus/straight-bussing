@@ -35,8 +35,25 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
    button. Bottom: the navigation bar (#tabs) with the sheet resting on it. */
 .topbar {
   position: fixed; z-index: var(--z-search);
-  top: calc(var(--safe-t) + 10px); left: calc(var(--safe-l) + 12px); right: calc(var(--safe-r) + 12px);
+  top: calc(var(--safe-t) + var(--demo-h) + 10px); left: calc(var(--safe-l) + 12px); right: calc(var(--safe-r) + 12px);
 }
+/* demo mode (?demo=1, ui/demo.js): a solid amber strip above the search bar on every screen, never mistaken for live data */
+.demobar {
+  position: fixed; z-index: var(--z-demo); top: calc(var(--safe-t) + 2px); left: calc(var(--safe-l) + 12px); right: calc(var(--safe-r) + 12px);
+  height: calc(var(--demo-h) - 6px); display: flex; align-items: center; gap: var(--s2); padding: 0 4px 0 12px;
+  border-radius: var(--r-control); background: var(--warn); color: var(--bg-solid);
+  font-size: .875rem; line-height: 1.125rem; font-weight: 700; box-shadow: var(--shadow-float);
+}
+.demobar-ic { display: grid; place-items: center; }
+.demobar-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.demobar-exit {
+  flex: none; position: relative; display: grid; place-items: center; height: 28px; padding: 0 12px; border-radius: var(--r-inner);
+  background: var(--bg-solid); color: var(--warn); font-weight: 700; text-decoration: none;
+  transition: transform var(--d-press) var(--ease-enter);
+}
+.demobar-exit::after { content: ""; position: absolute; inset: -8px -4px; } /* 44px hit area */
+.demobar-exit:active { transform: scale(.97); }
+.demobar-exit:focus-visible { outline: 2px solid var(--bg-solid); outline-offset: 2px; }
 .searchbar {
   display: flex; align-items: center; height: 48px; padding: 0 2px 0 4px; border-radius: var(--r-pill);
   background: var(--bg-solid); box-shadow: var(--shadow-float);
@@ -108,7 +125,8 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
   background: var(--warn-bg); color: var(--warn); box-shadow: var(--shadow-float);
 }
 .statuspill .pilltext { flex: 1; min-width: 0; padding: 4px 0; }
-.statuspill .pillicon { flex: none; }
+.statuspill .pillicon { flex: none; display: grid; place-items: center; margin-left: -4px; }   /* ui/pill.js: one icon per state */
+.statuspill .pillicon:empty { display: none; }
 .statuspill.err { background: var(--danger-bg); color: var(--danger); }
 .statuspill.info { background: var(--bg-solid); color: var(--text); }
 .statuspill .pillbtn {
@@ -179,6 +197,7 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 @media (min-width: 768px) and (max-height: 559px) {
   .statuspill, .ctxbar { left: calc(var(--panel-w) + 24px); right: calc(var(--safe-r) + 68px); max-width: 520px; }
   .topbar { left: calc(var(--panel-w) + 24px); max-width: 560px; }
+  .demobar { max-width: calc(var(--panel-w) + 584px); }
   .bottomnav {
     left: calc(var(--safe-l) + 12px); right: auto; bottom: 12px; width: var(--panel-w); height: 58px;
     padding: 4px 8px; border: 0; border-top: 1px solid var(--hairline);
@@ -192,6 +211,8 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
   .searchbar, .bottomnav { border: 1px solid CanvasText; }
   .bottomnav button[aria-current="page"] { outline: 2px solid Highlight; }
   .statuspill .pillbtn, .ctxbar .ctx-btn { border: 1px solid ButtonText; }
+  .demobar { border: 2px solid CanvasText; }
+  .demobar-exit { border: 1px solid ButtonText; }
 }
 
 @media (prefers-reduced-motion: reduce) {

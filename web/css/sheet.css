@@ -82,7 +82,7 @@
 /* wide + short (landscape phones): floating left panel, no detents */
 @media (min-width: 768px) and (max-height: 559px) {
   .sheet {
-    left: calc(var(--safe-l) + 12px); right: auto; top: calc(var(--safe-t) + 12px); bottom: calc(12px + 58px);
+    left: calc(var(--safe-l) + 12px); right: auto; top: calc(var(--safe-t) + var(--demo-h) + 12px); bottom: calc(12px + 58px);
     width: var(--panel-w); height: auto;
     border-radius: var(--r-sheet) var(--r-sheet) 0 0;
     transform: none !important; transition: none;

@@ -1,18 +1,18 @@
 /**
  * @module ui/views/directions
- * Directions: Start / Destination fields (station autocomplete + Photon places, "My location"
- * default when granted), swap, plan via core/planner plan(), then refineWalking() async with
- * core/walk walkRoute (sidewalk routes). Up to 4 option cards ranked by core/rank.js (least walking,
- * then earliest arrival, then shortest wait, then how many it meets), each with a small line saying
- * what it minimizes, total, arrive clock, chip summary and est tags; tapping a card draws it on the map. Steps say "Bus arrives at <stop> <clock>" with
- * wait / ride / source. Walk-only fallback and no-service state. Recomputes on live updates by
- * patching the results region only, so typing focus is never stolen.
- * Start (selected option with a bus) begins a trip: store.journey {rids, label, kind:'plan'} so the map
- * shows only that trip's routes, the plan stays drawn (also after leaving the view) and a trip bar with
- * "End trip" (journey:end, registered by the shell) heads the results. Picking another option updates
- * the journey; changing an endpoint ends it.
- * Belongs to the Plan Trip tab (view id 'nearby'): opened from its "Where to?" entry (dir:open with
- * data-focus="to" focuses Destination). Walking is always visible: card + step markup in ./tripinfo.js.
+ * Directions: Start / Destination fields (station autocomplete + Photon places, "My location" default when
+ * granted), swap, plan via core/planner plan(), then refineWalking() async with core/walk walkRoute (sidewalk
+ * routes). Up to 4 option cards ranked by core/rank.js (least walking, earliest arrival, shortest wait, how many
+ * it meets), each with what it minimizes, total, arrive clock, chip summary and est tags; tapping a card draws it
+ * on the map. Steps say "Bus arrives at <stop> <clock>" with wait / ride / source. Walk-only fallback and
+ * no-service state. Live updates re-plan in the background at most every DIR_REFRESH_S (iOS refreshDirections:
+ * deferred while a new plan refines, skipped while the feed fails), keep the selected card by key, never move
+ * the map, and patch only the results region, so typing focus is never stolen.
+ * Start (selected option with a bus) begins a trip: store.journey {rids, label, kind:'plan'} so the map shows only
+ * that trip's routes, the plan stays drawn (also after leaving the view) and a trip bar with "End trip"
+ * (journey:end, registered by the shell) heads the results. Picking another option updates the journey; changing
+ * an endpoint ends it. Opened from the search bar (dir:open, data-focus="to"); parent view 'nearby' (Current
+ * trip). Walking is always visible: card + step markup in ./tripinfo.js.
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -25,6 +25,7 @@ import { effectiveHidden } from "../../core/visibility.js";
 import { plan, refineWalking, PLANNER } from "../../core/planner.js";
 import { rankOptions, criteriaText } from "../../core/rank.js";
 import { walkRoute } from "../../core/walk.js";
+import { createThrottle } from "../../core/throttle.js";
 import { predict } from "../../core/predict.js";
 import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { matchStations, OFFICIAL_HTML, ICONS } from "./pick.js";
@@ -38,10 +39,15 @@ const SWAP_IC = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" str
 
 /** View-local state. Endpoints are {lat, lon, label, stop?, me?}. */
 export const D = { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null, sel: 0, selKey: null, refining: false, meDenied: false, token: 0, missed: false, focusTo: false };
-/** Injectable dependencies (tests replace them). */
-export const deps = { plan, refineWalking, walkRoute, predict };
+/** Minimum seconds between background re-plans on live updates (iOS AppModel.dirRefreshS). */
+export const DIR_REFRESH_S = 8;
+/** Injectable dependencies (tests replace them; wallMs / later = the re-plan throttle's clock and timer). */
+export const deps = { plan, refineWalking, walkRoute, predict, wallMs: () => Date.now(), later: (f, ms) => setTimeout(f, ms) };
 let rootRef = null, ctxRef = null, offStore = null, lastUser = null, offPlanWatch = null;
 const photon = createPlaceSearch(() => patchSug());
+/** Background re-plan on live updates: .poke() per change, at most every DIR_REFRESH_S (gate: nothing open / failing feed = skip, a new plan still refining = defer). */
+export const liveReplan = createThrottle(() => replan(), { everyMs: DIR_REFRESH_S * 1000, now: () => deps.wallMs(), later: (f, ms) => deps.later(f, ms),
+  gate: () => (!rootRef || !D.from || !D.to || !D.result || cur().failed ? "skip" : D.refining ? "defer" : "go") });
 
 const cur = () => ctxRef?.store?.get?.() || {};
 const nowFn = () => (ctxRef?.now ? ctxRef.now() : nowS());
@@ -118,7 +124,7 @@ function optionHTML(o, i, now, state) {
   const critHTML = crit ? `<span class="j-crit">${esc(crit)}</span>` : "";
   const routesTxt = o.legs.filter((l) => l.type === "bus").map((l) => state.routes?.[l.rid]?.short || l.rid).join(" then ");
   const aria = `Option ${i + 1}${crit ? " (" + crit + ")" : ""}: about ${o.totalMin} minutes including ${wt > 0 ? walkMins(wt) + " minutes walking" : "no walking"}, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. ${lines.text} Estimate.`.replace(/<1 min/g, "under 1 min");
-  const start = on && !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Shows only this trip&rsquo;s routes on the map.</p>' : "";
+  const start = on && !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Shows only this trip&rsquo;s routes on the map. Follow the bus stop by stop in Current trip.</p>' : "";
   return `<div class="v-opt${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}">${critHTML}<span class="v-otop"><span class="v-otot">~${o.totalMin}<small> min</small></span>${tag("est.")}<span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span><span class="v-osum">${sum}</span>${lines.html}</button>${on ? stepsHTML(o, now, state) + start : ""}</div>`;
 }
 
@@ -318,7 +324,7 @@ function onKey(e) {
 export function mountDirections(root, ctx) {
   unmountDirections();
   offPlanWatch?.(); offPlanWatch = null;
-  rootRef = root; ctxRef = ctx; lastHtml["dir-sug"] = lastHtml["dir-res"] = undefined;
+  rootRef = root; ctxRef = ctx; lastHtml["dir-sug"] = lastHtml["dir-res"] = undefined; liveReplan.reset();
   const state = cur();
   if (!D.from && !D.fromText && state.user) { D.from = me(state.user); setInput("from"); }
   lastUser = state.user;
@@ -329,7 +335,7 @@ export function mountDirections(root, ctx) {
     if (ch.has("user") && s.user && D.from?.me && (!lastUser || hav(lastUser, s.user) > 50)) { D.from = me(s.user); lastUser = s.user; replan(); return; }
     if (ch.has("staticLoaded")) { replan({ fresh: true }); return; }
     if (ch.has("journey")) patchRes();
-    if ((ch.has("trips") || ch.has("buses")) && D.from && D.to) replan();
+    if ((ch.has("trips") || ch.has("buses")) && D.from && D.to) liveReplan.poke();
     else if (ch.has("lastOk") || ch.has("failed") || ch.has("user")) patchRes();
   }) || null;
   if (!D.from && !state.user && state.locState !== "denied" && typeof navigator !== "undefined" && navigator.permissions?.query) {
@@ -344,7 +350,7 @@ export function mountDirections(root, ctx) {
 /** Unmount: clear the plan from the map (kept while a trip is on, until it ends), stop async updates (endpoints are kept). */
 export function unmountDirections() {
   if (rootRef) { rootRef.removeEventListener("focusin", onFocus); rootRef.removeEventListener("input", onInput); rootRef.removeEventListener("keydown", onKey); }
-  offStore?.(); offStore = null; photon.cancel(); D.token++; D.active = null; D.sugs = [];
+  offStore?.(); offStore = null; photon.cancel(); liveReplan.reset(); D.token++; D.active = null; D.sugs = [];
   const st = ctxRef?.store, keep = !!st && isPlanJourney(st.get());
   if (keep && rootRef) {
     offPlanWatch?.();
@@ -383,17 +389,11 @@ registerAction("dir:to-stop", (ds, ev, ctx) => {
   D.result = null; ctx.navigate("directions");
 });
 registerAction("dir:sug", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; applySug(+ds.i); });
-registerAction("dir:exact", (ds, ev, ctx) => {
-  ctxRef = ctx || ctxRef;
-  photon.exact(ds.exact !== "0");
-  patchSug();
-  focusNote(rootRef?.querySelector?.('[data-region="dir-sug"]'));
-});
+registerAction("dir:exact", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; photon.exact(ds.exact !== "0"); patchSug(); focusNote(rootRef?.querySelector?.('[data-region="dir-sug"]')); });
 registerAction("dir:swap", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; swap(); });
 registerAction("dir:me", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; useMyLocation(ds.key === "to" ? "to" : "from"); });
 registerAction("dir:opt", (ds, ev, ctx) => {
-  ctxRef = ctx || ctxRef;
-  const o = D.result?.options?.[+ds.i]; if (!o) return;
+  ctxRef = ctx || ctxRef; const o = D.result?.options?.[+ds.i]; if (!o) return;
   D.sel = +ds.i; D.selKey = o.key; syncJourney(true); patchRes(); drawSel(true);
 });
 registerAction("dir:start", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; startTrip(); });

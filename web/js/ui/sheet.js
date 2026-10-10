@@ -6,7 +6,10 @@
  * Drag: pointer events on the header (any part, incl. tabs; a drag suppresses the click), touch
  * events on the content when it is scrolled to the top. Release projects velocity (px/ms * 200)
  * and snaps; a flick (>0.5 px/ms) goes to the next detent in that direction. Rubber band 0.3 past
- * the ends. Tap on the header at peek -> half. Grabber: Enter/Space cycles, arrows step.
+ * the ends. Tap on the header at peek -> half. Grabber = an adjustable control for screen readers and the
+ * keyboard (role="slider" "Resize panel", value Collapsed / Half / Expanded, like the iOS app's VoiceOver
+ * adjustable action): arrows / Page Up / Page Down step, Home = Collapsed, End = Expanded, Enter / Space and
+ * taps cycle like a tap.
  * Emits bus 'sheet:inset' {px} (visible sheet height over the map; 0 in panel mode) on every settle.
  *
  * Geometry lives in css/sheet.css (--v-peek/--v-half/--v-full; the element itself is always --v-max
@@ -18,6 +21,8 @@ import { bus } from "../core/events.js";
 
 /** Detent names, smallest to largest. */
 export const DETENTS = Object.freeze(["peek", "half", "full"]);
+/** What a screen reader says for each detent (the grabber's aria-valuetext; iOS BottomSheet accessibilityValue). */
+export const DETENT_TEXT = Object.freeze({ peek: "Collapsed", half: "Half", full: "Expanded" });
 const FLICK = 0.5;      // px/ms
 const PROJECT_MS = 200; // velocity projection
 const RUBBER = 0.3;
@@ -136,11 +141,17 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   const inset = () => (isPanel() ? 0 : measure()[detent] || 0);
   const emitInset = () => bus.emit("sheet:inset", { px: inset() });
 
+  if (grab) {   // adjustable control: slider semantics with three named values
+    const a = { role: "slider", "aria-label": "Resize panel", "aria-orientation": "vertical", "aria-valuemin": "0", "aria-valuemax": "2" };
+    for (const [k, v] of Object.entries(a)) grab.setAttribute(k, v);
+    if (grab.tabIndex < 0 || !grab.hasAttribute("tabindex")) grab.tabIndex = 0;
+    grab.removeAttribute("aria-expanded");
+  }
   function paint() {
     sheetEl.dataset.detent = detent;
     if (grab) {
-      grab.setAttribute("aria-expanded", detent === "peek" ? "false" : "true");
-      grab.setAttribute("aria-label", `Resize panel (${detent === "peek" ? "collapsed" : detent === "half" ? "half height" : "full height"})`);
+      grab.setAttribute("aria-valuenow", String(DETENTS.indexOf(detent)));
+      grab.setAttribute("aria-valuetext", DETENT_TEXT[detent]);
     }
   }
 
@@ -254,10 +265,11 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   }, true);
   if (grab) {
     on(grab, "keydown", (e) => {
-      if (e.key === "ArrowUp") setDetent(stepDetent(detent, 1));
-      else if (e.key === "ArrowDown") setDetent(stepDetent(detent, -1));
-      else if (e.key === "Home") setDetent("full");
-      else if (e.key === "End") setDetent("peek");
+      if (["ArrowUp", "ArrowRight", "PageUp"].includes(e.key)) setDetent(stepDetent(detent, 1));
+      else if (["ArrowDown", "ArrowLeft", "PageDown"].includes(e.key)) setDetent(stepDetent(detent, -1));
+      else if (e.key === "Home") setDetent("peek");     // slider minimum
+      else if (e.key === "End") setDetent("full");      // slider maximum
+      else if (e.key === "Enter" || e.key === " ") setDetent(detent === "peek" ? "half" : detent === "half" ? "full" : "half");
       else return;
       e.preventDefault();
     });

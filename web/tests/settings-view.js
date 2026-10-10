@@ -2,7 +2,7 @@
 import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
 import { bindActions, hasAction } from "../js/ui/actions.js";
-import { renderSettings, mountSettings, unmountSettings, stationHTML, optsHTML, alertsHTML, searchStations, permHTML, statusHTML } from "../js/ui/views/settings.js";
+import { renderSettings, mountSettings, unmountSettings, stationHTML, optsHTML, alertsHTML, searchStations, permHTML, statusHTML, ALERTS_NOTE } from "../js/ui/views/settings.js";
 import { getView } from "../js/ui/router.js";
 import { cleanNotify } from "../js/state.js";
 
@@ -29,7 +29,7 @@ test("settings: gear action registered; 'settings' view is only a shim (no sheet
 
 test("settings: render has appearance, alerts, bus alerts, iPhone row, about; escaped", () => {
   const h = renderSettings(fixture(base()), NOW);
-  for (const s of ["Appearance", "Service alerts", "Bus alerts", "only work while Straight Bussing is open", "Coming to the iPhone app", 'data-action="about:open"', "estimates from live predictions"]) ok(h.includes(s), s);
+  for (const s of ["Appearance", "Service alerts", "Bus alerts", "Alerts work only while Straight Bussing is open", "Coming to the iPhone app", 'data-action="about:open"', "estimates from live predictions"]) ok(h.includes(s), s);
   ok(noRaw(h));
 });
 
@@ -71,8 +71,21 @@ test("settings: status line is an estimate and pauses when data is down", () => 
   const h = statusHTML(s, NOW);
   ok(h.includes("2 stops away") && h.includes("(est.)") && h.includes("From live predictions"));
   ok(statusHTML({ ...s, lastOk: 0 }, NOW).includes("paused"));
-  ok(permHTML("unsupported").includes("show system notifications"));
-  ok(permHTML("default").includes('data-st="perm"'));
+});
+
+test("settings: permission lines say how the ONE alert arrives (iOS wording, adapted; 2026-10-10)", () => {
+  ok(permHTML("granted").includes("as a banner while you use the app, and as a notification while it is open in the background"));
+  for (const p of ["denied", "unsupported"]) {
+    const h = permHTML(p);
+    ok(h.includes("Notifications are off") && h.includes("so alerts show as a banner inside the app while it is open"), p);
+  }
+  ok(permHTML("denied").includes("blocked in your browser settings"));
+  const d = permHTML("default");
+  ok(d.includes('data-st="perm"') && d.includes(">Allow notifications<") && d.includes('aria-describedby="st-permhint"'), "one button, described");
+  ok(d.includes("Without notifications, alerts show as a banner inside the app."));
+  ok(ALERTS_NOTE.startsWith("Alerts work only while Straight Bussing is open") && !/[–—]/.test(ALERTS_NOTE), "footer, no dashes");
+  ok(!renderSettings(fixture(base()), NOW).includes("System notifications"), "old wording gone");
+  ok(!renderSettings(fixture(base()), NOW).includes("off in demo mode"), "no demo note outside demo mode");
 });
 
 test("settings: pick a favorite, toggle switches, keep at least one route, turn off", async () => {

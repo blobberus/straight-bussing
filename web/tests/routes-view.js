@@ -1,6 +1,6 @@
 // Routes list v2.1: custom-route bar, inline naming, journey note, map-order editor (routes.test.html).
 import { test, eq, ok } from "./lib.js";
-import { fixture, makeCtx, tick, root } from "./views-fixtures.js";
+import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
 import { bindActions, runAction } from "../js/ui/actions.js";
 import { renderRoutes, groupRoutes, topBarHTML, orderHTML, defaultName, mountRoutes, unmountRoutes, _ui } from "../js/ui/views/routes.js";
 
@@ -225,4 +225,19 @@ test("routes: Edit map order is the first control; Routes to station / Direction
   ok(renderRoutes(base({ journey: { rids: ["R1"], label: "x" } })).includes('data-action="journey:end"'), "journey bar kept");
   ok(!renderRoutes(base({ staticLoaded: false })).includes("routes:order-edit"), "not offered before routes load");
   ok(/class="v-btn v-btn--quiet rt-orderbtn"/.test(renderRoutes(base())), "quiet style");
+});
+
+test("routes: a Not running row also shows today's hours (iOS RouteRow), with 'to' and one middle dot", () => {
+  // NOW (views-fixtures) is Fri 2:00 AM Chicago: R3 runs 7:00 AM to 7:25 PM today, R2 has a reduced day, R1 no service
+  const day = (first, last) => ({ first, last, trips: 9, buses: Array(24).fill(1) });
+  const week = (d) => ({ days: { mon: d, tue: d, wed: d, thu: d, fri: d, sat: d, sun: d }, exceptions: [] });
+  const service = { routes: { R3: week(day("07:00", "19:25")), R2: week(day("15:30", "18:55")), R1: week(null) } };
+  const h = renderRoutes(base({ buses: [], trips: [], service }), NOW);
+  ok(h.includes("Not running · Today 7:00 AM to 7:25 PM"), "R3 hours");
+  ok(h.includes("Not running · Today 3:30 PM to 6:55 PM"), "R2 hours");
+  ok(/Not running<\/span>/.test(h), "R1 (no service today): plain Not running");
+  const rows = [...h.matchAll(/<span class="v-sec">([^<]*Not running[^<]*)<\/span>/g)].map((m) => m[1]);
+  ok(rows.length >= 3 && rows.every((t) => (t.match(/·/g) || []).length <= 1 && !/[–—]/.test(t)), "copy rules: " + rows.join(" | "));
+  const live = renderRoutes(base({ service }), NOW);   // fixture buses: R1 and R2 report, R3 does not
+  ok(live.includes("1 bus running") && live.includes("Not running · Today 7:00 AM to 7:25 PM") && !live.includes("Today 3:30 PM"), "running rows keep their bus count");
 });

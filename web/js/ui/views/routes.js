@@ -17,6 +17,7 @@ import { esc } from "../../core/esc.js";
 import { runningCount, liveUnknown } from "../../core/arrivals.js";
 import { scheduledNoLive, noLiveStatus, silentService, silentText } from "../../core/operating.js";
 import { nowS } from "../../core/time.js";
+import { hoursOn } from "../../core/schedule.js";
 import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibility.js";
 import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, cleanName } from "../../core/custom.js";
 import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
@@ -77,11 +78,13 @@ export function filterChipHTML(state) {
 }
 
 const nameOf = (state, id) => { const r = state.routes?.[id] || {}; return r.long || r.short || id; };
+/** "Not running", plus today's scheduled hours when there are any ("Not running · Today 7:00 AM to 11:30 PM"; iOS RouteRow). */
+export const idleText = (state, id, now) => { const h = hoursOn(state.service, id, now); return h && h.first ? `Not running · Today ${h.label}` : "Not running"; };
 
 function row(state, id, hidden, now) {
   const r = state.routes[id] || {}, n = runningCount(state, id), name = nameOf(state, id);
   const tripOff = hidden && !!state.journey && !(state.hiddenRoutes || []).includes(id);   // hidden only by the journey
-  const status = tripOff ? "Not part of this trip" : hidden ? "Hidden from map and times" : n ? `${n} bus${n > 1 ? "es" : ""} running` : liveUnknown(state, now) ? "Live status unknown" : noLiveStatus(state, id, now) || "Not running";
+  const status = tripOff ? "Not part of this trip" : hidden ? "Hidden from map and times" : n ? `${n} bus${n > 1 ? "es" : ""} running` : liveUnknown(state, now) ? "Live status unknown" : noLiveStatus(state, id, now) || idleText(state, id, now);
   const eye = tripOff ? "" : `<button type="button" class="v-eye" data-action="routes:toggle" data-id="${esc(id)}" aria-pressed="${hidden ? "false" : "true"}" aria-label="${hidden ? "Show" : "Hide"} route ${esc(r.short || "")} ${esc(name)}">${hidden ? EYEOFF : EYE}</button>`;
   return `<div class="v-routerow${hidden ? " is-off" : ""}"><button type="button" class="v-row v-rowmain" data-action="route:open" data-id="${esc(id)}">${routeChip(id, state.routes)}<span class="v-grow"><span class="v-prim">${esc(name)}</span><span class="v-sec">${n && !hidden ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(status)}</span></span></button>${eye}</div>`;
 }
@@ -359,14 +362,10 @@ registerAction("routes:hide-all", (ds, ev, ctx) => {
 });
 registerAction("routes:clear-filter", (ds, ev, ctx) => ctx.store.set({ routeFilter: null }));
 registerAction("routes:order-edit", (ds, ev, ctx) => {
-  ctxRef = ctx || ctxRef; R.mode = "order"; R.naming = false;
-  pendingFocus = { sel: '[data-action="routes:order-done"]' };
-  patch(true);
+  ctxRef = ctx || ctxRef; R.mode = "order"; R.naming = false; pendingFocus = { sel: '[data-action="routes:order-done"]' }; patch(true);
 });
 registerAction("routes:order-done", (ds, ev, ctx) => {
-  ctxRef = ctx || ctxRef; R.mode = "list";
-  pendingFocus = { sel: '[data-action="routes:order-edit"]' };
-  patch(true);
+  ctxRef = ctx || ctxRef; R.mode = "list"; pendingFocus = { sel: '[data-action="routes:order-edit"]' }; patch(true);
 });
 registerAction("routes:move", (ds, ev, ctx) => {
   ctxRef = ctx || ctxRef;

@@ -3,7 +3,7 @@ import { test, eq, ok } from "./lib.js";
 import { NOW, makeCtx, tick, root } from "./views-fixtures.js";
 import { runAction } from "../js/ui/actions.js";
 import { optionRids, planJourney, filterJourney, sameRids, tripBarHTML, stationToggleHTML, watchStation, onlySwitchHTML } from "../js/ui/views/journey.js";
-import { D, deps, renderDirections, mountDirections, unmountDirections, swap } from "../js/ui/views/directions.js";
+import { D, deps, renderDirections, mountDirections, unmountDirections, swap, DIR_REFRESH_S, liveReplan } from "../js/ui/views/directions.js";
 import { PREF, renderPick, mountPick, unmountPick, setMode, resetPick, chooseStation } from "../js/ui/views/pick.js";
 
 const USER = { lat: 41.7899, lon: -87.6001 };
@@ -165,6 +165,57 @@ test("directions: leaving the view keeps the trip on the map until it ends", asy
   ctx.store.set({ journey: null });
   await tick();
   eq(last(ctx.calls.drawPlan), null, "cleared once the trip ends");
+});
+
+test("directions: live updates re-plan in the background at most every 8 s, keep the picked card, never move the map (iOS refreshDirections)", async () => {
+  const wall = { ms: 1e6 }, timers = [];
+  const saved = { wallMs: deps.wallMs, later: deps.later };
+  deps.wallMs = () => wall.ms;
+  deps.later = (fn, ms) => { timers.push({ fn, at: wall.ms + ms }); return timers.length; };
+  let calls = 0;
+  try {
+    const { ctx, el } = await dirWith(() => (calls++ % 2 ? [opt("b", 14, "R3"), opt("a", 13, "R1")] : [opt("a", 12, "R1"), opt("b", 15, "R3")]));
+    eq(DIR_REFRESH_S, 8);
+    ok(el.querySelector(".j-starthint")?.textContent.includes("Follow the bus stop by stop in Current trip."), "Start hint (iOS wording, web part)");
+    const ib = D.result.options.findIndex((o) => o.key === "b");
+    runAction("dir:opt", { i: String(ib) }, null, ctx);   // the rider picks "b"
+    await tick();
+    const fits = ctx.calls.fitTo.length, planned = calls;
+    const live = async () => { ctx.store.set({ trips: ctx.store.get().trips.slice() }); await tick(10); };
+    await live();
+    eq(calls, planned + 1, "first live update: re-planned at once");
+    eq(D.selKey, "b", "picked card kept by key");
+    wall.ms += 3000;
+    await live();
+    await live();
+    eq(calls, planned + 1, "inside the 8 s window: no re-plan yet");
+    eq(timers.length, 1, "one deferred re-plan scheduled");
+    eq(timers[0].at, 1e6 + 8000, "at the end of the window");
+    wall.ms = timers[0].at;
+    timers.shift().fn();
+    await tick(10);
+    eq(calls, planned + 2, "the latest data is never dropped: re-planned at 8 s");
+    eq(D.selKey, "b", "still the picked card");
+    eq(ctx.calls.fitTo.length, fits, "background re-plans never move the map");
+    wall.ms += 60000;
+    ctx.store.set({ failed: true, trips: ctx.store.get().trips.slice() });
+    await tick(10);
+    eq([calls, timers.length], [planned + 2, 0], "failing feed: no re-plan on stale data");
+    ctx.store.set({ failed: false });
+    D.refining = true;   // a new-endpoint plan is still checking sidewalks
+    await live();
+    ok(liveReplan.pending(), "a retry is pending");
+    eq([calls, timers.length], [planned + 2, 1], "deferred while a new plan refines");
+    D.refining = false;
+    wall.ms += 1000;
+    timers.shift().fn();
+    await tick(10);
+    eq(calls, planned + 3, "runs once the new plan is done");
+    await live();
+    ok(liveReplan.pending(), "inside the window again");
+    unmountDirections(); el.remove();
+    ok(!liveReplan.pending(), "nothing pending after leaving");
+  } finally { Object.assign(deps, saved); }
 });
 
 test("directions: walk-only results offer no Start", async () => {

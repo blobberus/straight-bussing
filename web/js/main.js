@@ -1,15 +1,16 @@
 /**
  * @module main
  * Wiring + boot (D1). Order: theme -> map -> sheet -> router/actions -> views -> loadStatic -> startLive.
- * Owns the render loop (header, status pill, content), the map context bar, map sync on store changes,
- * geolocation (ctx.locate), Escape/back + browser history, toasts and the global error handler.
+ * Owns the render loop (header, status pill via ui/pill.js, content), the map context bar, map sync on store
+ * changes, geolocation (ctx.locate), Escape/back + browser history, toasts and the global error handler.
+ * Demo mode (core/demo.js, `?demo=1` only): the simulated feed replaces the live one (ui/demo.js startDemo, with
+ * its banner); no service worker, no bus alerts, nothing stored.
  */
 import { store } from "./state.js";
 import { bus } from "./core/events.js";
-import { nowS, clock } from "./core/time.js";
+import { nowS } from "./core/time.js";
 import { hav } from "./core/geo.js";
-import { staleLevel } from "./core/arrivals.js";
-import { silentService } from "./core/operating.js";
+import { DEMO } from "./core/demo.js";
 import { mapVisibility } from "./core/visibility.js";
 import { createMap } from "./map/map.js";
 import { loadStatic } from "./data/static.js";
@@ -18,7 +19,8 @@ import { createSheet } from "./ui/sheet.js";
 import { initRouter, navigate, back, getView, activeTab, canGoBack, TABS } from "./ui/router.js";
 import { registerAction, bindActions, setHTMLKeepFocus } from "./ui/actions.js";
 import { initTheme, isDark, onChange as onThemeChange } from "./ui/theme.js";
-import { emptyState, OFFICIAL_PHONE } from "./ui/components.js";
+import { emptyState } from "./ui/components.js";
+import { createPill } from "./ui/pill.js";
 import { registerContextActions, mountContextBar } from "./ui/contextbar.js";
 import { initFrame } from "./ui/frame.js";
 import { isSettingsOpen, closeSettingsOverlay } from "./ui/settings-overlay.js";
@@ -28,7 +30,6 @@ export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "ale
 /** Views that may not be deployed yet: a failed import is a warning, not an error. */
 const OPTIONAL_VIEWS = new Set(["settings"]);
 const RENDER_TICK_MS = 15000;
-const FIRST_POLL_GRACE_S = 20;
 const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "setSelectedStop", "setUser",
   "highlightStops", "drawPlan", "drawFavorites", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove", "onMapTap"];
 const VIS_KEYS = ["hiddenRoutes", "routeFilter", "view", "routeId", "routeOrder", "journey", "activeCustom", "customRoutes"];
@@ -42,7 +43,8 @@ const el = {
   pill: $("pill"), pillText: $("pillText"), pillRetry: $("pillRetry"), dlg: $("dlg"), toast: $("toast"), locate: $("locateBtn"),
 };
 const bootS = nowS();
-let map = null, sheet = null, live = null, ctx = null;
+let map = null, sheet = null, live = null, ctx = null, notifier = null;
+const pill = createPill({ pill: el.pill, text: el.pillText, retry: el.pillRetry, app: el.app }, { bootS });
 
 /* ---------------- toast + global errors ---------------- */
 let toastTimer = 0;
@@ -149,38 +151,6 @@ async function onLocateFab() {
   else if (s.locState === "denied") toast("Location is off. Turn it on in your browser or phone settings to see stops near you.");
 }
 
-/* ---------------- status pill ---------------- */
-let pillSig = "";
-function renderPill(s, now) {
-  let kind = "", msg = "", retry = false;
-  const polled = s.liveLoaded || s.failed;
-  const lvl = polled ? staleLevel(s, now) : now - bootS > FIRST_POLL_GRACE_S ? "err" : "";
-  if (lvl === "err") {
-    kind = "err"; retry = true;
-    msg = s.lastOk ? "Can't reach the shuttle feed. Retrying. Showing last known data."
-      : `Can't reach the shuttle feed. Don't rely on these times; call ${OFFICIAL_PHONE}.`;
-  } else if (lvl === "old") {
-    kind = "warn";
-    msg = `Live data is out of date${s.feedTs ? " (last update " + clock(s.feedTs) + ")" : ""}. Times are approximate.`;
-  } else if (lvl === "late") {
-    kind = "warn"; msg = "Live data delayed. Times may be off.";
-  } else if (s.liveLoaded && !(s.buses || []).length) {   // fresh, empty feed: "no shuttles" only if the schedule agrees
-    [kind, msg] = silentService(s, now) ? ["warn", "No shuttles are reporting live locations"] : ["info", "No shuttles running right now"];
-  }
-  const sig = kind + "|" + msg + "|" + retry;
-  if (sig === pillSig) return;
-  pillSig = sig;
-  el.pill.hidden = !msg;
-  el.pill.className = "statuspill" + (kind ? " " + kind : "");
-  el.pillText.textContent = msg;
-  el.pillRetry.hidden = !retry;
-}
-/* --pill-h on #app = the pill's real height (text can wrap); the full detent and the chip sit below it (sheet.css, base.css) */
-function watchPillHeight() {
-  if (el.app && typeof ResizeObserver === "function") new ResizeObserver(() => { const v = el.pill.offsetHeight + "px";   // before paint
-    if (v !== "0px" && el.app.style.getPropertyValue("--pill-h") !== v) el.app.style.setProperty("--pill-h", v); }).observe(el.pill);
-}
-
 /* ---------------- header ---------------- */
 function safe(fn, fallback) {
   try { return fn() ?? fallback; } catch (e) { console.error(e); return fallback; }
@@ -249,7 +219,7 @@ function render() {
   let id = s.view, def = getView(id);
   if (!def && getView("nearby")) def = getView((id = "nearby"));
   renderHeader(s, id, def);
-  renderPill(s, now);
+  pill.render(s, now);
   if (!def) return;
   const key = id + "|" + (s.stopId || "") + "|" + (s.routeId || "");
   if (def !== cur.def || (def.mount && key !== cur.key)) return switchView(id, def, key, s);
@@ -346,7 +316,6 @@ async function boot() {
   bus.on("sheet:inset", (p) => mapCall("setBottomInset", ((p && p.px) || 0) + (p && p.px && !sheet?.isPanel?.() ? el.tabs.offsetHeight || 0 : 0)));
   bus.on("toast", (p) => toast(p && p.text));
   bus.on("settings:toggle", () => syncHistory());   // Settings overlay opened / closed (ui/settings-overlay.js)
-  watchPillHeight();
   sheet = createSheet({ sheetEl: el.sheet, contentEl: el.content, headEl: el.head, grabEl: el.grab });
   initRouter({ store, setDetent: sheet.setDetent, getDetent: sheet.getDetent });
   ctx = { store, map, navigate, back, setDetent: (d) => sheet.setDetent(d), toast, now: nowS, locate };
@@ -364,7 +333,10 @@ async function boot() {
 
   // data first: stops, routes and the live feed load while the view modules download (slow 4G: next bus ~3 s sooner)
   loadStatic(store).catch((e) => { console.error("static data", e); toast("Couldn't load stops and routes. Check your connection."); });
-  live = startLive(store, { intervalMs: 10000 });
+  if (DEMO) {   // simulated buses only: the live feed is never fetched in a demo session
+    document.documentElement.classList.add("is-demo");   // layout offset before the banner module arrives
+    import("./ui/demo.js").then((m) => { live = m.startDemo(store, el.app, startLive); }).catch(reportError);
+  } else live = startLive(store, { intervalMs: 10000, keepAlive: () => !!notifier?.background?.() });   // bus alerts: also in a background tab
   const results = await Promise.allSettled(VIEW_IDS.map((v) => import(`./ui/views/${v}.js`)));
   results.forEach((r, i) => r.status === "rejected" && (OPTIONAL_VIEWS.has(VIEW_IDS[i]) ? console.warn : console.error)("view " + VIEW_IDS[i] + " failed to load", r.reason));
   registerCoreActions();
@@ -374,7 +346,7 @@ async function boot() {
   store.subscribe((s, changed) => { syncMap(s, changed); scheduleRender(); syncHistory(); });
   render();
   syncMap(store.get(), null);
-  import("./ui/notifier.js").then((m) => m.startNotifier?.(store, { toast })).catch(() => {});   // bus-near alerts while the page is open
+  if (!DEMO) import("./ui/notifier.js").then((m) => { notifier = m.startNotifier?.(store, { toast }) || null; }).catch(() => {});   // bus-near alerts while the page is open
 
   setInterval(() => {
     if (document.hidden) return;
@@ -391,7 +363,7 @@ async function boot() {
     }
   } catch (e) { /* permissions API unsupported */ }
 
-  if ("serviceWorker" in navigator && (location.protocol === "https:" || /^(localhost|127\.0\.0\.1)$/.test(location.hostname))) {
+  if (!DEMO && "serviceWorker" in navigator && (location.protocol === "https:" || /^(localhost|127\.0\.0\.1)$/.test(location.hostname))) {
     import("./ui/update.js").then((m) => m.startUpdates()).catch((e) => console.warn("service worker", e));   // register + update on foreground
   }
 }

@@ -45,7 +45,7 @@ test("sheet: stepDetent clamps", () => {
   eq(stepDetent("bogus", 1), "half");
 });
 
-test("sheet: controller sets data-detent, aria-expanded, emits sheet:inset, keyboard steps", async () => {
+test("sheet: controller sets data-detent, the grabber's slider value, emits sheet:inset, keyboard steps", async () => {
   const sheetEl = document.createElement("section");
   sheetEl.className = "sheet";
   sheetEl.innerHTML = '<header class="sheet-head"><button class="grab" type="button"></button><h1>T</h1></header><div class="sheet-content"></div>';
@@ -59,7 +59,7 @@ test("sheet: controller sets data-detent, aria-expanded, emits sheet:inset, keyb
   eq(sheetEl.dataset.detent, "half");
   sh.setDetent("peek");
   eq(sheetEl.dataset.detent, "peek");
-  eq(sheetEl.querySelector(".grab").getAttribute("aria-expanded"), "false");
+  eq(sheetEl.querySelector(".grab").getAttribute("aria-valuetext"), "Collapsed");
   sh.setDetent("nonsense");
   eq(sh.getDetent(), "peek");
   const grab = sheetEl.querySelector(".grab");
@@ -77,6 +77,30 @@ test("sheet: controller sets data-detent, aria-expanded, emits sheet:inset, keyb
   sheetEl.querySelector("h1").click();
   eq(sh.getDetent(), "half");
   off();
+  sh.destroy();
+  sheetEl.remove();
+});
+
+test("sheet: grabber is an adjustable control: Resize panel, Collapsed / Half / Expanded, arrows / Page / Home / End / Enter (iOS parity)", () => {
+  const sheetEl = document.createElement("section");
+  sheetEl.className = "sheet";
+  sheetEl.innerHTML = '<header class="sheet-head"><div class="grab"></div><h1>T</h1></header><div class="sheet-content"></div>';
+  document.body.appendChild(sheetEl);
+  const sh = createSheet({ sheetEl, headEl: sheetEl.querySelector("header"), contentEl: sheetEl.querySelector(".sheet-content"), initial: "half", panelMedia: PHONE });
+  const g = sheetEl.querySelector(".grab");
+  const at = (k) => g.getAttribute(k);
+  eq([at("role"), at("aria-label"), at("aria-orientation"), at("aria-valuemin"), at("aria-valuemax"), at("tabindex")], ["slider", "Resize panel", "vertical", "0", "2", "0"]);
+  eq([at("aria-valuenow"), at("aria-valuetext")], ["1", "Half"]);
+  ok(!g.hasAttribute("aria-expanded"), "no aria-expanded on a slider");
+  const key = (k) => { const e = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }); g.dispatchEvent(e); return e.defaultPrevented; };
+  const seen = [];
+  for (const k of ["ArrowUp", "ArrowUp", "ArrowDown", "PageDown", "PageDown", "PageUp", "End", "Home", "ArrowRight", "ArrowLeft", "Enter", " "]) {
+    ok(key(k), k + " handled");
+    seen.push(at("aria-valuetext"));
+  }
+  eq(seen, ["Expanded", "Expanded", "Half", "Collapsed", "Collapsed", "Half", "Expanded", "Collapsed", "Half", "Collapsed", "Half", "Expanded"]);
+  eq([sh.getDetent(), at("aria-valuenow")], ["full", "2"]);
+  ok(!key("a"), "other keys pass through");
   sh.destroy();
   sheetEl.remove();
 });

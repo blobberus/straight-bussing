@@ -1,15 +1,16 @@
 /* map.css: map overlays (route casings, stops, favorites, selection, buses, user dot, trip plan, map credit).
    Owned by map/ (agent C). Theme: map.js toggles .sb-dark on the map element (.sb-map); every overlay
-   color below comes from these variables so a theme switch never needs a redraw. */
+   color below comes from these variables so a theme switch never needs a redraw. --sb-accent is the UI accent
+   token (tokens.css: --accent-fill on light, --accent on dark; a separate system blue until the 2026-10-10 design audit). */
 .sb-map{
   --sb-land:#eeefeb;--sb-casing:rgba(255,255,255,.92);--sb-stop-fill:#fff;--sb-stop-multi:#5c5c63;
-  --sb-accent:#0a84ff;--sb-live:#1e9e4a;--sb-danger:#d63a2e;--sb-text:#111114;--sb-text2:#5c5c63;
+  --sb-accent:var(--accent-fill,#0071e3);--sb-live:#1e9e4a;--sb-danger:#d63a2e;--sb-text:#111114;--sb-text2:#5c5c63;
   --sb-chrome:rgba(255,255,255,.82);--sb-chrome-solid:#fff;--sb-ring:rgba(0,0,0,.22);--sb-shadow:0 1px 4px rgba(0,0,0,.28);
   background:var(--sb-land);
 }
 .sb-map.sb-dark{
   --sb-land:#18181b;--sb-casing:rgba(58,58,64,.95);--sb-stop-fill:#f5f5f7;--sb-stop-multi:#a1a1a8;
-  --sb-accent:#409cff;--sb-live:#32d74b;--sb-danger:#ff6961;--sb-text:#f5f5f7;--sb-text2:#a1a1a8;
+  --sb-accent:var(--accent,#409cff);--sb-live:#32d74b;--sb-danger:#ff6961;--sb-text:#f5f5f7;--sb-text2:#a1a1a8;
   --sb-chrome:rgba(28,28,30,.78);--sb-chrome-solid:#1c1c1e;--sb-ring:rgba(0,0,0,.6);--sb-shadow:0 1px 4px rgba(0,0,0,.6);
 }
 .sb-map .maplibregl-canvas{outline:none}
