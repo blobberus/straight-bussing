@@ -46,6 +46,8 @@ data-geocode.js) so the Swift port provably behaves the same.
 | core/schedule.js | Schedule.swift | America/Chicago, after-midnight spans, calendar exceptions |
 | core/predict.js | Predict.swift (`SchedulePredictor`) | segments.json + optional learned model (v1/v2 blending, quantiles) |
 | core/planner.js | Planner.swift, PlannerRefine.swift | walk at both ends (800 m, widened to 1600 m), transfers <= 150 m, live waits, refineWalking |
+| core/walk.js (`walkRoute`), directions.js replan (async half) | WalkRouting.swift | `WalkRouteCache` actor around any router: 4-decimal endpoints, plausibility, 3 s timeout, estimate fallback (retried after 60 s), shared in-flight requests, <= 6 at once; `Planner.refinePlan` refines + re-ranks the shown options and the walk-only line |
+| map/geometry.js (`alongShape`) | Geometry.swift | bus legs drawn along the route's road shape between board and alight (`BusLeg.roadPath`); tests mirror web/tests/map-geometry.js plus a golden file of the JavaScript's own paths on 4 real routes |
 | core/rank.js | Rank.swift | least walking > earliest arrival > shortest wait > criteria met; `criteriaText` labels |
 | core/notify.js | Notify.swift | stopsAway, watchedRoutes, dueAlerts, minutesText |
 | core/tripprogress.js (new, web agent) | TripProgress.swift, LiveTripSnapshot.swift | trip timeline + Live Activity content (see below) |
@@ -54,9 +56,12 @@ data-geocode.js) so the Swift port provably behaves the same.
 | data/places.js | Places.swift | normalization, prefixes, one typo, categories (`PlaceIndex.search`) |
 | (demo only) | DemoFeed.swift | deterministic simulated feed generated from the bundled static data |
 
-Not ported on purpose: `data/geocode.js` (Photon) and the OSRM/Valhalla walking router: the app searches only on the
-device and uses straight-line walking estimates, so nothing but the shuttle feed leaves the phone. `refineWalking`
-is ported and tested; plugging in `MKDirections` walking later is one closure (`WalkRouter`).
+Not ported on purpose: `data/geocode.js` (Photon): the app searches only on the device. Walking legs use Apple
+Maps instead of the web's OSRM/Valhalla servers: `Model/AppleWalkDirections.swift` (`MKDirections`, walking) behind
+the Kit's `WalkRouteCache`, so only the two endpoints of each walking leg, rounded to about 10 m, go to Apple (About,
+Settings and the location prompt say so). Directions shows the straight-line plan first, then swaps in the sidewalk
+routes ("Checking sidewalk routes…"; walk steps say "sidewalk route" or "estimate"), never blocking the plan. Off in
+`-demo`, so CI screenshots stay deterministic.
 
 ### Trip progress (owner request 2026-10-09)
 
@@ -75,7 +80,8 @@ Island compact "53RD | 3 stops · 4 min", expanded progress bar + boarding/aligh
 
 - Map (MapKit `Map` iOS 17 API): route polylines in route colors stacked by the user's map order (focused routes
   on top, others dimmed), stops (favorites as stars), bus badges with route chip and heading, your location,
-  the selected/started trip (bus legs in route color, dashed walks, destination pin).
+  the selected/started trip (bus legs in route color along the road shape between the stops, dashed walks on
+  sidewalks, destination pin; the walk-only line when no shuttle helps).
 - Google-Maps-style layout: floating "Search for a destination" bar with the Settings gear, stale-data banner, a
   custom bottom sheet with three detents (peek / half / full, drag + fling, VoiceOver adjustable) resting on a
   bottom tab bar: Current trip / Routes / My Routes.
@@ -147,7 +153,8 @@ Apple's Simulator only runs on macOS, so there is no local option on Windows. Tw
 | Live Activity push updates while locked | stub: `LiveActivityController.pushTokenStub` (needs the proxy/push server, conversion to appstore.md sections 6-8) |
 | Bus-near alerts while the app is open | done (`Model/BusAlerts.swift`): checked after every poll and settings change, local notifications (banner in the foreground too), in-app banner when notifications are off; permission asked when a station is chosen, re-read on every return to the app; off in `-demo` |
 | Bus-near alerts while locked / in the background | not possible locally (needs the push server, conversion to appstore.md section 7) |
-| Walking directions on sidewalks | stub: straight-line estimates (MKDirections later via `WalkRouter`) |
+| Bus legs on the map follow the road (route shape between board and alight, never stop-to-stop lines) | done (`Geometry.swift`, `AppModel.roadPath`) |
+| Walking directions on sidewalks | done: `MKDirections` walking via `WalkRouteCache` (straight estimate first, then the route; off in `-demo`) |
 | Address search beyond campus places (Photon) | not ported (privacy: on-device only for now) |
 | Favorite-stop home screen widget | not started (P8) |
 | Learned ride times (learned.json) | supported by `SchedulePredictor`, not bundled yet (web doesn't deploy it either) |
@@ -158,7 +165,8 @@ Apple's Simulator only runs on macOS, so there is no local option on Windows. Tw
 - [ ] Bundle id: placeholder `com.example.straightbussing` (+ `.widgets`) in `project.yml`; set the real one after
       Apple Developer enrollment ($99/yr, see docs/APPSTORE.md).
 - [x] Privacy manifest `App/Resources/PrivacyInfo.xcprivacy`: no tracking, no tracking domains, no collected data;
-      UserDefaults reason CA92.1. Update it if push tokens are ever sent to a server.
+      UserDefaults reason CA92.1. Update it if push tokens are ever sent to a server. Walking-leg endpoints (rounded
+      to ~10 m) go to Apple's MapKit directions service, not to us; re-check the App Privacy answers at submission.
 - [x] Location usage string (`NSLocationWhenInUseUsageDescription`), asked only when the user taps "Use my location";
       location stays on the device. No background location.
 - [x] `NSSupportsLiveActivities`, `ITSAppUsesNonExemptEncryption = NO`, portrait iPhone, `straightbussing://` URL scheme.

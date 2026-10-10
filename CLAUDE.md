@@ -49,7 +49,7 @@ Also every ship: bump the cache name in `web/sw.js` when shell files change; esc
 | Sheet UI redesign (3 detents), vector basemap | done | `docs/DESIGN.md` |
 | Routes to station (picker, filter chip) | done | `web/app.js`; location or search first, nothing highlighted until chosen |
 | Hide/show single routes (persisted) | done | map, arrivals, Nearby honor it |
-| Directions (walk + shuttle, 1 transfer) | done | `web/planner.js`; Photon geocoding; bus legs drawn as straight stop-to-stop lines |
+| Directions (walk + shuttle, 1 transfer) | done | `web/js/core/planner.js`, `ui/views/directions.js`; Photon geocoding; bus legs on road shapes, walks on sidewalks |
 | Constant ground-truth collection | done | `collect.yml` on main (schedules only run from main): overlapping 70-min runs at :07/:37, `tools/merge_arrivals.py` dedupes into `data` branch `data/ground_truth/arrivals.csv`; `docs/DATA.md` |
 | Ride-time learning (`Predict`) | in progress | `RouteKnower.md` is the plan + experiment log (E00, E04, E15 done 2026-10-08; reviewed §13); ship target Fri Nov 20 (Thanksgiving Break is Nov 23-27); live site does NOT deploy `learned.json` yet (§9); ship gate §6.6 |
 | v2.4 (2026-10-08): Google-Maps-style layout: floating destination search bar (gear inside) replaces the top route bar, My Route / trip chip under it, bottom navigation Current trip / Routes / My Routes, Current trip view shows the trip in progress; Settings covers the bottom bar too | done | sw cache `sb-v2-8`; `docs/ARCHITECTURE.md` "Layout (v2.4)" |
@@ -61,8 +61,8 @@ Also every ship: bump the cache name in `web/sw.js` when shell files change; esc
 | Data repo github.com/blobberus/straight-bussing-data (auto-synced every 30 min: per-day/route CSVs, viewer page, methodology mirror) | done 2026-10-09 | its .github/workflows/sync.yml + scripts/sync.py |
 | Search: instant local results, spelling correction + assumption note, 94 UChicago queries verified; live trip progress timeline; tap empty map closes the sheet | done 2026-10-09 | ARCHITECTURE "2026-10-09 (later)" |
 | Weather / traffic / calendar context | done | `tools/context_fetch.py` + daily `context.yml` -> `data/context/` on the data branch; `tools/context_join.py`; `data/calendar.json`; sources vetted in RouteKnower §3.4 (never scrape Google Maps: terms forbid it) |
-| Theme + basemap styling | in progress | `web/theme.js`, `web/mapstyle.js` |
-| Directions: trace route shapes, walking path on streets | next | needs shape clipping / routing |
+| Theme + basemap styling | done | `web/js/ui/theme.js` (Auto/Light/Dark), `web/js/map/style.js` (OpenFreeMap, patched labels) |
+| Directions: trace route shapes, walking path on streets | done 2026-10-10 | web `map/geometry.js` alongShape (never straight while stops are on the shape) + OSRM/Valhalla walks; iOS Kit `Geometry.swift` (port + JS golden test) + `WalkRouting.swift` (MKDirections, off in -demo) |
 | Learned wait/headway (not just ride time) | next | extend data-learning roadmap |
 | v2.1: My Routes tab (custom named route sets, favorite stations), "Make this a custom route", map draw order, direction chevrons + bus rail on route detail, route hours/modified schedules/buses by hour, "only show relevant routes" journeys, alerts moved to Nearby banner | done, live 2026-10-08 | contract: `docs/ARCHITECTURE.md` "v2.1 features"; `core/visibility.js` is the one visibility rule |
 | Routes list: Show all / Hide all, drag-to-reorder map order, official contact at list bottom | done 2026-10-08 | `ui/views/routes.js`, `routes-drag.js`, `core/custom.js` (`showAll`/`hideAll`/`moveToIndex`) |
