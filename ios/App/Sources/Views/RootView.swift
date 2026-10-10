@@ -33,6 +33,8 @@ struct RootView: View {
                     TabBar()
                 }
             }
+            // Above the sheet at every detent, like a system banner.
+            .overlay(alignment: .top) { ToastBanner().padding(.horizontal, 12).padding(.top, 4) }
         }
         .sheet(isPresented: $model.showSettings) { SettingsView() }
         .sheet(isPresented: $model.showLiveActivityPreview) {
@@ -110,6 +112,38 @@ struct StaleBanner: View {
         case .late: return "Live data delayed. Bus times may be off."
         case .fresh: return ""
         }
+    }
+}
+
+/// In-app bus alert banner: shown when system notifications are not allowed (`AppModel.checkBusAlerts`).
+/// Disappears after a few seconds; a tap dismisses it.
+struct ToastBanner: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let transition: AnyTransition = reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)
+        VStack(spacing: 0) {
+            if let text = model.toast {
+                Button { model.dismissToast() } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "bell.fill").foregroundStyle(Color.accentColor)
+                        Text(text).font(.subheadline).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(text)
+                .accessibilityHint("Dismisses the alert")
+                .accessibilityIdentifier("busAlertBanner")
+                .transition(transition)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: model.toast)
     }
 }
 

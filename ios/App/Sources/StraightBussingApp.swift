@@ -19,9 +19,11 @@ struct StraightBussingApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             // Never poll in the background: live data is only fetched while the app is open. On the way out,
-            // one forced Live Activity update so the Lock Screen starts from fresh numbers.
+            // one forced Live Activity update so the Lock Screen starts from fresh numbers. Back in the app,
+            // re-read the notification permission (it may have changed in iOS Settings).
             if phase == .active {
                 model.resumePolling()
+                model.refreshNotifPermission()
             } else if phase == .background {
                 model.flushLiveActivity()
                 model.pausePolling()

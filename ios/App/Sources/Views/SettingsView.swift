@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import StraightBussingKit
 
 /// Settings (top-right gear, ui/views/settings.js): theme, service alerts, bus-near alerts, iPhone-only Live
@@ -6,6 +7,7 @@ import StraightBussingKit
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         NavigationStack {
@@ -78,10 +80,41 @@ struct SettingsView: View {
                 Text("Now: \(model.route(first.rid)?.displayName ?? first.rid) is \(first.stopsAway) stop\(first.stopsAway == 1 ? "" : "s") away\(first.etaS.map { ", " + Notify.minutesText($0, now: model.now) } ?? "")")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            if model.notify.stopId != nil {
+                if model.liveLoaded && (model.staleLevel == .err || model.staleLevel == .old) {
+                    Label("Live data is unavailable, so bus alerts are paused.", systemImage: "exclamationmark.triangle")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                permissionRow
+                Button("Turn off bus alerts", role: .destructive) { model.setAlertStation(nil) }
+                    .accessibilityIdentifier("busAlertsOff")
+            }
         } header: {
             Text("Bus alerts")
         } footer: {
-            Text("Notify me when my bus is near a station. Times are estimates from live predictions. This draft alerts only while the app is open; lock-screen alerts need the push server.")
+            Text("Notify me when my bus is near a station. Times are estimates from live predictions. Alerts work only while the app is open; lock-screen alerts need a push server (planned).")
+        }
+    }
+
+    /// Notification permission for the chosen station's alerts. Without it, alerts still show as an in-app banner.
+    @ViewBuilder var permissionRow: some View {
+        switch model.notifPermission {
+        case .granted:
+            Label("Alerts arrive as notifications while the app is open.", systemImage: "bell.badge")
+                .font(.caption).foregroundStyle(.secondary)
+        case .denied:
+            VStack(alignment: .leading, spacing: 3) {
+                Label("Notifications are off", systemImage: "bell.slash").font(.subheadline.weight(.semibold))
+                Text("Notifications for Straight Bussing are turned off in iOS Settings, so alerts show as a banner inside the app while it is open.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            Button("Open iOS Settings") {
+                if let url = URL(string: UIApplication.openNotificationSettingsURLString) { openURL(url) }
+            }
+        case .unknown:
+            Button("Allow notifications") { model.requestNotifPermission() }
+                .accessibilityHint("Without notifications, alerts show as a banner inside the app.")
         }
     }
 }
@@ -113,7 +146,7 @@ struct StationPicker: View {
 
     func row(_ id: String, _ name: String) -> some View {
         Button {
-            model.updateNotify { $0.stopId = id }
+            model.setAlertStation(id)
             dismiss()
         } label: {
             HStack {

@@ -109,6 +109,8 @@ final class AppModel {
     @ObservationIgnored let location = LocationProvider()
     @ObservationIgnored let liveActivity = LiveActivityController()
     @ObservationIgnored let mapCamera = MapCameraModel()
+    @ObservationIgnored let busAlerter = BusAlerter()
+    @ObservationIgnored var toastTask: Task<Void, Never>?
     @ObservationIgnored var pollTask: Task<Void, Never>?
     @ObservationIgnored var clockTask: Task<Void, Never>?
     @ObservationIgnored var planTask: Task<Void, Never>?
@@ -148,6 +150,10 @@ final class AppModel {
     var routeState = RouteState(routeIds: [])
     var notify = NotifyPrefs()
     var theme = "auto"
+    /// System notification permission for bus alerts (checked at launch and on every return to the app).
+    var notifPermission: BusAlerter.Permission = .unknown
+    /// In-app banner text (bus alerts when system notifications are not allowed).
+    var toast: String?
     // User
     var user: LatLon?
     var locState: LocationProvider.State = .unknown
@@ -209,6 +215,7 @@ final class AppModel {
     func updateNotify(_ change: (inout NotifyPrefs) -> Void) {
         change(&notify)
         savePrefs()
+        checkBusAlerts()
     }
 
     func setTheme(_ t: String) {

@@ -48,6 +48,7 @@ extension AppModel {
             locState = location.state
             location.resumeIfAuthorized()
         }
+        startBusAlerts()
         startClock()
         resumePolling()
     }
@@ -86,6 +87,7 @@ extension AppModel {
         failures = liveState.failed ? failures + 1 : 0
         refreshTrip()
         refreshDirections()
+        checkBusAlerts()
     }
 
     /// Publish a merged poll: every observed slice is assigned only when it differs, so a view that reads
