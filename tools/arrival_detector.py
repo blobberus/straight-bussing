@@ -6,7 +6,7 @@ Rules: docs/DATA.md "Detection". Tests: tools/test_truth.py.
 import math
 from collections import defaultdict, deque
 
-from arrivals_lib import (DEPART_SPEED, HIST, MAX_GAP, MAX_SKIP, MIN_PRED_AGE, NEAR_M, RADIUS_M,
+from arrivals_lib import (DEPART_SPEED, HIST, MAX_GAP, MAX_LINK_S, MAX_SKIP, MIN_PRED_AGE, NEAR_M, RADIUS_M,
                           SAME_VISIT_S, STATE_TTL, STOP_SPEED, hav_m)
 
 
@@ -64,8 +64,8 @@ class Tracker:
                 if now - ep > STATE_TTL:
                     continue
                 s = self._state((r["vehicle_id"], r["trip_id"]), r["route_id"], now)
-                s["done"].add(idx)
-                if s["prev"] is None or ep >= s["prev"]["epoch"]:
+                s["done"].add(idx)                   # blocks duplicates up to STATE_TTL, links only recent rows
+                if (s["prev"] is None or ep >= s["prev"]["epoch"]) and now - ep <= MAX_LINK_S:
                     s["prev"] = {"idx": idx, "epoch": ep, "dwell": float(r["dwell_s"]) if r["dwell_s"] else None}
                 la = self.last_arr.get(r["vehicle_id"])
                 if la is None or ep >= la[1]:
@@ -248,7 +248,14 @@ class Tracker:
             self._check_defer(s2, k2, s2["route"], lat, lon, None, vt, out, force=True)
             self._handoff(s2, k2, lat, lon, rep["speed"], vt, out)
             self._depart(s2, lat, lon, rep["speed"], vt, out)
-        if new and older:                            # keep the approach history across the trip change
+        if (not new and older and self.v[older[-1][1]]["last_t"] > s["last_t"]
+                and s["last_vt"] is not None and vt - s["last_vt"] > MAX_GAP):
+            # back on a trip id this bus left more than MAX_GAP ago (Passio flaps between ids, E01 B3):
+            # its next stop, approach reports, done stops and prev link belong to an earlier stretch of
+            # driving. Start it afresh, like a new state. (A flap of a poll or two keeps the state.)
+            s.update(prev=None, pnext=None, defer=None, done=set(), handed=False)
+            s["hist"].clear()
+        if (new or not s["hist"]) and older:         # keep the approach history across the trip change
             s["hist"].extend(x for x in self.v[older[-1][1]]["hist"] if x[2] < vt)
         s["last_t"] = now
         nxt = self._resolve(s, order, rep)
@@ -301,8 +308,10 @@ class Tracker:
         la = self.last_arr.get(key[0])
         ref = epoch if epoch is not None else (s["hist"][-1][2] if s["hist"] else la[1] if la else 0)
         if la and la[0] == sid and 0 <= ref - la[1] < (SAME_VISIT_S if epoch is not None else STATE_TTL):
-            if s["prev"] is None:                    # same physical visit (trip id flipped at terminal):
-                s["prev"] = {"idx": idx, "epoch": la[1], "dwell": None, "visit": la[2]}   # link, no row
+            # same physical visit as the bus's last arrival (trip id flipped at the terminal or flapped): no
+            # row, but the next segment starts here unless this trip already has a later arrival
+            if s["prev"] is None or la[1] > s["prev"]["epoch"]:
+                s["prev"] = {"idx": idx, "epoch": la[1], "dwell": None, "visit": la[2]}
             return
         if epoch is None:
             return
@@ -311,7 +320,10 @@ class Tracker:
             out.append(self._finish(s, s["pend"]))
             s["pend"] = None
         pv = s["prev"]
-        prev = pv if pv and pv["idx"] < idx and 0 < epoch - pv["epoch"] <= STATE_TTL else None
+        # link to pv only if it is earlier on the route, at most MAX_LINK_S ago, and the bus logged no later
+        # arrival under another trip id in between (Passio flapped the id; E01 B3: such links jump over it)
+        ok = pv and pv["idx"] < idx and 0 < epoch - pv["epoch"] <= MAX_LINK_S and not (la and la[1] > pv["epoch"])
+        prev = pv if ok else None
         a, sv, av = self.st.stops[sid], None, None
         for lat, lon, t, v in s["hist"]:             # already stopped there since arriving?
             if t >= epoch and v is not None and v < STOP_SPEED and hav_m(lat, lon, a["lat"], a["lon"]) <= RADIUS_M:
@@ -323,8 +335,10 @@ class Tracker:
                      "prev": prev, "dwell": None,
                      "pred": self.pred_for(key[1], sid, epoch, veh=key[0], idx=idx, loop_stop=loop_stop),
                      "stop_vt": sv, "after_vt": av}
-        s["prev"] = {"idx": idx, "epoch": epoch, "dwell": None}
-        self.last_arr[key[0]] = (sid, epoch, s["prev"])
+        if pv is None or epoch >= pv["epoch"]:       # (a deferred arrival logged after a later one is not
+            s["prev"] = {"idx": idx, "epoch": epoch, "dwell": None}   # what the next stop follows)
+        if la is None or epoch >= la[1]:             # the bus's latest arrival by time, as in seed()
+            self.last_arr[key[0]] = (sid, epoch, s["prev"])
 
     @staticmethod
     def _finish(s, e):

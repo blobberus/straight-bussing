@@ -208,6 +208,83 @@ def transition_between_two_distant_reports_uses_the_midpoint():
     assert [(e["idx"], e["source"], e["epoch"]) for e in ev] == [(1, "transition", T0 + 25)], ev
 
 
+def line_static(n=10):
+    """Stops S0..S{n-1} ~249 m apart on the test line, one-way route L."""
+    st = fake_static()
+    st.stops = {f"S{i}": {"name": f"Stop S{i}", "lat": LAT, "lon": LON0 + STEP * i} for i in range(n)}
+    st.route_stops = {"L": [f"S{i}" for i in range(n)]}
+    st.routes = {"L": {"short": "L", "long": "Test Line"}}
+    return st
+
+
+@test
+def flap_back_to_an_old_trip_id_starts_afresh():
+    """E01 B3: the bus runs trip A (S0-S3), Passio calls it trip B for 10 min (S4-S6), then A again. A's
+    old state must not link S7 back to S3 across B's arrivals, nor write a row for the stop A was
+    heading to 10 min ago (S4, already logged on B)."""
+    st = line_static()
+    reps, truth = simulate(st, [f"S{i}" for i in range(9)], route="L", trip="A", speed=3.0, dwell=120)
+    i4 = next(k for k, r in enumerate(reps) if r["stop_id"] == "S4")
+    i7 = next(k for k, r in enumerate(reps) if r["stop_id"] == "S7")
+    for r in reps[i4:i7]:
+        r["trip"] = "B"
+    assert reps[i7]["vt"] - reps[i4]["vt"] > 540
+    ev = run(Tracker(st), reps)
+    keys = [(e["trip"], e["idx"]) for e in ev]
+    assert keys == [("A", 0), ("A", 1), ("A", 2), ("A", 3), ("B", 4), ("B", 5), ("B", 6), ("A", 7), ("A", 8)], keys
+    for e in ev:
+        assert abs(e["epoch"] - truth[e["idx"]]) <= 10, (e["trip"], e["idx"], e["epoch"] - truth[e["idx"]])
+    assert ev[7]["prev"] is None or ev[7]["prev"]["idx"] == 6, ev[7]["prev"]
+    assert ev[8]["prev"]["idx"] == 7 and ev[5]["prev"]["idx"] == 4, (ev[8]["prev"], ev[5]["prev"])
+
+
+@test
+def no_link_across_a_gap_longer_than_max_link_s():
+    """E01 B3: the bus serves A and B, the feed loses it for 30 min (less than STATE_TTL), and it comes
+    back on the same trip before C. C's row must not claim a 30-min segment from B; D links to C."""
+    st = fake_static()
+    r1, _ = simulate(st, ["A", "B"])
+    r2, _ = simulate(st, ["C", "D"], t0=r1[-1]["vt"] + 1800)
+    ev = run(Tracker(st), r1 + r2)
+    assert [e["idx"] for e in ev] == [0, 1, 2, 3], [e["idx"] for e in ev]
+    assert ev[2]["prev"] is None and ev[3]["prev"]["idx"] == 2, (ev[2]["prev"], ev[3]["prev"])
+
+
+@test
+def seed_links_only_to_recent_rows():
+    """E01 B3: a restart seeded from the shared CSV still blocks duplicates of every row up to STATE_TTL
+    old, but links the next segment only to a row at most MAX_LINK_S old."""
+    st = fake_static()
+    reps, _ = simulate(st, ["A", "B", "C"])
+    ev = run(Tracker(st), reps)
+    rows = [dict(zip(L.COLUMNS, map(str, L.fmt_row(st, e)))) for e in ev]
+    last = ev[-1]["epoch"]
+    for age, linked in ((300, True), (L.MAX_LINK_S - 1, True), (L.MAX_LINK_S + 60, False), (3000, False)):
+        tr = Tracker(st)
+        tr.seed(rows, last + age)
+        s = tr.v[("V1", "T1")]
+        assert s["done"] == {0, 1, 2}, (age, s["done"])
+        assert (s["prev"] is not None and s["prev"]["idx"] == 2) == linked, (age, s["prev"])
+
+
+@test
+def brief_trip_id_flap_keeps_the_state():
+    """A flap of one poll (Passio briefly reports another trip id) is not a flap back after a long time:
+    the state is kept, so every stop is still logged once on the main trip id and every segment links
+    to the stop before it (resetting here would cost the link and, poll by poll, most transitions)."""
+    st = line_static()
+    reps, truth = simulate(st, [f"S{i}" for i in range(6)], route="L", trip="A", speed=4.0)
+    k = next(k for k, r in enumerate(reps) if r["stop_id"] == "S3") + 1      # just after leaving S2
+    s3 = st.stops["S3"]
+    assert min(L.hav_m(r["lat"], r["lon"], s3["lat"], s3["lon"]) for r in reps[k:k + 2]) > L.NEAR_M  # no handoff
+    reps[k]["trip"] = "B"
+    ev = run(Tracker(st), reps)
+    assert [(e["trip"], e["idx"]) for e in ev] == [("A", i) for i in range(6)], [(e["trip"], e["idx"]) for e in ev]
+    assert [e["prev"]["idx"] if e["prev"] else None for e in ev] == [None, 0, 1, 2, 3, 4], [e["prev"] for e in ev]
+    for e in ev:
+        assert abs(e["epoch"] - truth[e["idx"]]) <= 10, (e["idx"], e["epoch"] - truth[e["idx"]])
+
+
 @test
 def same_trip_second_lap_is_logged():
     st = fake_static()

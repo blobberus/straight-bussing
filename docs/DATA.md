@@ -17,7 +17,8 @@ predictions and train our own (`tools/model_*.py`, `docs/ALGORITHMS.md`). Unoffi
 `minute_of_day` · `route_id` `route_name` `trip_id` `vehicle_id` (Passio) · `stop_id` `stop_name`
 `stop_address` `stop_lat` `stop_lon` · `stop_index` position in `web/data/route_stops.json[route]` (loops: last
 index = back at the first stop) · `prev_stop_id` `prev_arrival_epoch` previous detected stop of the same
-trip (stops in between may have been skipped) · `dist_prev_m` metres along the route shape
+trip (stops in between may have been skipped; blank if it is > 25 min old or the bus logged another arrival
+in between) · `dist_prev_m` metres along the route shape
 (`web/data/shapes.json`; else haversine x 1.15) · `segment_s` = epoch - prev_arrival_epoch (includes the
 previous dwell) · `speed_mps` = dist / (segment_s - previous dwell), blank if > 30 m/s · `dwell_s` time
 stopped here (0 = drove through, blank = unknown) · `passio_pred_epoch` Passio's newest prediction for this
@@ -42,6 +43,11 @@ arrival, `passio_pred_lead_s` = epoch - when it was made · `source`
 - Dedupe per vehicle+trip+stop index; also one row per physical visit when the trip id flips at a terminal
   (the new trip links to it). GPS jitter / `stop_id` flapping, repeated or stale (> 90 s) reports, and a
   second lap on the same trip id are handled. Restart-safe: the CSV tail (last ~600 kB) is re-read.
+- Links (`prev_*`): only to an arrival at most 25 min old (`MAX_LINK_S`; a feed or collector gap means
+  stops were missed) with no later arrival of the same bus under another trip id in between. Passio flaps
+  trip ids: a bus back on a trip id it left > 60 s ago starts that trip's state afresh (no row for the
+  stop it was heading to back then); a flap of a poll or two keeps it. A restart links only to CSV rows
+  <= 25 min old.
 
 ## Error bounds
 Arrival times are good to about **+-10 s**: reports come every ~10 s, GPS is +-5-10 m. Simulation

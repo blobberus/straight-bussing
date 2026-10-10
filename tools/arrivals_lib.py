@@ -25,6 +25,8 @@ SAME_VISIT_S = 900       # same vehicle + same stop with nothing in between with
 MAX_SPEED = 30.0         # m/s: segment speeds above this are timing artefacts (left blank)
 MIN_PRED_AGE = 120       # predictions must be >= this old at arrival to count
 STATE_TTL = 3600         # forget a (vehicle, trip) after this many seconds silent
+MAX_LINK_S = 1500        # s: longest real stop-to-stop time incl. dwell (DCC Lake Shore Dr hop ~15 min); an
+                         # older previous arrival is not linked (collector or feed gap: stops were missed)
 HIST = 8                 # recent reports kept per (vehicle, trip) for back-dating arrivals
 
 try:
