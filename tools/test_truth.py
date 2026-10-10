@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Asserts on the ground-truth arrival detector (tools/arrivals_lib.py) using synthetic bus positions.
   python tools/test_truth.py        -> prints 'ok N tests', exits 1 on failure"""
-import math, random, sys, tempfile, traceback
+import json, math, random, sys, tempfile, traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -388,6 +388,43 @@ def malformed_feeds_and_entries_never_stop_the_run():
     assert err.proc > 0 and err.fetch > 0 and err.first, (err.proc, err.fetch, err.first)
     assert "detector bug" in log.getvalue() and "ERROR" in log.getvalue()
     assert err.proc > 100 and log.getvalue().count("\n") <= 40 + err.proc // 100 + err.fetch // 100, "log not sampled"
+
+
+@test
+def raw_polls_keep_every_position_poll_and_never_stop_the_run():
+    """--raw-out: one JSON line per vehiclePositions poll (empty feeds too), junk entities skipped; a raw
+    file that cannot be written is counted as an error while arrival rows keep coming."""
+    import io
+    import truth_logger as TL
+    st = fake_static()
+    reps, _ = simulate(st, ["A", "B", "C"])
+    d = Path(tempfile.mkdtemp(prefix="sb-raw-"))
+    log = io.StringIO()
+    tr, w, err = Tracker(st), TL.Writer(d / "run.csv", st), TL.Errors(out=log)
+    raw = TL.RawPolls(d / "raw" / "raw.jsonl")
+    junk = [None, "x", {"vehicle": {"position": "nope"}}, {"vehicle": {"position": {"latitude": 1}, "trip": "bad"}}]
+    for r in reps:
+        TL.poll(tr, w, r["vt"] + 2, err, get=lambda name, r=r: vp_feed([r], junk=junk) if name == "vehiclePositions"
+                else {"entity": []}, raw=raw)
+    TL.poll(tr, w, reps[-1]["vt"] + 12, err, get=lambda name: {"header": {"timestamp": 5}, "entity": []}, raw=raw)
+    lines = [json.loads(ln) for ln in (d / "raw" / "raw.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert raw.n == len(lines) == len(reps) + 1, (raw.n, len(lines))
+    first = lines[0]["v"]
+    assert len(first) == 2 and dict(zip(TL.RawPolls.FIELDS, first[1]))["veh"] == reps[0]["veh"], first
+    assert dict(zip(TL.RawPolls.FIELDS, first[1]))["lat"] == reps[0]["lat"]
+    assert lines[-1] == {"t": reps[-1]["vt"] + 12, "h": 5, "v": []}
+    assert "raw polls" not in log.getvalue(), log.getvalue()     # (the junk entities are the detector's errors)
+    rows_before, log = w.n, io.StringIO()
+    err = TL.Errors(out=log)                     # fresh counts (the first error log is already sampled)
+    (d / "raw" / "raw.jsonl").unlink()
+    (d / "raw" / "raw.jsonl").mkdir()            # now unwritable: errors are counted, the detector keeps going
+    reps2, _ = simulate(st, ["A", "B", "C"], t0=reps[-1]["vt"] + 600, trip="T2")
+    for r in reps2:
+        TL.poll(tr, w, r["vt"] + 2, err, get=lambda name, r=r: vp_feed([r]) if name == "vehiclePositions"
+                else {"entity": []}, raw=raw)
+    w.write(tr.drain(reps2[-1]["vt"] + 5, final=True))
+    assert err.proc == len(reps2) == log.getvalue().count("raw polls") and "raw polls" in err.first, err.first
+    assert w.n > rows_before, (w.n, rows_before)
 
 
 def main():

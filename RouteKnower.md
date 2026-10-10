@@ -120,8 +120,8 @@ Totals: ~4,000-4,500 rows a day, ~30k a week, ~1 MB a day. The CSV rotates to `a
    issue. Fix before any Passio comparison is trusted.
 6. **Detector truth check**: the +-10 s claim comes from simulation. Validate in the field: 20+ hand-logged arrivals at
    one stop with a phone clock (E02).
-7. **Raw positions are not stored**, so the Kalman filter (M8) cannot be tested on real data. Keep raw polls as a
-   GitHub Actions artifact (90-day retention) or on the local PC (E03).
+7. **Raw positions were not stored** before 2026-10-10, so the Kalman filter (M8) could not be tested on real data.
+   Now every CI run keeps its polls as a 90-day artifact; `tools/raw_fetch.py` downloads them (E03, `docs/DATA.md`).
 
 ### 3.4 Context data: weather, traffic, calendar (vetted 2026-10-08)
 
@@ -276,7 +276,7 @@ A failed gate keeps the current source for that output; logged as "not yet". No 
 | E00 | Pilot backtest on day 1 | T0 | done (inconclusive) |
 | E01 | Data-quality audit: DCC pairs, Drexel/Regents detection share, worst 2% segment times, duplicates, Passio 5-10 min outliers (§3.3 items 1-5) | T0 | fixes to detector/merge/`load_rows`; re-run E00 |
 | E02 | Field truth check of the detector (20+ hand-logged arrivals at one stop) | none | confirm or revise the +-10 s claim |
-| E03 | Store raw position polls (CI artifact or local) for M8 | none | 2+ weeks of raw polls |
+| E03 | Store raw position polls (CI artifact or local) for M8 | none | **started 2026-10-10**: CI artifact `raw-polls-<run>` (90 days), `tools/raw_fetch.py`; 2+ weeks by Oct 24 |
 | E04 | `data/calendar.json` from the official academic calendar | none | **done 2026-10-08** |
 | E05 | Weekly baseline report: M0, M1, M3, M4 at T1 | T1 | first real numbers; tune k |
 | E06 | M2 Passio bias + M5 previous-bus + M13 fleet index | T1 | adopt if significant at T1, re-check at T2 |

@@ -94,6 +94,13 @@ or download `https://raw.githubusercontent.com/blobberus/straight-bussing/data/d
 time; a private repo would need ~90k min/month vs 2k free, so never make this repo private with the chain on). If the Actions tab ever shows the
 workflow disabled, press "Enable workflow" there.
 
+**Raw position polls** (RouteKnower E03, since 2026-10-10): each CI run also keeps every vehiclePositions
+poll (`truth_logger.py --raw-out`, one JSON line per poll: `{"t", "h", "v": [[veh, trip, route, lat, lon,
+bearing, speed, q, stop_id, status, vt], ...]}`) as the artifact `raw-polls-<run id>` (about 1 MB per run,
+kept 90 days, never on the data branch). `python tools/raw_fetch.py` downloads the new ones into
+`data/raw_polls/days/<service day>.jsonl` (deduped on vehicle + vt; git-ignored); `--list` shows what is on
+GitHub. Download at least every 2 months or they expire.
+
 **Privacy**: the feeds hold only vehicle positions and predictions, no riders. Nothing personal is
 collected; addresses come from public OpenStreetMap data via Photon (stop coordinates only).
 

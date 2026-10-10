@@ -8,3 +8,5 @@ ground_truth/archive/
 monitor/
 # Weather / traffic context lives on the orphan data branch too (tools/context_fetch.py, RouteKnower.md 3.4)
 context/
+# Raw position polls downloaded from the 90-day CI artifacts (tools/raw_fetch.py, RouteKnower E03)
+raw_polls/

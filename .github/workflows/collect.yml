@@ -68,7 +68,16 @@ jobs:
         run: |
           date +%s > "$RUNNER_TEMP/log.t0"
           python tools/truth_logger.py --duration 4200 --seed "$RUNNER_TEMP/seed.csv" --out "$RUNNER_TEMP/run.csv" \
-            --status-file "$RUNNER_TEMP/logger.json"
+            --status-file "$RUNNER_TEMP/logger.json" --raw-out "$RUNNER_TEMP/raw/raw-polls.jsonl"
+      - name: Keep the raw position polls (RouteKnower E03; artifact, 90 days, never on the data branch)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-polls-${{ github.run_id }}
+          path: ${{ runner.temp }}/raw/raw-polls.jsonl
+          retention-days: 90
+          if-no-files-found: ignore
       - name: Check the logging run (annotates problems; the job stays green so the merge always runs)
         if: always()
         env: { OUTCOME: "${{ steps.log.outcome }}" }

@@ -7,6 +7,7 @@ per true bus arrival at a stop (schema in arrivals_lib.COLUMNS, docs in docs/DAT
   python tools/truth_logger.py --out some.csv --interval 10
   python tools/truth_logger.py --seed arrivals.csv --out run.csv   # new rows only (CI; merge_arrivals.py)
   python tools/truth_logger.py ... --status-file s.json            # polls/rows/error counts at exit (CI)
+  python tools/truth_logger.py ... --raw-out raw.jsonl              # also keep every position poll (E03)
 A failed fetch, bad JSON or a malformed feed entry only skips that feed or entry for one poll; it is
 counted (status line, final 'done:' line, --status-file) and the run keeps going.
 No rider data exists in these feeds; nothing personal is collected.
@@ -118,9 +119,42 @@ def store_predictions(tr, feed, now, err=None):
             err("tripUpdates entity", ex)
 
 
-def poll(tr, w, now, err, get=fetch):
-    """One poll of both feeds. Any failure (network, bad JSON, a malformed entry, a detector bug) goes to
-    err() and only skips that feed or entry for this poll, never the run. -> feed_summary or None."""
+class RawPolls:
+    """Every vehiclePositions poll as one JSON line (RouteKnower E03: real positions for the Kalman model M8):
+      {"t": poll epoch, "h": feed header timestamp, "v": [[RAW_FIELDS...], ...]}
+    Kept as a 90-day CI artifact, not on the data branch. Overlapping runs repeat polls: dedupe on
+    (vehicle, vt). A line is written for an empty feed too, so a quiet poll differs from a missed one."""
+    FIELDS = ("veh", "trip", "route", "lat", "lon", "bearing", "speed", "q", "stop_id", "status", "vt")
+
+    def __init__(self, path):
+        self.path, self.n = Path(path), 0
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def rows(feed):
+        out = []
+        for e in feed.get("entity", []):
+            v = (e or {}).get("vehicle") if isinstance(e, dict) else None
+            if not isinstance(v, dict) or not isinstance(v.get("position"), dict):
+                continue
+            pos, trip, veh = v["position"], v.get("trip") or {}, v.get("vehicle") or {}
+            trip, veh = (trip if isinstance(trip, dict) else {}), (veh if isinstance(veh, dict) else {})
+            out.append([veh.get("id"), trip.get("trip_id"), trip.get("route_id"), pos.get("latitude"),
+                        pos.get("longitude"), pos.get("bearing"), pos.get("speed"), v.get("current_stop_sequence"),
+                        v.get("stop_id"), v.get("current_status"), v.get("timestamp")])
+        return out
+
+    def write(self, now, feed):
+        line = {"t": now, "h": (feed.get("header") or {}).get("timestamp"), "v": self.rows(feed)}
+        with open(self.path, "a", encoding="utf-8", newline="\n") as f:
+            f.write(json.dumps(line, separators=(",", ":")) + "\n")
+        self.n += 1
+
+
+def poll(tr, w, now, err, get=fetch, raw=None):
+    """One poll of both feeds. Any failure (network, bad JSON, a malformed entry, a detector bug, the raw
+    poll file) goes to err() and only skips that feed or entry for this poll, never the run.
+    -> feed_summary or None."""
     try:
         feed = get("tripUpdates")
     except Exception as ex:
@@ -135,6 +169,11 @@ def poll(tr, w, now, err, get=fetch):
     except Exception as ex:
         err("vehiclePositions", ex, fetch=True)
         return None
+    if raw is not None:
+        try:
+            raw.write(now, feed)
+        except Exception as ex:
+            err("raw polls", ex)
     summary, ev = None, []
     try:
         summary = feed_summary(feed)
@@ -205,6 +244,7 @@ def main():
                     help="at start, move --out to archive/<name>-<UTC date>.csv if larger than this (0 = never)")
     ap.add_argument("--seed", help="CSV whose tail seeds the detector (default --out); lets a run write only its own rows")
     ap.add_argument("--status-file", help="write {polls, rows, errors, fetch_errors, ...} as JSON here at exit")
+    ap.add_argument("--raw-out", help="append every vehiclePositions poll here as JSON lines (RawPolls)")
     a = ap.parse_args()
     a.interval = max(5.0, a.interval)
     st = L.Static()
@@ -212,6 +252,12 @@ def main():
         sys.exit("web/data/route_stops.json missing (run tools/build_gtfs.py)")
     rotate(Path(a.out), a.rotate_mb)
     tr, w, err = Tracker(st), Writer(a.out, st), Errors()
+    raw = None
+    if a.raw_out:
+        try:
+            raw = RawPolls(a.raw_out)
+        except OSError as ex:                    # raw polls are optional: never stop arrival logging
+            err("raw polls", ex)
     try:
         tr.seed(L.read_tail(a.seed or a.out), int(time.time()))
     except Exception as ex:                      # a bad seed only costs duplicate protection (merge dedupes too)
@@ -221,7 +267,7 @@ def main():
     try:
         while True:
             t0 = time.time()
-            s = poll(tr, w, int(t0), err)
+            s = poll(tr, w, int(t0), err, raw=raw)
             if s is not None:
                 summary = s
             polls += 1
@@ -243,7 +289,8 @@ def main():
             try:
                 Path(a.status_file).write_text(json.dumps(
                     {"started": int(started), "ended": int(time.time()), "duration": a.duration, "polls": polls,
-                     "rows": w.n, "errors": err.proc, "fetch_errors": err.fetch, "first_error": err.first}),
+                     "rows": w.n, "errors": err.proc, "fetch_errors": err.fetch, "first_error": err.first,
+                     "raw_polls": raw.n if raw else None}),
                     encoding="utf-8")
             except OSError as ex:
                 print(f"could not write {a.status_file}: {ex}", file=sys.stderr)
