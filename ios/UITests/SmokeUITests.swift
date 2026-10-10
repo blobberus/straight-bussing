@@ -87,6 +87,20 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["searchBar"].waitForExistence(timeout: 10))
     }
 
+    /// Turn a SwiftUI switch on: a tap on its trailing edge (the switch, not the label), then, if the value did not
+    /// change (iOS 26 lays the row out differently), a tap on the inner switch control.
+    func turnOn(_ toggle: XCUIElement) -> Bool {
+        func isOn(_ timeout: TimeInterval) -> Bool {
+            let on = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "1"), object: toggle)
+            return XCTWaiter.wait(for: [on], timeout: timeout) == .completed
+        }
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        if isOn(3) { return true }
+        let inner = toggle.switches.firstMatch
+        (inner.exists ? inner : toggle).tap()
+        return isOn(5)
+    }
+
     func waitGone(_ e: XCUIElement, _ timeout: TimeInterval, _ why: String) {
         let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: e)
         gone.expectationDescription = why
@@ -104,13 +118,13 @@ final class SmokeUITests: XCTestCase {
         app.buttons["settingsButton"].tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
         let toggle = app.switches["simulatedBuses"]
+        let bottom = app.windows.firstMatch.frame.maxY - 140   // clear of the home indicator
         var tries = 0
-        while !(toggle.exists && toggle.isHittable) && tries < 12 { app.swipeUp(); tries += 1 }
+        while !(toggle.exists && toggle.isHittable && toggle.frame.maxY < bottom) && tries < 12 { app.swipeUp(); tries += 1 }
         XCTAssertTrue(toggle.exists && toggle.isHittable, "Settings has the Simulated buses switch")
         XCTAssertEqual(toggle.value as? String, "0", "off by default")
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()   // the switch, not the label
-        XCTAssertTrue(app.descendants(matching: .any)["demoBanner"].waitForExistence(timeout: 10), "the banner shows in Settings")
-        save(app, "23-simulated-settings-light")
+        XCTAssertTrue(turnOn(toggle), "the Simulated buses switch turns on")
+        save(app, "23-simulated-settings-light")   // the banner heads Settings now
         app.buttons["settingsDone"].tap()
 
         let off = app.buttons["demoOff"]
