@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- xcodebuild -exportArchive options for .github/workflows/ios-release.yml: sign for the App Store with automatic
+     (cloud-managed) signing and upload straight to App Store Connect / TestFlight. No certificate, .p12 or profile
+     is kept anywhere: Apple's cloud-managed distribution certificate signs it (needs an Admin-role API key).
+     teamID is filled in by the workflow from the APPLE_TEAM_ID variable (plutil -replace teamID). -->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>upload</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>teamID</key>
+	<string></string>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>testFlightInternalTestingOnly</key>
+	<false/>
+</dict>
+</plist>

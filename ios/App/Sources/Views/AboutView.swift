@@ -45,7 +45,7 @@ struct AboutView: View {
                     VStack(spacing: 0) {
                         linkRow("Privacy policy", "hand.raised", SiteLinks.privacy, id: "aboutPrivacyPolicy")
                         Divider()
-                        linkRow("Help and bug reports", "questionmark.bubble", SiteLinks.support, id: "aboutSupport")
+                        linkRow("Contact support", "questionmark.bubble", SiteLinks.supportContact, id: "aboutSupport")
                     }
                 }
                 SectionTitle(text: "How times work")

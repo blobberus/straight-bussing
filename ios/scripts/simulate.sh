@@ -5,7 +5,7 @@
 #   ios/scripts/simulate.sh <path/to/StraightBussing.app> <simulator udid> <out dir>
 set -uo pipefail
 APP="$1"; UDID="$2"; OUT="$3"
-BID="com.example.straightbussing"
+BID="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" 2>/dev/null || echo io.github.blobberus.straightbussing)"   # SB_BUNDLE_ID
 HERE="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$OUT"
 

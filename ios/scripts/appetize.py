@@ -8,11 +8,11 @@ green. The same Appetize app is updated on every run (found by bundle id, or APP
 link never changes. Writes {publicKey, links} for gallery.py. macOS only (ditto + curl, like Appetize's docs).
 Free plan: 30 streaming minutes a month for everyone who opens the link; sessions end after 60 s idle.
 """
-import argparse, json, os, subprocess, sys, tempfile, urllib.parse, urllib.request
+import argparse, json, os, plistlib, subprocess, sys, tempfile, urllib.parse, urllib.request
 from pathlib import Path
 
 API = "https://api.appetize.io/v1/apps"
-BUNDLE = "com.example.straightbussing"
+BUNDLE = "io.github.blobberus.straightbussing"   # default; the real one is read from the built app (SB_BUNDLE_ID)
 CAMPUS = "41.7886,-87.5987"                     # Reynolds Club area, so "nearest stops" has something to show
 SETUP = ("Appetize is not set up. To get a live, clickable simulator: create a free account at https://appetize.io, "
          "make an API token (Account > API token), then run: gh secret set APPETIZE_API_TOKEN")
@@ -25,14 +25,23 @@ def api(path="", token="", query=None):
         return json.loads(r.read().decode("utf-8"))
 
 
-def find_existing(token):
+def bundle_id(app):
+    """CFBundleIdentifier of the built .app (project.yml SB_BUNDLE_ID), else the default."""
+    try:
+        with open(Path(app) / "Info.plist", "rb") as f:
+            return plistlib.load(f).get("CFBundleIdentifier") or BUNDLE
+    except Exception:
+        return BUNDLE
+
+
+def find_existing(token, bundle=BUNDLE):
     """publicKey of our app on this account (matched by bundle id), or None. Any API error -> None."""
     try:
         q = {}
         for _ in range(20):
             d = api("", token, q)
             for a in d.get("data") or []:
-                if a.get("platform") == "ios" and a.get("bundle") == BUNDLE:
+                if a.get("platform") == "ios" and a.get("bundle") == bundle:
                     return a.get("publicKey")
             if not d.get("hasMore") or not d.get("nextKey"):
                 return None
@@ -65,7 +74,7 @@ def main():
     app = Path(a.app)
     if not (app / "Info.plist").exists():
         sys.exit(f"{app} is not a built .app")
-    key = key or find_existing(token)
+    key = key or find_existing(token, bundle_id(app))
     with tempfile.TemporaryDirectory() as tmp:
         z = Path(tmp) / "StraightBussing-simulator.zip"
         subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app), str(z)], check=True)

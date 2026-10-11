@@ -113,10 +113,12 @@ jobs:
           done
           # A fresh iOS 26 simulator is slow on its very first app launch (XCUITest then reports "does not have
           # a process ID"): pay that cost once here.
-          xcrun simctl install "$U" ios/build/dd/Build/Products/Debug-iphonesimulator/StraightBussing.app
-          xcrun simctl launch "$U" com.example.straightbussing -demo || true
+          APP=ios/build/dd/Build/Products/Debug-iphonesimulator/StraightBussing.app
+          BID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist")   # SB_BUNDLE_ID in project.yml
+          xcrun simctl install "$U" "$APP"
+          xcrun simctl launch "$U" "$BID" -demo || true
           sleep 8
-          xcrun simctl terminate "$U" com.example.straightbussing || true
+          xcrun simctl terminate "$U" "$BID" || true
       - name: UI tests
         id: uitest
         working-directory: ios

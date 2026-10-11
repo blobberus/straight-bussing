@@ -56,6 +56,11 @@ struct SettingsView: View {
                                 Text("Unofficial. Privacy, official contact").font(.caption).foregroundStyle(Palette.text2)
                             }
                         }
+                        Link(destination: SiteLinks.supportContact) {
+                            Label("Contact support", systemImage: "questionmark.bubble")
+                        }
+                        .accessibilityHint("Opens the support form in Safari")
+                        .accessibilityIdentifier("supportContactLink")
                     }
                 }
                 .tint(Palette.accent)

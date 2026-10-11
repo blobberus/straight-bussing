@@ -37,7 +37,7 @@ export function renderAbout() {
   <li>Walking directions: only the start and end of each walking leg (your location, when a trip starts there), rounded to about 10 m, are sent to <b>routing.openstreetmap.de</b> (or <b>valhalla1.openstreetmap.de</b> if that is down) to follow sidewalks. Nothing else about you or your trip is sent. If both fail, a straight-line estimate is used and labeled “estimate”.</li>
   <li>Settings (theme, hidden routes, custom routes, favorites, bus alert choices) are saved in this browser only.</li>
 </ul>
-<p class="v-sec"><a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="support.html" target="_blank" rel="noopener">Help and bug reports</a></p>
+<p class="v-sec"><a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="support.html?contact=1&amp;app=web&amp;v=${esc(encodeURIComponent(APP_VERSION))}" target="_blank" rel="noopener">Contact support</a></p>
 <h3 class="v-h">How times work</h3>
 <p class="v-sec">Arrival times come from the live shuttle feed. Ride, wait and total times in Directions are estimates from schedules and live predictions, and each one says where it came from. If the feed is late or down, the app tells you.</p>
 <h3 class="v-h">Credits</h3>

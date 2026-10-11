@@ -10,7 +10,7 @@ import { renderStop, openStop } from "../js/ui/views/stop.js";
 import { renderRoutes, groupRoutes } from "../js/ui/views/routes.js";
 import { renderRoute, stopOrder } from "../js/ui/views/route.js";
 import { renderAlerts } from "../js/ui/views/alerts.js";
-import { renderAbout, mountAbout } from "../js/ui/views/about.js";
+import { renderAbout, mountAbout, APP_VERSION } from "../js/ui/views/about.js";
 import "../js/ui/views/pick.js";
 import "../js/ui/views/directions.js";
 
@@ -231,7 +231,7 @@ test("about: unofficial, official contact, privacy hosts, version, theme control
   // privacy honesty (taste audit 15.3): never "location stays on this device" next to a bullet that sends walking endpoints
   ok(!h.includes("stays on this device") && h.includes("live location is never stored or sent") && h.includes("only the start and end of each walking leg"), "location wording is consistent");
   // the policy and support pages on the same site (App Store 5.1.1 asks for a reachable policy; iOS links them too)
-  ok(h.includes('href="privacy.html"') && h.includes('href="support.html"'), "privacy policy + support links");
+  ok(h.includes('href="privacy.html"') && h.includes(`href="support.html?contact=1&amp;app=web&amp;v=${encodeURIComponent(APP_VERSION)}"`), "privacy policy + contact support (app details for the form) links");
   const el = root();
   el.innerHTML = h;
   mountAbout(el, makeCtx());

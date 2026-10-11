@@ -8,7 +8,9 @@
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <style>
-/* Static page, no scripts, no external requests. Colors follow web/css/tokens.css. */
+/* No external requests. One small script (js/support.js) points "Contact support" at the support form
+   (support-form.js) with the app details filled in; without it the button opens GitHub Issues.
+   Colors follow web/css/tokens.css. */
 :root { color-scheme: light dark; --bg: #fcfcfd; --text: #111114; --text-2: #5c5c63; --accent: #0066d6; --accent-fill: #0071e3; --hairline: rgba(60, 60, 67, .18); --surface: #f2f2f7; }
 @media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --text: #f5f5f7; --text-2: #a1a1a8; --accent: #409cff; --hairline: rgba(84, 84, 88, .55); --surface: #2c2c2e; } }
 body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif; }
@@ -24,8 +26,13 @@ ul, ol { padding-left: 1.2rem; }
 .btn--secondary { background: var(--surface); color: var(--accent); }
 a { color: var(--accent); text-underline-offset: 2px; }
 b { font-weight: 650; }
+.if-form { display: none; }
+.has-form .if-form { display: block; }
+.has-form .if-issues { display: none; }
+.details { overflow-wrap: anywhere; }
 footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--hairline); color: var(--text-2); font-size: .94rem; }
 </style>
+<script type="module" src="js/support.js"></script>
 </head>
 <body>
 <main>
@@ -42,15 +49,25 @@ with or endorsed by the University or by Passio. Arrival times are predictions a
 <a class="btn btn--secondary" href="https://safety-security.uchicago.edu/Transportation">Official transportation page</a>
 </div>
 
-<h2>Report a bug or ask a question</h2>
-<p>Open an issue at <a href="https://github.com/blobberus/straight-bussing/issues">github.com/blobberus/straight-bussing/issues</a>
-(a free GitHub account is needed). It helps to include:</p>
+<h2 id="contact">Contact support</h2>
+<p class="if-form">Report a bug or ask a question in a short form (Google Forms). Say what happened, on which screen,
+route or stop, and when. Add an email address only if you want a reply.</p>
+<p class="if-issues">Report a bug or ask a question as an issue at
+<a href="https://github.com/blobberus/straight-bussing/issues">github.com/blobberus/straight-bussing/issues</a>
+(a free GitHub account is needed).</p>
+<p class="meta details" data-js-only hidden>Filled in for you, and you can change it: <b data-support-details></b></p>
+<a class="btn btn--primary" data-support-contact href="https://github.com/blobberus/straight-bussing/issues">Contact support</a>
+<p class="meta if-form">Nothing is submitted until you press Submit in the form; then what you typed and the app details
+go to Google Forms (<a href="privacy.html">privacy policy</a>).</p>
+<div class="if-issues">
+<p>It helps to include:</p>
 <ol>
 <li>iPhone app or web app, and the version (bottom of About in the app);</li>
 <li>your iPhone model and iOS version, or your browser;</li>
 <li>the screen, the route or stop, and the time it happened;</li>
 <li>what you expected and what you saw (a screenshot helps; crop out anything private).</li>
 </ol>
+</div>
 
 <h2>Common questions</h2>
 <ul>
@@ -73,7 +90,8 @@ a locked phone would need a push server, which is planned.</li>
 </ul>
 
 <h2>Privacy</h2>
-<p>No account, no ads, no tracking, nothing collected. Details: <a href="privacy.html">privacy policy</a>.</p>
+<p>No account, no ads, no tracking, nothing collected. A support request is sent only when you submit one.
+Details: <a href="privacy.html">privacy policy</a>.</p>
 
 <footer>
 <p>Unofficial. Not affiliated with the University. Official service: <a href="tel:7737028181">773.702.8181</a>.

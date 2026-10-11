@@ -1,0 +1,168 @@
+name: iOS release (TestFlight / App Store Connect)
+# Builds the native app in ios/ for the App Store and uploads it to App Store Connect, where it shows in TestFlight.
+# Nathan's checklist: docs/APPSTORE-SUBMIT.md. Run it: Actions > iOS release > Run workflow (or push a tag v1.0.0).
+#
+# Signing, with nothing made by hand: the Release archive is built UNSIGNED, then `xcodebuild -exportArchive` signs it
+# with automatic signing + -allowProvisioningUpdates + an App Store Connect API key (Team key, Admin role), so Apple's
+# cloud-managed distribution certificate signs it and Xcode creates the App Store profiles; ios/ExportOptions.plist
+# (method app-store-connect, destination upload) uploads the result straight to App Store Connect. No CSR, .p12,
+# certificate or provisioning profile exists anywhere. Archiving unsigned also means no "Created via API" Apple
+# Development certificate is left behind by each throwaway runner (they pile up until "maximum number of
+# certificates").
+#
+# Needs (set once, docs/APPSTORE-SUBMIT.md): environment `appstore` with the secrets ASC_KEY_ID, ASC_ISSUER_ID,
+# ASC_KEY_P8 (base64 of AuthKey_XXXXXXXXXX.p8) and the repo variable APPLE_TEAM_ID. The build number is the run number.
+# dry_run = an unsigned Release archive only: no secrets, no environment approval, nothing sent to Apple.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: unsigned Release archive only (no secrets needed, nothing is sent to Apple)"
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    name: Dry run (unsigned Release archive)
+    if: ${{ inputs.dry_run }}
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Toolchain (App Store uploads need Xcode 26+ and the iOS 26 SDK)
+        run: |
+          xcodebuild -version
+          # awk reads all of the output (head -1 would close the pipe early and xcodebuild aborts on EPIPE)
+          xcodebuild -version | awk 'NR == 1 {split($2, v, "."); if (v[1] < 26) {print "Xcode " $2 " < 26"; bad = 1}} END {exit bad}'
+          echo "iOS SDK $(xcrun --sdk iphoneos --show-sdk-version)"
+      - name: Tools
+        run: |
+          brew install xcodegen
+          python -m pip install --quiet pillow
+      - name: Release helper tests (ios/scripts/asc.py, no network)
+        run: python3 ios/scripts/test_asc.py
+      - name: Generate Xcode project (XcodeGen) and app icon
+        working-directory: ios
+        run: bash scripts/bootstrap.sh
+      - name: Archive (Release, unsigned) and check the contents
+        run: bash ios/scripts/release_archive.sh "$RUNNER_TEMP/StraightBussing.xcarchive" "${{ github.run_number }}"
+      - name: Summary
+        if: always()
+        run: |
+          echo "Dry run only: nothing was signed or sent to Apple. A real run signs this same archive at export." >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Archive, sign in the cloud, upload to App Store Connect
+    if: ${{ !inputs.dry_run }}
+    runs-on: macos-26
+    environment: appstore
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - name: Check the secrets and the variable
+        run: |
+          R="$GITHUB_REPOSITORY"; problems=()
+          [[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || problems+=("variable APPLE_TEAM_ID: your 10-character Team ID (developer.apple.com/account > Membership details). Set it with: gh variable set APPLE_TEAM_ID -R $R --body YOUR_TEAM_ID")
+          [[ "$ASC_KEY_ID" =~ ^[A-Z0-9]{10}$ ]] || problems+=("secret ASC_KEY_ID: the 10-character Key ID of the App Store Connect API key. Set it with: gh secret set ASC_KEY_ID -R $R --env appstore --body KEY_ID")
+          [[ "$ASC_ISSUER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || problems+=("secret ASC_ISSUER_ID: the Issuer ID shown above the keys (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx). Set it with: gh secret set ASC_ISSUER_ID -R $R --env appstore --body ISSUER_ID")
+          [ -n "$ASC_KEY_P8" ] || problems+=("secret ASC_KEY_P8: base64 of the AuthKey_KEY_ID.p8 file. Set it with: base64 -w0 ~/Downloads/AuthKey_KEY_ID.p8 | gh secret set ASC_KEY_P8 -R $R --env appstore")
+          if [ ${#problems[@]} -gt 0 ]; then
+            { echo "### Release not started: ${#problems[@]} setting(s) missing or malformed"
+              echo "Nathan's checklist in docs/APPSTORE-SUBMIT.md has every step. Secrets go to the \`appstore\` environment."
+              for p in "${problems[@]}"; do echo "- $p"; done
+              echo
+              echo "For a build check without any secrets: Run workflow with **Dry run** ticked."; } >> "$GITHUB_STEP_SUMMARY"
+            for p in "${problems[@]}"; do echo "::error title=Release setting missing::$p"; done
+            exit 1
+          fi
+          echo "Team, key id, issuer id and key are set."
+      - uses: actions/checkout@v4
+      - name: Tag matches the app version (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          want="v$(sed -nE 's/^ *MARKETING_VERSION: *"?([^" #]+)"?.*/\1/p' ios/project.yml | head -1)"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "::error title=Tag does not match the version::Tag $GITHUB_REF_NAME, but ios/project.yml MARKETING_VERSION makes $want. Fix one of them and push again."
+            exit 1
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Toolchain (App Store uploads need Xcode 26+ and the iOS 26 SDK)
+        run: |
+          xcodebuild -version
+          xcodebuild -version | awk 'NR == 1 {split($2, v, "."); if (v[1] < 26) {print "Xcode " $2 " < 26"; bad = 1}} END {exit bad}'
+          echo "iOS SDK $(xcrun --sdk iphoneos --show-sdk-version)"
+      - name: API key file
+        run: |
+          KEY="$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8"
+          python3 ios/scripts/asc.py key --out "$KEY"
+          echo "ASC_KEY_PATH=$KEY" >> "$GITHUB_ENV"
+          echo "SB_BUNDLE_ID=$(sed -nE 's/^ *SB_BUNDLE_ID: *"?([^" #]+)"?.*/\1/p' ios/project.yml | head -1)" >> "$GITHUB_ENV"
+      - name: Preflight (key accepted, bundle ids registered, app record exists)
+        run: python3 ios/scripts/asc.py preflight --app "$SB_BUNDLE_ID" --widget "$SB_BUNDLE_ID.widgets" --key "$ASC_KEY_PATH"
+      - name: Tools
+        run: |
+          brew install xcodegen
+          python -m pip install --quiet pillow
+      - name: Generate Xcode project (XcodeGen, Release team from APPLE_TEAM_ID) and app icon
+        working-directory: ios
+        run: bash scripts/bootstrap.sh
+      - name: Archive (Release, unsigned) and check the contents
+        id: archive
+        run: bash ios/scripts/release_archive.sh "$RUNNER_TEMP/StraightBussing.xcarchive" "$BUILD_NUMBER"
+      - name: Sign in the cloud and upload to App Store Connect
+        run: |
+          [ "${{ steps.archive.outputs.app_id }}" = "$SB_BUNDLE_ID" ] || { echo "::error::archive id ${{ steps.archive.outputs.app_id }} is not $SB_BUNDLE_ID"; exit 1; }
+          OPTS="$RUNNER_TEMP/ExportOptions.plist"
+          cp ios/ExportOptions.plist "$OPTS"
+          plutil -replace teamID -string "$APPLE_TEAM_ID" "$OPTS"
+          set +e
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/StraightBussing.xcarchive" \
+            -exportOptionsPlist "$OPTS" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" > "$RUNNER_TEMP/export.log" 2>&1
+          status=$?
+          set -e
+          grep -E "error|warning: |Progress 100%|Upload|EXPORT|ITMS-" "$RUNNER_TEMP/export.log" | head -80 || true
+          if [ "$status" -ne 0 ] || ! grep -q "EXPORT SUCCEEDED" "$RUNNER_TEMP/export.log"; then
+            python3 ios/scripts/asc.py explain "$RUNNER_TEMP/export.log" || true
+            echo "::group::export log (last 120 lines)"; tail -120 "$RUNNER_TEMP/export.log"; echo "::endgroup::"
+            exit 1
+          fi
+          { echo "### Uploaded: Straight Bussing ${{ steps.archive.outputs.version }} (${{ steps.archive.outputs.build }})"
+            echo "App Store Connect processes it (usually minutes, sometimes longer) and emails you; then it is in"
+            echo "Apps > Straight Bussing > TestFlight. Install it with the TestFlight app on your iPhone (docs/APPSTORE-SUBMIT.md)."; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the debug symbols (crash reports)
+        if: always() && steps.archive.outcome == 'success'
+        run: tar -czf "$RUNNER_TEMP/dSYMs.tgz" -C "$RUNNER_TEMP/StraightBussing.xcarchive" dSYMs
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.archive.outcome == 'success'
+        with:
+          name: dSYMs-${{ github.run_number }}
+          path: ${{ runner.temp }}/dSYMs.tgz
+          retention-days: 90
+      - name: Remove the API key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"
