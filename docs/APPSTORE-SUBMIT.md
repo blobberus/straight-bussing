@@ -15,11 +15,12 @@ Who does what, in every step:
 Already done in `ios/` (see `ios/README.md`): native SwiftUI + MapKit app, Live Activity widget extension (updated
 locally, `pushType: nil`), local notifications, when-in-use location only, no background modes, privacy manifest
 (no tracking, no collected data), `ITSAppUsesNonExemptEncryption = NO`, 1024 px opaque icon, unofficial notice and
-773.702.8181 in About and empty states. CI builds **unsigned simulator** builds on `macos-15`.
+773.702.8181 in About and empty states. CI builds **unsigned simulator** builds on `macos-26` (Xcode 26.6, iOS 26
+simulators; the job fails if Xcode is older than 26).
 
-Gaps this research found (each becomes a step below; 2 to 5 were closed on 2026-10-10, see
-`ios/DESIGN-AUDIT-2026-10-10.md` section 16: privacy and support pages linked in the app, the simulated-bus switch,
-a 6.9-inch screenshot set from CI):
+Gaps this research found (each becomes a step below; 1 to 5 were closed on 2026-10-10: CI moved to `macos-26`, and
+`ios/DESIGN-AUDIT-2026-10-10.md` section 16 covers the privacy and support pages linked in the app, the simulated-bus
+switch and a 6.9-inch screenshot set from CI):
 1. **CI Xcode is too old to upload.** Since 2026-04-28, uploads "must be built with Xcode 26 or later using an SDK for
    iOS 26" ([upcoming requirements](https://developer.apple.com/news/upcoming-requirements/)). The `macos-15` image
    defaults to Xcode 16.4; the `macos-26` image defaults to Xcode 26.6 and ships fastlane 2.239.0
@@ -147,8 +148,8 @@ Claude can adapt:
      App and widget must keep the same version and build number (they already share the variables).
    - Privacy policy link in About and Settings (gap 2).
    - D7 simulated-bus switch, if chosen.
-   - Move `ios.yml` to `runs-on: macos-26` so previews show what Xcode 26 builds (iOS 26 SDK builds pick up the new
-     system look on standard controls; re-check the screenshots).
+   - Done 2026-10-10: `ios.yml` runs on `macos-26`, so previews show what Xcode 26 builds (iOS 26 SDK builds pick up
+     the new system look on standard controls; the screenshots were re-checked).
    - These can all be done before enrollment.
 
 ### Phase B: enroll (99 USD)
