@@ -219,12 +219,24 @@ struct DirectionsView: View {
     func walkOnlyCard(_ r: PlanResult) -> some View {
         Card {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("\(TripInfo.mins(r.walkOnlyMin))").font(.title2.weight(.bold)).monospacedDigit()
-                    Text("min").font(.subheadline).foregroundStyle(Palette.text2)
-                    EstTag(text: walkSourceText(r))
-                    Spacer()
-                    Text("Arrive \(TimeFmt.clock(model.now + r.walkOnlyMin * 60))").font(.subheadline.weight(.semibold))
+                let mins = Text("\(TripInfo.mins(r.walkOnlyMin))").font(.title2.weight(.bold)).monospacedDigit()
+                let arrive = Text("Arrive \(TimeFmt.clock(model.now + r.walkOnlyMin * 60))").font(.subheadline.weight(.semibold))
+                ViewThatFits(in: .horizontal) {   // large text: the arrival under the minutes, never broken inside the clock
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        mins
+                        Text("min").font(.subheadline).foregroundStyle(Palette.text2)
+                        EstTag(text: walkSourceText(r))
+                        Spacer()
+                        arrive
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            mins
+                            Text("min").font(.subheadline).foregroundStyle(Palette.text2)
+                            EstTag(text: walkSourceText(r))
+                        }
+                        arrive
+                    }
                 }
                 HStack {
                     Label("Walk the whole way", systemImage: "figure.walk").font(.subheadline.weight(.semibold))
@@ -284,12 +296,17 @@ struct OptionCard: View {
                         Text(crit).font(.caption.weight(.bold)).foregroundStyle(Palette.accent)
                             .accessibilityIdentifier("criteria.\(index)")
                     }
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("~\(option.totalMin)").font(.title2.weight(.bold)).monospacedDigit()
-                        Text("min").font(.subheadline).foregroundStyle(Palette.text2)
-                        EstTag(text: "est.")
-                        Spacer()
-                        Text("Arrive \(TimeFmt.clock(option.arrive))").font(.subheadline.weight(.semibold))
+                    // large text: the arrival goes under the total instead of breaking inside "6:37 AM"
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            total
+                            Spacer()
+                            arrive
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) { total }
+                            arrive
+                        }
                     }
                     summary
                     if let lines {
@@ -321,6 +338,17 @@ struct OptionCard: View {
         .padding(14)
         .background(Palette.card, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).stroke(selected ? Palette.accent : .clear, lineWidth: 2))
+    }
+
+    /// "~10 min est." (the card's headline number).
+    @ViewBuilder var total: some View {
+        Text("~\(option.totalMin)").font(.title2.weight(.bold)).monospacedDigit()
+        Text("min").font(.subheadline).foregroundStyle(Palette.text2)
+        EstTag(text: "est.")
+    }
+
+    var arrive: some View {
+        Text("Arrive \(TimeFmt.clock(option.arrive))").font(.subheadline.weight(.semibold))
     }
 
     var summary: some View {

@@ -15,18 +15,17 @@ struct TripTimelineView: View {
         let p = progress
         VStack(alignment: .leading, spacing: 10) {
             Card {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Trip to \(p.to)").font(.headline).accessibilityAddTraits(.isHeader)
-                        HStack(spacing: 4) {
-                            Text(TripText.arriveLine(p, now: model.now)).font(.subheadline).foregroundStyle(Palette.text2)
-                            if p.arriveT != nil { EstTag(text: "est.") }
-                        }
+                // large text: End trip goes under the arrival line instead of squeezing the clock
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top) {
+                        heading
+                        Spacer()
+                        endButton
                     }
-                    Spacer()
-                    Button("End trip") { model.endTrip() }
-                        .secondaryButtonStyle(destructive: true)
-                        .accessibilityIdentifier("endTrip")
+                    VStack(alignment: .leading, spacing: 8) {
+                        heading
+                        endButton
+                    }
                 }
                 .padding(.vertical, 8)
             }
@@ -50,16 +49,44 @@ struct TripTimelineView: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Trip timeline")
             }
-            HStack(spacing: 8) {
-                Button {
-                    if model.page != .directions { model.push(.directions) }
-                } label: { Text("Trip steps").frame(maxWidth: .infinity, minHeight: 44) }
-                    .secondaryButtonStyle()
-                PickButton()
+            // never a wrapped button label: side by side, stacked at large text sizes
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    stepsButton
+                    PickButton()
+                }
+                VStack(spacing: 8) {
+                    stepsButton
+                    PickButton()
+                }
             }
             Text(TripText.footnote(p)).font(.caption).foregroundStyle(Palette.text2)
             if p.stale == .err { OfficialContact() }
         }
+    }
+
+    /// "Trip to X" + "Arrive about 4:12 PM · 10 min est."
+    var heading: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Trip to \(progress.to)").font(.headline).accessibilityAddTraits(.isHeader)
+            HStack(spacing: 4) {
+                Text(TripText.arriveLine(progress, now: model.now)).font(.subheadline).foregroundStyle(Palette.text2)
+                if progress.arriveT != nil { EstTag(text: "est.") }
+            }
+        }
+    }
+
+    var stepsButton: some View {
+        Button {
+            if model.page != .directions { model.push(.directions) }
+        } label: { Text("Trip steps").frame(maxWidth: .infinity, minHeight: 44) }
+            .secondaryButtonStyle()
+    }
+
+    var endButton: some View {
+        Button("End trip") { model.endTrip() }
+            .secondaryButtonStyle(destructive: true)
+            .accessibilityIdentifier("endTrip")
     }
 }
 

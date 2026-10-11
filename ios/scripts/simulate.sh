@@ -71,7 +71,7 @@ bigshot() {  # bigshot <name> <wait s> <args...>
 }
 xcrun simctl ui "$UDID" appearance light
 bigshot 30-current-text    9  -screen current
-bigshot 31-trip-text       10 -screen trip
+bigshot 31-trip-text       10 -screen trip -detent full
 bigshot 32-stop-text       8  -screen stop
 bigshot 33-directions-text 9  -screen directions
 bigshot 34-routes-text     8  -screen routes
