@@ -138,8 +138,11 @@ Claude can adapt:
    iPhone, revocable in iOS Settings > Privacy & Security > Location Services; the app downloads public shuttle feeds from
    passio3.com (your IP address reaches Passio's server like any web request; the app sends no personal data) and Apple
    Maps tiles via MapKit (Apple's privacy policy applies); notifications are scheduled on the device; settings stay on
-   the device and are deleted with the app; the web version differs (typed destination text goes to photon.komoot.io,
-   map tiles from OpenFreeMap); contact email; effective date. The support page needs "actual contact information"
+   the device and are deleted with the app; typed place text goes to photon.komoot.io only when the on-device index
+   finds fewer than 5 matches (or on "Search for ... instead"); rounded walking-leg ends go to Apple MapKit (web: the
+   OSRM / Valhalla routers); the daily schedule check reads public files from blobberus.github.io; the web version
+   uses map tiles from OpenFreeMap; contact; effective date. **Done 2026-10-10** (`web/privacy.html`,
+   `web/support.html`, linked from About on both apps); keep them in step with both About screens. The support page needs "actual contact information"
    (an email address and the GitHub Issues link) plus the official service number. Cost 0, time 1 session.
 5. **[C] Prepare the code for release** (one commit; `ios/` changes trigger `ios.yml`):
    - `ios/project.yml`: real bundle ids (`bundleIdPrefix` too), `MARKETING_VERSION: "1.0.0"`, `DEVELOPMENT_TEAM` from a
@@ -291,11 +294,16 @@ Claude can adapt:
     correct today: "Data that is processed only on device is not 'collected'", and "collect" means sending data off the
     device so that you or your third-party partners (SDKs and vendors "whose code you've added to your app") can keep it
     longer than the request needs ([app privacy details](https://developer.apple.com/app-store/app-privacy-details/)).
-    Location, search and settings stay on the phone; the Passio and MapKit requests carry no user data and no third-party
-    code is in the app. Must change when: server push ships (push token + watched stop leave the device, see
-    `conversion to appstore.md` section 8); Photon search is ported (typed text leaves the device; declare Search History,
-    App Functionality, not linked, no tracking, the conservative reading); analytics or crash SDKs are added. Answers
-    can be updated without a new build. Keep `PrivacyInfo.xcprivacy` consistent.
+    Location and settings stay on the phone; what leaves it (same list as `web/privacy.html` and About): the rounded
+    start and end of a walking leg to Apple MapKit for sidewalk directions, typed place text (or its spelling fix) to
+    photon.komoot.io only when the on-device index finds fewer than 5 matches or the user taps "Search for ... instead",
+    and the daily schedule check on blobberus.github.io (public files, nothing about the user); the Passio requests carry
+    no user data and no third-party code is in the app. Photon search is already ported (2026-10-10), so **Nathan
+    decides here**: declare Search History (App Functionality, not linked, no tracking; the conservative reading), or
+    keep Data Not Collected (komoot answers each request and we keep nothing; not an SDK in the app). Must change when:
+    server push ships (push token + watched stop leave the device, see `conversion to appstore.md` section 8);
+    analytics or crash SDKs are added. Answers can be updated without a new build. Keep `PrivacyInfo.xcprivacy`
+    consistent.
 18. **[N+C] Version page "1.0 Prepare for Submission"** (Claude drafts; Nathan pastes):
     - Screenshots: step 19. App icon: taken from the build (the 1024 px opaque PNG `make_icon.py` renders).
     - Promotional text (170 max): "Live shuttle arrivals, trip directions and a Lock Screen countdown for your ride.
@@ -320,7 +328,8 @@ Claude can adapt:
       Try: Directions > search "Regenstein" > choose an option > Start. This starts a Live Activity (Lock Screen
       and Dynamic Island) and the trip timeline. Settings > Bus alerts > choose a Station: local notifications
       while the app is open.
-      Location is optional, asked only when you tap "Use my location", and never leaves the device.
+      Location is optional and asked only when you tap "Use my location". It never leaves the device, except the
+      start of a walking leg, rounded to about 10 m, sent to Apple Maps for sidewalk directions.
       Data: the public GTFS and GTFS-Realtime feeds Passio publishes for this shuttle system. See the attached
       [permission email]. The app uses no university trademarks; About links to the official service (773.702.8181).
       Native features: MapKit map, Live Activity + Dynamic Island, local notifications, on-device place search,

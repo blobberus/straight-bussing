@@ -1,12 +1,12 @@
 # Straight Bussing v2: architecture contract
 
-Rewrite on branch `v2-rewrite` (v1 is tag `v1-final`). Goal: same product, rebuilt as small ES modules with clear seams, tested, and portable to a Capacitor/SwiftUI app later (`conversion to appstore.md`). **Every agent codes against this file. If you must change a signature, change it here in the same edit and say so in your report.**
+v2 is the live web app on `main` (merged 2026-10-08; v1 is tag `v1-final`; `v2-rewrite` is kept level with `main`): small ES modules with clear seams, tested. The iPhone app is a native SwiftUI port in `ios/` (StraightBussingKit mirrors `core/*`; `ios/README.md` has the web parity matrix) and follows the web wording; `conversion to appstore.md` is the plan. **Every agent codes against this file. If you must change a signature, change it here in the same edit and say so in your report.**
 
 ## Hard constraints
 - Static site, **no build step, no Node**. Native ES modules (`<script type="module">`), relative imports with `.js` extension. Leaflet 1.9.4 (`L`) and maplibre-gl 4.7.1 + `@maplibre/maplibre-gl-leaflet` 0.1.4 are CDN **globals** loaded by classic `<script>` tags before `js/main.js`.
 - Plain modern JS (ES2022), no TypeScript, no frameworks. Each file < 400 lines. JSDoc on every export. No `eval`, no inline event handlers, no `innerHTML` with unescaped dynamic text (use `esc()`).
 - All times are **unix seconds (number)** unless the name ends `Ms`. Minutes are floats until display. Coordinates `{lat, lon}`; polylines `[[lat, lon], ...]`.
-- Privacy: no accounts/tracking. Location stays on device. Only (a) typed place text -> photon.komoot.io, (b) walking-leg endpoints rounded to 4 dp -> routing.openstreetmap.de (fallback valhalla1.openstreetmap.de) leave the device. `About` must say so.
+- Privacy: no accounts/tracking. Location stays on device. Only (a) typed place text (or its spelling fix) -> photon.komoot.io, when the on-device place index has < 5 matches or the user taps "Search for ... instead", (b) walking-leg endpoints rounded to 4 dp -> routing.openstreetmap.de (fallback valhalla1.openstreetmap.de) leave the device (iOS: Apple MapKit; plus its daily schedule check on blobberus.github.io, public files only). Plain requests for public data: the Passio feeds, OpenFreeMap tiles for the area on screen, unpkg.com, GitHub Pages. `About` (ui/views/about.js) and `privacy.html` must say so, in the same words as the iOS About.
 - Safety: stale/failed data always visible; every derived time labeled estimate + source; app never claims to be official; show official phone 773.702.8181 and https://safety-security.uchicago.edu/Transportation in About and in the empty/error states. Avoid UChicago names/logos/"UGo" in branding.
 - localStorage always in try/catch via `core/storage.js`.
 - Accessibility: 44 px targets, labels, focus-visible, reduced motion, light/dark, high-contrast, state never by color alone.
@@ -104,7 +104,7 @@ export function searchPlaces(q, {signal}): Promise<{items:[{label, sub, lat, lon
 // first and drops Photon duplicates (within 150 m, one name contains the other); Photon results > 3 km away end with "N km from campus".
 // data/places.js: norm(s), scorePlace, searchLocal(q,{limit}), loadPlaces(fetch?) (never throws), setPlaces(data|null) for tests.
 ```
-`sw.js`: network-first for same-origin GET with `cache:'no-cache'`, cache only `r.ok && r.status===200`, never cache cross-origin; precache index.html + css + js/main.js + manifest + icons; cache name constant `sb-v2-<n>`; serve offline fallback. Also keep the daily GTFS refresh workflow `pages.yml` working (it copies `web/`).
+`sw.js`: network-first for same-origin GET with `cache:'no-cache'`, cache only `r.ok && r.status===200`, never cache cross-origin, never `?demo` requests; precache the whole shell: index.html, privacy.html, support.html, manifest, every file under js/ css/ icons/ data/ (`tools/test_precache.py` walks the import graph from index.html, including the dynamic view imports, and fails on a missing entry; `pages.yml` runs it before deploying); cache name constant `sb-v2-<n>` (bump it whenever a shell file changes); serve offline fallback. Also keep the daily GTFS refresh workflow `pages.yml` working (it copies `web/`).
 
 ## Core logic (A)
 ```js
@@ -176,7 +176,7 @@ Layer groups must never be rebuilt when nothing changed (diff by a cheap signatu
 ## UI shell (D1) and views (D2)
 ```js
 // ui/router.js
-export function registerView(id, def)   // def = { title(state)->string, parent?:viewId, detent?:'peek'|'half'|'full', tab?:'nearby'|'routes'|'alerts', render(state)->htmlString, mount?(rootEl, ctx), unmount?(), refresh?(), meta?(state)->text, onStopTap?(id, ctx)->bool }
+export function registerView(id, def)   // def = { title(state)->string, parent?:viewId, detent?:'peek'|'half'|'full', tab?:'nearby'|'routes'|'myroutes', render(state)->htmlString, mount?(rootEl, ctx), unmount?(), refresh?(), meta?(state)->text, onStopTap?(id, ctx)->bool }
 export function navigate(view, params={})   // sets store.view/prevView/stopId/routeId, adjusts detent
 export function back()
 // ui/actions.js
@@ -199,11 +199,11 @@ Views (D2) and required behavior (all ported from v1, improved):
 - **routes**: first control "Edit map order" (`routes:order-edit`); then custom-route / journey bar, filter chip, Show all / Hide all; Running / Not running / Hidden groups; per-route eye toggle (persisted `hiddenRoutes`) honored on map, arrivals, Nearby; filter chip "Routes to <station> x".
 - **pick** (Routes to station…, parent/tab `nearby`): dialog asks **Use current location / Select a station / Type an address or place**; NOTHING is highlighted until the user chooses; then nearest stops (<=1.5 km) are highlighted on the map and listed; tapping a station sets `routeFilter` and shows only routes that serve it on list+map; works with no location permission via the other two options.
 - **route**: stop timeline with next ETA per stop, buses running, map focus on that route.
-- **alerts**: active alerts, count badge on the tab; **about**: unofficial notice, official phone/link, privacy statements (Photon + walking router hosts), theme control, data credits/attribution, version.
+- **alerts** (sub view of Current trip, no tab since v2.1): active alerts, opened from the Current trip banner or the My Routes row; phone numbers in alert text are call links. When no bus reports (feed down, silent feed, nothing running) Current trip, stop, Routes, route detail and Directions also show the operator's alerts in full (`operatorAlertsHTML`, "From the shuttle operator") next to the official links; **about**: unofficial notice, official phone/link, privacy statements (Photon, walking router hosts, network requests), links to privacy.html and support.html, theme control, data credits/attribution, version.
 - **directions**: Start/Destination fields (station autocomplete + Photon places, "My location" default if granted), swap, up to 3 option cards (total min, arrive clock, summary chips), tap card -> `map.drawPlan`, step list with `Bus arrives at <stop> <clock>`, wait, ride, source tags, walking legs on sidewalks (via `refineWalking`, async, shows "sidewalk route"/"estimate"), note "Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.", walk-only fallback, no-service empty state.
 
 ## Tests
-No Node: browser test pages run in headless Edge. `web/tests/e2e.test.html` loads the real `index.html` in an iframe with `e2e-stubs.js` (geolocation, live feed, service worker, history) and `e2e-expose.js` (store, place search, walk router) injected, and drives the main flows. `web/tests/lib.js` exports `test(name, fn)`, `eq`, `ok`, `near`, and writes a JSON summary to `<pre id="result">` and `document.title = "TESTS pass=N fail=M"`. `tools/run_browser_tests.py [page...]` serves `web/` on a free port, runs `msedge --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --virtual-time-budget=30000 --dump-dom`, parses the title, exits non-zero on failure. Edge path: `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`. Screenshots: add `--hide-scrollbars --window-size=500,900 --blink-settings=preferredColorScheme=1|2 --timeout=20000 --screenshot=<abs path OUTSIDE repo>` (headless does not paint vector map tiles; UI and overlays do paint).
+No Node: browser test pages run in headless Edge. `web/tests/e2e.test.html` loads the real `index.html` in an iframe with `e2e-stubs.js` (geolocation, live feed, service worker, history) and `e2e-expose.js` (store, place search, walk router) injected, and drives the main flows. `web/tests/lib.js` exports `test(name, fn)`, `eq`, `ok`, `near`, and writes a JSON summary to `<pre id="result">` and `document.title = "TESTS pass=N fail=M"`. `tools/run_browser_tests.py [page...]` serves `web/` on a free port, runs `msedge --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --virtual-time-budget=30000 --dump-dom`, parses the title, exits non-zero on failure. Edge path: `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`. Screenshots: add `--hide-scrollbars --window-size=393,852 --virtual-time-budget=12000 --screenshot=<abs path OUTSIDE repo>`; pick the theme with `localStorage['sb:theme'] = '"dark"'` (or Auto + the OS setting) rather than `--blink-settings` (headless does not paint vector map tiles; UI and overlays do paint). Python checks: `tools/test_precache.py` (offline shell) and the data / collector tests `tools/test_*.py`, each `python tools/test_x.py`.
 
 ## Acceptance checklist (lead verifies at integration)
 Boot with no console errors; nearby list populated from live data; stale pill logic; sheet drag/detents; theme Auto/Light/Dark switch updates map style + markers; Routes to station flow (all 3 modes, no location needed); route toggles; directions with sidewalk walking and road-following bus legs and clock times; offline shell; all unit tests green; Lighthouse-style a11y spot checks; no file > 400 lines; no leftover v1 globals.
@@ -266,6 +266,7 @@ hoursOn(service, rid, unixS): {first, last, label:'7:00 AM to 11:30 PM', excepti
 weekSummary(service, rid): [{days:'Mon-Fri', label:'7:00 AM to 11:30 PM'}|{days:'Sat', label:'No service'}]   // no dash characters in visible text   // groups equal days
 busesByHour(service, rid, dayKey): [{hour, buses}]  // only hours with service
 upcomingChanges(service, rid, unixS, horizonDays=30): [{date, label:'Thu, Nov 26', text:'No service'|'Extra service'}]
+serviceHoursAt(service, rid, unixS): {hours, dayKey, yesterday}|null   // the service day's hours (after midnight: yesterday's while in its tail; 2026-10-11)
 isScheduledNow(service, rid, unixS): boolean|null
 scheduledUntil(service, rid, unixS): 'HH:MM'|null   // end of the window running now (may be >= 24:00; clock12 formats it)
 ```
@@ -357,7 +358,7 @@ Hidden routes still prevent the "no shuttles" claim but are not named ("Some hid
 ### 2026-10-10: web parity with the iPhone app (ios/README.md "iOS has, web missing")
 - **Routes list**: a "Not running" row adds today's scheduled hours (`routes.js idleText`: "Not running · Today 7:00 AM to
   11:30 PM", `hoursOn` label, nothing added on a no-service day), like iOS RouteRow.
-- **Status pill** (`ui/pill.js`, out of main.js): `pillState(s, now, {bootS, graceS})` -> `{kind, icon, msg, retry}` with icon
+- **Status pill** (`ui/pill.js`, out of main.js): `pillState(s, now, {bootS, graceS})` -> `{kind, icon, msg, retry, alert}` with icon
   `feed` (error) / `delay` (late, old) / `silent` (scheduled, no live locations) / `idle` (no shuttles); `createPill(els)`
   renders it into `#pill` (`#pillIcon` slot, aria-hidden) and keeps `--pill-h`. Words unchanged.
 - **Bus alerts**: one delivery per alert (Settings section above).
@@ -374,3 +375,30 @@ Hidden routes still prevent the "no shuttles" claim but are not named ("Some hid
 - **Accessibility**: the grabber is a slider (ui/sheet.js above); route detail stop buttons carry one label "Name, next bus in
   N min" / ", no prediction" (+ ", a bus is heading here, seen N min ago"), everything else in the row is aria-hidden.
 - **Map**: `css/map.css` `--sb-accent` = `var(--accent-fill)` (light) / `var(--accent)` (dark), no separate map blue.
+
+### 2026-10-11: web bug sweep (rider safety, offline shell, flaky tests)
+- **No bus reports** (feed down, silent feed, nothing running): Current trip, stop, Routes, route detail (alerts not tied
+  to a route) and Directions add `ui/views/alerts.js operatorAlertsHTML(state, now, {rid?, max=2})` ("From the shuttle
+  operator", the alert in full, then "All N service alerts") before the official links. The live feed's standing alert
+  gives a number to call when buses do not show. `alertBodyHTML(text)`: escaped text with phone numbers as `tel:` links
+  (Alerts view too). The status pill offers **See alert** (`#pillAlert`, action `alerts:open`; `pillState().alert`) on
+  the silent / no-shuttles pills when an alert is active, like iOS; never on a feed error (Retry).
+- **Service day after midnight**: `core/schedule.js serviceHoursAt(service, rid, unixS)` -> `{hours, dayKey, yesterday}`
+  (iOS Kit Schedule.serviceHoursAt). Route detail reads "Friday service 6:30 AM to 12:25 AM · Scheduled now" in a
+  route's after-midnight tail (never "Today No service · Scheduled now"); the buses-by-hour chart follows that day.
+- **Trip following** (`core/tripprogress.js`, ported back from the iOS sweep): the trip id alone never lends another
+  vehicle's predictions to the planned vehicle; a planned vehicle on a new trip id past the boarding time (loops roll
+  the id) is the bus you ride; the missed-bus note never promises a next bus that is not there and also shows on the
+  walk to the stop. A stop's "Directions to here" / "From here" end a started trip (they used to re-target it).
+- Routes to station rows: `pick.js walkShort(d)` "2 min walk (119 m) · North, East" (one middle dot).
+- Demo mode: Settings shows no "Allow notifications" (alerts are off). A map that cannot load logs `console.warn`.
+- Map: `patchStyle` drops the dark style's `fill-pattern: wood-pattern` (missing from the OpenFreeMap sprite; console
+  warning, no woods) so the palette's wood color paints.
+- Offline shell: PRECACHE gains privacy.html and support.html; `tools/test_precache.py` (also in `pages.yml`) keeps the
+  list complete. Verified: with the server down, a profile that ran the app once serves /, privacy.html and
+  support.html from the cache and boots the app.
+- Tests: `ui/contextbar.js mountContextBar(el, store, {reduced?, frame?, cancelFrame?})` (frame scheduler seam; the
+  marquee test measures on a timer because headless Edge can withhold animation frames for seconds); the e2e camera
+  check ends earlier glides instead of waiting for them; `tools/run_browser_tests.py` fails tiles.openfreemap.org
+  requests at once (PAC proxy; virtual time stands still while a fetch is pending, and slow tiles stalled e2e pages
+  until the runner timeout). `map.test.html` keeps the network for its live style check.

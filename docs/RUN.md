@@ -26,12 +26,33 @@ Only that exact parameter turns it on; nothing else does and nothing is stored, 
 
 ## Put it on an iPhone (no App Store needed)
 Open the link in **Safari** -> Share -> **Add to Home Screen**. It opens full-screen like an app.
+The native iPhone app (SwiftUI) lives in `ios/`: build, CI (`ios.yml`) and the App Store checklist are in `ios/README.md`,
+submission steps in `docs/APPSTORE-SUBMIT.md`.
+
+## Tests (no Node)
+- Browser tests: `python tools/run_browser_tests.py` (serves `web/`, runs every `web/tests/*.test.html` in headless Edge;
+  `-v` lists each test, page names select a subset).
+- Offline shell: `python tools/test_precache.py` (every file the app loads is in the `web/sw.js` PRECACHE list; also run by
+  `pages.yml` before each deploy).
+- Data and collector: `python tools/test_truth.py`, `test_merge.py`, `test_models.py`, `test_monitor.py`, `test_chain.py`,
+  `test_context.py` (each prints `ok N tests` or a failure).
 
 ## Refresh schedule data by hand
 `python tools/build_gtfs.py` (rewrites `web/data/`). Icons: `python tools/make_icons.py`.
 
 ## Using the app
-Map shows shuttle positions (updated every 10 s) and route lines. Tap a stop for predicted arrivals. Routes tab hides/shows routes. Alerts tab shows service alerts. A status pill under the search bar appears when data is stale, the feed fails or no shuttles report (each state with its own icon and words); do not rely on the app then.
+Map shows shuttle positions (updated every 10 s) and route lines. Tap a stop for predicted arrivals. The search bar on top
+plans a trip (walk + shuttle). Bottom bar: **Current trip** (next buses near you, or the trip you started), **Routes**
+(show / hide routes, map order, Routes to station) and **My Routes** (custom route sets, favorite stations, About). Service
+alerts open from the banner on Current trip; the gear opens Settings (theme, bus alerts). A status pill under the search
+bar appears when data is stale, the feed fails or no shuttles report (each state with its own icon and words); do not
+rely on the app then. When no bus reports, the screens show the shuttle operator's alert (if the feed has one) and
+773.702.8181.
+
+## Arrival data collection
+GitHub Actions `collect.yml` logs observed arrivals around the clock: each 70-minute run starts its own successor
+(`tools/collect_chain.py`), the :07 / :37 cron only restarts the chain. Health checks and fixes: `monitoring.md`
+(`python tools/monitor.py status`); the data: `docs/DATA.md`.
 
 ## Before any public launch
 Get written permission from UChicago Transportation & Parking (773.702.8181). See `UChicago Bus Tracker Project.md`.
