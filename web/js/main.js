@@ -306,7 +306,7 @@ async function boot() {
     if (!window.L) throw new Error("Leaflet not loaded");
     map = createMap("map");
   } catch (e) {
-    console.error("map unavailable", e);
+    console.warn("map unavailable", e);   // handled: lists and times work, the toast says so
     map = nullMap();
     document.documentElement.classList.add("nomap");
     setTimeout(() => toast("Couldn't load the map. Lists and times still work."), 0);
