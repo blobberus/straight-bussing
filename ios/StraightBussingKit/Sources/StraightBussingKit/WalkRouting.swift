@@ -94,11 +94,11 @@ public actor WalkRouteCache {
         // The slot stays taken while the router runs: until the fetch returns (answered, failed, or cancelled at
         // the deadline), or one more timeout after this answer for a router that ignores the cancel. `free`
         // gives it back once, so whichever comes second does nothing.
-        Task { _ = await work.result; await self.free(slot) }
+        Task { _ = await work.result; self.free(slot) }   // both tasks run on this actor
         let routed = await fetchRoute(a, b, work)
         Task {
             try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
-            await self.free(slot)
+            self.free(slot)
         }
         let res = routed ?? WalkResult.estimate(a, b)
         remember(k, (res: res, exp: routed != nil ? .infinity : clock() + Self.failTTL))
