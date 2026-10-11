@@ -42,6 +42,8 @@ test("pick: current location -> nearest stops <=1.5 km highlighted, choose sets 
   const ids = h.items.map((s) => s.id);
   ok(ids.includes("S1") && ids.includes("S2") && !ids.includes("S4") && !ids.includes("S5"), "within 1.5 km and served: " + ids);
   ok(el.textContent.includes("Main & 1st"));
+  const subs = [...el.querySelectorAll('[data-action="pick:choose"] .v-sec')].map((x) => x.textContent);
+  ok(subs.length && subs.every((t) => (t.match(/·/g) || []).length <= 1 && /min walk \(\d+ m\) · /.test(t)), "walk (m) · routes, one middle dot: " + subs[0]);
   el.querySelector('[data-action="pick:choose"][data-id="S2"]').click();
   runAction("pick:choose", { id: "S2" }, null, ctx);
   await tick();

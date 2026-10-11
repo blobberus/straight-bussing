@@ -45,6 +45,16 @@ export function walkText(d) {
 }
 
 /**
+ * "4 min walk (320 m)": the walk without a middle dot, for rows that add " · routes" after it (one dot per
+ * line, docs/DESIGN.md "Copy"; iOS PickView.walkShort).
+ * @param {number} d meters (straight line)
+ * @returns {string} plain text
+ */
+export function walkShort(d) {
+  return Math.max(1, Math.round(walkMin(d * 1.2))) + " min walk (" + Math.round(d) + " m)";
+}
+
+/**
  * Stops served by at least one route within maxM of a point, nearest first.
  * @param {object} state store state (stops, stopRoutes)
  * @param {{lat:number, lon:number}} point
@@ -112,7 +122,7 @@ export function pickItems(state) {
 function rname(state, r) { return state.routes?.[r]?.short || state.routes?.[r]?.long || r; }
 
 function stationRows(state, items) {
-  return '<div class="v-card">' + items.map((s) => `<button type="button" class="v-row" data-action="pick:choose" data-id="${esc(s.id)}"><span class="v-grow"><span class="v-prim">${esc(s.name)}</span><span class="v-sec">${s.d != null ? esc(walkText(s.d)) + " &middot; " : ""}${esc((state.stopRoutes?.[s.id] || []).map((r) => rname(state, r)).join(", "))}</span></span><span class="v-chev" aria-hidden="true">${ICONS.chev}</span></button>`).join("") + "</div>";
+  return '<div class="v-card">' + items.map((s) => `<button type="button" class="v-row" data-action="pick:choose" data-id="${esc(s.id)}"><span class="v-grow"><span class="v-prim">${esc(s.name)}</span><span class="v-sec">${s.d != null ? esc(walkShort(s.d)) + " &middot; " : ""}${esc((state.stopRoutes?.[s.id] || []).map((r) => rname(state, r)).join(", "))}</span></span><span class="v-chev" aria-hidden="true">${ICONS.chev}</span></button>`).join("") + "</div>";
 }
 
 function modeButton(mode, primary) {
