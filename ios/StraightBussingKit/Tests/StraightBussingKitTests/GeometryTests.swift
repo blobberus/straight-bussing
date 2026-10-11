@@ -262,4 +262,113 @@ final class GeometryTests: XCTestCase {
         XCTAssertTrue(has(along, P(1)) && has(along, P(2)), "follows the shape when there is one")
         XCTAssertFalse(has(along, P(1.5, 1)), "not via the stop-to-stop detour")
     }
+
+    // MARK: Edge cases (expected values: web/js/map/geometry.js run in headless Edge, 2026-10-11)
+
+    func noId(_ x: Double, _ y: Double = 0) -> Place { let p = P(x, y); return Place(name: "", lat: p.lat, lon: p.lon) }
+    var openLine: [LatLon] { (0...6).map { P(Double($0)) } }
+
+    func testOnlyOneStopOffTheShapeFallsBack() {
+        // B is 1.2 units (267 m) north of the line, > maxOffM: the fallback, unchanged
+        let fb = [P(1), P(5, 1.2)]
+        XCTAssertEqual(along([openLine], ["A", "B"], stop("A", 1), stop("B", 5, 1.2), fb), fb)
+    }
+
+    func testStopWithinSnapToleranceEndsWithAHopFromItsProjection() {
+        // B is 0.5 units (111 m) off: the shape up to B's projection P(5), then straight to B
+        let out = along([openLine], ["A", "B"], stop("A", 1), stop("B", 5, 0.5), [P(1), P(5, 0.5)])
+        assertSame(out, [P(1), P(2), P(3), P(4), P(5), P(5, 0.5)], "shape, then hop")
+        near(Geometry.pathLength(out), 4 * U_M + 0.5 * V_M, 0.01)
+    }
+
+    func testBoardEqualsAlight() {
+        // seqIndices never pairs a stop with itself -> unknown-sequence branch
+        // loop: the only pass ahead of A (pos 0) is its seam copy (pos L) -> the whole loop
+        let loop = along([squareLoop()], ["A", "B", "C", "D", "A"], stop("A", 0, 0), stop("A", 0, 0), nil)
+        assertSame(loop, squareLoop(), "whole loop")
+        // open line: nothing ahead, not closed -> the [board, alight] fallback (two identical points)
+        assertSame(along([openLine], ["A", "B"], stop("A", 1), stop("A", 1), nil), [P(1), P(1)], "open line")
+    }
+
+    func testBackwardsRideOnAClosedNonLoopShapeWraps() {
+        let want = [P(4, 4), P(3, 4), P(2, 4), P(1, 4), P(0, 4), P(0, 3), P(0, 2), P(0, 1), P(0, 0),
+                    P(1, 0), P(2, 0), P(3, 0), P(4, 0)]
+        // A B C D is not a loop (first != last) but the shape's ends meet (closed). C -> B: no forward pair ->
+        // unknown branch -> no pass ahead of C, closed -> closest pass of B, wrapping through the start
+        let a = along([squareLoop()], ["A", "B", "C", "D"], stop("C", 4, 4), stop("B", 4, 0), nil)
+        assertSame(a, want, "unknown-sequence branch")
+        near(Geometry.pathLength(a), 2215.974, 0.01)   // the y=4 side is a little shorter than 4 U_M (latitude)
+        // stop list C B: index branch, nothing ahead of C, closed -> pool = every pass -> same wrap
+        assertSame(along([squareLoop()], ["C", "B"], stop("C", 4, 4), stop("B", 4, 0), nil), want, "index branch")
+    }
+
+    func testUnknownSequenceOnAnOutAndBackStreet() {
+        let seq = ["O1", "O2", "T", "R2", "R1"]
+        // no ids: board = first closest pass (outbound x=2), alight = first pass ahead (return x=1): via T
+        let far = along([outAndBack()], seq, noId(2), noId(1), nil)
+        assertSame(far, [P(2), P(3), P(4), P(5), P(6), P(5), P(4), P(3), P(2), P(1)], "via the turnaround")
+        near(Geometry.pathLength(far), 9 * U_M, 0.05)
+        // with a stop-to-stop fallback, 9 units > 2.5 * 1 unit + 500 m: shortestPass (return x=2 -> x=1) wins
+        assertSame(along([outAndBack()], seq, noId(2), noId(1), [P(2), P(1)]), [P(2), P(1)], "shortest pass")
+        // ids that are not in the stop list behave like no ids
+        assertSame(along([outAndBack()], seq, stop("X", 2), stop("Y", 1), nil), far, "unknown ids")
+    }
+
+    func testShapeLineScoreTieGoesToTheLineWithMorePoints() {
+        let coarse = [P(0), P(6)], want = [P(1), P(2), P(3), P(4), P(5)]
+        assertSame(along([coarse, openLine], ["A", "B"], stop("A", 1), stop("B", 5), nil), want, "fine line second")
+        assertSame(along([openLine, coarse], ["A", "B"], stop("A", 1), stop("B", 5), nil), want, "fine line first")
+        XCTAssertEqual(along([coarse], ["A", "B"], stop("A", 1), stop("B", 5), nil).count, 2, "coarse line alone")
+    }
+
+    func testStopsOnDifferentShapeLinesFallBack() {
+        // a slice never joins two lines: A only on line 1, B only on line 2 (3 units = 667 m apart) -> fallback
+        let l2 = (0...6).map { P(Double($0), 3) }, fb = [P(1), P(5, 3)]
+        XCTAssertEqual(along([openLine, l2], ["A", "B"], stop("A", 1), stop("B", 5, 3), fb), fb)
+    }
+
+    func testEmptyAndOnePointLinesAreSkipped() {
+        assertSame(along([[], [P(2)], openLine], ["A", "B"], stop("A", 1), stop("B", 5), nil),
+                   [P(1), P(2), P(3), P(4), P(5)], "the usable line")
+        let fb = [P(1), P(5)]
+        XCTAssertEqual(along([[], [P(2)]], ["A", "B"], stop("A", 1), stop("B", 5), fb), fb, "no usable line")
+    }
+
+    func testZeroLengthLineFallsBack() {
+        let fb = [P(1), P(1.2)]
+        XCTAssertEqual(along([[P(1), P(1)]], ["A", "B"], stop("A", 1), stop("B", 1.2), fb), fb, "L == 0")
+        let off = (0...6).map { P(Double($0), 0.5) }
+        assertSame(along([off], ["A", "B"], stop("A", 1), stop("B", 1.2), fb),
+                   [P(1), P(1, 0.5), P(1.2, 0.5), P(1.2)], "a line 111 m away: hop on, ride, hop off")
+    }
+
+    func testLoopThatDrivesOneStreetTwiceUsesTheCircularExpectation() {
+        // stem S(0)-(2,0) driven both ways around the block (2,0) (4,0) (4,2) (2,2); X1 (out) and X2 (back) at x=1
+        let lolli = [P(0), P(1), P(2), P(3), P(4), P(4, 1), P(4, 2), P(3, 2), P(2, 2), P(2, 1), P(2, 0), P(1), P(0)]
+        let seq = ["S", "X1", "K", "X2", "S"]
+        let kx1 = along([lolli], seq, stop("K", 4, 2), stop("X1", 1), nil)
+        assertSame(kx1, [P(4, 2), P(3, 2), P(2, 2), P(2, 1), P(2, 0), P(1), P(0), P(1)], "K > X2 > S > X1 (wraps)")
+        assertSame(along([lolli], seq, stop("K", 4, 2), stop("X2", 1), nil),
+                   [P(4, 2), P(3, 2), P(2, 2), P(2, 1), P(2, 0), P(1)], "K > X2 (return pass)")
+        assertSame(along([lolli], seq, stop("X2", 1), stop("X1", 1), nil), [P(1), P(0), P(1)], "X2 > S > X1")
+    }
+
+    func testLoopRideEndingAtTheSeam() {
+        // D -> A: A's pass at pos 0 and its seam copy at pos L tie on the circle; either gives the one side D-A
+        let out = along([squareLoop()], ["A", "B", "C", "D", "A"], stop("D", 0, 4), stop("A", 0, 0), nil)
+        assertSame(out, [P(0, 4), P(0, 3), P(0, 2), P(0, 1), P(0, 0)], "one side")
+        near(Geometry.pathLength(out), 4 * V_M, 0.05)
+    }
+
+    func testRoadPathWithAnEmptyOrOnePointStopPath() {
+        let b = stop("A", 1), a = stop("B", 5)
+        var leg = BusLeg(rid: "R", board: b, alight: a, stopIds: ["A", "B"], path: [], stopsPassed: 1, wait: 1,
+                         waitLive: false, ride: 3, source: .estimate, conf: 0.3, boardT: 0, alightT: 180,
+                         tripId: nil, p10: nil, p90: nil)
+        XCTAssertEqual(leg.roadPath(shapes: [:], routeStops: [:]), [b.coord, a.coord], "empty path -> board, alight")
+        leg.path = [b.coord]
+        XCTAssertEqual(leg.roadPath(shapes: [:], routeStops: [:]), [b.coord, a.coord], "1-point path -> board, alight")
+        assertSame(leg.roadPath(shapes: ["R": [openLine]], routeStops: ["R": ["A", "B"]]),
+                   [P(1), P(2), P(3), P(4), P(5)], "follows the shape")
+    }
 }
