@@ -60,6 +60,19 @@ radius and are drawn by the app, so they look the same on the iOS 17 and iOS 26 
 | Feed-error pill, white on #B81C1C | 6.4 | 5.70 (same red as every red fill) |
 | Delayed-data pill, black on yellow | 12.5 | 12.5 (kept, see "Left deliberately") |
 
+## Update 2026-10-11 (owner decisions; the web gets the same spec)
+
+Rules that changed since the audit, in ship checklist order:
+
+| # | Rule | Was | Now |
+|---|---|---|---|
+| U1 | Simulated buses indicator (item 1) | "Demo mode: simulated buses / Not real shuttles. Times are made up." banner with Turn off on every screen, plus a "Demo mode" service alert from the demo feed | One quiet, honest indicator: the status pill reads "Simulated buses" (test-tube symbol, info style; a tap opens Settings at the switch). A Live Activity started then still says "Simulated (demo)". The demo feed never invents a service alert. Still never saved, off after 15 min in the background, never mixed with live data |
+| U2 | `-demo` launch argument (CI, App Store screenshots, Appetize) | the same banner | No indicator at all: the pill shows what it would for normal live service, Live Activities carry no demo label, so screenshots look like real use (the gallery page itself says the buses are simulated) |
+| U3 | Live Activity / Lock Screen times (item 2) | `Text(timerInterval:)` countdowns "4:12" (seconds) on the Lock Screen, the Dynamic Island and the headline | Whole minutes, never seconds. iOS 18+: "4 min" the system counts down itself (minute field only, floored), with "6:37 PM" under it. iOS 17: "6:37 PM" as the main value, "4 min as of 6:33 PM" under it. Under a minute "Now"; no update for 120 s: "~6:37 PM", no minutes. The stale date is 120 s after the data or the start of the last minute, whichever comes first (README "Live Activity times") |
+| U4 | Current trip at the half detent (item 3) | alert banner, "No trip in progress" card, "Routes to station…", then the nearest stop below the fold | The next bus first under the title (nearest stop + 3 arrivals, or the trip's next step, or the favorites' next buses), fully visible at the half detent on 393 x 852 pt (the half detent is now 48 % of the room, was 46 %); the alert row on one line right under it; "Also nearby", favorites; then the station search, "Routes to station…" and a quiet "No trip in progress" line (no card). Without location: "Use my location" first (the one primary action), the station search next |
+| U5 | No-bus calls (item 1) | the operator's number as a small call link inside its alert, 773.702.8181 as the primary call | The number in the operator's live alert is the primary call, labeled for its purpose: "Call bus route help: 773-655-9934" (as written in the alert; purpose over number when it does not fit one line), 773.702.8181 the secondary "Safety or urgent: 773.702.8181". Never hardcoded; with no number in the feed 773.702.8181 stays primary. The operator's text stays verbatim, "UGo" included |
+| U6 | Unchanged by decision | | Low Power Mode polling stays 20 s; walking times ("4 min walk · 320 m") stay without "est." |
+
 ## Findings
 
 ### 1. Em-dash / en-dash ban
@@ -198,7 +211,7 @@ Every other visible string was re-read (Views, Shared, Widget, the Kit wording m
 | # | Item | Done |
 |---|---|---|
 | 16.1 | 5.1.1(i) privacy policy in the app | `web/privacy.html` and `web/support.html` on Pages; About has "Privacy policy" and "Help and bug reports", Settings > Privacy has "Privacy policy". The policy repeats the About statements: nothing collected, what stays on the device, what leaves it (Passio feeds, typed text to photon.komoot.io only below 5 local matches, rounded walking-leg endpoints to Apple Maps on iOS and routing.openstreetmap.de / valhalla1 on the web, map requests, GitHub Pages for the web app and, since `2c7a87a`, the iPhone app's daily schedule-update check on blobberus.github.io), retention, deletion, contact = GitHub issues |
-| 16.2 | 2.1 reviewer may see no buses | Settings > Demo > "Simulated buses (demo)": off by default, never saved (and off after 15 minutes in the background), "Demo mode: simulated buses / Not real shuttles. Times are made up." with Turn off on every screen while on, never mixed with live data (feed state reset, in-flight poll dropped, trip ended, bus alerts paused, Live Activity labeled "Simulated (demo)") |
+| 16.2 | 2.1 reviewer may see no buses | Settings > Demo > "Simulated buses (demo)": off by default, never saved (and off after 15 minutes in the background), never mixed with live data (feed state reset, in-flight poll dropped, trip ended, bus alerts paused, Live Activity labeled "Simulated (demo)"). Labeled on every screen by a banner until 2026-10-11, now by the status pill "Simulated buses" (U1) |
 | 16.3 | 6.9-inch screenshots | CI `store/` set from an iPhone 17 / 16 Pro Max simulator: 1320 x 2868, light, alpha removed, sizes checked |
 | 16.4 | complete preview | gallery gains custom route detail, custom route editor, Edit map order, Settings at the Demo switch, two simulated-buses UI test shots; the tour opens Alerts |
 
@@ -240,11 +253,10 @@ Same CI scenes, before = `ios-preview` of `7055eb3`, after = the scratch-branch 
 - **Map conventions**: walking legs are the system blue dashed line and the destination is the red pin, as in Apple
   Maps; stop dots and bus badges keep white rings (marker rings are allowed by the color rule).
 - **Lock Screen and Dynamic Island preview frames** keep the system's 22 / 40 pt radii: they imitate system surfaces.
-- **Next bus below the fold at the half detent** on Current trip and the several search entries there (search bar,
-  station field, "Type an address or place"): the owner's v2.4 layout, same as the web audit's note.
-- **App Store screenshots show simulated buses with their "Demo mode" labels.** Honest and identical to the app, but a
-  reviewer could read "Demo" as a demo build (guideline 2.2). If the owner prefers clean shots, they need real
-  service (an iPhone on campus) or an owner decision to hide the labels for marketing frames only.
+- ~~**Next bus below the fold at the half detent**~~ on Current trip: fixed 2026-10-11 (U4). The several search
+  entries (search bar, station field, "Type an address or place") stay, the sheet's ones now below the next bus.
+- ~~**App Store screenshots show simulated buses with their "Demo mode" labels.**~~ The owner decided (2026-10-11,
+  U2): `-demo` shows no label, so the screenshots look like real use; the switch riders can reach keeps its pill.
 - **Real-device checks** (VoiceOver pass, Dynamic Type on hardware, Lock Screen look in light and dark) need an iPhone.
 
 ## For the web agent
