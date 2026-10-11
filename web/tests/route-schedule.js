@@ -1,6 +1,6 @@
 // core/schedule.js unit tests.
 import { test, eq, ok } from "./lib.js";
-import { localParts, clock12, dayKey, hoursOn, weekSummary, busesByHour, upcomingChanges, isScheduledNow, scheduledUntil, groupHours, hourLabel, routeService } from "../js/core/schedule.js";
+import { localParts, clock12, dayKey, hoursOn, serviceHoursAt, weekSummary, busesByHour, upcomingChanges, isScheduledNow, scheduledUntil, groupHours, hourLabel, routeService } from "../js/core/schedule.js";
 import { serviceFixture, utc } from "./route-fixtures.js";
 
 const S = serviceFixture();
@@ -51,6 +51,25 @@ test("schedule: isScheduledNow includes the after-midnight tail of yesterday", (
   eq(isScheduledNow(S, "D", utc("2026-10-08T15:00:00Z")), true);
   eq(isScheduledNow(S, "D", utc("2026-11-26T16:00:00Z")), false, "holiday removed");
   eq(isScheduledNow(S, "zz", 0), null);
+});
+
+// After midnight a night route belongs to yesterday's service: never "Today No service · Scheduled now"
+// (same cases as the iOS Kit ScheduleTests.testServiceHoursAfterMidnightBelongToYesterday).
+test("schedule: serviceHoursAt = the service day's hours (after midnight: yesterday's)", () => {
+  const night = { first: "06:30", last: "24:25", trips: 9, buses: Array(24).fill(1), spans: [["06:30", "24:25"]] };
+  const svc = { routes: { ...S.routes, F: { days: { fri: night }, exceptions: [] } } };
+  const t = utc("2026-10-10T05:10:00Z");   // Sat 12:10 AM CDT
+  eq(hoursOn(svc, "F", t).label, "No service", "the calendar date alone");
+  eq(isScheduledNow(svc, "F", t), true);
+  const s = serviceHoursAt(svc, "F", t);
+  eq([s.dayKey, s.hours.label, s.yesterday], ["fri", `6:30 AM ${D} 12:25 AM`, true]);
+  const n = serviceHoursAt(svc, "N", utc("2026-10-08T07:00:00Z"));   // 2 AM Thu
+  eq([n.dayKey, n.hours.label, n.yesterday], ["wed", `4:00 PM ${D} 4:29 AM`, true]);
+  const day = serviceHoursAt(svc, "F", utc("2026-10-10T15:00:00Z"));   // Sat 10 AM
+  eq([day.dayKey, day.hours.label, day.yesterday], ["sat", "No service", false]);
+  eq(serviceHoursAt(svc, "N", utc("2026-10-08T22:00:00Z")).yesterday, false, "5 PM: today's own window");
+  eq(serviceHoursAt(svc, "D", utc("2026-11-26T16:00:00Z")).hours.exception, "removed");
+  eq(serviceHoursAt(svc, "zz", t), null);
 });
 
 test("schedule: scheduledUntil = end of the window running now (after-midnight tail too)", () => {

@@ -52,6 +52,16 @@ test("route: hours & service section from schedule data", () => {
   ok(h.includes("No schedule changes in the next 30 days."));
 });
 
+test("route: after midnight the status line shows the service day, never 'Today No service · Scheduled now'", () => {
+  const night = { first: "06:30", last: "24:25", trips: 9, buses: Array(24).fill(1), spans: [["06:30", "24:25"]] };
+  const svc = serviceFixture();
+  svc.routes.R1 = { days: { fri: night }, exceptions: [] };
+  const t = Date.parse("2026-10-10T05:10:00Z") / 1000;   // Sat 12:10 AM CDT
+  const h = renderRoute(svcState({ service: svc, lastOk: t, feedTs: t }), t);
+  ok(h.includes(`<span class="r-k">Friday service</span> 6:30 AM ${D} 12:25 AM`) && h.includes("Scheduled now"), h.slice(0, 600));
+  ok(!h.includes(`<span class="r-k">Today</span> No service`), "not the calendar date's 'No service'");
+});
+
 test("route: route alerts listed under schedule changes, escaped", () => {
   const alerts = [{ header_text: { translation: [{ text: "Detour on <53rd>", language: "en" }] }, active_period: [{ start: NOW - 60, end: NOW + 3600 }], informed_entity: [{ route_id: "R1" }] },
     { header_text: "Other route", informed_entity: [{ route_id: "R2" }] }];

@@ -13,7 +13,7 @@ import { nowS, minsUntil, ago } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
 import { arrivalsFor, staleLevel, runningCount, activeAlerts, alertText, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
-import { hoursOn, isScheduledNow, weekSummary, upcomingChanges, busesByHour, groupHours, hourLabel, dayKey, routeService } from "../../core/schedule.js";
+import { serviceHoursAt, isScheduledNow, weekSummary, upcomingChanges, busesByHour, groupHours, hourLabel, dayKey, routeService } from "../../core/schedule.js";
 import { emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { noLiveStatus } from "../../core/operating.js";
 import { OFFICIAL_HTML } from "./pick.js";
@@ -115,16 +115,17 @@ export function renderService(state, rid, now) {
   return h + "</section>";
 }
 
-/** Scheduled buses by hour for today (or the first day with service): bars + text. */
+/** Scheduled buses by hour for the current service day (after midnight a night route is on yesterday's), else the first day with service: bars + text. */
 function renderBuses(svc, rid, now) {
-  let key = dayKey(now), list = busesByHour(svc, rid, key);
+  const sh = serviceHoursAt(svc, rid, now), today = sh ? sh.dayKey : dayKey(now);
+  let key = today, list = busesByHour(svc, rid, key);
   if (!list.length) for (const k of ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]) if ((list = busesByHour(svc, rid, k)).length) { key = k; break; }
   if (!list.length) return "";
   const max = Math.max(...list.map((x) => x.buses));
   if (max <= 1 && list.every((x) => x.buses === list[0].buses)) return "";
   const span = (list[list.length - 1].hour - list[0].hour + 24) % 24 + 1, by = new Map(list.map((x) => [x.hour, x.buses]));
   const bars = Array.from({ length: span }, (_, i) => { const hr = (list[0].hour + i) % 24; return { hour: hr, buses: by.get(hr) || 0 }; });
-  const when = key === dayKey(now) ? "today" : DAY_NAME[key] + "s";
+  const when = key === today ? (sh && sh.yesterday ? DAY_NAME[key] : "today") : DAY_NAME[key] + "s";
   const groups = groupHours(list).map((g) => `${hourLabel(g.from)} to ${hourLabel(g.to)}: ${g.buses} bus${g.buses > 1 ? "es" : ""}`);
   let h = `<h3 class="r-h3">Scheduled buses by hour, ${esc(when)}</h3><div class="v-card r-hours"><div class="r-bars${bars.length > 14 ? " is-dense" : ""}" aria-hidden="true">`;
   for (const x of bars) h += `<span class="r-bar"><span class="r-barn">${x.buses || ""}</span><span class="r-barfill${x.buses ? "" : " is-zero"}" style="height:${Math.round((x.buses / max) * 70)}%"></span><span class="r-barh">${x.hour % 3 === 0 ? esc(hourLabel(x.hour).replace(" ", "")) : ""}</span></span>`;
@@ -137,11 +138,13 @@ function statusHtml(state, rid, r, n, now) {
   const idle = unknown ? "Live status unavailable" : quiet || "Not running right now";   // a feed outage is not "not running"
   let h = `<p class="v-status">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${n ? `${n} bus${n > 1 ? "es" : ""} running` : esc(idle)}${r.short && r.long ? ` &middot; <span class="v-sec">${esc(r.short)}</span>` : ""}</p>`;
   if (quiet) h += `<p class="v-sec r-nolive">${esc(`No bus on this route is sending its location, so we can't confirm it's running. Call ${OFFICIAL_PHONE} before you rely on it.`)}</p>`;
-  const today = hoursOn(state.service, rid, now);
+  // the service day, not the calendar date: at 12:10 AM a route running until 12:25 AM reads "Friday service ...
+  // · Scheduled now", never "Today No service · Scheduled now" (iOS RouteDetailView)
+  const sh = serviceHoursAt(state.service, rid, now), today = sh && sh.hours;
   if (today) {
     const on = isScheduledNow(state.service, rid, now);
     const note = today.exception === "removed" ? (today.first ? " (reduced schedule)" : " (schedule change)") : today.exception === "added" ? " (extra service)" : "";
-    h += `<p class="v-sec r-today"><span class="r-k">Today</span> ${esc(today.label)}${esc(note)}${on === null ? "" : ` &middot; <span class="r-sched${on ? " is-on" : ""}">${on ? "Scheduled now" : "Not scheduled now"}</span>`}</p>`;
+    h += `<p class="v-sec r-today"><span class="r-k">${sh.yesterday ? esc(DAY_NAME[sh.dayKey] + " service") : "Today"}</span> ${esc(today.label)}${esc(note)}${on === null ? "" : ` &middot; <span class="r-sched${on ? " is-on" : ""}">${on ? "Scheduled now" : "Not scheduled now"}</span>`}</p>`;
   }
   return h;
 }

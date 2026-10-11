@@ -130,6 +130,29 @@ export function hoursOn(service, rid, unixS) {
 }
 
 /**
+ * Hours of the service day unixS belongs to: the calendar date, unless unixS is in the after-midnight tail of
+ * yesterday's service and today has no window at this minute (12:10 AM Saturday on a route running Friday 6:30 AM
+ * to 12:25 AM is Friday's service). hoursOn alone says "No service" while the route is scheduled now.
+ * Same rule as the iOS Kit Schedule.serviceHoursAt.
+ * @param {object} service
+ * @param {string} rid
+ * @param {number} unixS
+ * @returns {{hours:{first:string|null, last:string|null, label:string, exception?:'removed'|'added'}, dayKey:string, yesterday:boolean}|null}
+ *   yesterday: the hours are the previous day's; null only when there is no schedule data for the route
+ */
+export function serviceHoursAt(service, rid, unixS) {
+  const r = routeService(service, rid);
+  if (!r) return null;
+  const p = localParts(unixS), today = isoDate(p), prev = isoDate(p, -1);
+  const has = (day, m) => spansOf(day).some(([a, b]) => m >= mins(a) && m < mins(b));
+  const tail = !has(dayFor(r, today).day, p.min) && has(dayFor(r, prev).day, p.min + 1440);
+  const iso = tail ? prev : today, { day, exception } = dayFor(r, iso);
+  const hours = { first: day ? day.first || null : null, last: day ? day.last || null : null, label: spanLabel(day) };
+  if (exception) hours.exception = exception;
+  return { hours, dayKey: keyOfIso(iso), yesterday: tail };
+}
+
+/**
  * Regular week, consecutive days with the same hours grouped ('Mon-Fri', 'Every day').
  * @param {object} service
  * @param {string} rid
