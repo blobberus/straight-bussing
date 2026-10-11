@@ -41,6 +41,8 @@ test("settings: alerts inline with escaping and period; empty state has official
   ok(e.includes("No active alerts") && e.includes("773.702.8181"));
   ok(alertsHTML(fixture({ liveLoaded: false }), NOW).includes("Checking"));
   ok(renderSettings(fixture(base({ alerts: [a] })), NOW).includes("1 active"));
+  const call = alertsHTML(fixture({ alerts: [{ ...a, description_text: "Call 773-655-9934 <now>" }] }), NOW);
+  ok(call.includes('<a href="tel:+17736559934">773-655-9934</a> &lt;now&gt;'), "phone numbers in alert text are call links, the rest escaped");
 });
 
 test("settings: station search ranks word starts, needs a serving route", () => {

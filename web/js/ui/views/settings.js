@@ -22,6 +22,7 @@ import { liveStatus, watchedRoutes, minutesText, stopsAway } from "../../core/no
 import { cleanNotify } from "../../state.js";
 import { DEMO } from "../../core/demo.js";
 import { routeChip, officialLinks } from "../components.js";
+import { alertBodyHTML } from "./alerts.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen } from "../settings-overlay.js";
 
@@ -63,7 +64,7 @@ export function alertsHTML(state, now) {
   if (!act.length) h += `<div class="v-card st-empty"><p class="v-prim">No active alerts</p><p class="v-sec">${officialLinks()}</p></div>`;
   else h += '<ul class="v-card st-alerts">' + act.map((a) => {
     const title = alertText(a.header_text) || "Service alert", body = alertText(a.description_text), when = period(a, now);
-    return `<li class="st-alert"><span class="st-alertic" aria-hidden="true">!</span><div class="v-grow"><p class="v-prim">${esc(title)}</p>${body ? `<p class="v-sec">${esc(body)}</p>` : ""}${when ? `<p class="v-sec st-when">${esc(when)}</p>` : ""}</div></li>`;
+    return `<li class="st-alert"><span class="st-alertic" aria-hidden="true">!</span><div class="v-grow"><p class="v-prim">${esc(title)}</p>${body ? `<p class="v-sec v-alertbody">${alertBodyHTML(body)}</p>` : ""}${when ? `<p class="v-sec st-when">${esc(when)}</p>` : ""}</div></li>`;
   }).join("") + "</ul>";
   if (state.failed) h += '<p class="v-foot v-foot--warn">Alerts may be out of date: the shuttle feed is not responding.</p>';
   return h;
