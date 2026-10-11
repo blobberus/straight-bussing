@@ -17,6 +17,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
+      - name: Check the offline shell (every file the app loads is in web/sw.js PRECACHE)
+        run: python tools/test_precache.py
       - name: Refresh schedule data (Passio GTFS; keeps the committed web/data on failure)
         run: |
           python tools/build_gtfs.py || {

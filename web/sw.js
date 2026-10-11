@@ -6,6 +6,8 @@ const PRECACHE = [
   './',
   'index.html',
   'manifest.webmanifest',
+  'privacy.html',
+  'support.html',
   'css/base.css',
   'css/components.css',
   'css/map.css',
