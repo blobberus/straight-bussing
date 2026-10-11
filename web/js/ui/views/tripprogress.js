@@ -64,6 +64,9 @@ export function busWords(leg, now) {
   return { status, where };
 }
 
+/** The planned bus left without you: never promise a next bus that is not there (iOS TripText.missedNote). */
+const missedNote = (leg) => (leg.vehicle ? "Your planned bus has left. Showing the next one." : "Your planned bus has left.");
+
 /** One-glance status card for the current phase. */
 function nowCard(p, state, now) {
   const leg = p.legs[p.active], late = !!p.stale;
@@ -81,10 +84,11 @@ function nowCard(p, state, now) {
       prim = `Walk ${walkMins(leg.walkMin)} min to ${leg.board.name}`;
       if (leg.boardEta) sec.push(catchNote(leg.boardEta, leg.walkMin || 0, now).text);
       sec.push(w.status || (leg.boardEta ? `${route.short || "Bus"} ${leg.boardLive ? "arrives" : "planned"} ${inMin(leg.boardEta, now)}${leg.boardLive ? "" : ", est."}` : "No live bus time yet"));
+      if (leg.missed) sec.push(missedNote(leg));   // near the stop: say why another bus is shown
     } else if (p.phase === "waiting") {
       prim = w.status || (leg.boardEta ? (leg.boardLive ? "Next bus" : `Bus planned for ${clock(leg.boardEta)}`) : "Waiting for the bus");
       sec.push(`Board at ${leg.board.name}${leg.boardEta ? " " + inMin(leg.boardEta, now) : ""}${leg.boardLive ? "" : leg.boardEta ? ", est." : ""}`);
-      if (leg.missed) sec.push("Your planned bus has left. Showing the next one.");
+      if (leg.missed) sec.push(missedNote(leg));
     } else {
       prim = w.status || `Riding to ${leg.alight.name}`;
       sec.push(`Get off at ${leg.alight.name}${leg.alightEta ? ` about ${clock(leg.alightEta)}${leg.alightLive ? "" : ", est."}` : ""}`);

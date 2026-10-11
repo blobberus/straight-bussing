@@ -91,6 +91,16 @@ test("trip view: stale feed banner, stale chip and its age; missed bus note", ()
   ok(/>~\d+ min</.test(st), "ETAs get ~ while delayed");
   const mi = html("missed");
   ok(mi.includes("Your planned bus has left. Showing the next one.") && mi.includes("Bus 102 is 3 stops away"));
+  // no next bus: never promise one; on the walk to the stop the note shows too (iOS TripText.missedNote, 2026-10-11)
+  const none = scene("missed");
+  none.buses = none.buses.slice(0, 1); none.trips = none.trips.slice(0, 1);
+  resetTripMotion();
+  const nh = tripProgressHTML(none, NOW);
+  ok(nh.includes("Your planned bus has left.") && !nh.includes("Showing the next one"), "no next bus promised");
+  const walking = { ...scene("missed"), user: { lat: stops.A4.lat + 0.0008, lon: stops.A4.lon } };
+  resetTripMotion();
+  const wh = tripProgressHTML(walking, NOW);
+  ok(wh.includes("Walk 1 min to Ratner Center") && wh.includes("Your planned bus has left. Showing the next one."), "walking to the stop: " + wh.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 300));
 });
 
 test("trip view: transfer shows both legs, the change walk and escapes stop names", () => {

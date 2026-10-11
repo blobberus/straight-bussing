@@ -151,6 +151,37 @@ test("missed: you are still at the stop after the planned bus left -> next bus f
   eq([q.phase, busLeg(q).vehicle.label, busLeg(q).missed], ["on-bus", "101", false]);
 });
 
+// 2026-10-11 sweep, ported from the iOS Kit TripFollow fixes (same fixtures, same expected values).
+test("loop: the planned vehicle rolled to a new trip id while you ride across the loop start: you are on it", () => {
+  const L = ["A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A0"];
+  const j = (vid) => ({ kind: "plan", rids: ["L"], label: "To X", to: "X", t0: NOW - 400, legs: [
+    { type: "bus", rid: "L", board: { id: "A6", name: "59th & Ellis" }, alight: { id: "A1", name: "56th & Ellis" }, tripId: "lapA", vehicleId: vid,
+      boardT: NOW - 300, alightT: NOW + 180, source: "live", waitLive: true },
+    { type: "walk", min: 2, toName: "X" }] });
+  for (const vid of [null, "v9"]) {
+    const s = baseState({ routes: { ...routes, L: { short: "L", long: "Loop", color: "#0A84FF", text_color: "#FFFFFF" } }, routeStops: { ...routeStops, L },
+      buses: [bus("v9", "9", "L", "lapB", "A0", "A1", 0.5)],
+      trips: [trip("lapB", "L", "v9", "9", [["A1", 60], ["A2", 150], ["A3", 240], ["A4", 330], ["A5", 420], ["A6", 510], ["A7", 600]])] });
+    const p = tripProgress(j(vid), s, NOW), b = busLeg(p);
+    eq([p.phase, b.vehicle && b.vehicle.how, b.vehicle && b.vehicle.label, b.stopsLeft], ["on-bus", "onboard", "9", 1], "vehicle " + vid);
+    eq(ids(b), ["A6", "A7", "A8", "A0", "A1"]);
+    eq([b.alightEta, b.alightLive], [NOW + 60, true], "its new trip's prediction, not '5 stops away' on the old lap");
+  }
+});
+
+test("shared trip id: the planned trip id now run by ONE other bus never lends its times to the planned vehicle", () => {
+  const j = journeyR({ tripId: "tS", boardT: NOW + 420, alightT: NOW + 720 });
+  j.legs[1].vehicleId = "v102";
+  const tX = trip("tX", "R", "v102", "102", [["A2", 60], ["A3", 150], ["A4", 240], ["A7", 500]]);
+  const s = baseState({ journey: j, user: { lat: stops.A4.lat, lon: stops.A4.lon }, buses: [bus("v102", "102", "R", "tX", "A1", "A2", 0.5)],
+    trips: [trip("tS", "R", "v103", "103", [["A4", 100], ["A7", 400]]), tX] });
+  let b = busLeg(prog(s));
+  eq([b.vehicle.label, b.vehicle.how, b.stopsAway, b.boardEta, b.alightEta], ["102", "trip", 2, NOW + 240, NOW + 500], "bus 102's own predictions");
+  s.trips.splice(1, 0, trip("tS", "R", "v104", "104", [["A4", 900]]));
+  b = busLeg(prog(s));
+  eq([b.boardEta, b.alightEta], [NOW + 240, NOW + 500], "still bus 102's own trip update");
+});
+
 test("transfer: first leg on-bus, second upcoming with its live times; loop previous lap = behind", () => {
   const p = prog(scene("transfer")), [b1, b2] = p.legs.filter((l) => l.type === "bus");
   eq(p.phase, "on-bus"); eq(p.active, 1);

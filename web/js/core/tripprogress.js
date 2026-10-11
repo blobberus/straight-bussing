@@ -49,13 +49,14 @@ const walkMinM = (m) => (m * WALK_DETOUR) / WALK_M_PER_MIN;
 /**
  * Trip update of a trip run by a vehicle. Passio gives SEVERAL vehicles the same trip_id (e.g. five DCC buses on
  * one trip id), each with its own predictions, so with a vehicle the entity with both ids wins; the trip id alone
- * only when it is unambiguous (or no vehicle is known); else the vehicle's own entity.
+ * only when it is unambiguous (or no vehicle is known) and names no OTHER vehicle (never one bus's position with
+ * another bus's times; iOS Kit TripFollow, 2026-10-11); else the vehicle's own entity.
  */
 function tripUpdate(trips, tripId, vehicleId) {
   const T = trips || [], vid = (t) => t && t.vehicle && t.vehicle.id;
   const byTrip = tripId == null ? [] : T.filter((t) => same(t && t.trip && t.trip.trip_id, tripId));
   return (vehicleId != null && byTrip.find((t) => same(vid(t), vehicleId)))
-    || ((vehicleId == null || byTrip.length === 1) && byTrip[0])
+    || (byTrip[0] && (vehicleId == null || (byTrip.length === 1 && vid(byTrip[0]) == null)) && byTrip[0])
     || (vehicleId != null && T.find((t) => same(vid(t), vehicleId))) || null;
 }
 
@@ -238,8 +239,15 @@ function evalBus(l, S, now, ctx) {
     const onPlanned = same(planned.trip && planned.trip.trip_id, l.tripId);
     const tu = tripUpdate(S.trips, l.tripId, l.vehicleId != null ? l.vehicleId : onPlanned && planned.vehicle ? planned.vehicle.id : null);
     // coming to the boarding stop = your trip still predicts it there and you are not past the planned boarding
-    const coming = !onPlanned || (!!tu && (tu.stop_time_update || []).some((u) => String(u.stop_id) === bId && timeOf(u) > now - 30));
-    V = place(planned, "trip", coming && (!onPlanned || !(ctx.active && pB != null && now > pB + TRIP.GRACE_S && !stillAtBoard)), tu);
+    const boardAhead = !!tu && (tu.stop_time_update || []).some((u) => String(u.stop_id) === bId && timeOf(u) > now - 30);
+    const pastBoard = ctx.active && pB != null && now > pB + TRIP.GRACE_S && !stillAtBoard;
+    // On another trip id it is still finishing an EARLIER trip only while yours is ahead of it (the feed lists your
+    // trip with your stop to come, or the boarding time has not passed). Past the boarding time with your trip gone
+    // from the feed, it changed trip ids with you aboard (loops roll the id at the start stop): never its previous
+    // lap ("Bus 9 is 5 stops away"). Same rule as the iOS Kit TripFollow (2026-10-11).
+    const tuPlanned = !!tu && same(tu.trip && tu.trip.trip_id, l.tripId);
+    const coming = onPlanned ? boardAhead : (tuPlanned && boardAhead) || !pastBoard;
+    V = place(planned, "trip", coming && (!onPlanned || !pastBoard), tu);
     if (V && !onPlanned && V.idx > bpos) V = null;   // line route: where it is on its earlier trip says nothing about yours
   }
   // the planned trip is gone: long past its planned arrival, or you are at the alighting stop -> leg done
