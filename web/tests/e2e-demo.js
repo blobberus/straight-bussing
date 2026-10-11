@@ -89,6 +89,7 @@ test("demo: banner stays on Routes (buses running), route detail, My Routes and 
   const o = await waitFor(() => { const x = $("#settingsOverlay"); return x && !x.hidden && x.dataset.state === "open" ? x : null; }, "Settings open");
   bannerOnTop("Settings");
   ok(txt(o).includes("Bus alerts are off in demo mode"), "Settings says bus alerts are off");
+  ok(!o.querySelector('[data-st="perm"]'), "no Allow notifications button: alerts are off and the demo asks for nothing");
   o.querySelector(".sto-done").click();
   await waitFor(() => o.dataset.state === "closed", "Settings closed");
 });

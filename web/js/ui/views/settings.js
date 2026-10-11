@@ -204,7 +204,7 @@ export function renderSettings(state, now = nowS()) {
 <h3 class="v-h">Service alerts${nAlerts ? ` <span class="st-count">${nAlerts} active</span>` : ""}</h3><div data-region="alerts">${alertsHTML(state, now)}</div>
 <h3 class="v-h">Bus alerts</h3><p class="v-sec st-intro">Notify me when my bus is near a station. Times are estimates from live predictions.</p>${DEMO ? '<p class="v-foot v-foot--warn" role="note">Bus alerts are off in demo mode: the buses are simulated.</p>' : ""}
 <div data-region="station">${stationHTML(state)}</div><div data-region="opts">${optsHTML(state)}</div><div data-region="status">${statusHTML(state, now)}</div>
-<div data-region="perm">${permHTML()}</div>
+<div data-region="perm">${DEMO ? "" : permHTML()}</div>
 <p class="v-sec st-note">${esc(ALERTS_NOTE)}</p>
 <h3 class="v-h">iPhone app</h3><div class="v-card st-ios">${sw("liveActivity", "Trip status on lock screen", "Live Activity with a minute counter and next stop. Coming to the iPhone app; your choice is saved for later.", n.liveActivity)}</div>
 <div class="v-card"><button type="button" class="v-row" data-action="about:open"><span class="v-grow"><span class="v-prim">About this app</span><span class="v-sec">Unofficial. Privacy, official contact</span></span></button></div>
