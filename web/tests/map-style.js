@@ -12,6 +12,15 @@ const lumHex = (hex) => {
 };
 const contrast = (a, b) => { const x = lumHex(a), y = lumHex(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
 
+test('patchStyle: woods are a flat palette fill (the dark style asks for a "wood-pattern" sprite that does not exist)', () => {
+  const base = { version: 8, sources: {}, layers: [{ id: 'landcover_wood', type: 'fill', paint: { 'fill-pattern': 'wood-pattern', 'fill-opacity': 0.4 } }] };
+  for (const dark of [false, true]) {
+    const l = byId(patchStyle(base, dark), 'landcover_wood');
+    eq([l.paint['fill-pattern'], l.paint['fill-color'], l.paint['fill-opacity']], [undefined, (dark ? PALETTE.dark : PALETTE.light).wood, 0.4]);
+  }
+  eq(base.layers[0].paint['fill-pattern'], 'wood-pattern', 'input untouched');
+});
+
 test('patchStyle: pure (input untouched, output is a copy)', () => {
   const before = JSON.stringify(POSITRON);
   const out = patchStyle(POSITRON, false);
@@ -88,6 +97,7 @@ test('patchStyle (online): real OpenFreeMap styles patch cleanly', async () => {
     ok(L.indexOf('sb_name_major') > L.indexOf('highway_major_inner'));
     for (const l of s.layers) {
       if (l.source) ok(s.sources[l.source], l.id + ' source exists');
+      ok(!l.paint?.['fill-pattern'], l.id + ' needs no sprite pattern (missing images warn in the console)');
       const f = l.layout?.['text-font'];
       if (Array.isArray(f) && typeof f[0] === 'string') ok(f.every((x) => fonts.has(x)), l.id + ' font available: ' + f);
     }

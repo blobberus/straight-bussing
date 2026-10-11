@@ -112,7 +112,7 @@ export function patchStyle(styleJson, isDark) {
     else if (id === 'water') paint(l, { 'fill-color': P.water });
     else if (id === 'waterway') paint(l, { 'line-color': P.water });
     else if (id === 'park' || id === 'landuse_park') paint(l, { 'fill-color': P.park });
-    else if (id === 'landcover_wood') paint(l, { 'fill-color': P.wood });
+    else if (id === 'landcover_wood') { paint(l, { 'fill-color': P.wood }); delete l.paint['fill-pattern']; }   // dark: "wood-pattern" is not in the OpenFreeMap sprite (console warning, no fill)
     else if (id === 'landuse_residential') paint(l, { 'fill-color': P.resid });
     else if (id === 'building') {
       paint(l, { 'fill-color': P.bldg, 'fill-outline-color': P.bldgLine, 'fill-opacity': zoomed([13, 0.5, 15, 0.9, 16, 1]) });
