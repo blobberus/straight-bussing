@@ -5,7 +5,7 @@ import StraightBussingKit
 ///   -demo                 simulated buses (DemoFeed), fixed location on campus, separate prefs storage
 ///   -screen <name>        open a screen: current | trip | routes | route | myroutes | directions | stop |
 ///                         settings | settingsdemo | liveactivity | about | alerts | pick | search | custom |
-///                         editor | order
+///                         editor | order | tripstop (UI test: a stop opened during a started trip)
 ///   -detent peek|half|full
 ///   -tour                 walk through the main screens automatically (for the screen recording)
 ///   -theme light|dark     force the color scheme

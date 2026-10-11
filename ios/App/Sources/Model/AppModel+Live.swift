@@ -12,6 +12,7 @@ extension AppModel {
     func start() {
         guard !booted else { return }
         booted = true
+        liveActivity.endLeftovers()   // an activity from an earlier run would show old numbers forever
         Task { await boot() }
     }
 
@@ -66,7 +67,8 @@ extension AppModel {
     var bootDone: Bool { !staticData.isEmpty || !staticFailed.isEmpty }
 
     func resumePolling() {
-        guard pollTask == nil, bootDone else { return }
+        // never from the background (a switch of the feed source can finish its first poll after the app left)
+        guard pollTask == nil, bootDone, inForeground else { return }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -94,8 +96,10 @@ extension AppModel {
     /// Back in the app: the clock and the freshness flags first (data from before the break must never look
     /// fresh while the first new poll is on its way), then polling, the clock tick, permissions, schedule check.
     func didBecomeActive() {
+        inForeground = true
         now = Date().timeIntervalSince1970
         refreshStatus()
+        refreshTrip()   // the trip timeline and the Live Activity say "delayed" too, not only the pill
         resumePolling()
         if clockTask == nil && bootDone { startClock() }
         refreshNotifPermission()
@@ -104,6 +108,7 @@ extension AppModel {
 
     /// Leaving the app: one fresh Live Activity update, then no polling and no clock tick in the background.
     func didEnterBackground() {
+        inForeground = false
         flushLiveActivity()
         pausePolling()
         clockTask?.cancel()
@@ -158,7 +163,8 @@ extension AppModel {
     /// Swap in a downloaded schedule while nothing in progress was planned with the old one: not during a
     /// started trip or with Directions open (then after a later poll). Prefs, map order and favorites stay.
     func applyPendingSchedule() {
-        guard let d = pendingStatic, activeTrip == nil, page != .directions else { return }
+        // Directions on another tab's stack still shows a plan made with the old stops
+        guard let d = pendingStatic, activeTrip == nil, !paths.values.contains(where: { $0.contains(.directions) }) else { return }
         pendingStatic = nil
         staticData = d.data
         staticFailed = d.failed
@@ -192,7 +198,7 @@ extension AppModel {
         let level = liveState.staleLevel(now: now)
         if staleLevel != level { staleLevel = level }
         let pill = LiveText.pill(level: level, polled: liveLoaded, lastOk: lastOk, feedTs: feedTs, loaded: liveLoaded,
-                                 busCount: buses.count, silent: silentService)
+                                 busCount: buses.count, silent: silentService, alerts: activeAlerts.count)
         if statusPill != pill { statusPill = pill }
         let t = now
         let markers = liveState.buses.enumerated().map { i, b in
@@ -214,6 +220,8 @@ extension AppModel {
                 guard let self else { return }
                 self.now = Date().timeIntervalSince1970
                 self.refreshStatus()
+                // a started trip ages with the clock too (freshness, "Leave in N min"), not only on a poll
+                self.refreshTrip()
             }
         }
     }
@@ -241,10 +249,35 @@ extension AppModel {
     /// Open Directions (optionally to a destination) and plan. Returns the planning task (demo screens await it).
     @discardableResult
     func openDirections(to: Endpoint? = nil) -> Task<Void, Never>? {
+        // a new destination is a new trip: a started one ends (else "Trip to X" would follow a plan to Y)
+        if let to, to != dir.to, activeTrip != nil { endTrip() }
         if dir.from == nil, let u = user { dir.from = Endpoint(label: "My location", coord: u, isMe: true) }
         if let to { dir.to = to }
         if page != .directions { push(.directions) }
         return replan()
+    }
+
+    /// Stop detail "Directions" (web dir:to-stop): to the stop, from your location when the start is empty or is
+    /// this stop. A started trip ends when the destination changes (`openDirections`).
+    func directionsTo(stopId: String) {
+        guard let st = staticData.stops[stopId] else { return }
+        if dir.from == nil || dir.from?.stopId == stopId {
+            if activeTrip != nil { endTrip() }
+            dir.from = user.map { Endpoint(label: "My location", coord: $0, isMe: true) }
+        }
+        dirActiveTo = false
+        openDirections(to: Endpoint(label: st.name, coord: st.coord, stopId: stopId))
+    }
+
+    /// Stop detail "From here" (web dir:from-stop): the stop as the start, the destination to be typed. New
+    /// endpoints are a new trip, so a started one ends.
+    func directionsFrom(stopId: String) {
+        guard let st = staticData.stops[stopId] else { return }
+        if activeTrip != nil { endTrip() }
+        dir.from = Endpoint(label: st.name, coord: st.coord, stopId: stopId)
+        dir.to = nil
+        dirActiveTo = true
+        openDirections()
     }
 
     /// New endpoints mean a new trip: a started one ends (web directions.js endPlanJourney).
@@ -613,6 +646,10 @@ extension AppModel {
                 _ = await openDirections(to: demoDestination)?.value
                 if let o = dir.result?.options.first(where: { !$0.busLegs.isEmpty }) { startTrip(o, label: demoDestination.label) }
                 showLiveActivityPreview = true
+            case "tripstop":   // UI test: a stop opened during a started trip (its Directions must end the trip)
+                _ = await openDirections(to: demoDestination)?.value
+                if let o = dir.result?.options.first(where: { !$0.busLegs.isEmpty }) { startTrip(o, label: demoDestination.label) }
+                push(.stop(DemoConfig.stopForDetail))
             case "about": select(.myroutes); push(.about)
             case "alerts": push(.alerts)
             case "custom": select(.myroutes); apply(Custom.applyCustom(routeState, "demo-commute")); push(.customRoute("demo-commute"))

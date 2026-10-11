@@ -148,6 +148,8 @@ final class AppModel {
     @ObservationIgnored let epoch = Date().timeIntervalSince1970
     @ObservationIgnored var failures = 0
     @ObservationIgnored var booted = false
+    /// The app is on screen (scene active or inactive, not background): polling may run.
+    @ObservationIgnored var inForeground = true
     @ObservationIgnored var lastAlertsPoll: Double = 0
     /// Last content sent to the Live Activity (ActivityKit updates are throttled; see `pushLiveActivity`).
     @ObservationIgnored var lastActivityPush: (snap: LiveTripSnapshot, at: Double)?
@@ -316,6 +318,12 @@ final class AppModel {
     }
 
     func popToRoot() { paths[tab] = []; syncMapFocus() }
+
+    /// The service alerts on the current tab (status pill "See alert"; Back returns to where the rider was).
+    func openAlerts() {
+        if page == .alerts { if detent == .peek { detent = .half }; return }
+        push(.alerts)
+    }
 
     /// The route detail view focuses its route on the map (core/visibility.js mapFocus). Writes only on a
     /// real change: every write would redraw the map and every view reading `routeState`.

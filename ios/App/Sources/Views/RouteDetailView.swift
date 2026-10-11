@@ -47,9 +47,13 @@ struct RouteDetailView: View {
                     Text("No bus on this route is sending its location, so we can't confirm it's running. Call 773.702.8181 before you rely on it.")
                         .font(.footnote).foregroundStyle(Palette.text2)
                 }
-                if let h = Schedule.hoursOn(svc, rid, model.now) {
-                    let on = Schedule.isScheduledNow(svc, rid, model.now)
-                    (Text("Today ").bold() + Text(h.label + RouteText.exceptionNote(h)) + Text(on == nil ? "" : on! ? " · Scheduled now" : " · Not scheduled now"))
+                // the service day, not the calendar date: at 12:10 AM a route running until 12:25 AM shows
+                // "Friday service ... · Scheduled now", never "Today No service · Scheduled now"
+                if let sh = Schedule.serviceHoursAt(svc, rid, model.now) {
+                    let h = sh.hours
+                    let on = Schedule.isScheduledNow(svc, rid, model.now) ?? false
+                    let head = sh.yesterday ? "\(Schedule.dayName[sh.dayKey] ?? "Yesterday") service " : "Today "
+                    (Text(head).bold() + Text(h.label + RouteText.exceptionNote(h)) + Text(on ? " · Scheduled now" : " · Not scheduled now"))
                         .font(.footnote).foregroundStyle(Palette.text2)
                 }
                 if model.hidden.contains(rid) {
@@ -90,7 +94,8 @@ struct RouteDetailView: View {
                             .font(.footnote).foregroundStyle(Palette.text2)
                     }
                 }
-                RouteScheduleView(rid: rid, day: Self.localDay(model.now), t: model.now, alertIds: routeAlerts.map(\.id)).equatable()
+                RouteScheduleView(rid: rid, day: Self.localDay(model.now), t: model.now, alertIds: routeAlerts.map(\.id),
+                                  version: model.staticVersion).equatable()
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
@@ -177,8 +182,12 @@ struct RouteScheduleView: View, Equatable {
     let t: Double
     /// This route's active service alerts (shown under "Schedule changes").
     let alertIds: [String]
+    /// `AppModel.staticVersion`: a newer schedule downloaded while this page is open redraws it.
+    var version = 0
 
-    nonisolated static func == (a: RouteScheduleView, b: RouteScheduleView) -> Bool { a.rid == b.rid && a.day == b.day && a.alertIds == b.alertIds }
+    nonisolated static func == (a: RouteScheduleView, b: RouteScheduleView) -> Bool {
+        a.rid == b.rid && a.day == b.day && a.alertIds == b.alertIds && a.version == b.version
+    }
 
     var body: some View { service(model.staticData.service) }
 

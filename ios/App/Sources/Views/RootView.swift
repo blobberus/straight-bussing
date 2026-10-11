@@ -123,9 +123,18 @@ struct StatusPill: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Retry loading live data")
+                } else if p.alert {
+                    // no bus is reporting and the operator posted an alert: it may say why (rider safety)
+                    Button { model.openAlerts() } label: {
+                        Text("See alert").font(.footnote.weight(.bold)).underline()
+                            .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Read the service alert")
+                    .accessibilityIdentifier("pillAlert")
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, p.retry ? 0 : 7)
+            .padding(.horizontal, 12).padding(.vertical, p.retry || p.alert ? 0 : 7)
             .foregroundStyle(p.kind == .err ? Color.white : p.kind == .warn ? Self.onYellow : Color.primary)
             .background(pillStyle(p), in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
             .dynamicTypeSize(...DynamicTypeSize.accessibility2)

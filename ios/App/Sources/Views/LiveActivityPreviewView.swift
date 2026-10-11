@@ -7,6 +7,7 @@ import StraightBussingKit
 struct LiveActivityPreviewView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @State private var startTries = 0
 
     var snapshot: LiveTripSnapshot? {
         if let p = model.tripFollow { return p.snapshot(staticData: model.staticData, now: model.now) }
@@ -67,6 +68,7 @@ struct LiveActivityPreviewView: View {
                     Circle().fill(Color(hex: s.routeColor)).frame(width: 14, height: 14)
                         .frame(width: 36, height: 36).background(.black, in: Circle())
                     if model.liveActivity.isSupported {
+                        let _ = startTries   // the controller is not observable: a tap re-reads isRunning
                         if model.liveActivity.isRunning {
                             Label("Live Activity running on the Lock Screen", systemImage: "checkmark.circle.fill")
                                 .font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text2)
@@ -74,9 +76,15 @@ struct LiveActivityPreviewView: View {
                         } else {
                             Button("Start Live Activity") {
                                 model.liveActivity.start(title: title, state: s, simulated: model.feedSimulated)
+                                startTries += 1
                             }
                             .primaryButtonStyle()
+                            if startTries > 0 {
+                                Text("iOS did not start it. Try again in a moment.").font(.caption).foregroundStyle(Palette.text2)
+                            }
                         }
+                    } else {
+                        Text("Live Activities are off for Straight Bussing in iOS Settings.").font(.subheadline).foregroundStyle(Palette.text2)
                     }
                     Text("Times are estimates. The countdown ticks on its own; stops away updates while the app is open (push updates need the server).")
                         .font(.caption).foregroundStyle(Palette.text2)

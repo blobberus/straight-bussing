@@ -39,6 +39,17 @@ final class LiveActivityController {
         Task { await activity.end(content, dismissalPolicy: .after(Date().addingTimeInterval(15 * 60))) }
     }
 
+    /// Live Activities left over from an earlier run (the app was closed, killed or crashed during a trip). Nothing
+    /// updates them any more and a started trip is not restored at launch, so they would sit on the Lock Screen with
+    /// old numbers (and count against the system's limit, so the next Start could fail). Call once at launch, before
+    /// anything starts a new activity.
+    func endLeftovers() {
+        guard activity == nil else { return }
+        for old in Activity<TripActivityAttributes>.activities {
+            Task { await old.end(nil, dismissalPolicy: .immediate) }
+        }
+    }
+
     /// STUB (needs the proxy/push server, conversion to appstore.md sections 6 + 8): request the activity with
     /// `pushType: .token`, read `activity.pushTokenUpdates`, and send {token, tripId, stops} to the server, which
     /// then sends `apns-push-type: liveactivity` updates while the phone is locked. Disclose the token in About

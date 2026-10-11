@@ -87,6 +87,22 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["searchBar"].waitForExistence(timeout: 10))
     }
 
+    /// A started trip ends when a stop's Directions picks a new destination (else "Trip to Chipotle" would follow a
+    /// plan to another place). Regression test of the 2026-10-11 sweep.
+    func testNewDestinationFromAStopEndsTheTrip() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-screen", "tripstop"]
+        app.launch()
+        let directions = app.buttons["stopDirections"]
+        XCTAssertTrue(directions.waitForExistence(timeout: 30), "a stop opened during a started trip")
+        directions.tap()
+        XCTAssertTrue(app.textFields["dirTo"].waitForExistence(timeout: 10), "Directions to the stop")
+        app.buttons["tab.current"].tap()
+        let noTrip = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "No trip in progress")).firstMatch
+        XCTAssertTrue(noTrip.waitForExistence(timeout: 10), "the old trip ended")
+        XCTAssertFalse(app.staticTexts["tripHeadline"].exists, "no timeline of the old trip")
+    }
+
     /// Turn a SwiftUI switch on: a tap on its trailing edge (the switch, not the label), then, if the value did not
     /// change (iOS 26 lays the row out differently), a tap on the inner switch control.
     func turnOn(_ toggle: XCUIElement) -> Bool {

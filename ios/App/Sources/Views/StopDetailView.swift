@@ -91,25 +91,14 @@ struct StopDetailView: View {
 
     /// "Directions" (to this stop; the primary action) and "From here". Labels never wrap: ViewThatFits stacks them.
     @ViewBuilder func directionButtons(_ stop: Stop) -> some View {
-        Button {
-            let to = Endpoint(label: stop.name, coord: stop.coord, stopId: stopId)
-            if model.dir.from == nil || model.dir.from?.stopId == stopId {
-                model.dir.from = model.user.map { Endpoint(label: "My location", coord: $0, isMe: true) }
-            }
-            model.dirActiveTo = false
-            model.openDirections(to: to)
-        } label: {
+        Button { model.directionsTo(stopId: stopId) } label: {
             Label("Directions", systemImage: "arrow.triangle.turn.up.right.circle.fill").lineLimit(1)
                 .frame(maxWidth: .infinity, minHeight: 44)
         }
         .primaryButtonStyle()
         .accessibilityLabel("Directions to \(stop.name)")
-        Button {
-            model.dir.from = Endpoint(label: stop.name, coord: stop.coord, stopId: stopId)
-            model.dir.to = nil
-            model.dirActiveTo = true
-            model.openDirections()
-        } label: {
+        .accessibilityIdentifier("stopDirections")
+        Button { model.directionsFrom(stopId: stopId) } label: {
             Label("From here", systemImage: "arrow.up.circle").lineLimit(1)
                 .frame(maxWidth: .infinity, minHeight: 44)
         }
