@@ -203,7 +203,7 @@ input::placeholder { color: var(--text-2); opacity: 1; }
 /* the operator's alerts next to "no bus reports" empty states (alerts.js operatorAlertsHTML); call links in alert text */
 .v-opalerts .v-alert { margin-top: 0; }
 .v-opmore { display: block; margin: 0 auto var(--s2); }
-.v-alertbody a { color: var(--accent); font-weight: 600; text-decoration: none; display: inline-block; padding: 12px 2px; margin: -12px 0; }
+.v-alertbody a { color: var(--accent); font-weight: 600; text-decoration: none; display: inline-block; padding: 13px 2px; margin: -13px 0; }
 .v-favhead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); }
 .v-favhead .v-h { flex: 1; }
 .v-favmore { margin-right: calc(-1 * var(--s2)); }
