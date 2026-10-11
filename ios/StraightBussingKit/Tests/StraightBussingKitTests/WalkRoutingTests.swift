@@ -7,9 +7,10 @@ final class WalkRoutingTests: XCTestCase, PlannerFixture {
     /// Records what the fake router saw.
     actor Log {
         var calls: [(LatLon, LatLon)] = []
-        var active = 0, peak = 0
+        var active = 0, peak = 0, cancelled = 0
         func begin(_ a: LatLon, _ b: LatLon) { calls.append((a, b)); active += 1; peak = max(peak, active) }
         func end() { active -= 1 }
+        func sawCancel() { cancelled += 1 }
         var count: Int { calls.count }
     }
 
@@ -17,7 +18,8 @@ final class WalkRoutingTests: XCTestCase, PlannerFixture {
     func fake(_ log: Log, factor: Double = 1.3, delay: Double = 0, fail: Bool = false) -> WalkRouteCache.Fetch {
         { a, b in
             await log.begin(a, b)
-            if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+            if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }   // ends early when cancelled
+            if Task.isCancelled { await log.sawCancel() }
             await log.end()
             if fail { throw URLError(.notConnectedToInternet) }
             let mid = LatLon(lat: (a.lat + b.lat) / 2 + 0.0002, lon: (a.lon + b.lon) / 2)
@@ -129,6 +131,58 @@ final class WalkRoutingTests: XCTestCase, PlannerFixture {
         let r = await cache.route(A, B)
         XCTAssertEqual(r.source, .estimate)
         XCTAssertLessThan(Date().timeIntervalSince(t0), 2, "never waits for the slow router")
+    }
+
+    /// A walk past its timeout is cancelled (the app's fetch calls MKDirections.cancel()) and keeps its slot until
+    /// the router has stopped: timed-out requests never pile up past the cap of 6.
+    func testTimedOutRequestsAreCancelledAndStayWithinTheCap() async {
+        let log = Log()
+        let cache = WalkRouteCache(fetch: fake(log, delay: 5), timeout: 0.1)
+        let a = A, ends = (1...14).map { LatLon(lat: B.lat + Double($0) * 0.001, lon: B.lon) }
+        let t0 = Date()
+        let results = await withTaskGroup(of: WalkResult.self) { g -> [WalkResult] in
+            for e in ends { g.addTask { await cache.route(a, e) } }
+            var out: [WalkResult] = []
+            for await r in g { out.append(r) }
+            return out
+        }
+        XCTAssertEqual(results.count, 14)
+        XCTAssertTrue(results.allSatisfy { $0.source == .estimate }, "the straight-line estimate on timeout")
+        XCTAssertLessThan(Date().timeIntervalSince(t0), 4, "cancelled routers stop at once, nobody waits out 5 s")
+        let peak = await log.peak
+        XCTAssertLessThanOrEqual(peak, WalkRouteCache.maxParallel, "never more than 6 router requests at once")
+        XCTAssertGreaterThan(peak, 1, "requests do run in parallel")
+        var active = 1, running = 1
+        for _ in 0..<50 where active > 0 || running > 0 {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            active = await log.active
+            running = await cache.running
+        }
+        XCTAssertEqual(active, 0, "no router request left running")
+        XCTAssertEqual(running, 0, "every slot given back")
+        let cancelled = await log.cancelled
+        XCTAssertEqual(cancelled, 14, "every timed-out request was cancelled")
+    }
+
+    /// A router that ignores the cancel still gives its slot back one timeout later: walks never queue forever.
+    func testARouterIgnoringTheCancelFreesItsSlotLater() async {
+        let stubborn: WalkRouteCache.Fetch = { a, b in
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                DispatchQueue.global().asyncAfter(deadline: .now() + 6) { c.resume() }
+            }
+            return WalkRouteCache.Routed(m: Geo.hav(a, b) * 1.3, coords: [a, b])
+        }
+        let cache = WalkRouteCache(fetch: stubborn, timeout: 0.1)
+        let a = A, ends = (1...(WalkRouteCache.maxParallel + 2)).map { LatLon(lat: B.lat + Double($0) * 0.001, lon: B.lon) }
+        let t0 = Date()
+        let results = await withTaskGroup(of: WalkResult.self) { g -> [WalkResult] in
+            for e in ends { g.addTask { await cache.route(a, e) } }
+            var out: [WalkResult] = []
+            for await r in g { out.append(r) }
+            return out
+        }
+        XCTAssertTrue(results.allSatisfy { $0.source == .estimate })
+        XCTAssertLessThan(Date().timeIntervalSince(t0), 3, "the 7th and 8th walks did not wait for the 6 s router")
     }
 
     func testRefinePlanRoutesWalksReranksAndRoutesTheWalkOnlyLine() async throws {

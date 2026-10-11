@@ -7,7 +7,9 @@ import Foundation
 ///  - minutes = meters / 80 (the planner's pace); the path is wrapped with the two rounded endpoints;
 ///  - a failure, a timeout (3 s) or an implausible route gives the straight-line x 1.2 estimate, retried after
 ///    60 s; a routed walk is kept for the session (at most `maxEntries`, oldest dropped first); identical requests
-///    share one call; at most 6 in flight.
+///    share one call; at most 6 in flight. A request past its timeout is cancelled (the app's fetch then calls
+///    `MKDirections.cancel()`) and keeps its slot until the router has stopped, so timed-out requests never pile
+///    up behind the cap; a router that ignores the cancel frees its slot one more timeout later.
 /// Never throws. `Planner.refineWalking` then keeps a routed walk from being shorter than the straight line.
 public actor WalkRouteCache {
     /// A walk as the platform router returns it: meters along the path and the path.
@@ -86,8 +88,18 @@ public actor WalkRouteCache {
 
     func run(_ a: LatLon, _ b: LatLon, _ k: String) async -> WalkResult {
         await acquire()
-        let routed = await fetchRoute(a, b)
-        release()
+        let fetch = self.fetch, timeout = self.timeout
+        let work = Task<Routed?, Error> { try await fetch(a, b) }
+        let slot = Slot()
+        // The slot stays taken while the router runs: until the fetch returns (answered, failed, or cancelled at
+        // the deadline), or one more timeout after this answer for a router that ignores the cancel. `free`
+        // gives it back once, so whichever comes second does nothing.
+        Task { _ = await work.result; await self.free(slot) }
+        let routed = await fetchRoute(a, b, work)
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+            await self.free(slot)
+        }
         let res = routed ?? WalkResult.estimate(a, b)
         remember(k, (res: res, exp: routed != nil ? .infinity : clock() + Self.failTTL))
         inflight[k] = nil
@@ -117,22 +129,39 @@ public actor WalkRouteCache {
         if waiting.isEmpty { active -= 1 } else { waiting.removeFirst().resume() }
     }
 
-    nonisolated func fetchRoute(_ a: LatLon, _ b: LatLon) async -> WalkResult? {
-        guard let r = await Self.withTimeout(timeout, { [fetch] in try await fetch(a, b) }),
+    /// Gives a request's slot back, once (the fetch ending and the cancel grace both try).
+    func free(_ slot: Slot) {
+        if slot.take() { release() }
+    }
+
+    /// Number of requests holding a slot (tests).
+    public var running: Int { active }
+
+    /// One request's slot, given back exactly once.
+    final class Slot: @unchecked Sendable {
+        private let lock = NSLock()
+        private var held = true
+        func take() -> Bool { lock.lock(); defer { lock.unlock() }; let h = held; held = false; return h }
+    }
+
+    nonisolated func fetchRoute(_ a: LatLon, _ b: LatLon, _ work: Task<Routed?, Error>) async -> WalkResult? {
+        guard let r = await Self.withTimeout(timeout, work),
               Self.plausible(r, straight: Geo.hav(a, b)) else { return nil }
         return WalkResult(m: JS.round(r.m), min: Geo.walkMin(r.m), coords: [a] + r.coords + [b], source: .router)
     }
 
-    /// The fetch's result, or nil when it throws, returns nil or takes longer than `seconds` (it is not
-    /// awaited past the deadline; a late answer is dropped).
-    static func withTimeout(_ seconds: Double, _ work: @escaping @Sendable () async throws -> Routed?) async -> Routed? {
+    /// The fetch's result, or nil when it throws, returns nil or takes longer than `seconds`. At the deadline the
+    /// fetch is cancelled (`MKDirections.cancel()` in the app) and not awaited; a late answer is dropped.
+    static func withTimeout(_ seconds: Double, _ work: Task<Routed?, Error>) async -> Routed? {
         let once = Once()
         return await withCheckedContinuation { (c: CheckedContinuation<Routed?, Never>) in
             once.set(c)
-            Task { once.resume(try? await work()) }
-            Task {
+            let timer = Task {
                 try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
-                once.resume(nil)
+                if once.resume(nil) { work.cancel() }
+            }
+            Task {
+                if once.resume(try? await work.value) { timer.cancel() }
             }
         }
     }
@@ -142,12 +171,15 @@ public actor WalkRouteCache {
         private let lock = NSLock()
         private var cont: CheckedContinuation<Routed?, Never>?
         func set(_ c: CheckedContinuation<Routed?, Never>) { lock.lock(); cont = c; lock.unlock() }
-        func resume(_ v: Routed?) {
+        /// True when this answer was the first (it resumed the continuation).
+        @discardableResult
+        func resume(_ v: Routed?) -> Bool {
             lock.lock()
             let c = cont
             cont = nil
             lock.unlock()
             c?.resume(returning: v)
+            return c != nil
         }
     }
 }
