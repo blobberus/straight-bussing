@@ -15,6 +15,37 @@ final class LiveTripSnapshotTests: XCTestCase {
         XCTAssertFalse(s.sameContent(as: t), "45 s is")
         t = s; t.busPosition = 1
         XCTAssertFalse(s.sameContent(as: t), "the bus moved on the progress bar")
+        t = s; t.target = 1_000_319; var u = s; u.target = 1_000_321   // 1_000_320 is a whole minute
+        XCTAssertFalse(t.sameContent(as: u), "2 s that change the Lock Screen's clock (6:37 PM -> 6:38 PM) are an update")
+    }
+
+    /// The Lock Screen never shows seconds: whole minutes, "Now" under a minute, and a redraw (staleDate) at the
+    /// moment the last minute starts, the one redraw the system makes while the app is not running.
+    func testWholeMinutesDueAndStaleDate() {
+        var s = LiveTripSnapshot(routeShort: "RL", routeName: "Red Line", routeColor: "#FF0000", routeTextColor: "#FFFFFF", boardName: "A",
+                                 alightName: "B", phase: "waiting", headline: "Next RL at A in about 4 min", stopsAway: 2, stopsLeft: nil,
+                                 target: 1_000_272, stopNames: ["A", "B"], busPosition: nil, boardIndex: 0, alightIndex: 1, live: true,
+                                 asOf: 1_000_000, headlineLead: "Next RL at A")
+        XCTAssertEqual(s.minutes(now: 1_000_000), 4, "4:32 left reads 4 min, floored like every ETA in the app")
+        XCTAssertFalse(s.isDue(now: 1_000_000))
+        XCTAssertFalse(s.isDue(now: 1_000_200), "72 s left: 1 min")
+        XCTAssertTrue(s.isDue(now: 1_000_212), "60 s left: Now")
+        XCTAssertTrue(s.isDue(now: 1_000_300), "past the target: still Now, never a negative count")
+        XCTAssertEqual(s.minutes(now: 1_000_300), 0)
+        XCTAssertEqual(s.staleDate(), 1_000_120, "4 min away: stale after 120 s like every live time")
+        s.target = 1_000_100
+        XCTAssertEqual(s.staleDate(), 1_000_040, "1:40 away: redrawn when the last minute starts")
+        s.target = 1_000_030
+        XCTAssertEqual(s.staleDate(), 1_000_120, "already under a minute: Now from the start, stale after 120 s")
+        s.target = .nan
+        XCTAssertEqual(s.staleDate(), 1_000_120, "junk target")
+        XCTAssertEqual(s.minutes(now: 1_000_000), 0, "junk never traps")
+        s.target = 1_000_272
+        let asOf = TimeFmt.clock(1_000_000)
+        XCTAssertEqual(s.minutesAsOfText, "4 min as of \(asOf)")
+        s.target = 1_000_030
+        XCTAssertEqual(s.minutesAsOfText, "Now as of \(asOf)")
+        XCTAssertEqual(s.clock, TimeFmt.clock(1_000_030))
     }
 }
 
@@ -86,7 +117,7 @@ final class DemoFeedTests: XCTestCase {
         XCTAssertGreaterThan(la.buses.count, 12)
         XCTAssertEqual(la.buses.count, (try? a.vehicles.get().entities.count) ?? -1, "every demo bus counts as operating")
         XCTAssertEqual(la.staleLevel(now: now), .fresh)
-        XCTAssertEqual(la.alerts.first?.header, DemoFeed.alertHeader)
+        XCTAssertTrue(la.alerts.isEmpty, "simulated buses never come with a made-up operator alert")
         XCTAssertTrue(la.buses.allSatisfy { $0.coord.isValid && S.routes[$0.trip.routeId!] != nil })
     }
 

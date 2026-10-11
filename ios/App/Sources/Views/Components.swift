@@ -202,8 +202,13 @@ struct EmptyStateView: View {
         VStack(spacing: 6) {
             Text(title).font(.headline)
             Text(message).font(.subheadline).foregroundStyle(Palette.text2).multilineTextAlignment(.center)
-            if operatorAlerts { OperatorAlerts().padding(.top, 4) }
-            if showOfficial { OfficialContact().padding(.top, 4) }
+            if operatorAlerts && showOfficial {
+                NoBusHelp().padding(.top, 4)   // the operator's number, if its alert gives one, is the primary call
+            } else if operatorAlerts {
+                OperatorAlerts().padding(.top, 4)
+            } else if showOfficial {
+                OfficialContact().padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)
@@ -217,17 +222,64 @@ enum SiteLinks {
     static let support = URL(string: "https://blobberus.github.io/straight-bussing/support.html")!
 }
 
-/// Official service contact (shown in About and empty/error states).
+/// Official service contact (shown in About and empty/error states). Where no bus reports and the operator's live
+/// alert gives a number (`operatorPhone`, from `NoBusHelp`), that number is the one primary call, labeled for its
+/// purpose, and 773.702.8181 becomes the secondary "Safety or urgent" call. Otherwise 773.702.8181 is primary.
 struct OfficialContact: View {
+    var operatorPhone: LiveText.PhoneLink? = nil
+    /// 773.702.8181 as a tel: URL (the same form `LiveText.phoneLinks` makes, so alert cards can skip it).
+    static let telURL = "tel:+17737028181"
+
     var body: some View {
         VStack(spacing: 6) {
-            Link(destination: URL(string: "tel:7737028181")!) {
-                Label("Call 773.702.8181", systemImage: "phone.fill").frame(maxWidth: .infinity, minHeight: 44)
+            if let p = operatorPhone, let url = URL(string: p.url) {
+                Link(destination: url) { OperatorCallLabel(number: p.shown) }
+                    .primaryButtonStyle()
+                    .accessibilityLabel("Call bus route help, \(p.shown)")
+                    .accessibilityHint("The number in the shuttle operator's alert")
+                    .accessibilityIdentifier("callOperator")
+                Link(destination: URL(string: Self.telURL)!) {
+                    Label("Safety or urgent: \(LiveText.phone)", systemImage: "phone")
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .secondaryButtonStyle()
+                .accessibilityLabel("Safety or urgent: call \(LiveText.phone)")
+                .accessibilityIdentifier("callOfficial")
+            } else {
+                Link(destination: URL(string: Self.telURL)!) {
+                    Label("Call \(LiveText.phone)", systemImage: "phone.fill").frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .primaryButtonStyle()
+                .accessibilityIdentifier("callOfficial")
             }
-            .primaryButtonStyle()
             Link("Official transportation page", destination: URL(string: "https://safety-security.uchicago.edu/Transportation")!)
                 .font(.subheadline)
                 .frame(minHeight: 44)
+        }
+    }
+}
+
+/// "Call bus route help: 773-655-9934" on one line, or the purpose over the number when it does not fit (large
+/// text, narrow phones): a primary button never wraps mid-label.
+struct OperatorCallLabel: View {
+    let number: String
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            Label("Call bus route help: \(number)", systemImage: "phone.fill")
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(maxWidth: .infinity, minHeight: 44)
+            HStack(spacing: 8) {
+                Image(systemName: "phone.fill")
+                VStack(spacing: 1) {
+                    Text("Call bus route help")
+                    Text(number).font(.subheadline).monospacedDigit()
+                }
+                .multilineTextAlignment(.center)
+            }
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 44)
         }
     }
 }

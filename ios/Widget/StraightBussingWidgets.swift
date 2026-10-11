@@ -29,9 +29,10 @@ struct TripLiveActivity: Widget {
                     LiveRouteChip(state: s).padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    LiveCountdown(state: s, font: .system(size: 22, weight: .bold, design: .rounded))
-                        .frame(maxWidth: 90)
+                    // whole minutes (iOS 18: counted by the system) or the clock, never seconds
+                    LiveETA(state: s, isStale: context.isStale, mainFont: .system(size: 22, weight: .bold, design: .rounded), maxWidth: 96)
                         .opacity(context.isStale ? 0.6 : 1)
+                        .padding(.trailing, 4)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     Text("\(s.boardName) → \(s.alightName)")
@@ -42,7 +43,7 @@ struct TripLiveActivity: Widget {
                     VStack(spacing: 4) {
                         TripProgressBar(state: s)
                         HStack {
-                            LiveHeadline(state: s, isStale: context.isStale).lineLimit(1)
+                            LiveHeadline(state: s).lineLimit(1)
                             Spacer()
                             Text(context.attributes.simulated ? "Simulated (demo)" : context.isStale ? "Data delayed" : "est. · Unofficial")
                         }
@@ -53,7 +54,8 @@ struct TripLiveActivity: Widget {
             } compactLeading: {
                 LiveRouteChip(state: s, compact: true)
             } compactTrailing: {
-                // Self-ticking timer: the minutes keep counting while the app is in the background.
+                // Whole minutes the system counts down on iOS 18 (the clock on iOS 17), so they never freeze while
+                // the app is in the background and never show seconds.
                 LiveCompactTrailing(state: s, isStale: context.isStale)
             } minimal: {
                 Circle().fill(Color(hex: s.routeColor)).frame(width: 14, height: 14)

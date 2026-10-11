@@ -14,7 +14,7 @@ final class LiveActivityController {
     func start(title: String, state: LiveTripSnapshot, simulated: Bool = false) {
         guard isSupported else { return }
         end()
-        let content = ActivityContent(state: state, staleDate: Date(timeIntervalSince1970: state.asOf + 120))
+        let content = Self.content(state)
         do {
             activity = try Activity.request(attributes: TripActivityAttributes(title: title, simulated: simulated),
                                             content: content, pushType: nil)
@@ -27,8 +27,15 @@ final class LiveActivityController {
     /// 60 s while the app runs, and once when the app goes to the background.
     func update(_ state: LiveTripSnapshot) {
         guard let activity else { return }
-        let content = ActivityContent(state: state, staleDate: Date(timeIntervalSince1970: state.asOf + 120))
+        let content = Self.content(state)
         Task { await activity.update(content) }
+    }
+
+    /// The content with its stale date (Kit `LiveTripSnapshot.staleDate`): 120 s after the data, or when the arrival
+    /// enters its last minute. That redraw is the only one the system makes while the app is not running, so the
+    /// Lock Screen then says "~Now" and "Data delayed" instead of counting on with old data.
+    static func content(_ state: LiveTripSnapshot) -> ActivityContent<LiveTripSnapshot> {
+        ActivityContent(state: state, staleDate: Date(timeIntervalSince1970: state.staleDate()))
     }
 
     /// End the activity; the final state stays on the Lock Screen for 15 minutes.

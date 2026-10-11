@@ -29,6 +29,10 @@ final class SmokeUITests: XCTestCase {
         let title = app.staticTexts["sheetTitle"]
         XCTAssertTrue(title.waitForExistence(timeout: 10))
         XCTAssertEqual(title.label, "Current trip")
+        // -demo looks like real use (CI and App Store screenshots): no demo banner, no "Simulated buses" pill
+        XCTAssertFalse(app.buttons["simulatedPill"].exists, "-demo shows no simulated-buses indicator")
+        XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", "Demo mode")).firstMatch.exists,
+                       "no demo banner or demo alert anywhere")
 
         app.buttons["tab.routes"].tap()
         XCTAssertEqual(app.staticTexts["sheetTitle"].label, "Routes")
@@ -123,13 +127,15 @@ final class SmokeUITests: XCTestCase {
         wait(for: [gone], timeout: timeout)
     }
 
-    /// Settings > Simulated buses (demo), the way App Review would use it at night: off by default, the demo banner
-    /// on every screen while on, one tap turns it off. Runs WITHOUT -demo (normal prefs; live feed requests).
+    /// Settings > Simulated buses (demo), the way App Review would use it at night: off by default; while on, the
+    /// status pill reads "Simulated buses" on every tab (no banner), a tap on it opens Settings at the switch, and the
+    /// switch turns it off. Runs WITHOUT -demo (normal prefs; live feed requests).
     func testSimulatedBusesSwitch() throws {
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(app.buttons["searchBar"].waitForExistence(timeout: 30), "search bar")
-        XCTAssertFalse(app.buttons["demoOff"].exists, "simulated buses are off by default")
+        let pill = app.buttons["simulatedPill"]
+        XCTAssertFalse(pill.exists, "simulated buses are off by default")
 
         app.buttons["settingsButton"].tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
@@ -140,16 +146,58 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(toggle.exists && toggle.isHittable, "Settings has the Simulated buses switch")
         XCTAssertEqual(toggle.value as? String, "0", "off by default")
         XCTAssertTrue(turnOn(toggle), "the Simulated buses switch turns on")
-        save(app, "23-simulated-settings-light")   // the banner heads Settings now
+        save(app, "23-simulated-settings-light")
         app.buttons["settingsDone"].tap()
 
-        let off = app.buttons["demoOff"]
-        XCTAssertTrue(off.waitForExistence(timeout: 10), "the banner shows on the map screen")
+        XCTAssertTrue(pill.waitForExistence(timeout: 10), "the status pill says so on the map screen")
+        XCTAssertTrue(pill.label.contains("Simulated buses"), "pill text: \(pill.label)")
+        XCTAssertFalse(app.buttons["demoOff"].exists, "no demo banner with Turn off any more")
         waitGone(app.buttons["busAlertBanner"], 10, "the confirmation banner goes away")
         app.buttons["tab.routes"].tap()
-        XCTAssertTrue(off.waitForExistence(timeout: 5), "and on every tab")
+        XCTAssertTrue(pill.waitForExistence(timeout: 5), "and on every tab")
         save(app, "24-simulated-routes-light")
-        off.tap()
-        waitGone(off, 10, "one tap turns simulated buses off")
+
+        pill.tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10), "the pill opens Settings")
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "at the switch")
+        tries = 0
+        while !(toggle.isHittable && toggle.frame.maxY < bottom) && tries < 6 { app.swipeUp(); tries += 1 }
+        XCTAssertEqual(toggle.value as? String, "1")
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        if (toggle.value as? String) == "1" { (toggle.switches.firstMatch.exists ? toggle.switches.firstMatch : toggle).tap() }
+        app.buttons["settingsDone"].tap()
+        waitGone(pill, 10, "turning the switch off removes the pill")
+    }
+
+    /// Current trip at the half detent (ship checklist item 3, owner decision 2026-10-11): the nearest stop and its
+    /// next buses come first under the title and fit whole above the tab bar; the alert row, station search and
+    /// Routes to station come after. Without a location, "Use my location" is first and the station search next.
+    func testCurrentTripNextBusFirst() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo"]
+        app.launch()
+        let block = app.descendants(matching: .any)["nextBusBlock"]
+        XCTAssertTrue(block.waitForExistence(timeout: 30), "the nearest stop with its next buses")
+        let arrival = block.buttons.matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", "minute", "arriving now")).firstMatch
+        XCTAssertTrue(arrival.waitForExistence(timeout: 20), "its arrivals loaded (not the loading rows)")
+        let title = app.staticTexts["sheetTitle"], tab = app.buttons["tab.current"], search = app.textFields["nearbySearch"]
+        XCTAssertTrue(search.exists)
+        XCTAssertGreaterThanOrEqual(block.frame.minY, title.frame.maxY, "under the title")
+        XCTAssertLessThanOrEqual(block.frame.maxY, tab.frame.minY, "fully visible at the half detent: \(block.frame) vs tab bar \(tab.frame)")
+        XCTAssertLessThan(block.frame.maxY, search.frame.minY, "the station search comes after the next bus")
+        let pick = app.buttons["pickOpen"]
+        XCTAssertTrue(pick.exists && pick.frame.minY > block.frame.maxY, "Routes to station comes after the next bus")
+
+        app.terminate()
+        app.launchArguments = ["-demo", "-noloc"]
+        app.launch()
+        let useLoc = app.buttons["useMyLocation"]
+        XCTAssertTrue(useLoc.waitForExistence(timeout: 30), "without a location: Use my location")
+        let search2 = app.textFields["nearbySearch"]
+        XCTAssertTrue(search2.exists)
+        XCTAssertGreaterThanOrEqual(useLoc.frame.minY, app.staticTexts["sheetTitle"].frame.maxY)
+        XCTAssertLessThan(useLoc.frame.maxY, search2.frame.minY, "Use my location first, the station search next")
+        XCTAssertLessThanOrEqual(search2.frame.maxY, app.buttons["tab.current"].frame.minY, "both visible at the half detent")
+        XCTAssertFalse(app.descendants(matching: .any)["nextBusBlock"].exists)
     }
 }

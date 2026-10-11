@@ -290,6 +290,18 @@ public enum LiveText {
         return out
     }
 
+    /// The number the shuttle operator gives in its own alerts ("please contact 773-655-9934 for assistance"), for
+    /// the primary call button where no bus is reporting: the first number in the alerts' text, as written, that is
+    /// not our official 773.702.8181 (which is always offered next to it). Never hardcoded: it comes from the live
+    /// feed, so it stays current. nil when the alerts give no other number.
+    public static func operatorPhone(_ alerts: [ServiceAlert]) -> PhoneLink? {
+        let official = "tel:+1" + phone.filter(\.isNumber)
+        for a in alerts {
+            if let p = (phoneLinks(a.header) + phoneLinks(a.description)).first(where: { $0.url != official }) { return p }
+        }
+        return nil
+    }
+
     public static func alertBanner(_ alerts: [ServiceAlert]) -> (head: String, line: String)? {
         guard let first = alerts.first else { return nil }
         let n = alerts.count

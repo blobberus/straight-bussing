@@ -140,6 +140,21 @@ final class LiveTextTests: XCTestCase {
         XCTAssertEqual(LiveText.phoneLinks(""), [])
     }
 
+    /// Where no bus reports, the operator's own number (from the live alert, as written) is the primary call;
+    /// 773.702.8181 never counts as it, since it is always offered next to it.
+    func testOperatorPhoneFromTheLiveAlert() {
+        let ugo = ServiceAlert(id: "1", header: "UGo Bus Route Assistance",
+                               description: "During normal service hours, if you do not see arrival times or buses on route in the app, please contact 773-655-9934 for assistance.")
+        XCTAssertEqual(LiveText.operatorPhone([ugo]), LiveText.PhoneLink(shown: "773-655-9934", url: "tel:+17736559934"))
+        let ours = ServiceAlert(id: "2", header: "Safety", description: "Call 773.702.8181 or (773) 702-8181.")
+        XCTAssertNil(LiveText.operatorPhone([ours]), "our official number is not the operator's")
+        XCTAssertEqual(LiveText.operatorPhone([ours, ugo])?.shown, "773-655-9934", "the first other number, in alert order")
+        XCTAssertEqual(LiveText.operatorPhone([ServiceAlert(id: "3", header: "Call 773 555-0101 if no buses show")])?.shown, "773 555-0101",
+                       "a number in the title counts too, as written")
+        XCTAssertNil(LiveText.operatorPhone([ServiceAlert(id: "4", header: "Detour on 55th", description: "Use stop 12 until 4:30.")]))
+        XCTAssertNil(LiveText.operatorPhone([]))
+    }
+
     func testStationSearch() {
         let stops = ["1": Stop(id: "1", name: "57th St. & Metra (NB)", lat: 41.79, lon: -87.59), "2": Stop(id: "2", name: "Regenstein Library (N)", lat: 41.79, lon: -87.6),
                      "3": Stop(id: "3", name: "Garage (no routes)", lat: 41.79, lon: -87.6), "4": Stop(id: "4", name: "Ellis & 57th", lat: 41.79, lon: -87.6)]

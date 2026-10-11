@@ -14,7 +14,9 @@ struct BottomSheet<Content: View>: View {
     static func height(for d: Detent, available: CGFloat) -> CGFloat {
         switch d {
         case .peek: return min(available, 132)
-        case .half: return max(220, available * 0.46)
+        // 48 %: on a 6.1-inch iPhone (393 x 852 pt) the nearest stop with 3 arrivals and the one-line alert row fit
+        // whole under the Current trip title (ship checklist item 3: the next bus in one glance)
+        case .half: return max(220, available * 0.48)
         case .full: return available
         }
     }

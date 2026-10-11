@@ -3,10 +3,10 @@ import Foundation
 /// Simulated live feed for the demo build (`-demo` launch argument): screenshots and the simulator recording
 /// must not depend on whether real shuttles are running. Generated from the bundled static data (so it can
 /// never drift from it): buses placed along each route's stops, moving with time from `epoch`, with trip
-/// updates timed by segments.json. Clearly labeled: it adds a "Demo mode" service alert.
+/// updates timed by segments.json. It never invents a service alert: an alert reads as the operator's own words,
+/// and simulated ones would show in the alert row and Alerts. The app labels the Settings switch mode itself (the
+/// status pill reads "Simulated buses"); the `-demo` launch argument (CI and App Store screenshots) shows none.
 public enum DemoFeed {
-    public static let alertHeader = "Demo mode: simulated buses"
-    public static let alertBody = "These buses are generated for screenshots and testing. They are not live data."
 
     /// Seconds to travel segment i of a route order (loops close back to the first stop).
     static func segSeconds(_ S: StaticData, _ rid: String, _ order: [String]) -> [Double] {
@@ -52,10 +52,18 @@ public enum DemoFeed {
                 trips.append(TripUpdate(trip: .init(tripId: tid, routeId: rid), vehicle: .init(id: vid, label: label), stopTimeUpdates: ups))
             }
         }
-        let alert = ServiceAlert(id: "demo", header: alertHeader, description: alertBody)
         let ts = now - 3
         return FeedPoll(vehicles: .success(Feed(timestamp: ts, entities: buses)),
                         trips: .success(Feed(timestamp: ts, entities: trips)),
-                        alerts: .success(Feed(timestamp: ts, entities: [alert])))
+                        alerts: .success(Feed(timestamp: ts, entities: [ServiceAlert]())))
+    }
+
+    /// A poll where every feed answers but no bus reports, with `alerts` as the alerts feed (the app's `-nobus` CI
+    /// scenario: the no-bus states and the operator's help number).
+    public static func noBus(now: Double, alerts: [ServiceAlert]) -> FeedPoll {
+        let ts = now - 3
+        return FeedPoll(vehicles: .success(Feed(timestamp: ts, entities: [VehiclePosition]())),
+                        trips: .success(Feed(timestamp: ts, entities: [TripUpdate]())),
+                        alerts: .success(Feed(timestamp: ts, entities: alerts)))
     }
 }

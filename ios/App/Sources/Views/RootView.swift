@@ -4,12 +4,12 @@ import UIKit
 import StraightBussingKit
 
 /// Google-Maps-style layout (web v2.4): full-screen map, floating destination search bar with the Settings
-/// gear, the status pill, the demo banner and the map context bar under it, a bottom sheet with three detents
-/// resting on the bottom tab bar.
+/// gear, the status pill and the map context bar under it, a bottom sheet with three detents resting on the bottom
+/// tab bar.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     static let tabBarHeight: CGFloat = 56
-    /// Measured height of the floating chrome above the sheet (search bar, status pill, demo banner, context bar):
+    /// Measured height of the floating chrome above the sheet (search bar, status pill, context bar):
     /// a long stale message or large text makes it taller, and the sheet's full detent must stay below it.
     @State private var chromeH: CGFloat = 50
     /// The keyboard is up: the tab bar steps aside so the sheet keeps its room for suggestions.
@@ -35,7 +35,6 @@ struct RootView: View {
                     VStack(spacing: 8) {
                         if !inDirections { SearchBar() }
                         StatusPill()
-                        DemoBanner()
                         if ctx && !inDirections { ContextBar() }
                     }
                     .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { h in
@@ -106,11 +105,15 @@ struct SearchBar: View {
 }
 
 /// The status pill (web main.js renderPill): stale / failed live data is always flagged, and a fresh empty feed
-/// says whether the schedule has routes in service (ship checklist item 1). Same words as the web.
+/// says whether the schedule has routes in service (ship checklist item 1). Same words as the web. While the
+/// Settings switch simulates buses it reads "Simulated buses" instead (the one quiet indicator; a tap opens
+/// Settings at the switch). The `-demo` launch argument never shows that: its pill is the normal one.
 struct StatusPill: View {
     @Environment(AppModel.self) private var model
     var body: some View {
-        if let p = model.statusPill {
+        if model.simulating {
+            SimulatedPill()
+        } else if let p = model.statusPill {
             HStack(spacing: 8) {
                 Image(systemName: icon(p)).accessibilityHidden(true)
                 // safety text: never truncated (the sheet makes room, RootView measures this stack)
@@ -291,42 +294,30 @@ struct TabBar: View {
     }
 }
 
-/// Shown on every screen while the feed is simulated (Settings > Simulated buses, or the `-demo` launch
-/// argument): simulated buses must never look real (ship checklist item 1). Uses the Kit's demo alert words.
-struct DemoBanner: View {
+/// "Simulated buses": the Settings switch is on (never in `-demo`). Quiet like the info pill, yet never mistaken for
+/// live service (a test-tube symbol and the words); a tap opens Settings at the switch to turn it off.
+struct SimulatedPill: View {
     @Environment(AppModel.self) private var model
     var body: some View {
-        if model.feedSimulated {
-            HStack(spacing: 10) {
-                Image(systemName: "testtube.2").font(.body.weight(.semibold)).foregroundStyle(Palette.warn)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(DemoFeed.alertHeader).font(.footnote.weight(.bold)).foregroundStyle(Palette.text)
-                    Text("Not real shuttles. Times are made up.").font(.caption).foregroundStyle(Palette.text2)
-                }
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityElement(children: .combine)
+        Button { model.openSimulatedSetting() } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "testtube.2").accessibilityHidden(true)
+                Text(AppModel.simulatedPillText).font(.footnote.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
-                if !model.config.demo {
-                    Button { model.setSimulatedBuses(false) } label: {
-                        Text("Turn off").font(.footnote.weight(.bold)).foregroundStyle(Palette.accent)
-                            .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Turn off simulated buses")
-                    .accessibilityIdentifier("demoOff")
-                }
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Palette.text2)
+                    .accessibilityHidden(true)
             }
-            .padding(.leading, 12).padding(.trailing, model.config.demo ? 12 : 4)
-            .padding(.vertical, model.config.demo ? 7 : 0)
+            .foregroundStyle(Palette.text)
+            .padding(.horizontal, 12)
             .frame(minHeight: 44)
-            .background(Palette.warnBg, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                .strokeBorder(Palette.warn.opacity(0.45), lineWidth: 1))
-            .shadow(color: Palette.shadow.opacity(0.12), radius: 4, y: 1)
-            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("demoBanner")
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
         }
+        .buttonStyle(.plain)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        .shadow(color: Palette.shadow.opacity(0.12), radius: 4, y: 1)
+        .accessibilityLabel("Simulated buses, not real shuttles")
+        .accessibilityHint("Opens Settings to turn simulated buses off")
+        .accessibilityIdentifier("simulatedPill")
     }
 }

@@ -72,6 +72,13 @@ struct RoutesView: View {
         return g
     }
 
+    /// No bus is reporting and the list opens with why (the operator's alerts and whom to call): the end-of-list
+    /// contact is left out then, so the screen has one set of call buttons.
+    var noBusHelpShown: Bool {
+        model.routeState.routeFilter == nil && !model.routeList().isEmpty
+            && (model.liveOutage || (model.liveLoaded && model.buses.isEmpty))
+    }
+
     @ViewBuilder var listSections: some View {
         let s = model.routeState
         let g = groups
@@ -103,18 +110,20 @@ struct RoutesView: View {
             }
         } else {
             let empty = model.liveLoaded && model.buses.isEmpty
-            if s.routeFilter == nil && (model.liveOutage || empty) {
+            if noBusHelpShown {
+                // whom to call sits with the operator's alert here (its number first), not at the end of the list
                 Section {
                     if model.liveOutage {
                         EmptyStateView(title: "Live bus status unavailable", message: "Can't reach the shuttle feed. Routes are listed below for reference.",
-                                       operatorAlerts: true)
+                                       showOfficial: true, operatorAlerts: true)
                     } else if model.silentService {
                         EmptyStateView(title: "No live locations right now",
                                        message: Operating.silentText(g.scheduled, routes: model.staticData.routes, service: model.staticData.service,
                                                                      now: model.now, phone: LiveText.phone),
-                                       operatorAlerts: true)
+                                       showOfficial: true, operatorAlerts: true)
                     } else {
-                        EmptyStateView(title: "No shuttles running right now", message: "Routes are listed below for reference.", operatorAlerts: true)
+                        EmptyStateView(title: "No shuttles running right now", message: "Routes are listed below for reference.",
+                                       showOfficial: true, operatorAlerts: true)
                     }
                 }
             }
@@ -140,7 +149,7 @@ struct RoutesView: View {
             if !g.hidden.isEmpty { Section(header: ListHeader(s.journey != nil ? "Not on this trip" : "Hidden")) { ForEach(g.hidden, id: \.self) { RouteRow(rid: $0, hidden: true) } } }
         }
         Section {
-            OfficialContact()
+            if !noBusHelpShown { OfficialContact() }   // one set of call buttons per screen
         } footer: {
             Text("Unofficial app. Schedules come from the published GTFS feed; live positions from the public shuttle feed.")
                 .foregroundStyle(Palette.text2)

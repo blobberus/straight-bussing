@@ -49,12 +49,14 @@ struct AlertsView: View {
 struct AlertRow: View {
     @Environment(AppModel.self) private var model
     let alert: ServiceAlert
+    /// tel: URLs offered elsewhere on the screen (the no-bus help's call buttons): no second button for them here.
+    var hideCalls: Set<String> = []
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: 0) {
                 content
                 // the operator's number (e.g. "please contact 773-655-9934") one tap away, under the text
-                AlertPhoneLinks(text: alert.description, indent: 34)
+                AlertPhoneLinks(text: alert.description, indent: 34, hiding: hideCalls)
             }
         }
     }
@@ -103,8 +105,10 @@ struct AlertRow: View {
 struct AlertPhoneLinks: View {
     let text: String
     var indent: CGFloat = 0
+    /// Numbers (tel: URLs) that already have a call button on the screen.
+    var hiding: Set<String> = []
     var body: some View {
-        let links = LiveText.phoneLinks(text)
+        let links = LiveText.phoneLinks(text).filter { !hiding.contains($0.url) }
         if !links.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(links, id: \.url) { l in
@@ -133,14 +137,21 @@ struct AlertPhoneLinks: View {
 struct OperatorAlerts: View {
     @Environment(AppModel.self) private var model
     var untiedOnly = false
+    /// Numbers with their own call button on the screen (`NoBusHelp`): not repeated in the alert cards.
+    var hideCalls: Set<String> = []
     static let maxShown = 2
+
+    /// The alerts shown in full (the first `maxShown` active ones; `untiedOnly`: those not tied to a route).
+    static func shown(_ active: [ServiceAlert], untiedOnly: Bool) -> [ServiceAlert] {
+        Array(active.filter { !untiedOnly || $0.routeIds.isEmpty }.prefix(maxShown))
+    }
 
     var body: some View {
         let act = model.activeAlerts.filter { !untiedOnly || $0.routeIds.isEmpty }
         if !act.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 SectionTitle(text: "From the shuttle operator")
-                ForEach(act.prefix(Self.maxShown)) { a in AlertRow(alert: a) }
+                ForEach(act.prefix(Self.maxShown)) { a in AlertRow(alert: a, hideCalls: hideCalls) }
                 if act.count > Self.maxShown {
                     Button("All \(act.count) service alerts") { model.openAlerts() }
                         .font(.subheadline.weight(.semibold)).frame(minHeight: 44)
@@ -152,6 +163,24 @@ struct OperatorAlerts: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Service alerts from the shuttle operator")
             .accessibilityIdentifier("operatorAlerts")
+        }
+    }
+}
+
+/// Where no bus is reporting (feed down, silent scheduled service, nothing running): the operator's alerts in full
+/// (their words as they are, "UGo" included), then whom to call (owner decision 2026-10-11). A number in those alerts
+/// is the primary call, labeled for its purpose ("Call bus route help: 773-655-9934", the number as written there),
+/// and 773.702.8181 the secondary "Safety or urgent" call; with no number there, 773.702.8181 stays the primary call.
+/// The number always comes from the live feed (Kit `LiveText.operatorPhone`), never from the app, so it stays current.
+struct NoBusHelp: View {
+    @Environment(AppModel.self) private var model
+    var untiedOnly = false
+    var body: some View {
+        let phone = LiveText.operatorPhone(OperatorAlerts.shown(model.activeAlerts, untiedOnly: untiedOnly))
+        VStack(spacing: 4) {
+            // the operator's number is the primary call below: no second button for it (or ours) in the alert card
+            OperatorAlerts(untiedOnly: untiedOnly, hideCalls: Set([phone?.url, OfficialContact.telURL].compactMap { $0 }))
+            OfficialContact(operatorPhone: phone).padding(.top, 4)
         }
     }
 }

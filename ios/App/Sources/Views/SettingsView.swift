@@ -16,12 +16,6 @@ struct SettingsView: View {
         NavigationStack {
             ScrollViewReader { proxy in
                 Form {
-                    if model.feedSimulated {
-                        // the sheet covers the map's banner: simulated buses are labeled here too
-                        Section { DemoBanner() }
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                    }
                     Section { ThemePicker() } header: { ListHeader("Appearance") }
                     alertsSection
                     busAlerts
@@ -32,7 +26,7 @@ struct SettingsView: View {
                     } header: {
                         ListHeader("iPhone app")
                     } footer: {
-                        Text("A Live Activity shows your bus on the Lock Screen and in the Dynamic Island: stops away, a self-updating countdown and the next stops. It updates while the app is open; locked-phone updates need a push server (planned).")
+                        Text("A Live Activity shows your bus on the Lock Screen and in the Dynamic Island: stops away, the arrival time and the next stops. Times are whole minutes, never seconds; from iOS 18 the minutes count down on their own. It updates while the app is open; locked-phone updates need a push server (planned), so 2 minutes after the last update it says the data is delayed.")
                             .foregroundStyle(Palette.text2)
                     }
                     demoSection
@@ -65,8 +59,9 @@ struct SettingsView: View {
                 }
                 .tint(Palette.accent)
                 .task {
-                    // `-screen settingsdemo` (simulator screenshots): open at the Demo section
-                    guard model.config.screen == "settingsdemo" else { return }
+                    // the "Simulated buses" pill (and `-screen settingsdemo`): open at the Demo section
+                    guard model.settingsAtDemo else { return }
+                    model.settingsAtDemo = false
                     try? await Task.sleep(nanoseconds: 400_000_000)
                     proxy.scrollTo("demoToggle", anchor: .top)
                 }
@@ -82,22 +77,22 @@ struct SettingsView: View {
     // MARK: Simulated buses
 
     /// "Simulated buses (demo)" (App Review guideline 2.1: reviewers may open the app when no shuttle runs). Off by
-    /// default, never saved; while on, every screen says so and live data is neither shown nor mixed in.
+    /// default, never saved; while on, the status pill says "Simulated buses" and live data is neither shown nor
+    /// mixed in. The switch shows the session's switch state, also under `-demo` (which simulates without a label).
     var demoSection: some View {
         Section {
-            Toggle(isOn: Binding(get: { model.feedSimulated }, set: { model.setSimulatedBuses($0) })) {
+            Toggle(isOn: Binding(get: { model.simulating }, set: { model.setSimulatedBuses($0) })) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Simulated buses (demo)")
                     Text("Made-up buses for trying every feature when no shuttle runs").font(.caption).foregroundStyle(Palette.text2)
                 }
             }
-            .disabled(model.config.demo)
             .id("demoToggle")
             .accessibilityIdentifier("simulatedBuses")
         } header: {
             ListHeader("Demo")
         } footer: {
-            Text("While this is on, every screen says \u{201C}\(DemoFeed.alertHeader)\u{201D}, no live data is shown or mixed in, a started trip ends and bus alerts pause. It turns off when the app restarts or after 15 minutes in the background.")
+            Text("While this is on, the status pill on the map reads \u{201C}\(AppModel.simulatedPillText)\u{201D} (tap it to come back here), a Live Activity says \u{201C}Simulated (demo)\u{201D}, no live data is shown or mixed in, a started trip ends and bus alerts pause. It turns off when the app restarts or after 15 minutes in the background.")
                 .foregroundStyle(Palette.text2)
         }
     }

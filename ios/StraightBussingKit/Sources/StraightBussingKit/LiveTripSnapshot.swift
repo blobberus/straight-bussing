@@ -45,8 +45,39 @@ public struct LiveTripSnapshot: Codable, Hashable, Sendable {
         self.alightIndex = alightIndex; self.live = live; self.asOf = asOf; self.headlineLead = headlineLead
     }
 
-    /// Minutes until `target` (floored, >= 0).
-    public func minutes(now: Double) -> Int { max(0, Int(((target - now) / 60).rounded(.down))) }
+    /// Minutes until `target` (floored, >= 0; junk numbers never trap), the app's ETA rule (`TimeFmt.minsUntil`).
+    public func minutes(now: Double) -> Int { max(0, TimeFmt.minsUntil(target, from: now)) }
+
+    // MARK: Lock Screen timing (whole minutes only; ship checklist item 2: no invented precision)
+
+    /// Under this many seconds before `target` the arrival reads "Now" (the app's EtaText: "Now" under a minute).
+    public static let dueWithinS = 60.0
+    /// Content older than this is drawn as stale ("~", "Data delayed"): nothing updates a local Live Activity while
+    /// the app is not running (no push server).
+    public static let maxAgeS = 120.0
+
+    /// The arrival is under a minute away at `now` ("Now"). Two seconds of slack: the system redraws the activity at
+    /// `staleDate`, possibly a moment early, and that redraw is the one that must say "Now".
+    public func isDue(now: Double) -> Bool { !(target - now >= Self.dueWithinS + 2) }
+
+    /// When ActivityKit should redraw this content as stale: `maxAgeS` after `asOf`, or earlier, at the moment the
+    /// countdown reaches its last minute (the only redraw the system makes without the app; from then on the
+    /// activity says "~Now" with "Data delayed" instead of counting into "0 min" on old data).
+    public func staleDate(maxAge: Double = LiveTripSnapshot.maxAgeS) -> Double {
+        let fresh = asOf + maxAge, due = target - Self.dueWithinS
+        guard due.isFinite, due > asOf, due < fresh else { return fresh }
+        return due
+    }
+
+    /// The clock time of `target` ("6:37 PM", Chicago time; '' when unknown).
+    public var clock: String { TimeFmt.clock(target) }
+
+    /// The iOS 17 Live Activity's minutes, which cannot count down by themselves: "4 min as of 6:33 PM" (the minutes
+    /// when the content was computed, said as such). "Now as of 6:33 PM" under a minute.
+    public var minutesAsOfText: String {
+        let m = minutes(now: asOf)
+        return (m < 1 ? "Now" : "\(m) min") + " as of " + TimeFmt.clock(asOf)
+    }
 
     /// Compact Dynamic Island text: "3 stops · 4 min" / "Next stop" / "2 left · 6 min".
     public func compactText(now: Double) -> String {
@@ -69,6 +100,8 @@ public struct LiveTripSnapshot: Codable, Hashable, Sendable {
     public func sameContent(as other: LiveTripSnapshot, targetTolerance: Double = 20) -> Bool {
         var a = self, b = other
         guard abs(a.target - b.target) <= targetTolerance else { return false }
+        // the Lock Screen shows the arrival clock ("6:37 PM"): a few seconds across a minute change it
+        guard a.clock == b.clock else { return false }
         a.asOf = 0; b.asOf = 0
         a.target = 0; b.target = 0
         return a == b

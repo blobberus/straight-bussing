@@ -68,8 +68,8 @@ struct RouteDetailView: View {
                     }
                 }
                 if n == 0 && model.liveLoaded && model.buses.isEmpty {
-                    OperatorAlerts(untiedOnly: true)   // this route's own alerts are under Schedule changes
-                    OfficialContact()
+                    // this route's own alerts are under Schedule changes; the operator's number, if given, is the primary call
+                    NoBusHelp(untiedOnly: true)
                 }
                 if ids.isEmpty {
                     EmptyStateView(title: "No stops listed", message: "The schedule has no stops for this route.")

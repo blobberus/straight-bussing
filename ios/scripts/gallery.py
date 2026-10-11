@@ -9,7 +9,7 @@ import json
 import os
 
 CAPTIONS = {
-    "01-current": "Current trip: favorites, nearest stops with Leave-in guidance (no trip started)",
+    "01-current": "Current trip at the half detent: the nearest stop and its next buses first, alert row, then more (no trip started)",
     "02-trip": "Trip started: Google-Maps-style stop timeline with the live bus",
     "03-trip-full": "Trip timeline, sheet expanded: walk, bus stops with ETAs, walk",
     "04-directions": "Directions: options ranked least walking > earliest arrival > shortest wait",
@@ -24,15 +24,20 @@ CAPTIONS = {
     "13-myroutes-delete-confirm": "Delete asks for confirmation (UI test)",
     "14-place-search": "On-device place search: 'chipotle' (UI test)",
     "15-trip-started": "Directions > Start > trip timeline (UI test)",
-    "16-alerts": "Service alerts: severity, routes, time window (demo alert)",
+    "16-alerts": "Service alerts (the demo feed has none: it never invents an operator alert)",
     "17-pick": "Routes to station: nearest stops ringed on the map",
     "18-search": "Place search with a spelling fix: 'regnstien' -> Showing results for Regenstein",
     "19-custom": "Custom route detail: showing on the map, routes with live status, Highlight",
     "20-editor": "Custom route editor: name, routes grouped by live status, Save / Delete",
     "21-order": "Routes: Edit map order (drag handles, routes higher are drawn on top)",
-    "22-settingsdemo": "Settings: Simulated buses (demo) switch, privacy policy link",
-    "23-simulated-settings": "Simulated buses switched on in Settings: the demo banner appears (UI test, no -demo)",
-    "24-simulated-routes": "Simulated buses: the demo banner with Turn off on every tab (UI test)",
+    "22-settingsdemo": "Settings: Simulated buses (demo) switch on, privacy policy link",
+    "23-simulated-settings": "Simulated buses switched on in Settings (UI test, no -demo)",
+    "24-simulated-routes": "Simulated buses: the status pill reads Simulated buses on every tab, a tap opens the switch (UI test)",
+    "25-current-noloc": "Current trip without a location: Use my location first, the station search next",
+    "26-nobus": "No bus reporting: the operator's alert in full, its number as the primary call, 773.702.8181 for safety or urgent",
+    "27-nobus-stop": "Stop with no bus reporting: the same help and calls",
+    "28-livestates": "Live Activity arrival states: the minute format, iOS 18+ self-updating minutes, iOS 17 clock with minutes as of the update",
+    "29-livestates-end": "Live Activity arrival states, continued: last minute (Now) and no update for 2 minutes (~clock, data delayed)",
     "30-current-text": "Larger text (largest standard size, AX3): Current trip",
     "31-trip-text": "Larger text: trip in progress (sheet expanded: stop rail)",
     "32-stop-text": "Larger text: stop detail with arrivals",
@@ -94,7 +99,7 @@ def main():
         if figs:
             store = ('<h2 style="margin-top:1.4rem">App Store screenshots</h2>'
                      f'<p class="meta">6.9-inch display set{(" from " + html.escape(device)) if device else ""}, light mode, PNG without alpha '
-                     "(App Store Connect scales it down for smaller iPhones). Simulated buses, labeled in every frame as in the app. "
+                     "(App Store Connect scales it down for smaller iPhones). Simulated buses, shown the way riders see real service. "
                      "Click a picture for the full-size file.</p>"
                      f'<div class="pair store">{"".join(figs)}</div>')
     files = sorted(f for f in os.listdir(a.dir) if f.endswith(".png"))

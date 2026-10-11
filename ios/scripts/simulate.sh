@@ -53,6 +53,11 @@ for mode in light dark; do
   shot 20-editor       "$mode" 8  -screen editor
   shot 21-order        "$mode" 8  -screen order -detent full
   shot 22-settingsdemo "$mode" 9  -screen settingsdemo
+  shot 25-current-noloc "$mode" 9 -screen current -noloc
+  shot 26-nobus        "$mode" 9  -screen current -nobus -detent full
+  shot 27-nobus-stop   "$mode" 9  -screen stop -nobus -detent full
+  shot 28-livestates   "$mode" 10 -screen livestates
+  shot 29-livestates-end "$mode" 10 -screen livestatesend
 done
 
 # Larger text (Dynamic Type): key rows must wrap, never clip or slide under the sheet. Light mode, the largest
@@ -95,8 +100,8 @@ record dark
 xcrun simctl terminate "$UDID" "$BID" >/dev/null 2>&1 || true
 
 # App Store screenshots: one 6.9-inch set (smaller iPhones are scaled from it), light mode, no alpha channel.
-# Simulated buses, labeled as such like everywhere in the app. Never fails the preview: skipped if the runner
-# image has no 6.9-inch simulator.
+# Simulated buses from -demo, shown as riders see real service (no demo label: owner decision 2026-10-11). Never
+# fails the preview: skipped if the runner image has no 6.9-inch simulator.
 STORE_UDID="$(python3 "$HERE/pick_simulator.py" --store || true)"
 if [ -n "$STORE_UDID" ]; then
   xcrun simctl shutdown "$UDID" >/dev/null 2>&1 || true   # one booted simulator at a time (runner memory)

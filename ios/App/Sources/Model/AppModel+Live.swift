@@ -49,8 +49,10 @@ extension AppModel {
             if st == .denied, self.pendingMe != nil { self.pendingMe = nil; self.dirMeDenied = true }
         }
         if config.demo {
-            user = DemoConfig.origin
-            locState = .granted
+            if !config.noLocation {   // -noloc: the "Use my location" first state
+                user = DemoConfig.origin
+                locState = .granted
+            }
             seedDemo()
         } else {
             locState = location.state
@@ -118,7 +120,9 @@ extension AppModel {
     func pollOnce() async {
         let poll: FeedPoll
         let gen = feedGeneration
-        if feedSimulated {
+        if config.noBus {
+            poll = DemoConfig.noBusPoll(now: Date().timeIntervalSince1970)
+        } else if feedSimulated {
             poll = DemoFeed.poll(staticData: staticData, now: Date().timeIntervalSince1970, epoch: epoch)
         } else {
             let started = Date().timeIntervalSince1970
@@ -568,7 +572,8 @@ extension AppModel {
         location.setTripMode(true)
         refreshTrip()
         if notify.liveActivity, let snap = tripFollow?.snapshot(staticData: staticData, now: now) {
-            liveActivity.start(title: "To \(label)", state: snap, simulated: feedSimulated)
+            // labeled "Simulated (demo)" only for the Settings switch; `-demo` screenshots look like real use
+            liveActivity.start(title: "To \(label)", state: snap, simulated: simulating)
             lastActivityPush = (snap: snap, at: Date().timeIntervalSince1970)
         }
         fit(planPoints(o))
@@ -595,12 +600,14 @@ extension AppModel {
     static let activityRefreshS = 60.0
 
     /// Send `snap` to the Live Activity only when what it shows changed (asOf ignored, countdown targets within
-    /// 20 s count as equal) or the last update is `activityRefreshS` old. ActivityKit updates cost battery
-    /// and the system budgets them; the countdown ticks on its own in between.
+    /// 20 s and the same clock minute count as equal), the arrival entered its last minute ("Now") since the last
+    /// update, or the last update is `activityRefreshS` old. ActivityKit updates cost battery and the system budgets
+    /// them; on iOS 18 the whole minutes count down on their own in between.
     func pushLiveActivity(_ snap: LiveTripSnapshot, force: Bool = false) {
         guard liveActivity.isRunning else { return }
         let t = Date().timeIntervalSince1970
-        if !force, let last = lastActivityPush, last.snap.sameContent(as: snap), t - last.at < Self.activityRefreshS { return }
+        if !force, let last = lastActivityPush, last.snap.sameContent(as: snap), t - last.at < Self.activityRefreshS,
+           last.snap.isDue(now: last.at) == snap.isDue(now: t) { return }
         liveActivity.update(snap)
         lastActivityPush = (snap: snap, at: t)
     }
@@ -618,7 +625,8 @@ extension AppModel {
     func seedDemo() {
         var s = routeState
         s.customRoutes = DemoConfig.customRoutes(staticData)
-        s.favStops = DemoConfig.favoriteStops.filter { staticData.stops[$0] != nil }
+        // -noloc shows the state with nothing to go on: no location and no favorite stop
+        s.favStops = config.noLocation ? [] : DemoConfig.favoriteStops.filter { staticData.stops[$0] != nil }
         routeState = s
         notify.stopId = DemoConfig.favoriteStops.first
     }
@@ -642,7 +650,7 @@ extension AppModel {
             case "directions": _ = await openDirections(to: demoDestination)?.value
             case "stop": push(.stop(DemoConfig.stopForDetail))
             case "settings": showSettings = true
-            case "liveactivity":
+            case "liveactivity", "livestates", "livestatesend":   // livestates: every arrival state of the card (CI only)
                 _ = await openDirections(to: demoDestination)?.value
                 if let o = dir.result?.options.first(where: { !$0.busLegs.isEmpty }) { startTrip(o, label: demoDestination.label) }
                 showLiveActivityPreview = true
@@ -655,7 +663,10 @@ extension AppModel {
             case "custom": select(.myroutes); apply(Custom.applyCustom(routeState, "demo-commute")); push(.customRoute("demo-commute"))
             case "editor": select(.myroutes); push(.editCustom("demo-commute"))
             case "order": select(.routes); editingOrder = true
-            case "settingsdemo": showSettings = true   // SettingsView scrolls to the Demo section
+            case "settingsdemo":   // the switch as a rider turns it on (status pill "Simulated buses"); Settings opens at it
+                simulating = true
+                refreshStatus()
+                openSimulatedSetting()
             case "pick": pickMode = .loc; push(.pick)
             case "search":
                 openDirections()

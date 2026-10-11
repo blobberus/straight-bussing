@@ -35,6 +35,7 @@ struct TripTimelineView: View {
                     .accessibilityAddTraits(.updatesFrequently)
             }
             NowCardView(progress: p)
+            AlertsBanner()   // one line, under the trip's next step (Current trip keeps the next bus first)
             Card {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(p.legs.enumerated()), id: \.offset) { item in

@@ -3,6 +3,12 @@ import StraightBussingKit
 
 /// Live Activity building blocks, shared by the widget extension (real lock screen / Dynamic Island) and the
 /// app (in-app preview screen, used for simulator screenshots).
+///
+/// Times are whole minutes, never seconds (ship checklist item 2: no invented precision), and must stay right
+/// while the app is not running: nothing updates the activity then (local updates, `pushType: nil`). So the
+/// system draws it only at each update and once more at its stale date (Kit `LiveTripSnapshot.staleDate`: 120 s
+/// after the data, or when the arrival enters its last minute), and everything in between either counts by itself
+/// (iOS 18+) or is said "as of" the last update (iOS 17).
 
 /// Route badge in the route's color.
 struct LiveRouteChip: View {
@@ -20,68 +26,110 @@ struct LiveRouteChip: View {
     }
 }
 
-/// Self-ticking countdown to `target` (no updates needed while the phone is locked).
-struct LiveCountdown: View {
-    let state: LiveTripSnapshot
-    var font: Font = .system(size: 30, weight: .bold, design: .rounded)
-    var body: some View {
-        let now = Date()
-        let target = Date(timeIntervalSince1970: state.target)
-        if target > now {
-            Text(timerInterval: now...target, countsDown: true, showsHours: false)
-                .font(font).monospacedDigit().multilineTextAlignment(.trailing)
-        } else {
-            Text("Now").font(font)
-        }
+/// What the arrival shows when the system draws the activity (`now` = that moment).
+enum LiveETAMode: Equatable {
+    /// Under a minute: "Now" ("~Now" when stale), the clock under it.
+    case due
+    /// No update for 120 s: "~6:37 PM", no minutes (never a count on old data).
+    case staleClock
+    /// iOS 18+: whole minutes the system counts down itself ("4 min"), the clock under it.
+    case countdown
+    /// iOS 17 (no minute-precision self-updating text): the clock as the main value, "4 min as of 6:33 PM" under it.
+    case clockAsOf
+
+    static func of(_ s: LiveTripSnapshot, isStale: Bool, now: Double = Date().timeIntervalSince1970) -> LiveETAMode {
+        if s.isDue(now: now) { return .due }
+        if isStale { return .staleClock }
+        if #available(iOS 18.0, *) { return .countdown }
+        return .clockAsOf
     }
 }
 
-/// Dynamic Island compact trailing: "3 stops 4:12" with a timer the system ticks itself, so the minutes never
-/// freeze while the app is in the background (they used to be baked into the text at update time). Stale
-/// content (no update for 120 s) is dimmed and marked "~", like stale times everywhere else in the app.
+/// Whole minutes to `target` that the system keeps current by itself (iOS 18 `TimeDataSource`): "4 min", floored
+/// like every ETA in the app (`Date.ComponentsFormatStyle` with the minute field only: never seconds). The range
+/// ends at the target, so it never counts below "0 min"; the redraw at the stale date says "Now" before that.
+@available(iOS 18.0, *)
+struct LiveMinutes: View {
+    let target: Double
+    var body: some View {
+        Text(TimeDataSource<Range<Date>>.dateRange(endingAt: Date(timeIntervalSince1970: target)),
+             format: Date.ComponentsFormatStyle(style: .abbreviated, locale: .autoupdatingCurrent, calendar: .autoupdatingCurrent, fields: [.minute]))
+    }
+}
+
+/// The arrival, right-aligned: main value + one small line (see `LiveETAMode`).
+struct LiveETA: View {
+    let state: LiveTripSnapshot
+    var isStale = false
+    var mainFont: Font = .system(size: 30, weight: .bold, design: .rounded)
+    var maxWidth: CGFloat = 130
+    /// nil = decided when drawn; set only by the CI states screen (LiveActivityStatesView).
+    var mode: LiveETAMode? = nil
+    var body: some View {
+        let mode = self.mode ?? LiveETAMode.of(state, isStale: isStale)
+        VStack(alignment: .trailing, spacing: 1) {
+            Group {
+                switch mode {
+                case .due: Text((isStale ? "~" : "") + "Now")
+                case .staleClock: Text("~" + state.clock)
+                case .countdown:
+                    if #available(iOS 18.0, *) { LiveMinutes(target: state.target) } else { Text(state.clock) }
+                case .clockAsOf: Text(state.clock)
+                }
+            }
+            .font(mainFont)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .multilineTextAlignment(.trailing)
+            .frame(maxWidth: maxWidth, alignment: .trailing)
+            switch mode {
+            case .due, .countdown: Text(state.clock).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            case .clockAsOf: Text(state.minutesAsOfText).font(.caption2).foregroundStyle(.secondary)
+            case .staleClock: EmptyView()
+            }
+        }
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Dynamic Island compact trailing: "3 stops 4 min" (iOS 18: minutes the system counts down; the stop count is
+/// the last update's), "6:37 PM" on iOS 17, "Now" under a minute, "~6:37 PM" when stale (dimmed). Never seconds.
 struct LiveCompactTrailing: View {
     let state: LiveTripSnapshot
     var isStale = false
+    var mode: LiveETAMode? = nil
     var body: some View {
-        let now = Date()
-        let target = Date(timeIntervalSince1970: state.target)
+        let mode = self.mode ?? LiveETAMode.of(state, isStale: isStale)
         HStack(spacing: 3) {
-            if !state.compactPrefix.isEmpty { Text(state.compactPrefix) }
-            if isStale { Text("~") }
-            if target > now {
-                Text(timerInterval: now...target, countsDown: true, showsHours: false)
-                    .monospacedDigit()
-                    .multilineTextAlignment(.trailing)
-                    .frame(minWidth: 24, maxWidth: 40, alignment: .trailing)
-            } else {
-                Text("now")
+            switch mode {
+            case .due: Text((isStale ? "~" : "") + "Now")
+            case .staleClock: Text("~" + state.clock)
+            case .countdown:
+                if !state.compactPrefix.isEmpty { Text(state.compactPrefix) }
+                if #available(iOS 18.0, *) {
+                    LiveMinutes(target: state.target)
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: 46, alignment: .trailing)
+                }
+            case .clockAsOf: Text(state.clock)
             }
         }
         .font(.caption2.weight(.semibold))
+        .monospacedDigit()
         .lineLimit(1)
         .opacity(isStale ? 0.6 : 1)
         .accessibilityElement(children: .combine)
     }
 }
 
-/// The trip headline without frozen numbers: a time-based headline ("Next 53RD at Reynolds Club in about
-/// 4 min") is shown as its words plus a self-ticking timer; stop-based headlines have no minutes and stay text.
+/// The trip headline without numbers that would freeze: a time-based headline ("Next 53RD at Reynolds Club in about
+/// 4 min") is shown as its words only ("Next 53RD at Reynolds Club"), since the arrival sits right next to it; stop-
+/// based headlines ("Bus 101 is 3 stops away") stay as they are.
 struct LiveHeadline: View {
     let state: LiveTripSnapshot
-    var isStale = false
-    var body: some View {
-        let now = Date()
-        let target = Date(timeIntervalSince1970: state.target)
-        if let lead = state.headlineLead {
-            if target > now && !isStale {
-                Text(verbatim: lead + " in ") + Text(timerInterval: now...target, countsDown: true, showsHours: false)
-            } else {
-                Text(lead)
-            }
-        } else {
-            Text(state.headline)
-        }
-    }
+    var body: some View { Text(state.headlineLead ?? state.headline) }
 }
 
 /// The next stops as dots on a line with the bus between them (Google-Maps-style, horizontal).
@@ -141,6 +189,18 @@ struct TripProgressBar: View {
     }
 }
 
+/// The footer line of the Lock Screen card and the expanded Dynamic Island: what the times rest on.
+enum LiveFooter {
+    /// "est. from live data · as of 6:33 PM" (one middle dot); the "as of" moves to the minutes on iOS 17
+    /// ("4 min as of 6:33 PM"), so it is not said twice.
+    static func text(_ s: LiveTripSnapshot, isStale: Bool, simulated: Bool, mode: LiveETAMode? = nil) -> String {
+        if simulated { return "Simulated buses (demo), not real" }
+        if isStale { return "Data delayed, times may be off" }
+        let source = "est. from \(s.live ? "live data" : "the schedule")"
+        return (mode ?? LiveETAMode.of(s, isStale: isStale)) == .clockAsOf ? source : source + " · as of " + TimeFmt.clock(s.asOf)
+    }
+}
+
 /// Lock Screen / banner presentation of the trip.
 struct LiveTripLockScreenView: View {
     let title: String
@@ -148,21 +208,21 @@ struct LiveTripLockScreenView: View {
     var isStale = false
     /// A simulated bus (Settings > Simulated buses): said instead of the live-data source.
     var simulated = false
+    var mode: LiveETAMode? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 LiveRouteChip(state: state)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    LiveHeadline(state: state, isStale: isStale).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    LiveHeadline(state: state).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
                 Spacer(minLength: 4)
-                LiveCountdown(state: state)
+                LiveETA(state: state, isStale: isStale, mode: mode)
             }
             TripProgressBar(state: state)
             HStack(spacing: 4) {
-                Text(simulated ? "Simulated buses (demo), not real" : isStale ? "Data delayed, times may be off"
-                     : "est. from \(state.live ? "live data" : "the schedule") · as of \(Self.clock(state.asOf))")
+                Text(LiveFooter.text(state, isStale: isStale, simulated: simulated, mode: mode))
                 Spacer()
                 Text("Unofficial")
             }
@@ -171,7 +231,4 @@ struct LiveTripLockScreenView: View {
         }
         .opacity(isStale ? 0.75 : 1)
     }
-
-    /// "4:12 PM" through the Kit's cached formatter (no DateFormatter allocation per render).
-    static func clock(_ t: Double) -> String { TimeFmt.clock(t) }
 }
