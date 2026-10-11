@@ -36,9 +36,9 @@ CAPITALS); never paste the contents of the .p8 key into a chat.
    roles, and a key's role can't be changed later. **Download API Key** (`AuthKey_XXXXXXXXXX.p8`, it downloads only
    once: keep it in your password manager). Copy the **Key ID** (in the key's row) and the **Issuer ID** (above the
    list).
-6. [ ] **Create the `appstore` environment.** 2 min. https://github.com/blobberus/straight-bussing/settings/environments
-   > New environment > `appstore` > Configure environment. Tick **Required reviewers**, add `blobberus`, Save
-   protection rules. Deployment branches and tags > Selected branches and tags > Add deployment branch or tag rule:
+6. [ ] **Create the `appstore` environment.** 2 min. Open
+   https://github.com/blobberus/straight-bussing/settings/environments, then New environment > `appstore` >
+   Configure environment. Tick **Required reviewers**, add `blobberus`, Save protection rules. Deployment branches and tags > Selected branches and tags > Add deployment branch or tag rule:
    `main` (Ref type Branch), then `v*` (Ref type Tag). Every upload then waits for your click, so no script, agent or
    leaked token can use the Admin key without you. (Claude could not create it: changing repository settings needs
    your permission.)
@@ -52,14 +52,14 @@ CAPITALS); never paste the contents of the .p8 key into a chat.
    In PowerShell instead of Git Bash, the last line is
    `[Convert]::ToBase64String([IO.File]::ReadAllBytes("$HOME\Downloads\AuthKey_KEYID12345.p8")) | gh secret set ASC_KEY_P8 -R blobberus/straight-bussing --env appstore`.
    Check: `gh secret list -R blobberus/straight-bussing --env appstore` shows the three names (never the values).
-8. [ ] **Run the release.** 2 min of clicks, then about 20 to 30 min of build (est.). https://github.com/blobberus/straight-bussing/actions/workflows/ios-release.yml
-   > Run workflow > Branch main, **Dry run unticked** > Run workflow (or `gh workflow run ios-release.yml -R
-   blobberus/straight-bussing`). Open the run > **Review deployments** > tick appstore > Approve and deploy. A missing
+8. [ ] **Run the release.** 2 min of clicks, then about 20 to 30 min of build (est.). Open
+   https://github.com/blobberus/straight-bussing/actions/workflows/ios-release.yml, then Run workflow > Branch main,
+   **Dry run unticked** > Run workflow (or `gh workflow run ios-release.yml -R blobberus/straight-bussing`). Open the run > **Review deployments** > tick appstore > Approve and deploy. A missing
    secret, a rejected key, unregistered ids or a missing app record stop the run in the first minutes with a message
    that says what to do. When it is green, Apple processes the build and emails you (minutes to an hour, est.). Later
    releases: the same, or push a tag `v1.0.1` after Claude bumps the version.
-9. [ ] **Install it from TestFlight on your iPhone.** 10 min, then 1 to 2 weeks of riding with it. App Store Connect
-   > Apps > Straight Bussing > TestFlight > Internal Testing > (+) > group `Me` > add yourself > add the build. Install
+9. [ ] **Install it from TestFlight on your iPhone.** 10 min, then 1 to 2 weeks of riding with it. In App Store
+   Connect: Apps > Straight Bussing > TestFlight > Internal Testing > (+) > group `Me` > add yourself > add the build. Install
    **TestFlight** from the App Store, open the invite, Install. Go through the QA list in step 22 and tell Claude what
    is off; every fix is one more run of step 8 (the build number goes up by itself).
 10. [ ] **Make the support form.** 2 min. Recipe: "Support form" below. Paste the pre-filled link into
@@ -82,8 +82,8 @@ CAPITALS); never paste the contents of the .p8 key into a chat.
       screenshot).
     - **Version Release**: Manually release this version.
 12. [ ] **Submit for review.** 2 min. Version page > Build > Add Build (or +) > pick the TestFlight build > Add for
-    Review > Submit to App Review. Apple reviews half of all submissions within 24 hours and 90% within 48. If it is rejected, paste
-    the message to Claude (section 4 has the replies).
+    Review > Submit to App Review. Apple reviews half of all submissions within 24 hours and 90% within 48. If it is
+    rejected, paste the message to Claude (section 4 has the replies).
 13. [ ] **Release.** 1 min. When the status is Pending Developer Release: Release This Version. Tell Claude, who adds
     the App Store link to the web About and `CLAUDE.md`.
 
