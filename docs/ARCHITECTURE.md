@@ -92,7 +92,7 @@ export async function loadStatic(store, {base?, fetch?}?): Promise<{failed:strin
 export function startLive(store, {intervalMs=10000, fetch?, keepAlive?, ...}): {stop(), pollNow(), failures(), delay()}   // polls the 3 Passio JSON feeds (BASE https://passio3.com/chicago/passioTransit/gtfs/realtime/<name>.json?_=ts, cache:'no-store'), sets live fields; failure keeps last data and sets failed:true; pause when document.hidden (unless keepAlive() is true: bus alerts with notifications allowed), poll on visible; fetch = the demo feed in demo mode
 // data/demo.js (demo mode only, 2026-10-10; port of the iOS Kit DemoFeed.swift)
 export function demoRoutes(state, nowS): {rids, scheduled}   // routes scheduled now (service.json); none scheduled -> every route (scheduled:false)
-export function demoFeeds(state, nowS, {epoch, segments?, cache?}): {vehiclePositions, tripUpdates, serviceAlerts}   // Passio-shaped GTFS-rt JSON: per route its scheduled peak (busCount, 1..3) evenly spaced, moving along the road shape (map/geometry.js alongShape) on segments.json times (else 18 km/h), trip updates for the next 14 stops, one "Demo mode: simulated buses" alert; deterministic in (nowS - epoch)
+export function demoFeeds(state, nowS, {epoch, segments?, cache?}): {vehiclePositions, tripUpdates, serviceAlerts}   // Passio-shaped GTFS-rt JSON: per route its scheduled peak (busCount, 1..3) evenly spaced, moving along the road shape (map/geometry.js alongShape) on segments.json times (else 18 km/h), trip updates for the next 14 stops, no service alerts; deterministic in (nowS - epoch)
 export function demoFetch(store, {now?, epoch?, segments?}): fetchLike   // answers the 3 feed URLs from demoFeeds after static data loads; never touches the network (no mixing with live data); other URLs 404
 // data/geocode.js
 export function searchPlaces(q, {signal}): Promise<{items:[{label, sub, lat, lon}], error?:string}>   // never throws (error: 'aborted'|'timeout'|'network'|'http <status>'|'bad response'); <3 chars -> {items:[]} with no request; in-memory cache; 400 ms debounce helper debounce(fn, ms) exported too (.cancel(), .flush())
@@ -418,8 +418,8 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   {demo})` adds `.pilltap` (`data-action="demo:info"`, info mark; its `::after` makes the whole 44 px pill the target).
   `ui/demo.js` registers `demo:info`: `confirmDialog({title: "Simulated buses", body: DEMO_BODY + " Nothing you change in the
   demo is saved.", confirmLabel: "Show live buses", cancelLabel: "Keep demo"})` (ui/confirm.js gained `cancelLabel`, default
-  "Cancel"); yes -> `demoDeps.go(exitDemoHref(location))` (reload without `?demo=1`). The simulated feed keeps its "Demo
-  mode: simulated buses" service alert (iOS DemoFeed parity). Demo state is still never stored.
+  "Cancel"); yes -> `demoDeps.go(exitDemoHref(location))` (reload without `?demo=1`). The simulated feed has no service
+  alerts (owner, 2026-10-11: the pill is the one demo indicator; iOS DemoFeed matches). Demo state is still never stored.
 - **Current trip order** (`ui/views/nearby.js`, regions `nearby-alert|trip|next|loc|alt|results`, patched from one table):
   1. the alert row, ONE line (`alerts.js alertBanner`: icon, "Service alert: <first title>" cut with an ellipsis, chevron; the
   full title is in its label); 2. the trip in progress (`entryHTML`: timeline + Trip steps + "Routes to station…", as before),

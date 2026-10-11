@@ -18,8 +18,8 @@ Only that exact parameter turns it on; nothing else does and nothing is stored, 
 - Buses are simulated from the published schedule (`web/js/data/demo.js`): the routes scheduled right now, each with its
   scheduled peak (1 to 3 buses) moving along the road shapes on the scheduled segment times; when no route is scheduled
   (early morning) every route runs so the screen is never empty. The real Passio feed is never fetched in a demo session.
-- An amber "Demo mode: simulated buses" banner sits on top of every screen with **Exit demo** (same page without the
-  parameter); a matching service alert says the buses are not live data.
+- The status pill reads **Simulated buses** on every screen (no banner, no demo service alert, owner decision 2026-10-11).
+  Tap it for what this means and **Show live buses** (same page without the parameter).
 - Settings changes made in the demo (hidden routes, theme, custom routes) last only until the page is closed; the saved
   settings stay as they were. Bus alerts, the service worker and offline caching are off in demo mode.
 - Use it for screenshots, reviews and testing the UI when no shuttle runs. Never for riding.

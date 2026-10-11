@@ -9,7 +9,8 @@
  *   from `epoch` (deterministic: the same second always gives the same positions);
  * - positions follow the road shape between stops (map/geometry.js alongShape), heading from the road;
  * - each bus has a trip update predicting its next 14 stops (10 s dwell), with matching trip and vehicle ids;
- * - one service alert "Demo mode: simulated buses" (core/demo.js DEMO_TITLE / DEMO_BODY) is always present.
+ * - no service alerts (owner decision 2026-10-11: the status pill "Simulated buses" is the one demo indicator;
+ *   the iOS DemoFeed has none either).
  * Output is GTFS-realtime JSON in Passio's shape; demoFetch() serves it to data/live.js in place of the network,
  * so the whole app runs unchanged and the real feed is never fetched (simulated and live data never mix).
  */
@@ -17,7 +18,6 @@ import { alongShape, pathLength, distM } from "../map/geometry.js";
 import { hav, bearing } from "../core/geo.js";
 import { routeOrder } from "../core/notify.js";
 import { isScheduledNow } from "../core/schedule.js";
-import { DEMO_TITLE, DEMO_BODY } from "../core/demo.js";
 
 /** Most simulated buses on one route. */
 export const MAX_BUSES = 3;
@@ -105,7 +105,6 @@ export function pointAlong(p, f) {
   return { lat, lon, bearing: Math.round(bearing({ lat: a[0], lon: a[1] }, { lat: b[0], lon: b[1] })) % 360 };
 }
 
-const text = (s) => ({ translation: [{ text: s, language: "en" }] });
 
 /**
  * The three simulated feeds at `now`.
@@ -143,7 +142,7 @@ export function demoFeeds(state, now, { epoch, segments = null, cache = new Map(
   return {
     vehiclePositions: { header, entity: vehicles },
     tripUpdates: { header, entity: updates },
-    serviceAlerts: { header, entity: [{ id: "demo", alert: { header_text: text(DEMO_TITLE), description_text: text(DEMO_BODY), active_period: [], informed_entity: [] } }] },
+    serviceAlerts: { header, entity: [] },
   };
 }
 

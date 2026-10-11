@@ -9,7 +9,6 @@ import { isScheduledNow } from '../js/core/schedule.js';
 import { operatingBuses } from '../js/core/operating.js';
 import { routeOrder } from '../js/core/notify.js';
 import { load, save, remove, useMemoryOverlay, memoryOverlay } from '../js/core/storage.js';
-import { DEMO_TITLE } from '../js/core/demo.js';
 
 const NIGHT = 1791702000;   // Sun 2026-10-11 2:00 AM Chicago: the night routes are scheduled
 let real = null;
@@ -59,9 +58,7 @@ test('demo feed: the routes scheduled now run their peak (1 to 3 buses), on the 
   eq(new Set(buses.map((b) => b.vehicle.id)).size, buses.length, 'unique vehicles');
   const op = operatingBuses(buses, { routes: state.routes, service: state.service, trips, feedTs: f.vehiclePositions.header.timestamp, nowS: NIGHT, staticLoaded: true });
   eq(op.length, buses.length, 'every simulated bus counts as operating (live predictions), also at night');
-  eq(alerts.length, 1);
-  eq(alerts[0].header_text.translation[0].text, DEMO_TITLE);
-  ok(/not live data/.test(alerts[0].description_text.translation[0].text), 'says it is not live');
+  eq(alerts.length, 0, 'no demo service alert: the pill is the one indicator');
 });
 
 test('demo feed: when no route is scheduled (early morning), every route runs so the demo is never empty', async () => {
@@ -111,7 +108,7 @@ test('demo fetch: answers the three feed URLs without the network, waits for sta
     store.set({ staticLoaded: true });
     const r = await p;
     ok(r.ok && r.status === 200 && (await r.json()).entity.length >= 1, 'vehicles');
-    eq((await (await f('https://passio3.com/chicago/passioTransit/gtfs/realtime/serviceAlerts.json?_=2')).json()).entity[0].id, 'demo');
+    eq((await (await f('https://passio3.com/chicago/passioTransit/gtfs/realtime/serviceAlerts.json?_=2')).json()).entity, [], 'alerts feed answered, empty');
     eq((await f('https://example.com/other.json')).status, 404);
     eq(seen.filter((u) => /passio3|example\.com/.test(u)), [], 'never fetched the network');
   } finally { globalThis.fetch = realFetch; }
@@ -128,7 +125,7 @@ test('demo fetch + live.js: the app store fills with simulated buses and never m
     const s = store.get();
     ok(s.liveLoaded && !s.failed && s.buses.length >= 1 && s.trips.length === s.buses.length, 'buses + trips: ' + s.buses.length);
     ok(s.buses.every((b) => String(b.vehicle.id).startsWith('demo-')), 'only simulated vehicles');
-    eq(s.alerts.map((a) => a.header_text.translation[0].text), [DEMO_TITLE]);
+    eq(s.alerts, [], 'no service alerts in the simulated feed');
     eq(calls.length, 3);
   } finally { live.stop(); }
 });

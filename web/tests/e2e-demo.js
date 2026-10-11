@@ -70,8 +70,7 @@ test("demo: simulated buses everywhere, the live feed is never fetched", async (
   const tok = (el, k) => W.getComputedStyle(el).getPropertyValue(k).trim().toLowerCase();
   const dark = $("#map").classList.contains("sb-dark");
   eq(tok($("#map"), "--sb-accent"), tok(D.documentElement, dark ? "--accent" : "--accent-fill"), "map blue = the UI accent token (" + (dark ? "dark" : "light") + ")");
-  const al = await waitFor(() => $('#content [data-region="nearby-alert"]') && txt($('#content [data-region="nearby-alert"]')).includes("Demo mode") && $('#content [data-region="nearby-alert"]'), "demo service alert on Current trip");
-  ok(txt(al).includes("Demo mode: simulated buses"), txt(al));
+  ok(!txt($("#content")).includes("Demo mode"), "no demo banner or demo service alert on Current trip");
 });
 
 test("demo: tapping the pill explains; Keep demo stays, Show live buses reloads without ?demo=1", async () => {
