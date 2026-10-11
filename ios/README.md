@@ -179,22 +179,23 @@ Measure, don't guess: `StraightBussingKit/Tests/StraightBussingKitTests/Benchmar
 10 runs, release build) covers the hot paths, and `UITests/LaunchPerformanceUITests.swift` the app launch in the
 simulator (demo build). CI prints both tables in the run summary. GitHub's Mac runners differ from run to run, so
 the before / after below comes from one A/B job that benchmarked the old Kit (7055eb3) and the new one on the same
-machine, interleaved twice (best of the two rounds; milliseconds per block):
+machine, interleaved twice (best of the two rounds; milliseconds per block). The last column is the same benchmark
+in the green main run that shipped it (run 38094622240 at 60ac493, best of 10, another runner), as a cross-check:
 
-| Benchmark (one block) | before | after | change |
-|---|---:|---:|---|
-| Place search: 17 queries, letter by letter + typos | 73.8 | 9.7 | 7.6x faster (0.57 ms a query) |
-| ... 9 queries typing a name | 32.6 | 5.0 | 6.6x faster |
-| ... 8 typos, nicknames, categories | 42.9 | 5.7 | 7.5x faster |
-| Launch: places.json + search index (off the main thread) | 35.9 | 24.4 | 32% less |
-| Launch: bundled schedule decode (off the main thread) | 4.6 | 4.7 | same (code unchanged) |
-| Stations: 17 name matches + 20 nearest-stop lookups | 6.0 | 3.8 | 36% less |
-| Directions: plan 3 trips (off the main thread) | 7.0 | 5.7 | 19% less |
-| Directions: refine 3 plans (instant router) | 0.14 | 0.16 | same |
-| Per poll: decode the 3 feeds (busy weekday) | 1.7 | 1.6 | same (code unchanged) |
-| Per poll: merge + operating filter + arrival index | 0.30 | 0.49 | runner noise: code unchanged, the old code itself measured 0.30 and 0.91 |
-| Per poll: follow a started trip 10 times | 0.34 | 0.94 | runner noise: code unchanged, old 0.34 and 0.85 |
-| Map: road paths of 99 bus rides | 1.65 | 1.65 | same |
+| Benchmark (one block) | before | after | change | main run |
+|---|---:|---:|---|---:|
+| Place search: 17 queries, letter by letter + typos | 73.8 | 9.7 | 7.6x faster (0.57 ms a query) | 10.4 |
+| ... 9 queries typing a name | 32.6 | 5.0 | 6.6x faster | 4.9 |
+| ... 8 typos, nicknames, categories | 42.9 | 5.7 | 7.5x faster | 6.1 |
+| Launch: places.json + search index (off the main thread) | 35.9 | 24.4 | 32% less | 25.8 |
+| Launch: bundled schedule decode (off the main thread) | 4.6 | 4.7 | same (code unchanged) | 4.7 |
+| Stations: 17 name matches + 20 nearest-stop lookups | 6.0 | 3.8 | 36% less | 3.5 |
+| Directions: plan 3 trips (off the main thread) | 7.0 | 5.7 | 19% less | 6.0 |
+| Directions: refine 3 plans (instant router) | 0.14 | 0.16 | same | 0.35 |
+| Per poll: decode the 3 feeds (busy weekday) | 1.7 | 1.6 | same (code unchanged) | 1.5 |
+| Per poll: merge + operating filter + arrival index | 0.30 | 0.49 | runner noise: code unchanged, the old code itself measured 0.30 and 0.91 | 0.76 |
+| Per poll: follow a started trip 10 times | 0.34 | 0.94 | runner noise: code unchanged, old 0.34 and 0.85 | 1.04 |
+| Map: road paths of 99 bus rides | 1.65 | 1.65 | same | 1.60 |
 
 What each block is: launch = decode the bundled web/data / places.json plus the search index; per poll = decode the
 three feeds of a busy weekday (the real snapshot x3: 33 buses, 45 trips), merge + operating filter + arrival index,
@@ -207,10 +208,10 @@ App launch in the CI simulator (iPhone 17 Pro, iOS 26.5, debug build, demo mode;
 runs were on different runner machines, so read them as "no regression", not as a speed-up; the launch path itself
 did not change (decode off the main thread before and after):
 
-| UI timing | before (old app) | after |
+| UI timing | before (old app, run 38075346530) | after (main run 38094622240) |
 |---|---:|---:|
-| Launch to first frame (`XCTApplicationLaunchMetric`, 5 runs) | 4.58 / 3.26 | 3.05 / 2.54 |
-| Launch to "next bus at the nearest stop" shown (3 runs, includes XCUITest's idle waits) | 8.36 / 7.25 | 6.89 / 6.59 |
+| Launch to first frame (`XCTApplicationLaunchMetric`, 5 runs) | 4.58 / 3.26 | 4.09 / 2.40 |
+| Launch to "next bus at the nearest stop" shown (3 runs, includes XCUITest's idle waits) | 8.36 / 7.25 | 6.59 / 5.92 |
 
 On a real iPhone a release build is several times faster; the simulator numbers are for spotting regressions.
 
