@@ -118,7 +118,7 @@ Island compact "53RD | 3 stops · 4 min", expanded progress bar + boarding/aligh
 - Stop detail, Settings (theme, service alerts, bus alerts with routes, in-app switch, status and the notification
   permission state, Live Activity switch + preview, Simulated buses (demo), privacy + Privacy policy link), About
   (unofficial notice, Call 773.702.8181, official page, appearance, privacy incl. Photon, Apple walking
-  directions and the daily schedule check, Privacy policy and Help and bug reports links, credits "OpenFreeMap · OpenMapTiles · OpenStreetMap"
+  directions and the daily schedule check, Privacy policy and Contact support links, credits "OpenFreeMap · OpenMapTiles · OpenStreetMap"
   without the copyright sign, plus Apple Maps), Live Activity preview screen. Bus alerts arrive as local
   notifications while the app is open, or as an in-app banner when notifications are off.
 - **Simulated buses (demo)** (Settings > Demo; `Model/AppModel+Simulation.swift`), for App Review (guideline 2.1) and
@@ -143,7 +143,7 @@ Main Quad, separate wiped prefs), `-screen current|trip|routes|route|myroutes|di
 2. `ios/scripts/bootstrap.sh` (renders the icon, runs `xcodegen generate`), then `open ios/StraightBussing.xcodeproj`.
 3. Pick an iPhone simulator, Run. For simulated buses add `-demo` under Product > Scheme > Edit Scheme > Arguments.
 4. Kit tests: `cd ios/StraightBussingKit && swift test` (or the Test action in Xcode on the package).
-5. On a real iPhone: set your Team and a real bundle id (see checklist), then Run. Live Activities need iOS 16.1+;
+5. On a real iPhone: set your Team (the bundle id is `SB_BUNDLE_ID` in `project.yml`), then Run. Live Activities need iOS 16.1+;
    the Dynamic Island needs an iPhone 14 Pro or later.
 
 ## What CI does (.github/workflows/ios.yml, `macos-26` runner = Xcode 26, free for this public repo)
@@ -173,6 +173,15 @@ tools 5.9); the run summary lists every Swift warning in our sources.
    `_site/ios/` (the web app deploys exactly as before when the branch is missing).
 4. On `main`, if the repo secret `APPETIZE_API_TOKEN` exists, `scripts/appetize.py` uploads the same simulator `.app`
    to Appetize.io and the gallery gets "Try it live" buttons (live buses / simulated buses via `-demo` / dark mode).
+
+**App Store builds** come from a second workflow, `.github/workflows/ios-release.yml` (2026-10-11; manual or a `v*`
+tag): an unsigned Release archive (`scripts/release_archive.sh`, which also checks ids, versions, the iOS 26 SDK,
+privacy manifest, bundled data, icon and dSYMs), then `xcodebuild -exportArchive` with automatic cloud signing and the
+App Store Connect API key (`ExportOptions.plist`: `app-store-connect`, `destination upload`), straight to TestFlight.
+`scripts/asc.py` checks the key, registers the bundle ids and finds the app record first (tests:
+`scripts/test_asc.py`). Its `dry_run` input builds the archive without any secret: first green dry run
+[38170005267](https://github.com/blobberus/straight-bussing/actions/runs/38170005267) (Xcode 26.6, iOS 26.5 SDK, all
+archive checks ok). Setup and the reasons: docs/APPSTORE-SUBMIT.md ("Nathan's checklist", step 13).
 
 ## Performance (measured, 2026-10-10)
 
@@ -374,7 +383,7 @@ Web status as of 2026-10-10 (web parity port; contracts in docs/ARCHITECTURE.md 
 | `Views/DirectionsView.swift` OptionCard | Start hint adds "Follow the bus stop by stop in Current trip, on the Lock Screen and in the Dynamic Island." | ported the web part: "… Follow the bus stop by stop in Current trip." |
 | `Views/MyRoutesView.swift` | Long-press context menu Details / Edit / Delete (web: "•••" More button); favorites reorder by drag (web: up / down buttons) | skipped: swipe + More cover the same actions (a long press fights text selection and the swipe), up / down buttons stay. iOS dropped its Settings row too (2026-10-10, same reason: the gear is on screen) |
 | `Model/AppModel+Simulation.swift`, Settings > Demo | "Simulated buses (demo)" switch (session only, off after 15 min in the background); banner with Turn off on every screen, in Settings and in the Live Activity preview; a Live Activity says "Simulated (demo)" | web: `?demo=1` instead of a switch (row above); banner "Exit demo" |
-| `Views/AboutView.swift`, `Views/SettingsView.swift` | "Privacy policy" (privacy.html) and "Help and bug reports" (support.html) links | ported: one line under the web About's privacy list (sw `sb-v2-32`) |
+| `Views/AboutView.swift`, `Views/SettingsView.swift` | "Privacy policy" (privacy.html) and "Contact support" (support.html?contact=1 with the app details for the support form, 2026-10-11) links | ported: one line under the web About's privacy list (sw `sb-v2-32`) |
 | `Views/PickView.swift` | Routes to station rows "2 min walk (119 m) · N, E" | not yet: pick.js `walkText` + " · " makes two middle dots ("2 min walk · 119 m · N, E") |
 | `Views/CurrentTripView.swift` locBlock | Location denied offers "Open iOS Settings" (web: "Try location again") | skipped: iOS only (a web page can't open browser settings) |
 | `Views/RootView.swift` StatusPill | Distinct icons per state (feed error, delayed, no live locations, no shuttles) | ported (`ui/pill.js`): wifi off / clock alert / antenna off / bus, always with the words |
@@ -405,31 +414,51 @@ Web status as of 2026-10-10 (web parity port; contracts in docs/ARCHITECTURE.md 
 
 ## App Store checklist status
 
-- [ ] Bundle id: placeholder `com.example.straightbussing` (+ `.widgets`) in `project.yml`; set the real one after
-      Apple Developer enrollment ($99/yr, see docs/APPSTORE.md).
-- [x] Privacy manifest `App/Resources/PrivacyInfo.xcprivacy`: no tracking, no tracking domains, no collected data;
-      UserDefaults reason CA92.1. Update it if push tokens are ever sent to a server. Walking-leg endpoints (rounded
-      to ~10 m) go to Apple's MapKit directions service, not to us; re-check the App Privacy answers at submission.
-      Typed place text goes to photon.komoot.io only when the on-device index has < 5 matches or the rider taps
-      "Search for … instead" (the typed text or its spelling fix, never your location);
-      decide at submission whether the App Privacy label lists it as "Search History, not linked to you". The daily
-      schedule check fetches public files from blobberus.github.io and sends nothing about the user (no data
-      collected).
+Nathan's part is the ordered list "Nathan's checklist" at the top of docs/APPSTORE-SUBMIT.md (2026-10-11).
+
+- [x] Permission: **granted** by UChicago Transportation / Passio (owner statement, 2026-10-11). Attach the written
+      permission in App Store Connect > App Review Information > Attachment; the review notes say it is attached.
+      Permission is not endorsement: "unofficial" and "not affiliated with or endorsed by" stay in the app, the pages
+      and the listing.
+- [x] Bundle id `io.github.blobberus.straightbussing` (widget `.widgets`, UI tests `.uitests`): one setting,
+      `SB_BUNDLE_ID` in `project.yml`; `ios.yml`, `scripts/simulate.sh` and `scripts/appetize.py` read it from the built
+      app. No entitlements, app groups or keychain groups use it. Version `MARKETING_VERSION` 1.0.0; the build number
+      is set by CI.
+- [x] Signing + TestFlight lane: `.github/workflows/ios-release.yml` (unsigned Release archive, cloud-signed export,
+      upload to App Store Connect), Release config with automatic signing and `DEVELOPMENT_TEAM` from `APPLE_TEAM_ID`,
+      Debug unsigned for the simulator CI. Dry run green (run 38170005267). Waiting for Nathan: Apple account, app
+      record, Admin API key, `appstore` environment, secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` and the
+      variable `APPLE_TEAM_ID`.
+- [x] App Privacy: **Data Not Collected** (owner decision 2026-10-11; reasons in docs/APPSTORE-SUBMIT.md step 17).
+      Location and search stay on the device, or go to a third party (Apple Maps for the rounded walking-leg ends,
+      photon.komoot.io for typed place text when the on-device index has < 5 matches) only at the rider's request, with
+      nothing linked to them and nothing kept by us; the support form is optional, opened in Safari outside the app and
+      sent only by the rider's own Submit (Apple's optional-disclosure case "optional feedback forms or customer service
+      requests"); the daily schedule check fetches public files from blobberus.github.io and sends nothing about the
+      user. Update the label if push tokens, analytics or crash SDKs are ever added.
+- [x] Privacy manifest `App/Resources/PrivacyInfo.xcprivacy` matches (re-checked 2026-10-11): no tracking, no tracking
+      domains, no collected data; the only required-reason API is UserDefaults (CA92.1). The widget uses none.
 - [x] Location usage string (`NSLocationWhenInUseUsageDescription`), asked only when the user taps "Use my location".
       The location is used on the device; the one exception is the rounded start of a walking leg (your location, when
       a trip starts there), sent with its end to Apple MapKit for sidewalk directions. No background location.
 - [x] `NSSupportsLiveActivities`, `ITSAppUsesNonExemptEncryption = NO`, portrait iPhone, `straightbussing://` URL scheme.
 - [x] Icon from `web/icons` (1024 px opaque PNG rendered at build time). Launch screen color.
 - [x] No tracking, no ads, no account, no third-party SDKs.
-- [x] Unofficial notice, official phone/link in About and empty/error states; every time labeled "est.".
+- [x] Unofficial notice, official phone/link in About and empty/error states; every time labeled "est.". Owner
+      decisions 2026-10-11: operator alert text is shown verbatim, "UGo" included; when no bus reports, the operator's
+      number from the live alert is the primary call and 773.702.8181 the secondary; Low Power Mode polls every 20 s.
 - [x] Privacy policy https://blobberus.github.io/straight-bussing/privacy.html and support page `/support.html`
-      (`web/privacy.html`, `web/support.html`), linked in the app (About, Settings > Privacy). Use the same URLs in App
-      Store Connect (App Privacy > Privacy Policy URL; version page > Support URL).
+      (`web/privacy.html`, `web/support.html`), linked in the app (About, Settings). Use the same URLs in App Store
+      Connect (App Privacy > Privacy Policy URL; version page > Support URL).
+- [x] Support (owner decision 2026-10-11: a Google Form): "Contact support" in Settings and About opens
+      `support.html?contact=1&app=ios&v=<version (build)>&os=<iOS version on model>` in Safari (`SiteLinks.supportContact`,
+      `Views/SupportLink.swift`); the page fills in "Straight Bussing iPhone app 1.0.0 (12), iOS 26.1 on iPhone17,1" and
+      forwards to the form once Nathan pastes its pre-filled link into `web/support-form.js` (recipe:
+      docs/APPSTORE-SUBMIT.md "Support form"). Until then it offers GitHub Issues.
 - [x] App Store screenshots: CI makes one 6.9-inch set (iPhone 17 Pro Max simulator, 1320 x 2868, PNG without alpha)
       in the preview's `store/` folder. That is the only required iPhone size: App Store Connect scales it for smaller
       displays, and the 6.5-inch sizes are only required when no 6.9-inch set is uploaded (Apple's screenshot
-      specifications; docs/APPSTORE-SUBMIT.md step 19). They show simulated buses, labeled "Demo mode: simulated
-      buses" like everywhere in the app.
+      specifications; docs/APPSTORE-SUBMIT.md step 19). Owner decision 2026-10-11: no demo banner in them; simulated
+      buses are labeled by the status pill ("Simulated buses").
 - [x] Reviewer access at any hour: Settings > Demo > Simulated buses (demo) (D7 in docs/APPSTORE-SUBMIT.md).
-- [ ] Signing + TestFlight lane (App Store Connect API key in CI secrets).
-- [ ] Written permission from UChicago Transportation / Passio (UNRESOLVED; do not submit publicly before it).
+- [ ] Real-iPhone QA on the first TestFlight build (docs/APPSTORE-SUBMIT.md step 22).

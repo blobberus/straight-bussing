@@ -4,6 +4,10 @@ Researched 2026-10-07. Items marked (est.) are not verified from a first-party p
 
 **Step-by-step registration and submission (enrollment, signing without a Mac, App Store Connect, TestFlight, review): `docs/APPSTORE-SUBMIT.md`.**
 
+Update 2026-10-11: UChicago Transportation / Passio gave permission (owner statement), the cloud-signed release pipeline
+exists (`.github/workflows/ios-release.yml`, no certificate or profile to make by hand), and the App Privacy label is
+"Data Not Collected". What is left is Nathan's checklist at the top of `docs/APPSTORE-SUBMIT.md`.
+
 Corrected 2026-10-10 (re-checked against Apple's pages for APPSTORE-SUBMIT.md): the iPhone app is now native SwiftUI
 (`ios/`), so the Capacitor recommendation in section 3 is superseded; App Review times now come from Apple's own
 figures; the fee-waiver rule, D-U-N-S timing and the rights guideline number (5.2.2, not 5.2.3) were fixed; Codemagic
@@ -40,7 +44,7 @@ prices are confirmed from Codemagic's docs; Xcode Cloud, cloud Mac minimums and 
 
 ### Third-party data, naming and IP (4.1, 5.2)
 - Do not use "UChicago", "University of Chicago", "Maroon" or the university logos or colors as branding. 4.1 (copycats) and 5.2 (IP) cover impersonation. Use a neutral name such as "Straight Bussing" and state "Unofficial, not affiliated with the University of Chicago" in the description and the app.
-- Passio data: the feed is public but unlicensed for redistribution as far as I found. Passio's terms or the university's transportation office may object, and 5.2.2 (third-party services: "Authorization must be provided upon request") / 5.2.1 (trademarks) let Apple reject or pull an app on a rights complaint. Mitigation: email UChicago Transportation (Department of Safety and Security) and Passio for written permission (attach it in App Review Information > Attachment; APPSTORE-SUBMIT.md step 1), cache politely through your proxy and rate-limit, show attribution, and keep a takedown plan. Treat this as the biggest non-technical risk.
+- Passio data: the feed is public but unlicensed for redistribution as far as I found. Passio's terms or the university's transportation office may object, and 5.2.2 (third-party services: "Authorization must be provided upon request") / 5.2.1 (trademarks) let Apple reject or pull an app on a rights complaint. Mitigation: email UChicago Transportation (Department of Safety and Security) and Passio for written permission (attach it in App Review Information > Attachment; APPSTORE-SUBMIT.md step 1), cache politely through your proxy and rate-limit, show attribution, and keep a takedown plan. Treat this as the biggest non-technical risk. Resolved 2026-10-11: permission granted (owner statement); the app stays labeled unofficial.
 - Privacy nutrition label: if location is used only on-device and nothing is sent to your server, declare "Data Not Collected". If the proxy logs IPs or you send push tokens, declare Identifiers and Diagnostics as needed. Also provide a privacy policy URL, and a privacy manifest if you use any SDK or API that Apple requires one for.
 - TestFlight steps: enroll, create the App ID and the App Store Connect record, build and upload via Xcode or CI (signing certificates and provisioning), add internal testers (up to 100, no review), then add external testers (the first build needs a short Beta App Review, usually about a day). Builds expire after 90 days.
 
