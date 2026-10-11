@@ -23,7 +23,7 @@ import { silentService, scheduledRoutes, silentText } from "../../core/operating
 import { stopsNear, matchStations, walkText, OFFICIAL_HTML, ICONS } from "./pick.js";
 import { createPlaceSearch, placeListHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
 import { effectiveHidden } from "../../core/visibility.js";
-import { alertBanner } from "./alerts.js";
+import { alertBanner, operatorAlertsHTML } from "./alerts.js";
 import { catchNote, stopWalkMin } from "./tripinfo.js";
 import { isPlanJourney } from "./journey.js";
 import { tripProgressHTML } from "./tripprogress.js";
@@ -55,11 +55,11 @@ function soonest(state, now) {
 const NO_LIVE = "Live times unavailable";
 function noService(state, now) {
   // a feed outage is not a service outage: never claim "no shuttles" without live data
-  if (liveUnknown(state, now)) return emptyState(NO_LIVE, "Can't reach the shuttle feed, so we can't tell which shuttles are running. Check with the official service.") + OFFICIAL_HTML;
+  if (liveUnknown(state, now)) return emptyState(NO_LIVE, "Can't reach the shuttle feed, so we can't tell which shuttles are running. Check with the official service.") + operatorAlertsHTML(state, now) + OFFICIAL_HTML;
   if ((state.buses || []).length) return emptyState("No upcoming arrivals", "No bus on your visible routes has a predicted arrival right now.") + OFFICIAL_HTML;
   // fresh but empty feed while routes are scheduled: GPS off or service ended early, we can't tell (rider safety)
-  if (silentService(state, now)) return emptyState("No live locations right now", silentText(state, scheduledRoutes(state, now, { hidden: effectiveHidden(state) }), now, OFFICIAL_PHONE)) + OFFICIAL_HTML;
-  return emptyState("No shuttles running right now", "Check the official schedule for service hours.") + OFFICIAL_HTML;
+  if (silentService(state, now)) return emptyState("No live locations right now", silentText(state, scheduledRoutes(state, now, { hidden: effectiveHidden(state) }), now, OFFICIAL_PHONE)) + operatorAlertsHTML(state, now) + OFFICIAL_HTML;
+  return emptyState("No shuttles running right now", "Check the official schedule for service hours.") + operatorAlertsHTML(state, now) + OFFICIAL_HTML;
 }
 
 /**

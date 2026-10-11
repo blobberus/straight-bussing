@@ -38,6 +38,43 @@ function windowText(a, now) {
 }
 
 /**
+ * Escaped alert text with its phone numbers as call links ("773-655-9934" -> tel:+17736559934), so a rider
+ * can call the number an operator alert gives in one tap.
+ * @param {string} text plain text
+ * @returns {string} HTML
+ */
+export function alertBodyHTML(text) {
+  return esc(text).replace(/(^|[^\d])(\(?\d{3}\)?[ .-]?\d{3}[.-]\d{4})(?!\d)/g,
+    (m, pre, num) => `${pre}<a href="tel:+1${num.replace(/\D/g, "")}">${num}</a>`);
+}
+
+/** One alert as a list item (Alerts view and operatorAlertsHTML). */
+function alertItem(a, state, now) {
+  const title = alertText(a.header_text) || "Service alert", body = alertText(a.description_text);
+  const rids = [...new Set((a.informed_entity || []).map((e) => e?.route_id).filter((r) => r && state.routes?.[r]))];
+  const severe = /SEVERE|WARNING/i.test(String(a.severity_level || "")) || /detour|cancel|suspend|closed/i.test(title);
+  const when = windowText(a, now);
+  return `<li class="v-alert${severe ? " is-severe" : ""}"><span class="v-alertic">${severe ? WARN : INFO}</span><div class="v-grow"><p class="v-prim">${severe ? '<span class="v-sr">Important: </span>' : ""}${esc(title)}</p>${body ? `<p class="v-sec v-alertbody">${alertBodyHTML(body)}</p>` : ""}${rids.length || when ? `<p class="v-alertmeta">${rids.map((r) => routeChip(r, state.routes)).join("")}${when ? `<span class="v-sec">${esc(when)}</span>` : ""}</p>` : ""}</div></li>`;
+}
+
+/**
+ * The operator's active alerts in full, for the screens that say no bus is reporting (feed down, empty feed while
+ * routes are scheduled, no shuttles running): the operator posts what to do then (for example a number to call
+ * when buses do not show), so it sits next to our official-service links. '' when there is none.
+ * @param {object} state
+ * @param {number} [now]
+ * @param {{rid?:string, max?:number}} [o] rid: route detail (only alerts not tied to a route; its own are listed there)
+ * @returns {string}
+ */
+export function operatorAlertsHTML(state, now = nowS(), { rid = null, max = 2 } = {}) {
+  let act = activeAlerts(state, now);
+  if (rid) act = act.filter((a) => !(a.informed_entity || []).some((e) => e && e.route_id));
+  if (!act.length) return "";
+  const more = act.length > max ? `<button type="button" class="v-link v-opmore" data-action="alerts:open">All ${act.length} service alerts</button>` : "";
+  return `<section class="v-opalerts" aria-label="Service alerts from the shuttle operator"><h3 class="v-h">From the shuttle operator</h3><ul class="v-alertlist">${act.slice(0, max).map((a) => alertItem(a, state, now)).join("")}</ul>${more}</section>`;
+}
+
+/**
  * Render the alerts view.
  * @param {object} state
  * @param {number} [now] unix seconds
@@ -49,15 +86,7 @@ export function renderAlerts(state, now = nowS()) {
   else {
     const act = activeAlerts(state, now);
     if (!act.length) h += emptyState("No active alerts", "Service changes will show up here.");
-    else {
-      h += '<ul class="v-alertlist">' + act.map((a) => {
-        const title = alertText(a.header_text) || "Service alert", body = alertText(a.description_text);
-        const rids = [...new Set((a.informed_entity || []).map((e) => e?.route_id).filter((r) => r && state.routes?.[r]))];
-        const severe = /SEVERE|WARNING/i.test(String(a.severity_level || "")) || /detour|cancel|suspend|closed/i.test(title);
-        const when = windowText(a, now);
-        return `<li class="v-alert${severe ? " is-severe" : ""}"><span class="v-alertic">${severe ? WARN : INFO}</span><div class="v-grow"><p class="v-prim">${severe ? '<span class="v-sr">Important: </span>' : ""}${esc(title)}</p>${body ? `<p class="v-sec v-alertbody">${esc(body)}</p>` : ""}${rids.length || when ? `<p class="v-alertmeta">${rids.map((r) => routeChip(r, state.routes)).join("")}${when ? `<span class="v-sec">${esc(when)}</span>` : ""}</p>` : ""}</div></li>`;
-      }).join("") + "</ul>";
-    }
+    else h += '<ul class="v-alertlist">' + act.map((a) => alertItem(a, state, now)).join("") + "</ul>";
     if (state.failed) h += '<p class="v-foot v-foot--warn">Alerts may be out of date: the shuttle feed is not responding.</p>';
   }
   h += '<button type="button" class="v-row v-aboutrow" data-action="about:open"><span class="v-ic" aria-hidden="true">' + INFO + '</span><span class="v-grow"><span class="v-prim">About this app</span><span class="v-sec">Unofficial. Privacy, theme, official contact</span></span></button>';

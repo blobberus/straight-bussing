@@ -22,6 +22,7 @@ import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibi
 import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, cleanName } from "../../core/custom.js";
 import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { OFFICIAL_HTML } from "./pick.js";
+import { operatorAlertsHTML } from "./alerts.js";
 import { stationToggleHTML } from "./journey.js";
 import { attachOrderDrag } from "./routes-drag.js";
 
@@ -189,8 +190,8 @@ export function listHTML(state, now = nowS()) {
   const total = g.running.length + g.scheduled.length + g.idle.length + g.hidden.length;
   if (!total) return h + (state.routeFilter ? emptyState("No routes at this station", "Clear the filter to see every route.") : emptyState("No routes", "The schedule data did not load. Reload the app.") + OFFICIAL_HTML);
   const unknown = liveUnknown(state, now), empty = state.liveLoaded && !(state.buses || []).length;   // unknown: feed unreachable, we cannot say a route is not running
-  if (unknown && !state.routeFilter) h += emptyState("Live bus status unavailable", "Can't reach the shuttle feed. Routes are listed below for reference.");
-  else if (empty && !state.routeFilter) h += silentService(state, now) ? emptyState("No live locations right now", silentText(state, g.scheduled, now, OFFICIAL_PHONE)) : emptyState("No shuttles running right now", "Routes are listed below for reference.");
+  if (unknown && !state.routeFilter) h += emptyState("Live bus status unavailable", "Can't reach the shuttle feed. Routes are listed below for reference.") + operatorAlertsHTML(state, now);
+  else if (empty && !state.routeFilter) h += (silentService(state, now) ? emptyState("No live locations right now", silentText(state, g.scheduled, now, OFFICIAL_PHONE)) : emptyState("No shuttles running right now", "Routes are listed below for reference.")) + operatorAlertsHTML(state, now);
   h += bulkHTML(state, g);
   const group = (title, ids, hidden, cls) => (ids.length ? `<h3 class="v-h">${title}</h3><div class="v-list${cls ? " " + cls : ""}">${ids.map((i) => row(state, i, hidden, now)).join("")}</div>` : "");
   h += group("Running", g.running, false, "");

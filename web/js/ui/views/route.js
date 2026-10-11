@@ -17,6 +17,7 @@ import { hoursOn, isScheduledNow, weekSummary, upcomingChanges, busesByHour, gro
 import { emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { noLiveStatus } from "../../core/operating.js";
 import { OFFICIAL_HTML } from "./pick.js";
+import { operatorAlertsHTML } from "./alerts.js";
 
 const STALE_BUS_S = 60;
 const DAY_NAME = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
@@ -163,7 +164,7 @@ export function renderRoute(state, now = nowS()) {
   if (hidden) h += state.journey
     ? '<div class="v-note"><span class="v-grow v-sec">This route is not part of the current journey, so it is hidden on the map.</span></div>'
     : `<div class="v-note"><span class="v-grow v-sec">This route is hidden from the map and arrival times.</span><button type="button" class="v-btn v-btn--quiet" data-action="routes:toggle" data-id="${esc(rid)}">Show</button></div>`;
-  if (!n && state.liveLoaded && !(state.buses || []).length) h += OFFICIAL_HTML;
+  if (!n && state.liveLoaded && !(state.buses || []).length) h += operatorAlertsHTML(state, now, { rid }) + OFFICIAL_HTML;
   if (!ids.length) return h + emptyState("No stops listed", "The schedule has no stops for this route.") + renderService(state, rid, now) + "</div>";
   const pos = state.liveLoaded ? busPositions(state, rid, now) : [];
   const busAt = new Map(), railAt = new Map();

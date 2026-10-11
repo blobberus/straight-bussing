@@ -118,3 +118,33 @@ test("silent feed: a feed outage keeps its own wording even while routes are sch
   ok(routes.includes("Live bus status unavailable") && routes.includes(">Live status unknown<") && !routes.includes(">Scheduled, no live location<"), "routes list");
   ok(renderRoute(fixture({ ...DOWN, service: SCHED, routeId: "R1" }), NOW).includes("Live status unavailable"), "route detail");
 });
+
+// Rider safety (sweep 2026-10-11): when no bus reports (feed down, silent feed, nothing running), the operator's
+// own alert is shown in full next to our official links. The live feed carries one that gives a phone number to
+// call "if you do not see arrival times or buses on route in the app"; the Nearby banner only had its title.
+const OP = { header_text: { translation: [{ text: "Bus Route Assistance <b>", language: "en" }] },
+  description_text: { translation: [{ text: "If you do not see buses, please contact 773-655-9934 for assistance.", language: "en" }] },
+  active_period: [{ start: NOW - 3600, end: NOW + 86400 }], informed_entity: [{ agency_id: "1068" }] };
+const ROUTE_ONLY = { header_text: "Red Line detour", active_period: [], informed_entity: [{ route_id: "R1" }] };
+
+test("no bus reports: the operator's alert (title, text, call link) sits with the official links on every screen", () => {
+  const shows = (h) => h.includes("From the shuttle operator") && h.includes("Bus Route Assistance &lt;b&gt;") && !h.includes("<b>Bus")
+    && h.includes('<a href="tel:+17736559934">773-655-9934</a>') && h.includes("773.702.8181");
+  for (const [name, over] of [["down", { ...DOWN, alerts: [OP] }], ["silent", { ...SILENT, alerts: [OP] }], ["quiet", { ...QUIET, alerts: [OP] }]]) {
+    N.q = ""; N.mode = "station"; N.anchor = null;
+    ok(shows(renderNearby(fixture(over), NOW)), name + ": Current trip");
+    ok(shows(renderStop(fixture({ ...over, stopId: "S1" }), NOW)), name + ": stop");
+    ok(shows(renderRoutes(fixture(over), NOW)), name + ": routes list");
+    Object.assign(D, { from: { lat: 41.79, lon: -87.6, label: "A" }, to: { lat: 41.795, lon: -87.595, label: "B" }, result: { options: [], walkOnly: { m: 700, min: 9 } }, missed: false });
+    ok(shows(resHTML(fixture(over), NOW)), name + ": directions");
+  }
+  const rd = renderRoute(fixture({ ...QUIET, alerts: [OP, ROUTE_ONLY], routeId: "R1" }), NOW);
+  ok(rd.includes("From the shuttle operator") && rd.includes("Bus Route Assistance") && (rd.match(/Red Line detour/g) || []).length === 1, "route detail: agency alert added, its own route alert listed once");
+  N.q = ""; N.mode = "station"; N.anchor = null;
+  const busy = renderNearby(fixture({ alerts: [OP] }), NOW);
+  ok(!busy.includes("From the shuttle operator") && busy.includes("v-alertbanner"), "buses reporting: only the banner");
+  ok(!renderNearby(fixture(QUIET), NOW).includes("From the shuttle operator"), "no alert: nothing added");
+  const many = renderNearby(fixture({ ...QUIET, alerts: [OP, ROUTE_ONLY, { ...ROUTE_ONLY, header_text: "Third" }] }), NOW);
+  ok(many.includes('data-action="alerts:open"') && many.includes("All 3 service alerts") && !many.includes(">Third<"), "at most 2 inline, then a link to all");
+  D.from = D.to = D.result = null;
+});
