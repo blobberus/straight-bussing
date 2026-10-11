@@ -67,7 +67,10 @@ struct RouteDetailView: View {
                         }
                     }
                 }
-                if n == 0 && model.liveLoaded && model.buses.isEmpty { OfficialContact() }
+                if n == 0 && model.liveLoaded && model.buses.isEmpty {
+                    OperatorAlerts(untiedOnly: true)   // this route's own alerts are under Schedule changes
+                    OfficialContact()
+                }
                 if ids.isEmpty {
                     EmptyStateView(title: "No stops listed", message: "The schedule has no stops for this route.")
                 } else {

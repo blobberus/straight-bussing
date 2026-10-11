@@ -112,12 +112,15 @@ struct SettingsView: View {
             }
             ForEach(alerts) { a in
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(a.header.isEmpty ? "Service alert" : a.header).font(.subheadline.weight(.semibold))
-                    if !a.description.isEmpty { Text(a.description).font(.caption).foregroundStyle(Palette.text2) }
-                    let when = LiveText.alertPeriod(a, now: model.now)
-                    if !when.isEmpty { Text(when).font(.caption).foregroundStyle(Palette.text2) }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(a.header.isEmpty ? "Service alert" : a.header).font(.subheadline.weight(.semibold))
+                        if !a.description.isEmpty { Text(a.description).font(.caption).foregroundStyle(Palette.text2) }
+                        let when = LiveText.alertPeriod(a, now: model.now)
+                        if !when.isEmpty { Text(when).font(.caption).foregroundStyle(Palette.text2) }
+                    }
+                    .accessibilityElement(children: .combine)
+                    AlertPhoneLinks(text: a.description)   // a number in the alert is a call button (web b3ad52c)
                 }
-                .accessibilityElement(children: .combine)
             }
             if model.liveLoaded && model.liveFailed {
                 Label("Alerts may be out of date: the shuttle feed is not responding.", systemImage: "exclamationmark.triangle")

@@ -195,10 +195,14 @@ struct EmptyStateView: View {
     let title: String
     let message: String
     var showOfficial = false
+    /// No bus is reporting (feed down, silent scheduled service, nothing running): the operator's own alerts in
+    /// full come next, before our official contact (web operatorAlertsHTML).
+    var operatorAlerts = false
     var body: some View {
         VStack(spacing: 6) {
             Text(title).font(.headline)
             Text(message).font(.subheadline).foregroundStyle(Palette.text2).multilineTextAlignment(.center)
+            if operatorAlerts { OperatorAlerts().padding(.top, 4) }
             if showOfficial { OfficialContact().padding(.top, 4) }
         }
         .frame(maxWidth: .infinity)

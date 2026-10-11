@@ -112,13 +112,14 @@ struct StopDetailView: View {
         let silent = !running && model.silentService
         let here = silent ? model.silentText(among: Set(shown)) : nil
         if model.liveOutage {
-            EmptyStateView(title: "Live times unavailable", message: "Can't reach the shuttle feed, so we can't tell when the next bus comes.", showOfficial: true)
+            EmptyStateView(title: "Live times unavailable", message: "Can't reach the shuttle feed, so we can't tell when the next bus comes.",
+                           showOfficial: true, operatorAlerts: true)
         } else if let here {
-            EmptyStateView(title: "No live times right now", message: here, showOfficial: true)
+            EmptyStateView(title: "No live times right now", message: here, showOfficial: true, operatorAlerts: true)
         } else {
             EmptyStateView(title: "No upcoming arrivals",
                            message: running ? "Nothing is predicted at this stop right now." : silent ? "No visible route at this stop is scheduled right now." : "No shuttles are running right now.",
-                           showOfficial: !running)
+                           showOfficial: !running, operatorAlerts: !running)
         }
     }
 }

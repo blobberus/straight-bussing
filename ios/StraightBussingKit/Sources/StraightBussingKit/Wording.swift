@@ -269,6 +269,26 @@ public enum LiveText {
     }
 
     /// The Current trip alert banner: ("Service alert" | "N service alerts", first title + " and N more").
+    /// A phone number in alert text and its call link (web alerts.js alertBodyHTML): the operator's alert can say
+    /// whom to call when buses do not show ("please contact 773-655-9934").
+    public struct PhoneLink: Hashable, Sendable {
+        public var shown: String
+        public var url: String
+    }
+
+    /// The phone numbers in `text` ("773-655-9934", "(773) 702-8181", "773.702.8181"), each once, as tel: links.
+    public static func phoneLinks(_ text: String) -> [PhoneLink] {
+        guard !text.isEmpty, let re = try? NSRegularExpression(pattern: #"(?:^|[^\d])(\(?\d{3}\)?[ .-]?\d{3}[.-]\d{4})(?!\d)"#) else { return [] }
+        let ns = text as NSString
+        var out: [PhoneLink] = []
+        for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let shown = ns.substring(with: m.range(at: 1))
+            let url = "tel:+1" + shown.filter { $0.isASCII && $0.isNumber }
+            if !out.contains(where: { $0.url == url }) { out.append(PhoneLink(shown: shown, url: url)) }
+        }
+        return out
+    }
+
     public static func alertBanner(_ alerts: [ServiceAlert]) -> (head: String, line: String)? {
         guard let first = alerts.first else { return nil }
         let n = alerts.count

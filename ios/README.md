@@ -304,7 +304,7 @@ actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 | Selected stop / Routes to station candidates ringed on the map | done | `pickHighlights`, ring on the open stop |
 | Stop tap fills the Directions field being edited / picks the station in Routes to station | done | web onStopTap |
 | Status pill: "Can't reach the shuttle feed. Retrying. Showing last known data." / "… Don't rely on these times; call 773.702.8181." + Retry, "Live data is out of date (last update 4:12 PM). Times are approximate.", "Live data delayed. Times may be off." | done | same words (`LiveText.pill`); before: own wording |
-| Fresh empty feed: "No shuttles are reporting live locations" (scheduled) vs "No shuttles running right now" | done | silent-service rule (before) now also in the pill; with an active service alert the pill adds "See alert" (opens Alerts; iOS first, 2026-10-11) |
+| Fresh empty feed: "No shuttles are reporting live locations" (scheduled) vs "No shuttles running right now" | done | silent-service rule (before) now also in the pill; with an active service alert the pill adds "See alert" (opens Alerts; 2026-10-11, web 873d7c3) |
 | Feed outage is not a service outage ("Live times unavailable", "Live status unknown", "Can't plan shuttle trips right now") | done | Current trip, stop, Routes, route detail, Directions |
 | Silent scheduled service wording (silentText, "Scheduled until 4:29 AM, no live location", "No live times right now") | done (before) | same Kit text as the web |
 | Map context bar: "Only showing routes for: <label>" + chips + Show all; "My route: <name>" + Clear | done | wraps to 2 lines instead of the web's marquee |
@@ -337,11 +337,12 @@ actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 | Routes: sorted by short name, groups Running / Scheduled, no live location / Not running (Live status unknown) / Hidden (Not on this trip) | done | |
 | Route rows: "Not part of this trip" (no eye), "Hidden from map and times", "N buses running", noLive status, eye toggle with toast | done | iOS adds today's hours to "Not running" (see web missing) |
 | Edit map order: drag, Move up / down, Reset order, "moved to position N" toast | done | VoiceOver actions Move up / Move down |
-| Route detail: status, quiet line, Today hours + "(reduced schedule)" / "(extra service)" + Scheduled now, hidden note (journey variant), official contact when nothing runs | done | after midnight the service day's hours: "Friday service 6:30 AM to 12:25 AM · Scheduled now", never "Today No service · Scheduled now" (Kit `Schedule.serviceHoursAt`, 2026-10-11; web still uses the calendar date) |
+| Route detail: status, quiet line, Today hours + "(reduced schedule)" / "(extra service)" + Scheduled now, hidden note (journey variant), official contact when nothing runs | done | after midnight the service day's hours: "Friday service 6:30 AM to 12:25 AM · Scheduled now", never "Today No service · Scheduled now" (Kit `Schedule.serviceHoursAt`, 2026-10-11; web 2610651) |
 | Route detail: "Where the buses are" sentences, "Bus N heading here · seen …" pills, chevrons on the rail, loop note, live/delayed footer | done | |
 | Route detail: Hours & service (week, "Schedule changes" incl. this route's service alerts, buses by hour for today or "Mondays" + hours text) | done | before: no route alerts, chart only today |
 | Stop detail: address (or "Address not available"), "Routes at this stop" (tappable, visible only), Directions to here / From here, arrivals (10, tappable), hidden routes "+N … also stop here" + Show, "Updated 8s ago" / "Last live update … Retrying." | done | Favorite = header star with toast "Added to favorites in My Routes"; the buttons read "Directions" / "From here" (with icons, "Directions to here" wrapped at 393 pt; VoiceOver says "Directions to <stop>") |
 | Alerts screen: severity icon, title, body, route chips, "Until 4:12 PM" / "Since …", empty + "Alerts may be out of date…" + About row | done | new `AlertsView` |
+| Every no-bus state (feed down, silent scheduled service, nothing running) on Current trip, stop, Routes, route detail and Directions: "From the shuttle operator" with up to 2 active alerts in full (then "All N service alerts"), the operator's words as they are, next to 773.702.8181; phone numbers in alert text are call buttons (Alerts, Settings, these states) | done (2026-10-11) | web 76248c5, b3ad52c; `OperatorAlerts` / `AlertPhoneLinks` in `Views/AlertsView.swift`, Kit `LiveText.phoneLinks`; route detail shows only alerts not tied to a route |
 | My Routes: custom routes (tap = show / stop showing, fit map, "Showing your usual routes"), swipe Details / Edit / Delete, delete confirm "This custom route will be removed from My Routes. This can’t be undone." + "Deleted “X”" | done | long-press menu too; before: own confirm text |
 | My Routes: empty state "Save the routes you ride", hint text, New button | done | |
 | Favorite stations: next bus, "No upcoming buses on your visible routes", Edit (reorder / remove), empty hint | done | drag + swipe-to-delete in Edit instead of arrow buttons |
@@ -382,7 +383,7 @@ Web status as of 2026-10-10 (web parity port; contracts in docs/ARCHITECTURE.md 
 | `Model/LaunchConfig.swift`, Kit `DemoFeed.swift` | `-demo` mode with simulated buses and a "Demo mode: simulated buses" alert (web: test pages only) | ported: `?demo=1` (`data/demo.js`, banner on every screen, never stored, never mixed with live data). Difference: the web simulates the routes the schedule has in service now (all routes only when none is); no fixed location or seeded routes |
 | `Views/RouteDetailView.swift` | Route detail stop rows each say "next bus in N min" / "no prediction" to VoiceOver as one element | already on the web (one labeled button per stop, same words); now also "seen N min ago" for a stale bus, tested |
 
-### Fixed on iOS first (2026-10-11 sweep; the web has the same behavior, see the sweep report)
+### Fixed on iOS first (2026-10-11 sweep; the web ported them the same day: 6bcec0f, b4560f2, 2610651, 873d7c3)
 
 | Kit / app file | Behavior |
 |---|---|
@@ -408,12 +409,14 @@ Web status as of 2026-10-10 (web parity port; contracts in docs/ARCHITECTURE.md 
 - [x] Privacy manifest `App/Resources/PrivacyInfo.xcprivacy`: no tracking, no tracking domains, no collected data;
       UserDefaults reason CA92.1. Update it if push tokens are ever sent to a server. Walking-leg endpoints (rounded
       to ~10 m) go to Apple's MapKit directions service, not to us; re-check the App Privacy answers at submission.
-      Typed place text goes to photon.komoot.io only when the on-device index has < 5 matches (never your location);
+      Typed place text goes to photon.komoot.io only when the on-device index has < 5 matches or the rider taps
+      "Search for … instead" (the typed text or its spelling fix, never your location);
       decide at submission whether the App Privacy label lists it as "Search History, not linked to you". The daily
       schedule check fetches public files from blobberus.github.io and sends nothing about the user (no data
       collected).
-- [x] Location usage string (`NSLocationWhenInUseUsageDescription`), asked only when the user taps "Use my location";
-      location stays on the device. No background location.
+- [x] Location usage string (`NSLocationWhenInUseUsageDescription`), asked only when the user taps "Use my location".
+      The location is used on the device; the one exception is the rounded start of a walking leg (your location, when
+      a trip starts there), sent with its end to Apple MapKit for sidewalk directions. No background location.
 - [x] `NSSupportsLiveActivities`, `ITSAppUsesNonExemptEncryption = NO`, portrait iPhone, `straightbussing://` URL scheme.
 - [x] Icon from `web/icons` (1024 px opaque PNG rendered at build time). Launch screen color.
 - [x] No tracking, no ads, no account, no third-party SDKs.

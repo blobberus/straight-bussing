@@ -130,6 +130,16 @@ final class LiveTextTests: XCTestCase {
         XCTAssertNil(LiveText.alertBanner([]))
     }
 
+    /// The operator's alert names a number to call: it becomes a call link (web alertBodyHTML).
+    func testPhoneLinksInAlertText() {
+        XCTAssertEqual(LiveText.phoneLinks("If you do not see arrival times or buses on route in the app, please contact 773-655-9934 for assistance"),
+                       [LiveText.PhoneLink(shown: "773-655-9934", url: "tel:+17736559934")])
+        XCTAssertEqual(LiveText.phoneLinks("Call (773) 702-8181 or 773.702.8181.").map(\.url), ["tel:+17737028181"], "each number once")
+        XCTAssertEqual(LiveText.phoneLinks("773-655-9934/773-702-8181").map(\.shown), ["773-655-9934", "773-702-8181"])
+        XCTAssertEqual(LiveText.phoneLinks("Route 1773-655-99345 runs at 12:30"), [], "no partial numbers")
+        XCTAssertEqual(LiveText.phoneLinks(""), [])
+    }
+
     func testStationSearch() {
         let stops = ["1": Stop(id: "1", name: "57th St. & Metra (NB)", lat: 41.79, lon: -87.59), "2": Stop(id: "2", name: "Regenstein Library (N)", lat: 41.79, lon: -87.6),
                      "3": Stop(id: "3", name: "Garage (no routes)", lat: 41.79, lon: -87.6), "4": Stop(id: "4", name: "Ellis & 57th", lat: 41.79, lon: -87.6)]

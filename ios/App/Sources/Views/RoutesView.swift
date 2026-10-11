@@ -106,13 +106,15 @@ struct RoutesView: View {
             if s.routeFilter == nil && (model.liveOutage || empty) {
                 Section {
                     if model.liveOutage {
-                        EmptyStateView(title: "Live bus status unavailable", message: "Can't reach the shuttle feed. Routes are listed below for reference.")
+                        EmptyStateView(title: "Live bus status unavailable", message: "Can't reach the shuttle feed. Routes are listed below for reference.",
+                                       operatorAlerts: true)
                     } else if model.silentService {
                         EmptyStateView(title: "No live locations right now",
                                        message: Operating.silentText(g.scheduled, routes: model.staticData.routes, service: model.staticData.service,
-                                                                     now: model.now, phone: LiveText.phone))
+                                                                     now: model.now, phone: LiveText.phone),
+                                       operatorAlerts: true)
                     } else {
-                        EmptyStateView(title: "No shuttles running right now", message: "Routes are listed below for reference.")
+                        EmptyStateView(title: "No shuttles running right now", message: "Routes are listed below for reference.", operatorAlerts: true)
                     }
                 }
             }

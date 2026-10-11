@@ -243,13 +243,15 @@ struct NoServiceView: View {
     var body: some View {
         if model.liveOutage {
             EmptyStateView(title: "Live times unavailable",
-                           message: "Can't reach the shuttle feed, so we can't tell which shuttles are running. Check with the official service.", showOfficial: true)
+                           message: "Can't reach the shuttle feed, so we can't tell which shuttles are running. Check with the official service.",
+                           showOfficial: true, operatorAlerts: true)
         } else if !model.buses.isEmpty {
             EmptyStateView(title: "No upcoming arrivals", message: "No bus on your visible routes has a predicted arrival right now.", showOfficial: true)
         } else if model.silentService, let why = model.silentText() {
-            EmptyStateView(title: "No live locations right now", message: why, showOfficial: true)
+            EmptyStateView(title: "No live locations right now", message: why, showOfficial: true, operatorAlerts: true)
         } else {
-            EmptyStateView(title: "No shuttles running right now", message: "Check the official schedule for service hours.", showOfficial: true)
+            EmptyStateView(title: "No shuttles running right now", message: "Check the official schedule for service hours.", showOfficial: true,
+                           operatorAlerts: true)
         }
     }
 }
