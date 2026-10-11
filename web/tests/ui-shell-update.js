@@ -44,8 +44,8 @@ test("boot: stops, routes and the live feed start loading before the view module
 
 /* Taps made while the view modules are still loading (QA 2026-10-09): on a slow network the search bar, gear and
    tabs are on screen seconds before the view modules register; those taps used to be dead ("unknown action").
-   The last one is held and runs once its action / view registers. (Here, after the contextbar tests: an earlier
-   timer wait on this page stalls the marquee test's requestAnimationFrame under headless virtual time.) */
+   The last one is held and runs once its action / view registers. (Timer waits here once starved the marquee test's
+   requestAnimationFrame under headless virtual time; that test now measures on a timer, so order does not matter.) */
 const tick = () => new Promise((r) => setTimeout(r, 0));   // the replay is a 0 ms timer, so it runs first
 const view = (title) => ({ title: () => title, render: () => "", detent: "half" });
 function shell() {

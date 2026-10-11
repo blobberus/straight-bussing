@@ -126,7 +126,10 @@ function bar(state, width = 240) {
   return el;
 }
 const LONG = base({ journey: { rids: ["A", "B"], label: "Regenstein Library to the Smart Museum of Art", kind: "plan" } });
-const frames = (n = 2) => new Promise((r) => { const f = () => (--n <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+// Measure on a timer, not on animation frames: headless Edge (virtual time, under load) can go longer than the test
+// timeout without a frame, which made this test time out about 1 run in 30.
+const FRAME = { frame: (fn) => setTimeout(fn, 0), cancelFrame: (id) => clearTimeout(id) };
+const settle = () => new Promise((r) => setTimeout(r, 20));
 
 test("contextbar marquee: long text rests at the start, then glides until its copy sits where it began (seamless loop)", () => {
   const el = bar(LONG);
@@ -169,11 +172,11 @@ test("contextbar marquee: mountContextBar starts it on draw, a mouse hover pause
   const el = bar(base());
   el.hidden = true;
   const store = createStore(base());
-  const off = mountContextBar(el, store, { reduced: () => false });
+  const off = mountContextBar(el, store, { reduced: () => false, ...FRAME });
   try {
     store.set({ journey: LONG.journey });
     await Promise.resolve(); await Promise.resolve();
-    await frames(3);
+    await settle();
     const run = el.querySelector(".ctx-run"), [a] = run.getAnimations();
     ok(a && a.playState === "running", "scrolling after the bar is drawn");
     el.dispatchEvent(new PointerEvent("pointerenter", { pointerType: "mouse" }));

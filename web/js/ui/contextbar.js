@@ -107,13 +107,16 @@ export function startMarquee(el, { reduced = reducedMotion } = {}) {
  * scrolling when it does not fit (re-measured when the bar is drawn or resized; a mouse hover pauses it).
  * @param {HTMLElement|null} el
  * @param {{get():object, subscribe(fn):()=>void}} store
- * @param {{reduced?:()=>boolean}} [opts] passed to startMarquee
+ * @param {{reduced?:()=>boolean, frame?:(fn:() => void) => number, cancelFrame?:(id:number) => void}} [opts] reduced: passed
+ *   to startMarquee; frame / cancelFrame: when to measure (default the next animation frame; tests pass a timer, as
+ *   headless test browsers can go seconds without a frame)
  * @returns {() => void} unsubscribe
  */
 export function mountContextBar(el, store, opts = {}) {
   if (!el || !store) return () => {};
+  const frame = opts.frame || ((fn) => requestAnimationFrame(fn)), cancelFrame = opts.cancelFrame || ((id) => cancelAnimationFrame(id));
   let last = null, anim = null, raf = 0, width = -1;
-  const marquee = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { anim = startMarquee(el, opts); }); };
+  const marquee = () => { cancelFrame(raf); raf = frame(() => { anim = startMarquee(el, opts); }); };
   const draw = (s) => {
     const html = contextBarHTML(s);
     if (html === last) return;
@@ -139,7 +142,7 @@ export function mountContextBar(el, store, opts = {}) {
   return () => {
     off();
     ro?.disconnect();
-    cancelAnimationFrame(raf);
+    cancelFrame(raf);
     if (anim) anim.cancel();
     el.removeEventListener("pointerenter", enter);
     el.removeEventListener("pointerleave", leave);

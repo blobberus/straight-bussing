@@ -10,7 +10,7 @@ How it works: serves web/ on a free localhost port (stdlib http.server, correct 
 no caching), loads each page with
   msedge --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader
          --virtual-time-budget=30000 --dump-dom <url>
-parses <title>TESTS pass=N fail=M</title> written by web/tests/lib.js, prints the failures from the
+(map tile requests to tiles.openfreemap.org fail at once, see TILE_BLOCK_PAC), parses <title>TESTS pass=N fail=M</title> written by web/tests/lib.js, prints the failures from the
 JSON in <pre id="result">, and exits 0 only if every page reports fail=0.
 A page with no parsable title counts as a failure (module import error, crash, timeout).
 Set EDGE=<path> to override the browser path.
@@ -18,6 +18,7 @@ Set EDGE=<path> to override the browser path.
 from __future__ import annotations
 
 import argparse
+import base64
 import functools
 import html
 import http.server
@@ -37,6 +38,13 @@ WEB = ROOT / "web"
 EDGE_DEFAULT = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 TITLE_RE = re.compile(r"<title>\s*TESTS pass=(\d+) fail=(\d+)\s*</title>", re.I)
 PRE_RE = re.compile(r'<pre[^>]*id="result"[^>]*>(.*?)</pre>', re.S | re.I)
+# Map tiles fail at once (a PAC proxy to a closed port for tiles.openfreemap.org only; unpkg.com and the rest stay direct).
+# Headless Edge's virtual time stands still while any network fetch is pending, so one slow tile froze a page that
+# boots the whole app (e2e: about 1 run in 8, 4 in 32 under load) until the runner timeout. Headless does not paint
+# vector tiles anyway. A PAC script, not --host-resolver-rules: that flag adds an infobar that shrinks the viewport.
+TILE_BLOCK_PAC = ("function FindProxyForURL(url, host) { return dnsDomainIs(host, 'tiles.openfreemap.org')"
+                  " ? 'PROXY 127.0.0.1:9' : 'DIRECT'; }")
+LIVE_NETWORK_PAGES = {"tests/map.test.html"}   # fetches the real OpenFreeMap styles once (patchStyle online check)
 
 MIME = {
     ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json",
@@ -103,6 +111,9 @@ def run_page(edge: str, port: int, rel: str, timeout: int) -> dict:
            "--virtual-time-budget=30000", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
            "--disable-extensions", "--disable-background-networking", f"--user-data-dir={profile}",
            "--dump-dom", url]
+    if rel not in LIVE_NETWORK_PAGES:
+        pac = base64.b64encode(TILE_BLOCK_PAC.encode()).decode()
+        cmd[-2:-2] = [f"--proxy-pac-url=data:application/x-javascript-config;base64,{pac}"]
     out = {"page": rel, "pass": 0, "fail": 1, "failures": [], "tests": [], "ok": False}
     try:
         proc = subprocess.run(cmd, capture_output=True, timeout=timeout)
