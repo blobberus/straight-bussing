@@ -23,7 +23,15 @@ test("pill: each state has its own icon and words (never color alone)", () => {
     eq([p.kind, p.icon], [kind, icon], msg || "fresh");
     ok(msg ? p.msg.startsWith(msg) : p.msg === "", p.msg);
     eq(p.retry, kind === "err");
+    eq(p.alert, false, "no alert: no See alert");
   }
+  // fresh empty feed + an active service alert: "See alert" (iOS parity); never on a feed error or with buses running
+  const al = [{ header_text: "Call 773-655-9934 if no buses show", active_period: [{ start: NOW - 60, end: NOW + 60 }] }];
+  eq(pillState({ ...fresh, buses: [], alerts: al }, NOW).alert, true, "nothing running + alert");
+  eq(pillState({ ...fresh, buses: [], alerts: al, routes: { N: { short: "N", long: "North" } }, service: { routes: { N: every(night("28:29")) } } }, NOW).alert, true, "silent + alert");
+  eq(pillState({ ...fresh, buses: [], alerts: [{ ...al[0], active_period: [{ start: NOW - 99, end: NOW - 9 }] }] }, NOW).alert, false, "expired alert");
+  eq(pillState({ ...fresh, failed: true, lastOk: 0, buses: [], alerts: al }, NOW).alert, false, "feed error: Retry, not See alert");
+  eq(pillState({ ...fresh, alerts: al }, NOW).msg, "", "buses running: no pill");
   eq(pillState({ liveLoaded: false, failed: false }, NOW, { bootS: NOW - 5 }).icon, "", "first poll grace");
   eq(pillState({ liveLoaded: false, failed: false }, NOW, { bootS: NOW - 60 }).icon, "feed", "never polled after the grace period");
   const icons = Object.keys(PILL_ICONS);
@@ -42,8 +50,12 @@ test("pill: render writes the icon, text, kind and Retry; the icon slot is creat
   p.render({ ...fresh, failed: true, lastOk: NOW - 120 }, NOW);
   eq([el.hidden, el.className, el.dataset.icon, el.querySelector(".pillbtn").hidden], [false, "statuspill err", "feed", false]);
   ok(ic.querySelector("svg") && el.textContent.includes("Can't reach"), "icon + words");
+  const see = el.querySelector('[data-action="alerts:open"]');
+  ok(see && see.hidden && see.textContent === "See alert" && see.getAttribute("aria-label") === "Read the service alert", "See alert button created, hidden");
   p.render({ ...fresh, buses: [] }, NOW);
-  eq([el.className, el.dataset.icon, el.querySelector(".pillbtn").hidden], ["statuspill info", "idle", true]);
+  eq([el.className, el.dataset.icon, el.querySelector(".pillbtn").hidden, see.hidden], ["statuspill info", "idle", true, true]);
+  p.render({ ...fresh, buses: [], alerts: [{ header_text: "x" }] }, NOW);
+  eq([el.querySelector(".pillbtn").hidden, see.hidden], [true, false], "an alert is up: See alert, no Retry");
   p.render(fresh, NOW);
   ok(el.hidden && !ic.innerHTML, "fresh data: no pill");
   host.remove();

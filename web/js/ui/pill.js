@@ -5,9 +5,11 @@
  * StatusPill): feed error = wifi off, delayed / out of date = clock with an alert mark, no live locations
  * while routes are scheduled = antenna off, no shuttles running = bus. Same words as before (and as the
  * iOS Kit LiveText.pill). Writes the DOM only when the state changes; --pill-h follows its real height.
+ * A fresh feed with no bus while a service alert is up also offers "See alert" (action alerts:open): the operator's
+ * alert may say why no bus shows, or which number to call (iOS "See alert", 2026-10-11).
  */
 import { clock } from "../core/time.js";
-import { staleLevel } from "../core/arrivals.js";
+import { staleLevel, activeAlerts } from "../core/arrivals.js";
 import { silentService } from "../core/operating.js";
 import { OFFICIAL_PHONE } from "./components.js";
 
@@ -28,22 +30,24 @@ export const PILL_ICONS = Object.freeze({
  * @param {object} s store state
  * @param {number} now unix seconds
  * @param {{bootS?:number, graceS?:number}} [o] bootS: app start (before the first poll, an error only after graceS)
- * @returns {{kind:''|'err'|'warn'|'info', icon:''|'feed'|'delay'|'silent'|'idle', msg:string, retry:boolean}}
+ * @returns {{kind:''|'err'|'warn'|'info', icon:''|'feed'|'delay'|'silent'|'idle', msg:string, retry:boolean, alert:boolean}}
+ *   alert: offer "See alert" (fresh empty feed and at least one active service alert)
  */
 export function pillState(s, now, { bootS = now, graceS = FIRST_POLL_GRACE_S } = {}) {
   const polled = s.liveLoaded || s.failed;
   const lvl = polled ? staleLevel(s, now) : now - bootS > graceS ? "err" : "";
   if (lvl === "err") {
-    return { kind: "err", icon: "feed", retry: true, msg: s.lastOk ? "Can't reach the shuttle feed. Retrying. Showing last known data."
+    return { kind: "err", icon: "feed", retry: true, alert: false, msg: s.lastOk ? "Can't reach the shuttle feed. Retrying. Showing last known data."
       : `Can't reach the shuttle feed. Don't rely on these times; call ${OFFICIAL_PHONE}.` };
   }
-  if (lvl === "old") return { kind: "warn", icon: "delay", retry: false, msg: `Live data is out of date${s.feedTs ? " (last update " + clock(s.feedTs) + ")" : ""}. Times are approximate.` };
-  if (lvl === "late") return { kind: "warn", icon: "delay", retry: false, msg: "Live data delayed. Times may be off." };
+  if (lvl === "old") return { kind: "warn", icon: "delay", retry: false, alert: false, msg: `Live data is out of date${s.feedTs ? " (last update " + clock(s.feedTs) + ")" : ""}. Times are approximate.` };
+  if (lvl === "late") return { kind: "warn", icon: "delay", retry: false, alert: false, msg: "Live data delayed. Times may be off." };
   if (s.liveLoaded && !(s.buses || []).length) {   // fresh, empty feed: "no shuttles" only if the schedule agrees
-    return silentService(s, now) ? { kind: "warn", icon: "silent", retry: false, msg: "No shuttles are reporting live locations" }
-      : { kind: "info", icon: "idle", retry: false, msg: "No shuttles running right now" };
+    const alert = activeAlerts(s, now).length > 0;
+    return silentService(s, now) ? { kind: "warn", icon: "silent", retry: false, alert, msg: "No shuttles are reporting live locations" }
+      : { kind: "info", icon: "idle", retry: false, alert, msg: "No shuttles running right now" };
   }
-  return { kind: "", icon: "", retry: false, msg: "" };
+  return { kind: "", icon: "", retry: false, alert: false, msg: "" };
 }
 
 /**
@@ -57,7 +61,7 @@ export function pillIconSVG(name) {
 }
 
 /**
- * Pill controller over the #pill element (creates the icon slot when the markup has none).
+ * Pill controller over the #pill element (creates the icon slot and the "See alert" button when the markup has none).
  * @param {{pill:HTMLElement, text:HTMLElement, retry:HTMLElement, app?:HTMLElement|null}} els
  * @param {{bootS?:number, graceS?:number}} [o]
  * @returns {{render(s:object, now:number):void}}
@@ -70,6 +74,14 @@ export function createPill(els, o = {}) {
     ic.setAttribute("aria-hidden", "true");
     els.pill.prepend(ic);
   }
+  let see = els.pill.querySelector('[data-action="alerts:open"]');
+  if (!see) {
+    see = document.createElement("button");
+    Object.assign(see, { type: "button", className: els.retry.className || "pillbtn", textContent: "See alert", hidden: true });
+    see.dataset.action = "alerts:open";
+    see.setAttribute("aria-label", "Read the service alert");
+    els.pill.appendChild(see);
+  }
   let sig = "";
   if (els.app && typeof ResizeObserver === "function") {
     // --pill-h on #app = the pill's real height (text can wrap); the full detent and the chip sit below it (sheet.css, base.css)
@@ -80,7 +92,7 @@ export function createPill(els, o = {}) {
   }
   return {
     render(s, now) {
-      const p = pillState(s, now, o), next = [p.kind, p.icon, p.msg, p.retry].join("|");
+      const p = pillState(s, now, o), next = [p.kind, p.icon, p.msg, p.retry, p.alert].join("|");
       if (next === sig) return;
       sig = next;
       els.pill.hidden = !p.msg;
@@ -89,6 +101,7 @@ export function createPill(els, o = {}) {
       ic.innerHTML = pillIconSVG(p.icon);
       els.text.textContent = p.msg;
       els.retry.hidden = !p.retry;
+      see.hidden = !p.alert;
     },
   };
 }

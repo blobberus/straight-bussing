@@ -342,6 +342,13 @@ test("status pill: an empty feed while a route is scheduled says no bus reports 
     tab("routes");
     await waitFor(() => /Scheduled, no live location/.test(txt(content())) && /No live locations right now/.test(txt(content())), "Routes: scheduled group + banner");
     ok(!/No shuttles running/.test(txt(content())), "Routes never claims no service: " + txt(content()).slice(0, 200));
+    ok(/From the shuttle operator/.test(txt(content())) && /E2E detour/.test(txt(content())), "the operator's alert in full next to the official links");
+    const see = $("#pillAlert");
+    ok(see && !see.hidden && $("#pillRetry").hidden, "pill offers See alert (an alert is up)");
+    click(see, "See alert");
+    await waitFor(() => state().view === "alerts" && /E2E detour/.test(txt(content())), "See alert opens Alerts");
+    click($("#back"), "back");
+    await waitFor(() => state().view === "routes", "back returns to Routes");
     SB.store.set({ service: { routes: { [rid]: days(null) } } });   // nothing scheduled now: the honest case
     await waitFor(() => txt($("#pillText")) === "No shuttles running right now", "no-service pill");
   } finally {
