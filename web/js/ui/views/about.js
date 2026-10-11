@@ -7,6 +7,7 @@
 import { registerView } from "../router.js";
 import * as theme from "../theme.js";
 import { esc } from "../../core/esc.js";
+import { shortDate } from "../../core/time.js";
 
 /** App version shown in About. */
 export const APP_VERSION = "2.0.0";
@@ -82,8 +83,8 @@ export function mountAbout(root, ctx) {
   const dataEl = root.querySelector('[data-region="about-data"]');
   if (dataEl && typeof fetch === "function") {
     fetch("data/meta.json").then((r) => (r.ok ? r.json() : null)).then((j) => {
-      const d = j?.generated_utc ? new Date(j.generated_utc) : null;
-      if (d && !isNaN(d) && dataEl.isConnected) dataEl.textContent = `Version ${APP_VERSION} · Schedule data from ${d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`;
+      const t = j?.generated_utc ? Date.parse(j.generated_utc) / 1000 : NaN;
+      if (t > 0 && dataEl.isConnected) dataEl.textContent = `Version ${APP_VERSION} · Schedule data from ${shortDate(t, true)}`;
     }).catch(() => {});
   }
 }

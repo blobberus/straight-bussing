@@ -13,7 +13,8 @@ public enum Schedule {
     static let dayRange = "-"
     public static let chicago = TimeZone(identifier: "America/Chicago")!
 
-    static let chicagoCal: Calendar = { var c = Calendar(identifier: .gregorian); c.timeZone = chicago; return c }()
+    /// Gregorian calendar in Chicago time: "today", "same day" and dates the rider sees (alert windows).
+    public static let chicagoCal: Calendar = { var c = Calendar(identifier: .gregorian); c.timeZone = chicago; return c }()
     static let utcCal: Calendar = { var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(identifier: "UTC")!; return c }()
 
     /// Local calendar parts. m 1-12, dow 0 = Monday, min = minute of day.

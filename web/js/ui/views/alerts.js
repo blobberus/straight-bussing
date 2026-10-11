@@ -7,7 +7,7 @@
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
-import { nowS, clock } from "../../core/time.js";
+import { nowS, clock, shortDate, sameDay } from "../../core/time.js";
 import { activeAlerts } from "../../core/arrivals.js";
 import { routeChip, emptyState, skeleton } from "../components.js";
 
@@ -30,10 +30,10 @@ export function alertText(v) {
 function windowText(a, now) {
   const p = (a.active_period || []).find((w) => (!w.start || w.start <= now) && (!w.end || w.end >= now));
   if (!p) return "";
-  const sameDay = (t) => new Date(t * 1000).toDateString() === new Date(now * 1000).toDateString();
-  if (p.end && sameDay(p.end)) return "Until " + clock(p.end);
-  if (p.start && sameDay(p.start)) return "Since " + clock(p.start);
-  if (p.end) return "Until " + new Date(p.end * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  // Chicago days and times (core/time.js), like the route hours
+  if (p.end && sameDay(p.end, now)) return "Until " + clock(p.end);
+  if (p.start && sameDay(p.start, now)) return "Since " + clock(p.start);
+  if (p.end) return "Until " + shortDate(p.end);
   return "";
 }
 

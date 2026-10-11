@@ -43,7 +43,9 @@ export function textOn(hex): '#111114'|'#ffffff'   // by luminance
 export function lum(hex): number
 // core/time.js
 export const nowS = () => Date.now()/1000
-export function clock(unixS): string           // '4:12 PM' locale
+export function clock(unixS): string           // '4:12 PM' in America/Chicago (device locale's 12/24 h)
+export function shortDate(unixS, withYear=false): string   // 'Oct 12' / 'Oct 12, 2026', Chicago calendar
+export function sameDay(a, b): boolean         // same Chicago calendar day
 export function minsUntil(unixS, from=nowS()): number   // floor, can be <=0
 export function ago(unixS): string             // '8s ago'
 // core/geo.js
@@ -402,3 +404,9 @@ Hidden routes still prevent the "no shuttles" claim but are not named ("Some hid
   check ends earlier glides instead of waiting for them; `tools/run_browser_tests.py` fails tiles.openfreemap.org
   requests at once (PAC proxy; virtual time stands still while a fetch is pending, and slow tiles stalled e2e pages
   until the runner timeout). `map.test.html` keeps the network for its live style check.
+- **Chicago time on every device**: `core/time.js clock()` formats in America/Chicago (the locale's 12 / 24 hour
+  choice stays), `shortDate` / `sameDay` give the Chicago date and "today" for alert windows (Alerts, Settings) and
+  About, so a phone elsewhere never shows "Arrive 4:37 AM" next to "6 AM to 11 PM" (`tests/zone.test.html` runs as a
+  Los Angeles device via `zone-sim.js`; iOS Kit `TimeFmt.clock` / `LiveText.alertWindow` same). `map/geometry.js
+  alongShape` drops repeated shape points first: a zero-length or one-point shape line never wins the line pick and
+  sends a ride to the straight fallback (Kit Geometry.swift same). sw `sb-v2-34`.

@@ -393,6 +393,7 @@ Web status as of 2026-10-10 (web parity port; contracts in docs/ARCHITECTURE.md 
 | `Schedule.swift` `serviceHoursAt`, `RouteText.busesChart` | Route hours and the buses-by-hour chart use the service day after midnight |
 | `LiveModels.swift`, `Arrivals.swift` `TimeFmt` | Junk feed numbers (NaN / huge stop sequences, times past the year 5000) never trap the decoder or a minute count |
 | `Model/AppModel+Live.swift` | A new destination from a stop's Directions / From here ends a started trip; Live Activities left by an earlier run are ended at launch; the trip timeline re-checks freshness on return to the app and with the clock |
+| `Arrivals.swift` `TimeFmt.clock`, `Wording.swift`, `Geometry.swift`, `WalkRouting.swift`, `Model/AppleWalkDirections.swift` | (2026-10-11, with the web) Every clock time and date is Chicago time on a phone in any zone (arrivals, trip timeline, Live Activity, alerts, About; 12 / 24 hour setting kept); a zero-length or one-point shape line never sends a ride to the straight line; a walk past its 3 s timeout cancels its MKDirections request and keeps its slot until MapKit stops, so at most 6 run at once (the straight-line estimate as before) |
 
 ### Still not on iOS
 

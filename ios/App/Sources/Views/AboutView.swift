@@ -77,7 +77,7 @@ struct AboutView: View {
         guard let g = model.staticData.generated else { return nil }
         let f = ISO8601DateFormatter()
         guard let d = f.date(from: g) else { return nil }
-        return d.formatted(date: .abbreviated, time: .omitted)
+        return d.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: Schedule.chicago))
     }
 
     func bullet(_ s: String) -> some View {

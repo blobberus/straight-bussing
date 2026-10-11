@@ -14,7 +14,7 @@ import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
 import * as theme from "../theme.js";
 import { esc } from "../../core/esc.js";
-import { nowS, clock } from "../../core/time.js";
+import { nowS, clock, shortDate, sameDay } from "../../core/time.js";
 import { nearestStops } from "../../core/geo.js";
 import { activeAlerts, alertText, staleLevel } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
@@ -43,10 +43,8 @@ function sw(key, label, sub, on, extra = "") {
 function period(a, now) {
   const p = (a.active_period || []).find((w) => (!w.start || w.start <= now) && (!w.end || w.end >= now));
   if (!p || (!p.start && !p.end)) return "";
-  const d = (t) => new Date(t * 1000);
-  const day = (t) => d(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const same = (t) => d(t).toDateString() === d(now).toDateString();
-  const f = (t) => (same(t) ? clock(t) : `${day(t)} ${clock(t)}`);
+  // Chicago days and times (core/time.js), like the route hours
+  const f = (t) => (sameDay(t, now) ? clock(t) : `${shortDate(t)} ${clock(t)}`);
   if (p.start && p.end) return `${f(p.start)} to ${f(p.end)}`;
   return p.end ? `Until ${f(p.end)}` : `Since ${f(p.start)}`;
 }

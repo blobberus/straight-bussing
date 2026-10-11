@@ -116,8 +116,10 @@ public enum TimeFmt {
     /// Int of a whole Double that never traps: NaN is 0, anything beyond a billion is clamped (feed junk).
     public static func clampInt(_ x: Double) -> Int { x.isNaN ? 0 : Int(max(-1e9, min(1e9, x))) }
 
-    /// '4:12 PM' in the device's locale and time zone ('' for invalid input).
-    public static func clock(_ t: Double, timeZone: TimeZone = .current, locale: Locale = .current) -> String {
+    /// '4:12 PM' (or '16:12', the device's 12 / 24 hour setting) in Chicago time, whatever zone the phone is in:
+    /// route hours and service days are Chicago time too, so a rider elsewhere never sees "Arrive 4:37 AM" next to
+    /// "6 AM to 11 PM" ('' for invalid input).
+    public static func clock(_ t: Double, timeZone: TimeZone = Schedule.chicago, locale: Locale = .current) -> String {
         guard t.isFinite, t > 0 else { return "" }
         return clockFormatters.string(Date(timeIntervalSince1970: t), timeZone: timeZone, locale: locale)
     }

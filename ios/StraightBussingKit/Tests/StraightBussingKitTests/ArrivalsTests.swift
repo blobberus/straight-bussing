@@ -105,6 +105,36 @@ final class ArrivalsTests: XCTestCase {
         XCTAssertEqual(TimeFmt.etaLabel(T + 300, now: T, stale: true), "~5 min")
         XCTAssertEqual(TimeFmt.clock(T, timeZone: Schedule.chicago, locale: Locale(identifier: "en_US")).replacingOccurrences(of: "\u{202F}", with: " "), "2:00 AM", "1.8e9 = 2027-01-15 08:00 UTC = 2 AM CST")
     }
+
+    /// A phone set to another zone (an App Store reviewer in California, a parent elsewhere) still sees Chicago clock
+    /// times, the zone of the route hours and service days: never "Arrive 12:00 AM" next to "6 AM to 11 PM".
+    func testClockTimesAreChicagoTimeOnAPhoneInLosAngeles() {
+        let saved = NSTimeZone.default
+        NSTimeZone.default = TimeZone(identifier: "America/Los_Angeles")!
+        defer { NSTimeZone.default = saved }
+        XCTAssertEqual(TimeZone.current.identifier, "America/Los_Angeles", "the phone zone is simulated")
+        let la = TimeZone(identifier: "America/Los_Angeles")!, en = Locale(identifier: "en_US")
+        let c = { (t: Double) in TimeFmt.clock(t, timeZone: Schedule.chicago) }
+        func plain(_ s: String) -> String { s.replacingOccurrences(of: "\u{202F}", with: " ") }
+        // 1.8e9 = 2027-01-15 08:00 UTC = 2:00 AM in Chicago (CST) = 12:00 AM in Los Angeles
+        XCTAssertEqual(plain(TimeFmt.clock(T, locale: en)), "2:00 AM", "Chicago, not the phone's 12:00 AM")
+        XCTAssertEqual(TimeFmt.clock(T), c(T))
+        XCTAssertNotEqual(TimeFmt.clock(T), TimeFmt.clock(T, timeZone: la))
+        XCTAssertEqual(LiveText.updatedText(lastOk: T, failed: true, level: .err, now: T + 600), "Last live update \(c(T)). Retrying.")
+        // now = 1 AM Fri Jan 15 in Chicago, still 11 PM Thu Jan 14 in Los Angeles: "today" is the Chicago day
+        let now = T - 3600
+        let window = ServiceAlert(id: "w", header: "Detour", activePeriods: [.init(start: T - 7200, end: T)])
+        XCTAssertEqual(LiveText.alertWindow(window, now: now), "Until \(c(T))", "same Chicago day: a time, not \"Until Jan 15\"")
+        let period = ServiceAlert(id: "p", header: "Detour", activePeriods: [.init(start: T - 7200, end: T + 3600)])
+        XCTAssertEqual(LiveText.alertPeriod(period, now: now), "\(c(T - 7200)) to \(c(T + 3600))")
+        // 11 PM Fri in Chicago is 9 PM Fri in Los Angeles, a day after the phone's "today"
+        let tonight = ServiceAlert(id: "t", header: "Detour", activePeriods: [.init(end: T + 75600)])
+        XCTAssertEqual(LiveText.alertWindow(tonight, now: now), "Until \(c(T + 75600))", "still today in Chicago")
+        // 1 AM Sun Jan 17 in Chicago is 11 PM Sat Jan 16 in Los Angeles
+        let sunday = ServiceAlert(id: "s", header: "Detour", activePeriods: [.init(end: T + 2 * 86400 - 3600)])
+        XCTAssertEqual(LiveText.alertWindow(sunday, now: now), "Until Jan 17", "the Chicago date")
+        XCTAssertEqual(Schedule.dayKey(now), "fri", "service day in Chicago")
+    }
 }
 
 /// Port of web/tests/core-operating.js.

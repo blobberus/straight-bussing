@@ -229,7 +229,8 @@ public enum LiveText {
     }
 
     /// Alert time window for the Alerts screen: "Until 4:12 PM" / "Since 9:00 AM" / "Until Oct 12" ('' none).
-    public static func alertWindow(_ a: ServiceAlert, now: Double, calendar: Calendar = .current) -> String {
+    /// Chicago days and times by default, like every clock time in the app.
+    public static func alertWindow(_ a: ServiceAlert, now: Double, calendar: Calendar = Schedule.chicagoCal) -> String {
         guard let p = a.activePeriods.first(where: { w in (w.start == nil || w.start == 0 || w.start! <= now) && (w.end == nil || w.end == 0 || w.end! >= now) }) else { return "" }
         let today = Date(timeIntervalSince1970: now)
         func sameDay(_ t: Double) -> Bool { calendar.isDate(Date(timeIntervalSince1970: t), inSameDayAs: today) }
@@ -240,7 +241,7 @@ public enum LiveText {
     }
 
     /// Alert period for Settings: "4:12 PM to 6:00 PM" / "Oct 12 4:12 PM to ..." / "Until ..." / "Since ...".
-    public static func alertPeriod(_ a: ServiceAlert, now: Double, calendar: Calendar = .current) -> String {
+    public static func alertPeriod(_ a: ServiceAlert, now: Double, calendar: Calendar = Schedule.chicagoCal) -> String {
         guard let p = a.activePeriods.first(where: { w in (w.start == nil || w.start == 0 || w.start! <= now) && (w.end == nil || w.end == 0 || w.end! >= now) }) else { return "" }
         let start = p.start ?? 0, end = p.end ?? 0
         if start == 0 && end == 0 { return "" }

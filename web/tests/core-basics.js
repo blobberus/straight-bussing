@@ -1,7 +1,7 @@
 // Tests for core/esc.js, core/time.js, core/geo.js, core/storage.js, core/events.js
 import { test, eq, ok, near } from "./lib.js";
 import { esc, safeColor, textOn, lum } from "../js/core/esc.js";
-import { nowS, clock, minsUntil, ago } from "../js/core/time.js";
+import { nowS, clock, minsUntil, ago, shortDate, sameDay, ZONE } from "../js/core/time.js";
 import { hav, walkMin, nearestStops, bearing } from "../js/core/geo.js";
 import { load, save, remove } from "../js/core/storage.js";
 import { bus } from "../js/core/events.js";
@@ -50,12 +50,23 @@ test("lum and textOn", () => {
 test("nowS is unix seconds", () => {
   near(nowS(), Date.now() / 1000, 2);
 });
-test("clock formats a local time with minutes", () => {
-  const d = new Date(2026, 9, 7, 16, 5, 0); // local 4:05 PM
-  const s = clock(d.getTime() / 1000);
-  ok(/4:05/.test(s) || /16:05/.test(s), "got " + s);
-  const m = clock(new Date(2026, 9, 7, 0, 30).getTime() / 1000);
-  ok(/12:30|0?0:30/.test(m), "midnight got " + m);
+test("clock formats Chicago time with minutes, whatever the machine's zone", () => {
+  eq(ZONE, "America/Chicago");
+  const s = clock(Date.UTC(2026, 9, 7, 21, 5) / 1000); // 4:05 PM CDT
+  ok(/^4:05\s?PM$|^16:05$/.test(s.replace(/[\u202f\u00a0]/g, " ")), "got " + s);
+  const m = clock(Date.UTC(2026, 9, 8, 5, 30) / 1000); // 12:30 AM CDT
+  ok(/^12:30\s?AM$|^0?0:30$/.test(m.replace(/[\u202f\u00a0]/g, " ")), "midnight got " + m);
+  const w = clock(1_800_000_000); // 2027-01-15 08:00 UTC = 2:00 AM CST
+  ok(/^2:00\s?AM$|^0?2:00$/.test(w.replace(/[\u202f\u00a0]/g, " ")), "winter got " + w);
+});
+test("shortDate / sameDay use the Chicago calendar", () => {
+  const lateOct7 = Date.UTC(2026, 9, 8, 4, 30) / 1000; // 11:30 PM Oct 7 in Chicago, Oct 8 in UTC
+  ok(/Oct 7/.test(shortDate(lateOct7)), shortDate(lateOct7));
+  ok(/2026/.test(shortDate(lateOct7, true)), shortDate(lateOct7, true));
+  ok(sameDay(lateOct7, Date.UTC(2026, 9, 7, 15) / 1000), "10 AM and 11:30 PM Oct 7");
+  ok(!sameDay(lateOct7, Date.UTC(2026, 9, 8, 5, 30) / 1000), "12:30 AM Oct 8 is the next day");
+  eq(shortDate(undefined), "");
+  eq(sameDay(0, lateOct7), false);
 });
 test("clock returns '' for invalid input", () => {
   eq(clock(undefined), "");
