@@ -217,6 +217,20 @@ final class PlannerTests: XCTestCase, PlannerFixture {
         }
     }
 
+    /// The ride cache is keyed by path indexes: a stop visited twice is two different rides.
+    func testRideCacheKeyIsThePathNotTheStopIds() throws {
+        var st = stops
+        for (id, lat, lon) in [("X0", 41.70, -87.60), ("X1", 41.70, -87.59), ("X2", 41.71, -87.59), ("X3", 41.70, -87.57)] {
+            st[id] = Stop(id: id, name: id, lat: lat, lon: lon)
+        }
+        let d = data(stops: st, routeStops: ["DUP": ["X0", "X1", "X2", "X1", "X3"]], buses: [PlannerTests.bus("DUP")])
+        let r = Planner.plan(from: LatLon(lat: 41.7001, lon: -87.59), to: LatLon(lat: 41.7001, lon: -87.57), now: T, data: d)
+        let b = try XCTUnwrap(r.options.first?.busLegs.first)
+        XCTAssertEqual(b.stopIds, ["X1", "X3"], "the second visit of X1 arrives earlier")
+        XCTAssertEqual(b.stopsPassed, 1)
+        near(b.ride, Geo.hav(st["X1"]!.coord, st["X3"]!.coord) / 300, 0.01, "its own distance, not X1 > X2 > X1 > X3")
+    }
+
     // Cost of a plan on the real network: BenchmarkTests.testDirectionsPlan (release build in CI).
 }
 

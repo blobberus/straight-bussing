@@ -57,7 +57,11 @@ public actor WalkRouteCache {
 
     /// The router result for these endpoints, else the straight-line estimate.
     public func route(_ from: LatLon, _ to: LatLon) async -> WalkResult {
-        let a = Self.rounded(from), b = Self.rounded(to), k = Self.key(a, b)
+        let a = Self.rounded(from), b = Self.rounded(to)
+        // like walk.js walkRoute: nothing to ask a router (no request, nothing cached)
+        guard a.isValid, b.isValid else { return WalkResult(m: 0, min: 0, coords: [], source: .estimate) }
+        if a == b { return WalkResult(m: 0, min: 0, coords: [a], source: .estimate) }
+        let k = Self.key(a, b)
         if let c = cache[k] {
             if c.exp >= clock() { return c.res }
             forget(k)
@@ -174,7 +178,7 @@ extension Planner {
         var out = r
         out.options = Rank.rankOptions(refined.compactMap { $0 })
         out.missedAll = !top.isEmpty && out.options.isEmpty
-        if let w = await walkAll.value {
+        if let w = await walkAll.value, w.m.isFinite, w.min.isFinite, abs(w.m) < 1e9 {   // a junk route never traps Int()
             out.walkOnlyM = Int(JS.round(w.m))
             out.walkOnlyMin = w.min
             out.walkOnlyCoords = w.coords

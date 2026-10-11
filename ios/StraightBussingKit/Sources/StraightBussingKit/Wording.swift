@@ -186,12 +186,16 @@ public enum LiveText {
         public var text: String
         /// Offer Retry.
         public var retry: Bool
+        /// Offer "See alert": the feed answered with no bus while the operator has a service alert up (it may say
+        /// why: service suspended, a detour, an early end). Rider safety: the explanation is one tap away.
+        public var alert = false
     }
 
     /// The status pill under the search bar (nil = nothing to say). The feed in error is never "no shuttles";
-    /// a fresh empty feed during scheduled service says no bus is reporting (Operating.silentService).
+    /// a fresh empty feed during scheduled service says no bus is reporting (Operating.silentService). With
+    /// `alerts` (active service alerts) a fresh empty feed also points to them.
     public static func pill(level: StaleLevel, polled: Bool, lastOk: Double, feedTs: Double, loaded: Bool, busCount: Int,
-                            silent: Bool) -> Pill? {
+                            silent: Bool, alerts: Int = 0) -> Pill? {
         guard polled else { return nil }
         switch level {
         case .err:
@@ -203,8 +207,8 @@ public enum LiveText {
             return Pill(kind: .warn, text: "Live data delayed. Times may be off.", retry: false)
         case .fresh:
             guard loaded && busCount == 0 else { return nil }
-            return silent ? Pill(kind: .warn, text: "No shuttles are reporting live locations", retry: false)
-                : Pill(kind: .info, text: "No shuttles running right now", retry: false)
+            return silent ? Pill(kind: .warn, text: "No shuttles are reporting live locations", retry: false, alert: alerts > 0)
+                : Pill(kind: .info, text: "No shuttles running right now", retry: false, alert: alerts > 0)
         }
     }
 
@@ -389,9 +393,11 @@ public enum RouteText {
         return out
     }
 
-    /// Scheduled buses by hour: today's, else the first day with service ("Mondays"). nil = nothing worth a chart.
+    /// Scheduled buses by hour: the current service day's (after midnight a night route is still on yesterday's,
+    /// "Friday"), else the first day with service ("Mondays"). nil = nothing worth a chart.
     public static func busesChart(_ svc: ServiceData, rid: String, now: Double) -> (when: String, list: [Schedule.HourCount])? {
-        let today = Schedule.dayKey(now)
+        let sh = Schedule.serviceHoursAt(svc, rid, now)
+        let today = sh?.dayKey ?? Schedule.dayKey(now), tail = sh?.yesterday ?? false
         var key = today, list = Schedule.busesByHour(svc, rid, today)
         if list.isEmpty {
             for k in Schedule.dayKeys {
@@ -402,7 +408,7 @@ public enum RouteText {
         guard let first = list.first else { return nil }
         let maxN = list.map(\.buses).max() ?? 0
         if maxN <= 1 && list.allSatisfy({ $0.buses == first.buses }) { return nil }
-        return (key == today ? "today" : (Schedule.dayName[key] ?? key) + "s", list)
+        return (key == today ? (tail ? Schedule.dayName[key] ?? key : "today") : (Schedule.dayName[key] ?? key) + "s", list)
     }
 
     /// One line per group: "7 AM to 9 AM: 3 buses" (route.js buses-by-hour list).

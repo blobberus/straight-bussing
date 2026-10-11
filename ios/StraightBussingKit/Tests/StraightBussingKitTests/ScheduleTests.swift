@@ -117,4 +117,25 @@ final class ScheduleTests: XCTestCase {
             for d in svc.routes[rid]!.days.values { XCTAssertEqual(d.buses?.count, 24, "\(rid) buses[24]") }
         }
     }
+
+    /// After midnight a night route belongs to yesterday's service: never "Today No service · Scheduled now".
+    func testServiceHoursAfterMidnightBelongToYesterday() throws {
+        var routes = S.routes
+        routes["F"] = RouteService(days: ["fri": Self.day("06:30", "24:25", Array(repeating: 1, count: 24))])
+        let svc = ServiceData(routes: routes)
+        let t = utc("2026-10-10T05:10:00Z")   // Sat 00:10 CDT
+        XCTAssertEqual(Schedule.hoursOn(svc, "F", t)?.label, "No service", "the calendar date alone")
+        XCTAssertEqual(Schedule.isScheduledNow(svc, "F", t), true)
+        let s = try XCTUnwrap(Schedule.serviceHoursAt(svc, "F", t))
+        XCTAssertEqual([s.dayKey, s.hours.label], ["fri", "6:30 AM \(D) 12:25 AM"]); XCTAssertTrue(s.yesterday)
+        let n = try XCTUnwrap(Schedule.serviceHoursAt(svc, "N", utc("2026-10-08T07:00:00Z")))   // 2 AM Thu
+        XCTAssertEqual([n.dayKey, n.hours.label], ["wed", "4:00 PM \(D) 4:29 AM"]); XCTAssertTrue(n.yesterday)
+        let day = try XCTUnwrap(Schedule.serviceHoursAt(svc, "F", utc("2026-10-10T15:00:00Z")))
+        XCTAssertEqual([day.dayKey, day.hours.label], ["sat", "No service"]); XCTAssertFalse(day.yesterday)
+        XCTAssertEqual(try XCTUnwrap(Schedule.serviceHoursAt(svc, "D", utc("2026-11-26T16:00:00Z"))).hours.exception, "removed")
+        XCTAssertNil(Schedule.serviceHoursAt(svc, "zz", t))
+        XCTAssertEqual(RouteText.busesChart(svc, rid: "F", now: t)?.when, nil, "one bus all day: no chart")
+        XCTAssertEqual(RouteText.busesChart(S, rid: "N", now: utc("2026-10-08T07:00:00Z"))?.when, "Wednesday", "the service day's chart")
+        XCTAssertEqual(RouteText.busesChart(S, rid: "N", now: utc("2026-10-08T22:00:00Z"))?.when, "today")
+    }
 }

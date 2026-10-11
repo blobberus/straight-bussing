@@ -92,6 +92,17 @@ final class LiveTextTests: XCTestCase {
         XCTAssertEqual(pill(.fresh, buses: 0)?.text, "No shuttles running right now")
         XCTAssertEqual(pill(.fresh, buses: 0, silent: true)?.text, "No shuttles are reporting live locations")
         XCTAssertEqual(pill(.fresh, buses: 0, silent: true)?.kind, .warn)
+        // an empty feed with an operator alert points to it (the alert may say why no bus is reporting)
+        func withAlerts(_ l: StaleLevel, buses: Int, silent: Bool, alerts: Int) -> LiveText.Pill? {
+            LiveText.pill(level: l, polled: true, lastOk: 1, feedTs: 0, loaded: true, busCount: buses, silent: silent, alerts: alerts)
+        }
+        XCTAssertEqual(withAlerts(.fresh, buses: 0, silent: true, alerts: 1)?.alert, true)
+        XCTAssertEqual(withAlerts(.fresh, buses: 0, silent: true, alerts: 1)?.text, "No shuttles are reporting live locations")
+        XCTAssertEqual(withAlerts(.fresh, buses: 0, silent: false, alerts: 2)?.alert, true)
+        XCTAssertEqual(withAlerts(.fresh, buses: 0, silent: true, alerts: 0)?.alert, false)
+        XCTAssertEqual(pill(.fresh, buses: 0, silent: true)?.alert, false, "no alerts: no button")
+        XCTAssertEqual(withAlerts(.err, buses: 0, silent: false, alerts: 1)?.alert, false, "a feed error keeps Retry, not the alert")
+        XCTAssertNil(withAlerts(.fresh, buses: 3, silent: false, alerts: 1), "buses running: the banner in Current trip is enough")
         XCTAssertNil(LiveText.pill(level: .err, polled: false, lastOk: 0, feedTs: 0, loaded: false, busCount: 0, silent: false), "first poll pending")
     }
 

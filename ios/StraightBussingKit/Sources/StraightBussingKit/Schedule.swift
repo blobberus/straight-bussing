@@ -105,6 +105,32 @@ public enum Schedule {
         return Hours(first: first, last: last, label: spanLabel(day), exception: exception)
     }
 
+    /// Hours of the service day `t` belongs to (see `serviceHoursAt`).
+    public struct ServiceHours: Hashable, Sendable {
+        public var hours: Hours
+        public var dayKey: String
+        /// The hours are yesterday's: `t` is in the after-midnight tail of yesterday's service.
+        public var yesterday: Bool
+    }
+
+    /// Hours of the service day `t` belongs to: the calendar date, unless `t` is in the after-midnight tail of
+    /// yesterday's service and today has no window at this minute (12:10 AM Saturday on a route running Friday
+    /// 6:30 AM to 12:25 AM is Friday's service). `hoursOn` alone would say "No service" while the route is
+    /// scheduled now. nil only when there is no schedule data for the route.
+    public static func serviceHoursAt(_ service: ServiceData?, _ rid: String, _ t: Double) -> ServiceHours? {
+        guard let r = routeService(service, rid) else { return nil }
+        let p = localParts(t), today = isoDate(p), prev = isoDate(p, days: -1)
+        func has(_ day: ServiceDay?, _ m: Int) -> Bool {
+            spansOf(day).contains { s in m >= (mins(s.0) ?? 0) && m < (mins(s.1) ?? 0) }
+        }
+        let tail = !has(dayFor(r, today).day, p.min) && has(dayFor(r, prev).day, p.min + 1440)
+        let iso = tail ? prev : today
+        let (day, exception) = dayFor(r, iso)
+        let first = day?.first.flatMap { $0.isEmpty ? nil : $0 }, last = day?.last.flatMap { $0.isEmpty ? nil : $0 }
+        return ServiceHours(hours: Hours(first: first, last: last, label: spanLabel(day), exception: exception),
+                            dayKey: keyOfIso(iso), yesterday: tail)
+    }
+
     public struct WeekRow: Hashable, Sendable {
         public var days: String
         public var label: String

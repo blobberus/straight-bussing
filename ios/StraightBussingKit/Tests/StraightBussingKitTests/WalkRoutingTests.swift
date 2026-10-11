@@ -171,4 +171,32 @@ final class WalkRoutingTests: XCTestCase, PlannerFixture {
         XCTAssertTrue(r.options.isEmpty)
         XCTAssertTrue(r.missedAll, "Directions says the buses leave before you could reach the stop")
     }
+
+    /// walk.js walkRoute: the same (rounded) point or an invalid one never reaches the router and is never cached.
+    func testSamePointAndInvalidInputNeverReachTheRouter() async {
+        let log = Log()
+        let cache = WalkRouteCache(fetch: fake(log))
+        let p = LatLon(lat: 41.79, lon: -87.6)
+        let same = await cache.route(p, LatLon(lat: 41.790001, lon: -87.600001))
+        XCTAssertEqual(same, WalkResult(m: 0, min: 0, coords: [WalkRouteCache.rounded(p)], source: .estimate))
+        let bad = await cache.route(LatLon(lat: .nan, lon: 1), p)
+        XCTAssertEqual(bad.source, .estimate); XCTAssertEqual(bad.m, 0); XCTAssertTrue(bad.coords.isEmpty)
+        let calls = await log.count
+        XCTAssertEqual(calls, 0, "never fetched")
+        let cached = await cache.count
+        XCTAssertEqual(cached, 0)
+    }
+
+    /// A router answering an infinite walk never traps `Int()`: the walk-only line keeps its estimate.
+    func testRefinePlanSurvivesANonFiniteWalkOnlyRoute() async {
+        let from = LatLon(lat: stops["L3"]!.lat + 0.002, lon: stops["L3"]!.lon)
+        let to = LatLon(lat: stops["L1"]!.lat - 0.002, lon: stops["L1"]!.lon)
+        let d = data()
+        let plan = Planner.plan(from: from, to: to, now: T, data: d)
+        let weird: WalkRouter = { a, b in WalkResult(m: .infinity, min: .infinity, coords: [a, b], source: .router) }
+        let r = await Planner.refinePlan(plan, from: from, to: to, walkRoute: weird, data: d)
+        XCTAssertEqual(r.walkOnlyM, plan.walkOnlyM)
+        XCTAssertEqual(r.walkOnlySource, plan.walkOnlySource)
+        XCTAssertTrue(r.walkOnlyMin.isFinite)
+    }
 }

@@ -53,6 +53,11 @@ public enum TripText {
         public var etaApprox: Bool
     }
 
+    /// The planned bus left without you: never promise a next bus that is not there.
+    static func missedNote(_ leg: TripFollow.BusStep) -> String {
+        leg.vehicle != nil ? "Your planned bus has left. Showing the next one." : "Your planned bus has left."
+    }
+
     public static func nowCard(_ p: TripFollow, routes: [String: Route], now: Double) -> NowCard {
         let late = p.stale != .fresh
         if p.phase == .arrived {
@@ -75,10 +80,11 @@ public enum TripText {
             else if let b = leg.boardEta {
                 sec.append("\(short.isEmpty ? "Bus" : short) \(leg.boardLive ? "arrives" : "planned") \(inMin(b, now: now))\(leg.boardLive ? "" : ", est.")")
             } else { sec.append("No live bus time yet") }
+            if leg.missed { sec.append(missedNote(leg)) }   // within 120 m of the stop: say why another bus is shown
         case .waiting:
             prim = !w.status.isEmpty ? w.status : leg.boardEta.map { leg.boardLive ? "Next bus" : "Bus planned for \(TimeFmt.clock($0))" } ?? "Waiting for the bus"
             sec.append("Board at \(leg.boardName)\(leg.boardEta.map { " " + inMin($0, now: now) } ?? "")\(leg.boardLive ? "" : leg.boardEta != nil ? ", est." : "")")
-            if leg.missed { sec.append("Your planned bus has left. Showing the next one.") }
+            if leg.missed { sec.append(missedNote(leg)) }
         default:
             prim = !w.status.isEmpty ? w.status : "Riding to \(leg.alightName)"
             sec.append("Get off at \(leg.alightName)\(leg.alightEta.map { " about \(TimeFmt.clock($0))\(leg.alightLive ? "" : ", est.")" } ?? "")")

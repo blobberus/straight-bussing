@@ -54,12 +54,14 @@ public struct StopTimeUpdate: Hashable, Sendable {
     public init(stopId: String?, stopSequence: Int? = nil, arrival: Double? = nil, departure: Double? = nil) {
         self.stopId = stopId; self.stopSequence = stopSequence; self.arrival = arrival; self.departure = departure
     }
-    /// `arrival.time || departure.time || 0` (JS truthiness: a zero arrival falls back to departure).
+    /// `arrival.time || departure.time || 0` (JS truthiness: a zero arrival falls back to departure). A time past
+    /// the year 5000 is junk, not a prediction: treated as missing (every minute count downstream stays an Int).
     public var time: Double {
-        if let a = arrival, a != 0, a.isFinite { return a }
-        if let d = departure, d != 0, d.isFinite { return d }
+        if let a = arrival, a != 0, a.isFinite, abs(a) < Self.maxTime { return a }
+        if let d = departure, d != 0, d.isFinite, abs(d) < Self.maxTime { return d }
         return 0
     }
+    static let maxTime = 1e11
 }
 
 /// A GTFS-rt TripUpdate, the web's `store.trips` entries.
@@ -112,8 +114,13 @@ extension KeyedDecodingContainer where K == AnyKey {
     func num(_ key: String) -> Double? {
         let k = AnyKey(key)
         if let d = try? decode(Double.self, forKey: k) { return d.isFinite ? d : nil }
-        if let s = try? decode(String.self, forKey: k) { return Double(s.trimmingCharacters(in: .whitespaces)) }
+        if let s = try? decode(String.self, forKey: k), let d = Double(s.trimmingCharacters(in: .whitespaces)) { return d.isFinite ? d : nil }
         return nil
+    }
+    /// A whole number (stop sequences; fractions truncate like before): nil for NaN, infinity or huge values.
+    func int(_ key: String) -> Int? {
+        guard let d = num(key), abs(d) < 1e9 else { return nil }
+        return Int(d)
     }
     /// String or number -> String (numbers written like JavaScript's String(n)).
     func str(_ key: String) -> String? {
@@ -138,7 +145,10 @@ struct LossyList<T: Decodable>: Decodable {
         var u = try decoder.unkeyedContainer()
         var out: [T] = []
         while !u.isAtEnd {
-            if let v = try? u.decode(T.self) { out.append(v) } else { _ = try? u.decode(Skip.self) }
+            if let v = try? u.decode(T.self) { out.append(v) }
+            // a failed decode does not advance the container: skip the element, and never loop on one that
+            // cannot be skipped (network data must never hang the poll)
+            else if (try? u.decode(Skip.self)) == nil { break }
         }
         items = out
     }
@@ -161,7 +171,7 @@ struct VehicleEntity: Decodable {
         value = VehiclePosition(vehicle: VehicleDescriptor(v.obj("vehicle")), latitude: lat, longitude: lon,
                                 bearing: p.num("bearing"), speed: p.num("speed"), trip: TripDescriptor(v.obj("trip")),
                                 timestamp: v.num("timestamp") ?? 0, stopId: v.str("stop_id"),
-                                currentStopSequence: v.num("current_stop_sequence").map { Int($0) })
+                                currentStopSequence: v.int("current_stop_sequence"))
     }
 }
 
@@ -169,7 +179,7 @@ struct StopTimeEntity: Decodable {
     var value: StopTimeUpdate
     init(from decoder: Decoder) throws {
         let u = try decoder.container(keyedBy: AnyKey.self)
-        value = StopTimeUpdate(stopId: u.str("stop_id"), stopSequence: u.num("stop_sequence").map { Int($0) },
+        value = StopTimeUpdate(stopId: u.str("stop_id"), stopSequence: u.int("stop_sequence"),
                                arrival: u.obj("arrival")?.num("time"), departure: u.obj("departure")?.num("time"))
     }
 }

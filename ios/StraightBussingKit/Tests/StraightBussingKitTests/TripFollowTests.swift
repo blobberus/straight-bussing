@@ -319,12 +319,254 @@ final class TripFollowTests: XCTestCase {
         XCTAssertEqual(journey.rids, ["R"]); XCTAssertEqual(journey.label, "To Cafe")
         if case .bus(let jb) = journey.legs.first(where: { if case .bus = $0 { return true }; return false })! { XCTAssertEqual(jb.vehicleId, "v102") }
     }
+
+    // MARK: - Edge cases (2026-10-11 sweep; expected values from running web/js/core/tripprogress.js, except
+    // the two fixed on iOS first: a planned vehicle on a new trip id while you ride a loop, and another bus's
+    // update standing in for the planned vehicle's own)
+
+    /// The planned trip id is gone from the feed and you should be aboard: the bus between your stops is followed.
+    func testOnboardFallbackWhenPlannedTripIsGone() {
+        let s = TripFix.Scene(journey: TripFix.journeyR(t0: NOW - 900, tripId: "gone", boardT: NOW - 240, alightT: NOW + 200),
+                              live: TripFix.live([TripFix.bus("v9", "9", "R", "t9", "A5", "A6", 0.4)],
+                                                 [TripFix.trip("t9", "R", "v9", "9", [("A6", 70), ("A7", 200)])]))
+        let p = TripFix.follow(s), b = bus(p)
+        XCTAssertEqual(p.phase, .onBus)
+        XCTAssertEqual(b.vehicle?.how, .onboard); XCTAssertEqual(b.vehicle?.label, "9"); XCTAssertEqual(b.vehicle?.tripId, "t9")
+        XCTAssertEqual(ids(b), ["A4", "A5", "A6", "A7"]); XCTAssertEqual(b.vehicle?.idx, 2); near(b.vehicle?.pos, 1.4, 0.02)
+        XCTAssertEqual(b.stops.map(\.state), [.passed, .passed, .next, .upcoming])
+        XCTAssertEqual(b.stopsLeft, 2); XCTAssertNil(b.boardEta); XCTAssertEqual(b.alightEta, NOW + 200); XCTAssertTrue(b.alightLive)
+        XCTAssertFalse(b.byTime); XCTAssertEqual(p.arriveT, NOW + 380)
+    }
+
+    /// The planned vehicle drops out of the feed: another bus to the boarding stop (web parity), then the plan clock.
+    func testFeedDropsThePlannedVehicle() {
+        let j = TripFix.journeyR(t0: NOW - 900, tripId: "tR1", vehicleId: "v101", boardT: NOW - 240, alightT: NOW + 200)
+        let tR1 = TripFix.tR1([("A6", 70), ("A7", 260)])
+        var s = TripFix.Scene(journey: j, live: TripFix.live([TripFix.bus("v102", "102", "R", "tR2", "A1", "A2", 0.5)],
+            [tR1, TripFix.trip("tR2", "R", "v102", "102", [("A2", 60), ("A3", 150), ("A4", 240), ("A7", 500)])]))
+        var p = TripFix.follow(s), b = bus(p)
+        XCTAssertEqual(p.phase, .waiting); XCTAssertEqual(b.vehicle?.label, "102"); XCTAssertEqual(b.vehicle?.how, .next)
+        XCTAssertEqual(b.stopsAway, 2); XCTAssertEqual(b.boardEta, NOW + 240); XCTAssertTrue(b.boardLive); XCTAssertFalse(b.missed)
+        s.live = TripFix.live([], [tR1])
+        p = TripFix.follow(s); b = bus(p)
+        XCTAssertEqual(p.phase, .onBus); XCTAssertNil(b.vehicle); XCTAssertTrue(b.byTime); XCTAssertFalse(b.live)
+        XCTAssertEqual(b.stops.map(\.state), [.passed, .upcoming, .upcoming, .upcoming])
+        XCTAssertEqual(b.alightEta, NOW + 200, "planned time"); XCTAssertFalse(b.alightLive)
+        XCTAssertEqual(p.arriveT, NOW + 380); XCTAssertFalse(p.arriveLive)
+    }
+
+    /// Loops roll the trip id at their start stop. Riding A6 -> A1 across it, the planned vehicle now reports lapB:
+    /// you are on it, it is not "5 stops away" on its previous lap (fixed on iOS 2026-10-11; web still reads the lap).
+    func testLoopTripIdChangeWhileRiding() {
+        func journey(_ vid: String?) -> TripJourney {
+            TripJourney(to: "X", t0: NOW - 400, legs: [
+                .bus(.init(rid: "L", boardId: "A6", boardName: "59th & Ellis", alightId: "A1", alightName: "56th & Ellis", tripId: "lapA",
+                           vehicleId: vid, boardT: NOW - 300, alightT: NOW + 180, source: .live, waitLive: true)),
+                .walk(min: 2, toName: "X"),
+            ])
+        }
+        let live = TripFix.live([TripFix.bus("v9", "9", "L", "lapB", "A0", "A1", 0.5)],
+                                [TripFix.trip("lapB", "L", "v9", "9", [("A1", 60), ("A2", 150), ("A3", 240), ("A4", 330), ("A5", 420), ("A6", 510), ("A7", 600)])])
+        for vid in [nil, "v9"] {
+            let p = TripFollow.compute(journey(vid), staticData: TripFix.S, live: live, user: nil, now: NOW)!, b = bus(p)
+            XCTAssertEqual(p.phase, .onBus, "vehicle \(vid ?? "none")"); XCTAssertEqual(b.vehicle?.how, .onboard)
+            XCTAssertEqual(b.vehicle?.label, "9"); XCTAssertEqual(b.stopsLeft, 1)
+            XCTAssertEqual(ids(b), ["A6", "A7", "A8", "A0", "A1"]); XCTAssertEqual(b.alightEta, NOW + 60); XCTAssertTrue(b.alightLive)
+            XCTAssertFalse(TripText.busWords(b, now: NOW).status.contains("stops away"))
+        }
+    }
+
+    /// The planned vehicle on a new trip id on a line route: still followed as the bus you ride.
+    func testPlannedVehicleOnANewTripLineRoute() {
+        let s = TripFix.Scene(journey: TripFix.journeyR(t0: NOW - 900, tripId: "tR1", vehicleId: "v101", boardT: NOW - 240, alightT: NOW + 200),
+                              live: TripFix.live([TripFix.bus("v101", "101", "R", "tR9", "A5", "A6", 0.4)],
+                                                 [TripFix.trip("tR9", "R", "v101", "101", [("A6", 70), ("A7", 200)])]))
+        let p = TripFix.follow(s), b = bus(p)
+        XCTAssertEqual(p.phase, .onBus)
+        XCTAssertEqual(b.vehicle?.label, "101"); XCTAssertEqual(b.vehicle?.tripId, "tR9"); XCTAssertEqual(b.vehicle?.how, .onboard)
+        XCTAssertEqual(b.vehicle?.idx, 2); XCTAssertEqual(b.stopsLeft, 2); XCTAssertEqual(b.alightEta, NOW + 200); XCTAssertTrue(b.alightLive)
+    }
+
+    /// Passio reuses trip ids: the planned trip id is now run by ONE other bus. The planned vehicle keeps its own
+    /// predictions, never bus 103's times next to bus 102's position (fixed on iOS 2026-10-11).
+    func testPlannedTripIdNowRunByOneOtherVehicle() {
+        let j = TripFix.journeyR(tripId: "tS", vehicleId: "v102", boardT: NOW + 420, alightT: NOW + 720)
+        let tX = TripFix.trip("tX", "R", "v102", "102", [("A2", 60), ("A3", 150), ("A4", 240), ("A7", 500)])
+        var s = TripFix.Scene(journey: j, live: TripFix.live([TripFix.bus("v102", "102", "R", "tX", "A1", "A2", 0.5)],
+            [TripFix.trip("tS", "R", "v103", "103", [("A4", 100), ("A7", 400)]), tX]),
+            user: LatLon(lat: TripFix.stops["A4"]!.lat, lon: TripFix.stops["A4"]!.lon))
+        var b = bus(TripFix.follow(s))
+        XCTAssertEqual(b.vehicle?.label, "102"); XCTAssertEqual(b.vehicle?.how, .trip); XCTAssertEqual(b.stopsAway, 2)
+        XCTAssertEqual(b.boardEta, NOW + 240, "bus 102's own prediction"); XCTAssertEqual(b.alightEta, NOW + 500)
+        s.live.trips.insert(TripFix.trip("tS", "R", "v104", "104", [("A4", 900)]), at: 1)
+        b = bus(TripFix.follow(s))
+        XCTAssertEqual(b.boardEta, NOW + 240, "bus 102's own trip update"); XCTAssertEqual(b.alightEta, NOW + 500)
+    }
+
+    /// The alighting stop is not on the route: no bus is placed, planned times only.
+    func testAlightingStopNotOnTheRoute() {
+        var s = TripFix.scene("waiting")
+        s.journey = TripJourney(to: "Medical Center Cafe", t0: NOW - 120, legs: [
+            .walk(min: 4, toName: "Ratner Center"),
+            .bus(.init(rid: "R", boardId: "A4", boardName: "Ratner Center", alightId: "Z9", alightName: "Nowhere", tripId: "tR1",
+                       boardT: NOW + 240, alightT: NOW + 500, source: .live, waitLive: true)),
+            .walk(min: 3, toName: "Medical Center Cafe"),
+        ])
+        var p = TripFix.follow(s), b = bus(p)
+        XCTAssertEqual(p.phase, .waiting); XCTAssertNil(b.vehicle); XCTAssertFalse(b.live); XCTAssertFalse(b.byTime)
+        XCTAssertEqual(ids(b), ["A4", "Z9"]); XCTAssertEqual(b.stops.map(\.name), ["Ratner Center", "Nowhere"])
+        XCTAssertEqual([b.boardIdx, b.alightIdx], [0, 1])
+        XCTAssertEqual(b.boardEta, NOW + 240); XCTAssertFalse(b.boardLive); XCTAssertEqual(b.alightEta, NOW + 500); XCTAssertFalse(b.alightLive)
+        XCTAssertEqual(TripText.whereLine(b, now: NOW), "No live position for this bus")
+        s.user = nil
+        p = TripFix.follow(s); b = bus(p)
+        XCTAssertEqual(p.phase, .walkToStop); XCTAssertTrue(b.byTime)
+        XCTAssertEqual(b.walkMin, 4); XCTAssertEqual(b.slackMin, 0); XCTAssertEqual(b.canCatch, true)
+    }
+
+    /// "Missed" needs the planned bus more than 250 m past the stop (it may still be pulling away).
+    func testMissedNeedsTheBusMoreThan250mAway() {
+        var s = TripFix.scene("missed")
+        s.live.buses[0] = TripFix.bus("v101", "101", "R", "tR1", "A4", "A5", 0.3)
+        s.live.trips[0] = TripFix.tR1([("A5", 20), ("A7", 160)])
+        var p = TripFix.follow(s), b = bus(p)
+        XCTAssertFalse(b.missed); XCTAssertEqual(p.phase, .onBus); XCTAssertEqual(b.vehicle?.label, "101"); XCTAssertEqual(b.vehicle?.how, .trip)
+        XCTAssertEqual(b.stopsLeft, 3); XCTAssertEqual(b.alightEta, NOW + 160)
+        s.live.buses[0] = TripFix.bus("v101", "101", "R", "tR1", "A5", "A6", 0.3)
+        s.live.trips[0] = TripFix.tR1([("A6", 40), ("A7", 160)])
+        p = TripFix.follow(s); b = bus(p)
+        XCTAssertTrue(b.missed); XCTAssertEqual(p.phase, .waiting); XCTAssertEqual(b.vehicle?.label, "102"); XCTAssertEqual(b.stopsAway, 3)
+        XCTAssertEqual(b.boardEta, NOW + 450)
+    }
+
+    /// The missed note never promises a next bus that is not there, and shows on the walk to the stop too (iOS).
+    func testMissedWordingEdges() {
+        var s = TripFix.scene("missed")
+        s.live.buses.removeLast(); s.live.trips.removeLast()
+        var p = TripFix.follow(s), b = bus(p)
+        XCTAssertTrue(b.missed); XCTAssertNil(b.vehicle); XCTAssertEqual(p.phase, .waiting); XCTAssertNil(b.boardEta); XCTAssertFalse(b.live)
+        let c = TripText.nowCard(p, routes: TripFix.routes, now: NOW)
+        XCTAssertEqual(c.prim, "Waiting for the bus")
+        XCTAssertEqual(c.sec, ["Board at Ratner Center", "Your planned bus has left.", "No live bus position right now."])
+        s = TripFix.scene("missed"); s.user = LatLon(lat: TripFix.stops["A4"]!.lat + 0.0008, lon: TripFix.stops["A4"]!.lon)
+        p = TripFix.follow(s); b = bus(p)
+        XCTAssertTrue(b.missed); XCTAssertEqual(p.phase, .walkToStop); XCTAssertEqual(b.vehicle?.label, "102")
+        let w = TripText.nowCard(p, routes: TripFix.routes, now: NOW)
+        XCTAssertEqual(w.prim, "Walk 1 min to Ratner Center")
+        XCTAssertEqual(w.sec, ["Leave in 6 min, est.", "Bus 102 is 3 stops away", "Your planned bus has left. Showing the next one."])
+    }
+
+    /// At the alighting stop the ride is done, even without a live bus.
+    func testAtTheAlightingStopTheRideIsDone() {
+        var s = TripFix.Scene(journey: TripFix.journeyR(t0: NOW - 900, boardT: NOW - 240, alightT: NOW + 200), live: TripFix.live(),
+                              user: LatLon(lat: TripFix.stops["A7"]!.lat, lon: TripFix.stops["A7"]!.lon))
+        var p = TripFix.follow(s)
+        XCTAssertEqual(p.phase, .arrived); XCTAssertEqual(bus(p).state, .done); XCTAssertTrue(bus(p).byTime); XCTAssertEqual(bus(p).doneT, NOW)
+        XCTAssertEqual(p.arriveT, NOW + 180); XCTAssertEqual(p.legs.last?.walk?.state, .active)
+        s.user = nil
+        p = TripFix.follow(s)
+        XCTAssertEqual(p.phase, .onBus); XCTAssertEqual(bus(p).alightEta, NOW + 200)
+    }
+
+    /// A vehicle whose stop id is off the route is placed by its trip update's next stop, else ignored.
+    func testVehicleStopIdNotOnTheRoute() {
+        var s = TripFix.scene("waiting")
+        s.live.buses[0].stopId = "ZZ"
+        var b = bus(TripFix.follow(s))
+        XCTAssertEqual(b.vehicle?.nextId, "A2"); XCTAssertEqual(b.vehicle?.idx, 1); XCTAssertEqual(b.stopsAway, 2)
+        XCTAssertEqual(b.boardEta, NOW + 240); XCTAssertTrue(b.boardLive)
+        s.live.trips = []
+        let p = TripFix.follow(s); b = bus(p)
+        XCTAssertEqual(p.phase, .waiting); XCTAssertNil(b.vehicle); XCTAssertFalse(b.live); XCTAssertFalse(b.byTime)
+        XCTAssertEqual(ids(b), ["A4", "A5", "A6", "A7"]); XCTAssertEqual(b.boardEta, NOW + 240); XCTAssertFalse(b.boardLive)
+        XCTAssertTrue(TripText.nowCard(p, routes: TripFix.routes, now: NOW).sec.contains("No live bus position right now."))
+    }
+
+    /// The planned bus is followed even when you cannot walk there in time, and the card says so.
+    func testPlannedBusYouCannotReachOnFoot() {
+        var s = TripFix.scene("walk"); s.user = LatLon(lat: TripFix.stops["A4"]!.lat - 0.0108, lon: TripFix.stops["A4"]!.lon)
+        let p = TripFix.follow(s), b = bus(p)
+        XCTAssertEqual(p.phase, .walkToStop); XCTAssertEqual(b.vehicle?.label, "101"); XCTAssertEqual(b.vehicle?.how, .trip)
+        near(b.walkMin, 18.014, 0.01); near(b.slackMin, -11.014, 0.01); XCTAssertEqual(b.canCatch, false)
+        let c = TripText.nowCard(p, routes: TripFix.routes, now: NOW)
+        XCTAssertEqual(c.prim, "Walk 18 min to Ratner Center")
+        XCTAssertEqual(c.sec, ["Leaves before you can walk there, est.", "Bus 101 is 3 stops away"])
+    }
+
+    /// Boarding at a loop's start stop: the bus that just left reads as its previous lap only while you are at the stop.
+    func testBoardingAtTheLoopStart() {
+        let j = TripJourney(to: "X", t0: NOW - 60, legs: [
+            .bus(.init(rid: "G", boardId: "B0", boardName: "Ratner East", alightId: "B3", alightName: "Lake Park & 53rd <b>", tripId: "tG1",
+                       boardT: NOW - 20, alightT: NOW + 400, source: .live, waitLive: true)),
+            .walk(min: 2, toName: "X"),
+        ])
+        var s = TripFix.Scene(journey: j, live: TripFix.live([TripFix.bus("v301", "301", "G", "tG1", "B0", "B1", 0.2)],
+            [TripFix.trip("tG1", "G", "v301", "301", [("B0", -20), ("B1", 60), ("B2", 180), ("B3", 400), ("B0", 600)])]))
+        var p = TripFix.follow(s), b = bus(p)
+        XCTAssertEqual(p.phase, .waiting); XCTAssertEqual(b.vehicle?.idx, -1); XCTAssertEqual(b.vehicle?.behind, 3); XCTAssertEqual(b.stopsAway, 3)
+        XCTAssertEqual(b.boardEta, NOW - 20); XCTAssertTrue(b.boardLive); XCTAssertEqual(b.alightEta, NOW + 400)
+        p = TripFix.follow(s, now: NOW + 60); b = bus(p)
+        XCTAssertEqual(p.phase, .onBus); XCTAssertEqual(b.vehicle?.idx, 1); XCTAssertEqual(b.stopsLeft, 3); XCTAssertEqual(b.alightEta, NOW + 400)
+        s.user = LatLon(lat: TripFix.stops["B0"]!.lat, lon: TripFix.stops["B0"]!.lon + 0.0008)
+        p = TripFix.follow(s, now: NOW + 60); b = bus(p)
+        XCTAssertEqual(p.phase, .waiting); XCTAssertEqual(b.stopsAway, 3); XCTAssertEqual(b.boardEta, NOW + 600)
+        XCTAssertEqual(b.alightEta, NOW + 1020); XCTAssertFalse(b.alightLive)
+    }
+
+    func testFeedLevelsReachTheTrip() {
+        var l = TripFix.live(); l.failed = true
+        XCTAssertEqual(TripFollow.compute(TripFix.journeyR(), staticData: TripFix.S, live: l, user: nil, now: NOW)?.stale, .err)
+        l = TripFix.live(feedTs: NOW - 200)
+        XCTAssertEqual(TripFollow.compute(TripFix.journeyR(), staticData: TripFix.S, live: l, user: nil, now: NOW)?.stale, .late)
+        l = TripFix.live(); l.lastOk = 0
+        XCTAssertEqual(TripFollow.compute(TripFix.journeyR(), staticData: TripFix.S, live: l, user: nil, now: NOW)?.stale, .err)
+    }
+
+    /// Without stop sequences, predictions are matched in time order (the loop's B3 at both ends included).
+    func testEtasWithoutStopSequenceUseTimeOrder() {
+        var s = TripFix.scene("transfer")
+        s.live.trips[1] = TripUpdate(trip: .init(tripId: "tG1", routeId: "G"), vehicle: .init(id: "v301", label: "301"),
+            stopTimeUpdates: [("B0", 400.0), ("B3", 860), ("B1", 520), ("B2", 640), ("B3", 60)].map { StopTimeUpdate(stopId: $0.0, arrival: NOW + $0.1, departure: NOW + $0.1 + 1) })
+        let b2 = bus(TripFix.follow(s), 1)
+        XCTAssertEqual(b2.stops.map(\.eta), [NOW + 400, NOW + 520, NOW + 640, NOW + 860]); XCTAssertEqual(b2.vehicle?.behind, 1)
+    }
+
+    /// Junk feed numbers never crash the poll: a NaN or huge stop sequence, a time past the year 5000.
+    func testOddFeedNumbersNeverTrap() throws {
+        let json = #"{"entity":[{"trip_update":{"trip":{"trip_id":"t","route_id":"R"},"vehicle":{"id":"v"},"stop_time_update":[{"stop_id":"A1","stop_sequence":"nan","arrival":{"time":1800000060}},{"stop_id":"A2","stop_sequence":1e19,"arrival":{"time":1800000120}},{"stop_id":"A3","arrival":{"time":"inf"}},{"stop_id":"A4","arrival":{"time":1e21}}]}}]}"#
+        let f = try FeedParser.tripUpdates(Data(json.utf8))
+        let ups = try XCTUnwrap(f.entities.first?.stopTimeUpdates)
+        XCTAssertEqual(ups.map(\.stopId), ["A1", "A2", "A3", "A4"])
+        XCTAssertEqual(ups.map(\.stopSequence), [nil, nil, nil, nil])
+        XCTAssertEqual(ups.map(\.time), [1_800_000_060, 1_800_000_120, 0, 0], "infinite and far-future times are missing, not live")
+        let vp = try FeedParser.vehicles(Data(#"{"entity":[{"vehicle":{"current_stop_sequence":1e300,"timestamp":"nan","position":{"latitude":41.79,"longitude":-87.6}}}]}"#.utf8))
+        XCTAssertEqual(vp.entities.count, 1); XCTAssertNil(vp.entities.first?.currentStopSequence); XCTAssertEqual(vp.entities.first?.timestamp, 0)
+        var s = TripFix.scene("waiting")
+        s.live.trips = [TripFix.tR1([("A2", 60), ("A4", 1e21)])]
+        let p = TripFix.follow(s)
+        XCTAssertNotEqual(bus(p).boardEta, NOW + 1e21, "a far-future time is not a live prediction")
+        _ = TripText.nowCard(p, routes: TripFix.routes, now: NOW)
+        _ = TripText.arriveLine(p, now: NOW)
+        XCTAssertEqual(TimeFmt.minsUntil(1e30, from: 0), 1_000_000_000)
+        XCTAssertEqual(TimeFmt.minsUntil(.nan, from: 0), 0)
+        XCTAssertEqual(TimeFmt.minsUntil(-.infinity, from: 0), -1_000_000_000)
+        XCTAssertFalse(TimeFmt.ago(1e300, from: NOW).isEmpty)
+    }
 }
 
 /// Port of the wording checks in web/tests/trip-view.js (ui/views/tripprogress.js) plus the Live Activity content.
 final class TripTextTests: XCTestCase {
     let NOW = TripFix.NOW
     func card(_ id: String) -> TripText.NowCard { TripText.nowCard(TripFix.follow(TripFix.scene(id)), routes: TripFix.routes, now: NOW) }
+
+    /// web trip-view.js: no trip id and an empty feed -> the plan's clock, said as an estimate.
+    func testNoTripIdEmptyFeed() {
+        let p = TripFollow.compute(TripFix.journeyR(tripId: nil), staticData: TripFix.S, live: TripFix.live(), user: nil, now: NOW)!
+        let c = TripText.nowCard(p, routes: TripFix.routes, now: NOW)
+        XCTAssertEqual(c.prim, "Walk 4 min to Ratner Center")
+        XCTAssertEqual(c.sec, ["Leave in 3 min, est.", "RL planned in 7 minutes, est.", "No live bus data: following the plan's times (estimate)."])
+        XCTAssertTrue(c.etaApprox)
+    }
 
     func testWalkingToTheStop() {
         let p = TripFix.follow(TripFix.scene("walk"))

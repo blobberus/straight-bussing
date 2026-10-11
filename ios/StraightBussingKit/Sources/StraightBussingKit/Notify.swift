@@ -101,7 +101,7 @@ public enum Notify {
             }
             out.append(BusAway(rid: r, tripId: b.trip.tripId, vehicleId: b.vehicle.id, label: b.vehicle.label ?? b.vehicle.id ?? "",
                                stopsAway: away, etaS: etaAt(tu, stopId, now), nextStopId: next,
-                               nextStopName: staticData.stops[next]?.name ?? next))
+                               nextStopName: staticData.stops[next].flatMap { $0.name.isEmpty ? nil : $0.name } ?? next))
         }
         return out.stableSorted { a, b in
             a.stopsAway != b.stopsAway ? a.stopsAway < b.stopsAway : (a.etaS ?? .infinity) < (b.etaS ?? .infinity)
@@ -121,7 +121,7 @@ public enum Notify {
     /// "about 4 min (est.)" / "under a minute (est.)" / '' when there is no live time.
     public static func minutesText(_ etaS: Double?, now: Double) -> String {
         guard let etaS, etaS != 0 else { return "" }
-        let m = Int(((etaS - now) / 60).rounded(.down))
+        let m = TimeFmt.minsUntil(etaS, from: now)
         return m < 1 ? "under a minute (est.)" : "about \(m) min (est.)"
     }
 
@@ -139,7 +139,7 @@ public enum Notify {
         if level == .err || level == .old { return ([], fired) }
         let rids = watchedRoutes(prefs, staticData: staticData, hidden: hidden)
         if rids.isEmpty { return ([], fired) }
-        let stop = staticData.stops[sid]?.name ?? "your station"
+        let stop = staticData.stops[sid].flatMap { $0.name.isEmpty ? nil : $0.name } ?? "your station"   // web `||`
         var alerts: [BusAlert] = []
         for it in stopsAway(staticData: staticData, live: live, stopId: sid, rids: rids, now: now) {
             var kinds: [BusAlert.Kind] = []
@@ -155,7 +155,7 @@ public enum Notify {
                 if level == .late { body += " Live data is delayed." }
                 let key = "\(sid)|\(it.tripId ?? "")|\(it.vehicleId ?? "")|\(k.rawValue)"   // trip ids are shared by several buses
                 if fired.contains(key) { continue }
-                if k == .twoStops && fired.contains(key.replacingOccurrences(of: "twoStops", with: "oneStop")) { continue }
+                if k == .twoStops && fired.contains(String(key.dropLast(BusAlert.Kind.twoStops.rawValue.count)) + BusAlert.Kind.oneStop.rawValue) { continue }
                 fired.append(key)
                 alerts.append(BusAlert(key: key, kind: k, title: "\(routeName(staticData, it.rid)): \(head)", body: body))
             }

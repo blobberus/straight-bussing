@@ -206,11 +206,12 @@ public struct TripFollow: Hashable, Sendable {
     static func walkMinM(_ m: Double) -> Double { m * Geo.walkDetour / Geo.walkMetersPerMin }
 
     /// Trip update of a trip run by a vehicle: with a vehicle the entity with both ids wins; the trip id alone only
-    /// when it is unambiguous (or no vehicle is known); else the vehicle's own entity.
+    /// when it is unambiguous (or no vehicle is known) and does not name ANOTHER vehicle (Passio reuses trip ids:
+    /// never one bus's position with another bus's times); else the vehicle's own entity.
     static func tripUpdate(_ trips: [TripUpdate], _ tripId: String?, _ vehicleId: String?) -> TripUpdate? {
         let byTrip = tripId == nil ? [] : trips.filter { $0.trip.tripId == tripId }
         if let vehicleId, let t = byTrip.first(where: { $0.vehicle.id == vehicleId }) { return t }
-        if vehicleId == nil || byTrip.count == 1, let t = byTrip.first { return t }
+        if let t = byTrip.first, vehicleId == nil || (byTrip.count == 1 && t.vehicle.id == nil) { return t }
         if let vehicleId { return trips.first { $0.vehicle.id == vehicleId } }
         return nil
     }
@@ -421,8 +422,14 @@ public struct TripFollow: Hashable, Sendable {
             // (never "past your stop"), and the predictions are those of YOUR trip.
             let onPlanned = l.tripId != nil && planned.trip.tripId == l.tripId
             let tu = tripUpdate(L.trips, l.tripId, l.vehicleId ?? (onPlanned ? planned.vehicle.id : nil))
-            let coming = !onPlanned || (tu?.stopTimeUpdates.contains(where: { $0.stopId == bId && $0.time > now - 30 }) ?? false)
+            let boardAhead = tu?.stopTimeUpdates.contains(where: { $0.stopId == bId && $0.time > now - 30 }) ?? false
             let pastBoard = ctx.active && pB != nil && now > pB! + graceS && !stillAtBoard
+            // On another trip id, the vehicle is still finishing an EARLIER trip only while your trip is still
+            // ahead of it: the feed lists your trip with your stop to come, or the boarding time has not passed.
+            // Past the boarding time with your trip gone from the feed, it changed trip ids with you aboard (loops
+            // roll the id at the start stop): never read as its previous lap ("Bus 9 is 5 stops away").
+            let tuPlanned = l.tripId != nil && tu?.trip.tripId == l.tripId
+            let coming = onPlanned ? boardAhead : (tuPlanned && boardAhead) || !pastBoard
             V = place(planned, .trip, coming && (!onPlanned || !pastBoard), tu)
             if let v = V, !onPlanned, v.v.idx > bpos { V = nil }   // line route: its earlier trip says nothing about yours
         }

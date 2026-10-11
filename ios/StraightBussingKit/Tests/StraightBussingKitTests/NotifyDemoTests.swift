@@ -39,6 +39,36 @@ final class NotifyTests: XCTestCase, PlannerFixture {
         l.failed = true
         XCTAssertEqual(Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: [], now: T).alerts, [], "no alerts on bad data")
     }
+
+    /// Like the web's `||`: an empty stop name falls back to "your station" / the stop id.
+    func testEmptyStopNamesFallBackLikeTheWeb() {
+        var st = stops
+        for id in ["L1", "L3"] { st[id] = Stop(id: id, name: "", lat: stops[id]!.lat, lon: stops[id]!.lon) }
+        let S = StaticData(routes: ["LOOP": Route(id: "LOOP", long: "Loop")], stops: st, routeStops: ["LOOP": routeStops["LOOP"]!])
+        var l = LiveState()
+        l.buses = [.on("LOOP", id: "b1", trip: "t1", ts: T, stopId: "L1")]
+        l.trips = [PlannerTests.trip("t1", "LOOP", [("L1", T + 60), ("L2", T + 200), ("L3", T + 400)])]
+        l.lastOk = T; l.feedTs = T
+        var prefs = NotifyPrefs(); prefs.stopId = "L3"
+        XCTAssertEqual(Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: [], now: T).alerts.map(\.body),
+                       ["Bus b1 to your station. Next stop: L1. Arrives in about 6 min (est.)."])
+    }
+
+    /// Rider safety (web settings-notify.js): out-of-date data never alerts; delayed data says so.
+    func testOldDataSilencesAlertsAndLateDataIsLabeled() {
+        let S = StaticData(routes: ["LOOP": Route(id: "LOOP", long: "Loop")], stops: stops, routeStops: ["LOOP": routeStops["LOOP"]!])
+        var l = LiveState()
+        l.buses = [.on("LOOP", id: "b1", trip: "t1", ts: T, stopId: "L2")]
+        l.trips = [PlannerTests.trip("t1", "LOOP", [("L2", T + 60), ("L3", T + 200)])]
+        l.lastOk = T
+        var prefs = NotifyPrefs(); prefs.stopId = "L3"
+        l.feedTs = T - 400
+        XCTAssertEqual(Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: [], now: T).alerts, [])
+        l.feedTs = T - 150
+        let a = Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: [], now: T).alerts
+        XCTAssertEqual(a.map(\.title), ["Loop: 1 stop away"])
+        XCTAssertEqual(a.map(\.body), ["Bus b1 to L3. Next stop: L2. Arrives in about 3 min (est.). Live data is delayed."])
+    }
 }
 
 /// The demo feed behind the simulator screenshots: deterministic, all buses operating, plannable trips.
