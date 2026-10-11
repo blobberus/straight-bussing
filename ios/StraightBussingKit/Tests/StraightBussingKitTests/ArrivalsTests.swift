@@ -112,7 +112,9 @@ final class ArrivalsTests: XCTestCase {
         let saved = NSTimeZone.default
         NSTimeZone.default = TimeZone(identifier: "America/Los_Angeles")!
         defer { NSTimeZone.default = saved }
-        XCTAssertEqual(TimeZone.current.identifier, "America/Los_Angeles", "the phone zone is simulated")
+        // The phone's default zone is Los Angeles now (TimeZone.current keeps the machine's own zone, GMT on CI): no
+        // output below may depend on either.
+        XCTAssertEqual(NSTimeZone.default.identifier, "America/Los_Angeles", "the phone's default zone is simulated")
         let la = TimeZone(identifier: "America/Los_Angeles")!, en = Locale(identifier: "en_US")
         let c = { (t: Double) in TimeFmt.clock(t, timeZone: Schedule.chicago) }
         func plain(_ s: String) -> String { s.replacingOccurrences(of: "\u{202F}", with: " ") }
