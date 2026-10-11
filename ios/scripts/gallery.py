@@ -33,6 +33,11 @@ CAPTIONS = {
     "22-settingsdemo": "Settings: Simulated buses (demo) switch, privacy policy link",
     "23-simulated-settings": "Simulated buses switched on in Settings: the demo banner appears (UI test, no -demo)",
     "24-simulated-routes": "Simulated buses: the demo banner with Turn off on every tab (UI test)",
+    "30-current-text": "Larger text (largest standard size, AX3): Current trip",
+    "31-trip-text": "Larger text: trip in progress",
+    "32-stop-text": "Larger text: stop detail with arrivals",
+    "33-directions-text": "Larger text: Directions options and steps",
+    "34-routes-text": "Larger text: Routes list",
 }
 
 STORE_CAPTIONS = {

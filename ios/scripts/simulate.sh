@@ -55,6 +55,27 @@ for mode in light dark; do
   shot 22-settingsdemo "$mode" 9  -screen settingsdemo
 done
 
+# Larger text (Dynamic Type): key rows must wrap, never clip or slide under the sheet. Light mode, the largest
+# standard size (xxxl) and accessibility size AX3; files <name>-xxxl.png / <name>-ax3.png (one gallery card each).
+bigshot() {  # bigshot <name> <wait s> <args...>
+  local name="$1" wait="$2"; shift 2
+  local size tag
+  for size in extra-extra-extra-large accessibility-extra-large; do
+    tag=xxxl; [ "$size" = accessibility-extra-large ] && tag=ax3
+    xcrun simctl ui "$UDID" content_size "$size" || { echo "content_size $size not supported"; continue; }
+    launch "$@"
+    sleep "$wait"
+    xcrun simctl io "$UDID" screenshot --type=png "$OUT/$name-$tag.png" >/dev/null && echo "shot $name-$tag"
+  done
+  xcrun simctl ui "$UDID" content_size large || true
+}
+xcrun simctl ui "$UDID" appearance light
+bigshot 30-current-text    9  -screen current
+bigshot 31-trip-text       10 -screen trip
+bigshot 32-stop-text       8  -screen stop
+bigshot 33-directions-text 9  -screen directions
+bigshot 34-routes-text     8  -screen routes
+
 record() {   # record <appearance>
   local mode="$1"
   xcrun simctl ui "$UDID" appearance "$mode"

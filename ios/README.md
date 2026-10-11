@@ -133,7 +133,7 @@ Island compact "53RD | 3 stops · 4 min", expanded progress bar + boarding/aligh
   to the app the freshness flags are re-checked before the first new poll answers (see "Performance").
 
 Launch arguments (used by CI, handy in Xcode's scheme editor too): `-demo` (simulated buses, fixed location on the
-Main Quad, separate wiped prefs), `-screen current|trip|routes|route|myroutes|directions|stop|settings|settingsdemo|liveactivity|about|alerts|pick|search|custom|editor|order`,
+Main Quad, separate wiped prefs), `-screen current|trip|routes|route|myroutes|directions|stop|settings|settingsdemo|liveactivity|about|alerts|pick|search|custom|editor|order|tripstop`,
 `-detent peek|half|full`, `-tour` (automatic walk-through for the recording), `-theme light|dark`.
 
 ## Build and run on a Mac
@@ -161,7 +161,8 @@ tools 5.9); the run summary lists every Swift warning in our sources.
    (app + widget extension + UI tests, `CODE_SIGNING_ALLOWED=NO`), one warm-up launch with `simctl` (a fresh iOS 26
    simulator's first launch is slow enough for XCUITest to report "does not have a process ID"),
    `test-without-building` (XCUITest, a failed test is retried once; the launch timings go to the summary), then
-   `scripts/simulate.sh` launches the demo build on every screen in light and dark mode
+   `scripts/simulate.sh` launches the demo build on every screen in light and dark mode, five key screens again at the
+   largest standard text size and at AX3 (`simctl ui content_size`; gallery cards "Larger text"),
    (`xcrun simctl io booted screenshot`), records two walk-throughs (`recordVideo --codec=h264`), then takes the App
    Store set on a 6.9-inch simulator (`pick_simulator.py --store`: iPhone 17 / 16 Pro Max, 1320 x 2868; it creates
    one from the device type if the image has none): six light-mode screens in `store/`, alpha channel removed and
@@ -303,7 +304,7 @@ actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 | Selected stop / Routes to station candidates ringed on the map | done | `pickHighlights`, ring on the open stop |
 | Stop tap fills the Directions field being edited / picks the station in Routes to station | done | web onStopTap |
 | Status pill: "Can't reach the shuttle feed. Retrying. Showing last known data." / "… Don't rely on these times; call 773.702.8181." + Retry, "Live data is out of date (last update 4:12 PM). Times are approximate.", "Live data delayed. Times may be off." | done | same words (`LiveText.pill`); before: own wording |
-| Fresh empty feed: "No shuttles are reporting live locations" (scheduled) vs "No shuttles running right now" | done | silent-service rule (before) now also in the pill |
+| Fresh empty feed: "No shuttles are reporting live locations" (scheduled) vs "No shuttles running right now" | done | silent-service rule (before) now also in the pill; with an active service alert the pill adds "See alert" (opens Alerts; iOS first, 2026-10-11) |
 | Feed outage is not a service outage ("Live times unavailable", "Live status unknown", "Can't plan shuttle trips right now") | done | Current trip, stop, Routes, route detail, Directions |
 | Silent scheduled service wording (silentText, "Scheduled until 4:29 AM, no live location", "No live times right now") | done (before) | same Kit text as the web |
 | Map context bar: "Only showing routes for: <label>" + chips + Show all; "My route: <name>" + Clear | done | wraps to 2 lines instead of the web's marquee |
@@ -336,7 +337,7 @@ actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 | Routes: sorted by short name, groups Running / Scheduled, no live location / Not running (Live status unknown) / Hidden (Not on this trip) | done | |
 | Route rows: "Not part of this trip" (no eye), "Hidden from map and times", "N buses running", noLive status, eye toggle with toast | done | iOS adds today's hours to "Not running" (see web missing) |
 | Edit map order: drag, Move up / down, Reset order, "moved to position N" toast | done | VoiceOver actions Move up / Move down |
-| Route detail: status, quiet line, Today hours + "(reduced schedule)" / "(extra service)" + Scheduled now, hidden note (journey variant), official contact when nothing runs | done | |
+| Route detail: status, quiet line, Today hours + "(reduced schedule)" / "(extra service)" + Scheduled now, hidden note (journey variant), official contact when nothing runs | done | after midnight the service day's hours: "Friday service 6:30 AM to 12:25 AM · Scheduled now", never "Today No service · Scheduled now" (Kit `Schedule.serviceHoursAt`, 2026-10-11; web still uses the calendar date) |
 | Route detail: "Where the buses are" sentences, "Bus N heading here · seen …" pills, chevrons on the rail, loop note, live/delayed footer | done | |
 | Route detail: Hours & service (week, "Schedule changes" incl. this route's service alerts, buses by hour for today or "Mondays" + hours text) | done | before: no route alerts, chart only today |
 | Stop detail: address (or "Address not available"), "Routes at this stop" (tappable, visible only), Directions to here / From here, arrivals (10, tappable), hidden routes "+N … also stop here" + Show, "Updated 8s ago" / "Last live update … Retrying." | done | Favorite = header star with toast "Added to favorites in My Routes"; the buttons read "Directions" / "From here" (with icons, "Directions to here" wrapped at 393 pt; VoiceOver says "Directions to <stop>") |
@@ -380,6 +381,17 @@ Web status as of 2026-10-10 (web parity port; contracts in docs/ARCHITECTURE.md 
 | `Model/AppModel+Live.swift` refreshDirections | Directions options re-plan in the background at most every 8 s (web re-plans on every live change) | ported (`core/throttle.js`): at most every 8 s with one trailing run, picked card kept, map never moves, skipped while the feed fails |
 | `Model/LaunchConfig.swift`, Kit `DemoFeed.swift` | `-demo` mode with simulated buses and a "Demo mode: simulated buses" alert (web: test pages only) | ported: `?demo=1` (`data/demo.js`, banner on every screen, never stored, never mixed with live data). Difference: the web simulates the routes the schedule has in service now (all routes only when none is); no fixed location or seeded routes |
 | `Views/RouteDetailView.swift` | Route detail stop rows each say "next bus in N min" / "no prediction" to VoiceOver as one element | already on the web (one labeled button per stop, same words); now also "seen N min ago" for a stale bus, tested |
+
+### Fixed on iOS first (2026-10-11 sweep; the web has the same behavior, see the sweep report)
+
+| Kit / app file | Behavior |
+|---|---|
+| `TripFollow.swift` (`tripUpdate`, planned-vehicle branch) | A planned vehicle that rolled to a new trip id while you ride (loops roll it at their start stop) is the bus you are on, not "5 stops away" on its previous lap; another bus's update on a reused trip id never stands in for the planned vehicle's own times |
+| `TripFollowText.swift` | "Your planned bus has left." without "Showing the next one." when no other bus is reporting; the note also shows on the walk to the stop |
+| `Wording.swift` `LiveText.pill`, `Views/RootView.swift` | "See alert" in the status pill when the feed is empty and an alert is up |
+| `Schedule.swift` `serviceHoursAt`, `RouteText.busesChart` | Route hours and the buses-by-hour chart use the service day after midnight |
+| `LiveModels.swift`, `Arrivals.swift` `TimeFmt` | Junk feed numbers (NaN / huge stop sequences, times past the year 5000) never trap the decoder or a minute count |
+| `Model/AppModel+Live.swift` | A new destination from a stop's Directions / From here ends a started trip; Live Activities left by an earlier run are ended at launch; the trip timeline re-checks freshness on return to the app and with the clock |
 
 ### Still not on iOS
 
