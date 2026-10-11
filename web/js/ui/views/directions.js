@@ -28,8 +28,8 @@ import { walkRoute } from "../../core/walk.js";
 import { createThrottle } from "../../core/throttle.js";
 import { predict } from "../../core/predict.js";
 import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
-import { matchStations, OFFICIAL_HTML, ICONS } from "./pick.js";
-import { operatorAlertsHTML } from "./alerts.js";   // the operator's own words when no bus reports (rider safety)
+import { matchStations, ICONS } from "./pick.js";
+import { noBusHelpHTML } from "./alerts.js";   // the operator's own words + who to call when no bus reports (rider safety)
 import { createPlaceSearch, assumeNoteHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
 import { planJourney, sameRids, isPlanJourney, tripBarHTML } from "./journey.js";
 import { WALK_IC, tag, mins, walkMins, walkTotal, optionLines, stepsHTML as stepsFor } from "./tripinfo.js";
@@ -150,7 +150,7 @@ export function resHTML(state, now = nowS()) {
       : emptyState("No practical shuttle route right now", D.missed ? "The next buses leave before you could reach the stop." : running ? "Nothing runs close enough to both places."
         : silentService(state, now) ? silentText(state, scheduledRoutes(state, now, { hidden: effectiveHidden(state) }), now, OFFICIAL_PHONE) : "No shuttles are running right now.");   // empty feed, routes scheduled
     h += `<div class="v-opt is-on"><div class="v-optmain"><span class="v-otop"><span class="v-otot">${mins(w.min)}<small> min</small></span>${walkTag}<span class="v-oarr">Arrive ${esc(clock(now + (w.min || 0) * 60))}</span></span><span class="v-osum"><span class="v-wk">${WALK_IC}Walk the whole way</span><span class="v-sec">${Math.round(w.m || 0)} m</span></span></div></div>`;
-    return h + (running ? "" : operatorAlertsHTML(state, now) + OFFICIAL_HTML);
+    return h + (running ? "" : noBusHelpHTML(state, now));
   }
   h += r.options.slice(0, PLANNER.MAX_OPTS).map((o, i) => optionHTML(o, i, now, state)).join("");
   h += `<p class="v-foot">Walking the whole way: ${mins(w.min)} min (${Math.round(w.m || 0)} m) ${walkTag}</p>`;

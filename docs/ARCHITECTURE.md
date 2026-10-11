@@ -196,7 +196,7 @@ Rendering loop (D1 `main.js`): on store change -> current view `render(state)` -
 
 Views (D2) and required behavior (all ported from v1, improved):
 - **Layout (v2.4, Google-Maps-style)**: a floating search bar at the top (`#topbar` > `#searchBar`, action `dir:open` with `data-focus="to"`; hidden in Directions via `#app[data-view="directions"]`) with the Settings gear (`#settingsBtn`) at its right end; under it the map credit, status pill, context chip (`#ctxbar`) and locate button (`--chip-top`); a bottom navigation bar `#tabs.bottomnav` (Current trip / Routes / My Routes, `--nav-h`) with the sheet resting on it (`.sheet { bottom: var(--nav-h) }`). The full detent stops below the search bar and any visible chips (`--v-full` overridden on `#app` with `:has()`); sheet height probes live in `#app` so those overrides apply. The map's bottom inset = visible sheet + navigation height.
-- **nearby** (tab label and title **Current trip**; ids stay `nearby`): top region `nearby-trip` = the trip in progress (`tripBarHTML` + "Trip steps" -> directions + "Routes to station…") or a "No trip in progress" hint + "Routes to station…"; destination search is the top search bar, not in the sheet; with a real location each arrival row adds "Leave now / Leave in N min, est." and marks buses you cannot walk to in time (`pt-miss`, text + strike, never color alone); then next bus at the nearest stop in one glance; with location -> 3 nearest stops with up to 3 arrivals; without -> "Use my location" + "Arriving soon" list + search stations field + "Type an address or place"; never dead-ends; location denied is a first-class state.
+- **nearby** (tab label and title **Current trip**; ids stay `nearby`): order and regions per "2026-10-11 (owner decisions)" below (one-line alert row, trip in progress, the next bus, "Use my location", station search + "Type an address or place" / "Routes to station…", the rest, quiet no-trip hint); destination search is the top search bar, not in the sheet; with a real location each arrival row adds "Leave now / Leave in N min, est." and marks buses you cannot walk to in time (`pt-miss`, text + strike, never color alone); with location -> 3 nearest stops (up to 3 arrivals at the nearest, 1 at the others); without -> "Use my location" + "Arriving soon"; never dead-ends; location denied is a first-class state.
 - **stop**: arrivals list (route chip, route name, Live dot, ETA numeral, "Now"), route chips serving it, address line from `addresses`, "Updated Ns ago", Directions-from-here / to-here buttons.
 - **routes**: first control "Edit map order" (`routes:order-edit`); then custom-route / journey bar, filter chip, Show all / Hide all; Running / Not running / Hidden groups; per-route eye toggle (persisted `hiddenRoutes`) honored on map, arrivals, Nearby; filter chip "Routes to <station> x".
 - **pick** (Routes to station…, parent/tab `nearby`): dialog asks **Use current location / Select a station / Type an address or place**; NOTHING is highlighted until the user chooses; then nearest stops (<=1.5 km) are highlighted on the map and listed; tapping a station sets `routeFilter` and shows only routes that serve it on list+map; works with no location permission via the other two options.
@@ -369,11 +369,10 @@ Hidden routes still prevent the "no shuttles" claim but are not named ("Some hid
   deferred while a new-endpoint plan still refines; the picked card is kept by key and the map never moves. `directions.js`
   exports `liveReplan` and `deps.wallMs` / `deps.later` (test clock).
 - **Demo mode** (`core/demo.js` DEMO = `?demo=1` exactly; nothing else turns it on, nothing is stored): main.js starts
-  `ui/demo.js startDemo` (banner `#demobar` first in `#app`, `html.is-demo` -> `--demo-h` 40 px moves the chrome down, `--z-demo`
-  1250 keeps it above Settings and dialogs; "Exit demo" = `exitDemoHref`) with `startLive(store, {intervalMs: 5000, fetch:
-  demoFetch(store)})`; no notifier, no service worker registration; sw.js never caches `?demo` requests; storage writes stay in
-  memory; Settings says "Bus alerts are off in demo mode: the buses are simulated." Tests: `tests/demo.test.html` (real app
-  at index.html?demo=1, no stubs), `tests/data-demo.js`.
+  `ui/demo.js startDemo(store, startLive)` = `startLive(store, {intervalMs: 5000, fetch: demoFetch(store)})`; no banner since
+  2026-10-11 (the status pill says "Simulated buses", see below); no notifier, no service worker registration; sw.js never caches
+  `?demo` requests; storage writes stay in memory; Settings says "Bus alerts are off in demo mode: the buses are simulated."
+  Tests: `tests/demo.test.html` (real app at index.html?demo=1, no stubs), `tests/data-demo.js`.
 - **Accessibility**: the grabber is a slider (ui/sheet.js above); route detail stop buttons carry one label "Name, next bus in
   N min" / ", no prediction" (+ ", a bus is heading here, seen N min ago"), everything else in the row is aria-hidden.
 - **Map**: `css/map.css` `--sb-accent` = `var(--accent-fill)` (light) / `var(--accent)` (dark), no separate map blue.
@@ -410,3 +409,35 @@ Hidden routes still prevent the "no shuttles" claim but are not named ("Some hid
   Los Angeles device via `zone-sim.js`; iOS Kit `TimeFmt.clock` / `LiveText.alertWindow` same). `map/geometry.js
   alongShape` drops repeated shape points first: a zero-length or one-point shape line never wins the line pick and
   sends a ride to the straight fallback (Kit Geometry.swift same). sw `sb-v2-34`.
+
+### 2026-10-11 (owner decisions): demo pill, the next bus at the half detent, operator phone
+Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
+- **Demo mode without a banner**: `#demobar`, `html.is-demo`, `--demo-h` and `--z-demo` are gone. The status pill is the one
+  quiet, honest indicator: `ui/pill.js pillState(s, now, {bootS, graceS, demo})` -> `{..., demo:true, kind:'info', icon:'demo'
+  (flask), msg: core/demo.js DEMO_PILL "Simulated buses"}` on every screen (a feed error or delay still wins); `createPill(els,
+  {demo})` adds `.pilltap` (`data-action="demo:info"`, info mark; its `::after` makes the whole 44 px pill the target).
+  `ui/demo.js` registers `demo:info`: `confirmDialog({title: "Simulated buses", body: DEMO_BODY + " Nothing you change in the
+  demo is saved.", confirmLabel: "Show live buses", cancelLabel: "Keep demo"})` (ui/confirm.js gained `cancelLabel`, default
+  "Cancel"); yes -> `demoDeps.go(exitDemoHref(location))` (reload without `?demo=1`). The simulated feed keeps its "Demo
+  mode: simulated buses" service alert (iOS DemoFeed parity). Demo state is still never stored.
+- **Current trip order** (`ui/views/nearby.js`, regions `nearby-alert|trip|next|loc|alt|results`, patched from one table):
+  1. the alert row, ONE line (`alerts.js alertBanner`: icon, "Service alert: <first title>" cut with an ellipsis, chevron; the
+  full title is in its label); 2. the trip in progress (`entryHTML`: timeline + Trip steps + "Routes to station…", as before),
+  '' with no trip; 3. **the next bus** (`nextHTML`): with location or a typed place, the nearest stop (`.pt-next` card: the
+  name, never cut, with "N min walk" on its right, then up to 3 arrivals in 52 px rows with the live / schedule labels and
+  "Leave in N min, est." as before), followed by why + who to call when no bus reports; without either, the Favorites card;
+  4. "Use my location" (the one primary action) only without location; 5. "Search stations" + `altHTML` ("Type an address
+  or place" and, with no trip, "Routes to station…", link-style secondary actions); 6. the rest (`bodyHTML`: favorites when
+  a nearest stop leads, "Also nearby", the walking-estimate note, or "Arriving soon") and `NO_TRIP_HINT` as a quiet last
+  line ("No trip in progress" is no longer a card). Checked in a 393 x 852 phone (`tests/e2e-current.js`): alert row + stop +
+  3 arrivals end above the bottom navigation at the half detent; at 320 px the walk drops under the name. The row builders
+  moved to `ui/views/nearby-cards.js` (guidedRow, pickArrivals, favoritesHTML, soonest; nearby.js re-exports them).
+- **No-bus calls** (`alerts.js`): `operatorPhone(state, now, {rid})` -> `{text, tel}|null`, the first phone number in the
+  active alerts (title, then description), exactly as written, never 773.702.8181, never hardcoded. `callsHTML(state, now,
+  {rid, primary})`: with a number, "Call bus route help: <number>" (primary style unless the screen already has its one
+  primary action: Current trip's "Use my location", a stop's "Directions to here"), then "Safety or urgent: 773.702.8181"
+  (secondary) and "Official transportation page"; without one, the usual official line (773.702.8181 stays the call).
+  `noBusHelpHTML` = `operatorAlertsHTML` + `callsHTML` replaces `operatorAlertsHTML + OFFICIAL_HTML` on Current trip, stop,
+  route detail and Directions; Routes puts the calls with the alert and then drops its bottom official line. The operator's
+  text stays verbatim (including "UGo"). `core/operating.js silentText` still names 773.702.8181 (shared with iOS; unchanged).
+- Unchanged by decision: walking times carry no "est." label.

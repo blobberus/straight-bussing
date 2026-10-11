@@ -12,10 +12,11 @@ const GUARD_MS = 350;
 
 /**
  * Ask the user to confirm. Resolves true only when the confirm button was pressed.
- * @param {{title:string, body?:string, confirmLabel?:string, danger?:boolean}} o
+ * @param {{title:string, body?:string, confirmLabel?:string, cancelLabel?:string, danger?:boolean}} o cancelLabel: the
+ *   safe choice's words (default "Cancel"; the demo pill's "Keep demo")
  * @returns {Promise<boolean>}
  */
-export function confirmDialog({ title, body = "", confirmLabel = "OK", danger = false } = {}) {
+export function confirmDialog({ title, body = "", confirmLabel = "OK", cancelLabel = "Cancel", danger = false } = {}) {
   if (typeof document === "undefined" || typeof HTMLDialogElement === "undefined") return Promise.resolve(false);
   if (document.querySelector("dialog.v-confirm[open]")) return Promise.resolve(false);   // already asking
   const opener = document.activeElement;
@@ -25,7 +26,7 @@ export function confirmDialog({ title, body = "", confirmLabel = "OK", danger = 
   dlg.setAttribute("aria-labelledby", "v-confirm-t");
   if (body) dlg.setAttribute("aria-describedby", "v-confirm-b");
   dlg.innerHTML = `<h2 class="v-dlg-title" id="v-confirm-t">${esc(title)}</h2>${body ? `<p class="v-sec v-confirm-b" id="v-confirm-b">${esc(body)}</p>` : ""}`
-    + '<div class="v-actions v-confirm-acts"><button type="button" class="v-btn v-btn--secondary" data-confirm="no">Cancel</button>'
+    + `<div class="v-actions v-confirm-acts"><button type="button" class="v-btn v-btn--secondary" data-confirm="no">${esc(cancelLabel)}</button>`
     + `<button type="button" class="v-btn ${danger ? "v-btn--danger" : "v-btn--primary"}" data-confirm="yes">${esc(confirmLabel)}</button></div>`;
   document.body.appendChild(dlg);
   return new Promise((resolve) => {

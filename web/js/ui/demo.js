@@ -1,59 +1,52 @@
 /**
  * @module ui/demo
- * The demo-mode banner (core/demo.js, `?demo=1`): a persistent strip at the top of the app on every screen
- * (above the search bar, the Settings overlay and dialogs; css/base.css .demobar, --demo-h / --z-demo in
- * tokens.css), saying "Demo mode: simulated buses" with an "Exit demo" link to the same page without the
- * parameter. It is first in the document order so a screen reader meets it before anything else.
- * startDemo() (main.js, demo mode only) shows it and starts data/live.js on the simulated feed (data/demo.js).
+ * Demo mode (core/demo.js, `?demo=1`). Owner decision 2026-10-11: no banner. The one quiet, honest indicator is the
+ * status pill (ui/pill.js, "Simulated buses" on every screen); the whole pill is a button (action `demo:info`)
+ * that opens a short explanation with "Show live buses", which reloads the same page without the parameter
+ * (core/demo.js exitDemoHref). Nothing is stored, so leaving the URL leaves demo mode.
+ * startDemo() (main.js, demo mode only) starts data/live.js on the simulated feed (data/demo.js).
  */
-import { esc } from "../core/esc.js";
-import { DEMO_TITLE, exitDemoHref } from "../core/demo.js";
+import { DEMO_BODY, DEMO_PILL, exitDemoHref } from "../core/demo.js";
 import { demoFetch } from "../data/demo.js";
+import { registerAction } from "./actions.js";
+import { confirmDialog } from "./confirm.js";
 
 /** Demo poll interval (the iOS demo polls every 5 s too). */
 export const DEMO_POLL_MS = 5000;
 
-const ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></svg>';   // Lucide flask-conical
+/** The explanation behind the demo pill (plain text; confirmDialog escapes it). */
+export const DEMO_INFO = Object.freeze({
+  title: DEMO_PILL,
+  body: DEMO_BODY + " Nothing you change in the demo is saved.",
+  confirmLabel: "Show live buses",
+  cancelLabel: "Keep demo",
+});
+
+/** Test seams: the dialog and the page load (tests answer the dialog and record the address instead of leaving). */
+export const demoDeps = {
+  confirm: confirmDialog,
+  go: (href) => location.assign(href),
+};
 
 /**
- * Banner markup.
- * @param {{pathname:string, search:string, hash:string}} loc page location (for the exit link)
- * @returns {string}
- */
-export function demoBannerHTML(loc) {
-  return `<span class="demobar-ic">${ICON}</span><span class="demobar-text">${esc(DEMO_TITLE)}</span>`
-    + `<a class="demobar-exit" href="${esc(exitDemoHref(loc))}">Exit demo<span class="sr"> and show live buses</span></a>`;
-}
-
-/**
- * Show the banner (idempotent) and switch the layout offset on (html.is-demo).
- * @param {HTMLElement} host #app
+ * Explain demo mode; on "Show live buses" reload without `?demo=1`.
  * @param {{pathname:string, search:string, hash:string}} [loc]
- * @returns {HTMLElement} the banner
+ * @returns {Promise<boolean>} true when the page is leaving the demo
  */
-export function mountDemoBanner(host, loc = location) {
-  let el = host.querySelector(".demobar");
-  if (!el) {
-    el = document.createElement("div");
-    el.className = "demobar";
-    el.id = "demobar";
-    el.setAttribute("role", "region");
-    el.setAttribute("aria-label", "Demo mode");
-    host.prepend(el);
-  }
-  el.innerHTML = demoBannerHTML(loc);
-  document.documentElement.classList.add("is-demo");
-  return el;
+export async function demoInfo(loc = location) {
+  const yes = await demoDeps.confirm({ ...DEMO_INFO });
+  if (yes) demoDeps.go(exitDemoHref(loc));
+  return !!yes;
 }
 
+registerAction("demo:info", () => { demoInfo().catch(() => {}); });
+
 /**
- * Demo mode boot: the banner, then the live-feed poller on the simulated feed (never the network).
+ * Demo mode boot: the live-feed poller on the simulated feed (never the network).
  * @param {object} store the app store
- * @param {HTMLElement} host #app
  * @param {(store:object, opts:object) => object} startLive data/live.js startLive (passed in: one module instance)
  * @returns {{stop():void, pollNow():Promise<void>, failures():number, delay():number}}
  */
-export function startDemo(store, host, startLive) {
-  mountDemoBanner(host);
+export function startDemo(store, startLive) {
   return startLive(store, { intervalMs: DEMO_POLL_MS, fetch: demoFetch(store) });
 }

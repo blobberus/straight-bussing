@@ -85,7 +85,6 @@ Data marks (chart bars, the 8 px legend square, the switch's on mark) and the de
 | `--z-search` | 1105 | floating search bar |
 | `--z-overlay-scrim` / `--z-overlay` | 1140 / 1150 | Settings scrim / card |
 | `--z-dialog` | 1200 | `#dlg` scrim + card |
-| `--z-demo` | 1250 | demo-mode banner (`?demo=1` only; above dialogs and Settings so it is on every screen) |
 | `--z-toast` | 1300 | toast |
 | `--z-frame` | 5000 | desktop phone frame decorations (never take taps) |
 
@@ -120,7 +119,7 @@ segments scale .97-.98 (opacity only under reduced motion). Every target is >= 4
 
 ## 4. Screens
 
-**Home (Nearby)**. Peek: "Nearest stop" name 17/590 plus walking time and next ETA numeral right-aligned. Half: nearest-stop card (stop name, distance, up to 3 departures as rows), then "Also nearby" 2 more stops as compact rows. No location permission: show a single "Use my location" accent button and the campus stops list sorted alphabetically.
+**Home (Current trip)**. Peek: "Nearest stop" name 17/590 plus walking time and next ETA numeral right-aligned. Half (owner decision 2026-10-11): a one-line service-alert row, then the next bus fully visible without scrolling: nearest-stop card (stop name, walking time on its right, up to 3 departures as 52 px rows), then "Search stations" with "Type an address or place" / "Routes to station…" as secondary links, "Also nearby" 2 more stops, and a quiet "No trip in progress" line last (no card). No location permission: "Use my location" is the one accent button right under the title (after the alert row), "Search stations" next, then "Arriving soon". When no bus reports and the operator's alert has a phone number, that number is the main call ("Call bus route help: <number as written>") and "Safety or urgent: 773.702.8181" the second.
 **Stop detail**. Header: stop name (title), back chevron, route chips. List of arrivals sorted by time: row = route chip (28px badge), headsign (17/590), "Live" dot or "Scheduled" label (--text-2), ETA right-aligned: "4" numeral 34pt with "min" 12pt beneath; "Now" in --live; under 1 min "Arriving". Divider hairline inset 60px. Tap row highlights that bus on the map. Footer: "Last updated 8s ago".
 **Routes**. List of routes: color chip, long name, and "N buses running" or "Not running". Group Running above Not running. Search field (44px, --surface, radius 12) only at full detent.
 **Route detail**. Chip + name header, status line, then vertical stop timeline: 4px colored line, stop dots, stop names, per-stop next ETA right-aligned, bus icons inline where buses are between stops. Map shows only this route; "Show all" chip to reset.
@@ -133,7 +132,7 @@ segments scale .97-.98 (opacity only under reduced motion). Every target is >= 4
 - No arrivals at stop: "No upcoming arrivals" with the last scheduled time.
 - Stale (feed >60s old): amber pill under header: "Live data delayed. Times may be off." ETAs switch to --text-2 and gain "~". After 5 min: replace live badges with "Scheduled" and show "Last live update 6:42 PM".
 - Status pill icons (2026-10-10, iOS parity): feed error = wifi off, delayed / out of date = clock with an alert mark, no live locations while routes are scheduled = antenna off, no shuttles running = bus. Always with the words.
-- Demo mode (`?demo=1`): a solid `--warn` strip with `--bg-solid` text above the search bar on every screen, "Demo mode: simulated buses" + Exit demo; the layout moves down by `--demo-h`.
+- Demo mode (`?demo=1`, no banner since 2026-10-11): the status pill reads "Simulated buses" (flask icon, info mark) on every screen; tapping it explains and offers "Show live buses" (reload without `?demo=1`) or "Keep demo".
 - Offline/error: sheet keeps last good data, shows --danger-tinted banner "Can't reach the shuttle feed. Retrying" with Retry button (44px). Never clear lists on a failed poll.
 - Permission denied (location): inline, one line, explains how to enable; app stays fully usable.
 - Footer everywhere in About: "Unofficial. Not affiliated with the University. Official app / 773.702.8181."

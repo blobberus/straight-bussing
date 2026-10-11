@@ -14,8 +14,7 @@ import { effectiveHidden } from "../../core/visibility.js";
 import { toggleFav } from "../../core/custom.js";
 import { routeChip, arrivalRow, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
-import { OFFICIAL_HTML } from "./pick.js";
-import { operatorAlertsHTML } from "./alerts.js";
+import { noBusHelpHTML } from "./alerts.js";
 
 /** Max arrivals listed on the stop screen. */
 export const MAX_ARRIVALS = 10;
@@ -79,7 +78,7 @@ export function renderStop(state, now = nowS()) {
       h += liveUnknown(state, now) ? emptyState("Live times unavailable", "Can't reach the shuttle feed, so we can't tell when the next bus comes.")   // feed outage != no service
         : here.length ? emptyState("No live times right now", silentText(state, here, now, OFFICIAL_PHONE))
         : emptyState("No upcoming arrivals", running ? "Nothing is predicted at this stop right now." : silent ? "No visible route at this stop is scheduled right now." : "No shuttles are running right now.");
-      if (!running) h += operatorAlertsHTML(state, now) + OFFICIAL_HTML;
+      if (!running) h += noBusHelpHTML(state, now, { primary: false });   // "Directions to here" stays the one primary action
     }
   }
   if (hid.length) {

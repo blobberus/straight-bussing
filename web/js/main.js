@@ -3,8 +3,8 @@
  * Wiring + boot (D1). Order: theme -> map -> sheet -> router/actions -> views -> loadStatic -> startLive.
  * Owns the render loop (header, status pill via ui/pill.js, content), the map context bar, map sync on store
  * changes, geolocation (ctx.locate), Escape/back + browser history, toasts and the global error handler.
- * Demo mode (core/demo.js, `?demo=1` only): the simulated feed replaces the live one (ui/demo.js startDemo, with
- * its banner); no service worker, no bus alerts, nothing stored.
+ * Demo mode (core/demo.js, `?demo=1` only): the simulated feed replaces the live one (ui/demo.js startDemo); the
+ * status pill says "Simulated buses" (no banner, 2026-10-11); no service worker, no bus alerts, nothing stored.
  */
 import { store } from "./state.js";
 import { bus } from "./core/events.js";
@@ -44,7 +44,7 @@ const el = {
 };
 const bootS = nowS();
 let map = null, sheet = null, live = null, ctx = null, notifier = null;
-const pill = createPill({ pill: el.pill, text: el.pillText, retry: el.pillRetry, app: el.app }, { bootS });
+const pill = createPill({ pill: el.pill, text: el.pillText, retry: el.pillRetry, app: el.app }, { bootS, demo: DEMO });
 
 /* ---------------- toast + global errors ---------------- */
 let toastTimer = 0;
@@ -334,8 +334,7 @@ async function boot() {
   // data first: stops, routes and the live feed load while the view modules download (slow 4G: next bus ~3 s sooner)
   loadStatic(store).catch((e) => { console.error("static data", e); toast("Couldn't load stops and routes. Check your connection."); });
   if (DEMO) {   // simulated buses only: the live feed is never fetched in a demo session
-    document.documentElement.classList.add("is-demo");   // layout offset before the banner module arrives
-    import("./ui/demo.js").then((m) => { live = m.startDemo(store, el.app, startLive); }).catch(reportError);
+    import("./ui/demo.js").then((m) => { live = m.startDemo(store, startLive); }).catch(reportError);   // + action demo:info (the pill)
   } else live = startLive(store, { intervalMs: 10000, keepAlive: () => !!notifier?.background?.() });   // bus alerts: also in a background tab
   const results = await Promise.allSettled(VIEW_IDS.map((v) => import(`./ui/views/${v}.js`)));
   results.forEach((r, i) => r.status === "rejected" && (OPTIONAL_VIEWS.has(VIEW_IDS[i]) ? console.warn : console.error)("view " + VIEW_IDS[i] + " failed to load", r.reason));

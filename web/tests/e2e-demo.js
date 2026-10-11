@@ -1,7 +1,9 @@
 /*
- * Demo mode end to end (demo.test.html): the REAL app at index.html?demo=1 in an iframe, no stubs. Checks the
- * persistent banner on every screen, simulated buses everywhere, that the live Passio feed is never fetched,
- * that nothing is stored (localStorage untouched) and that bus alerts are off. Tests share one app instance.
+ * Demo mode end to end (demo.test.html): the REAL app at index.html?demo=1 in an iframe, no stubs. Owner decision
+ * 2026-10-11: no banner; the status pill reads "Simulated buses" on every screen and tapping it explains, with a
+ * way back to live buses (reload without ?demo=1). Also checks simulated buses everywhere, that the live Passio
+ * feed is never fetched, that nothing is stored (localStorage untouched) and that bus alerts are off.
+ * Tests share one app instance.
  */
 import { test, eq, ok, holdRun, run } from "./lib.js";
 
@@ -23,15 +25,16 @@ const txt = (el) => (el ? el.textContent.replace(/\s+/g, " ").trim() : "");
 const store = () => W.__demoStore;
 const title = () => txt($("#title"));
 const tab = (id) => $(`#tabs button[data-tab="${id}"]`).click();
-/** The banner is visible, on top of whatever is at its center, and the search bar / pill sit below it. */
-function bannerOnTop(where) {
-  const b = $("#demobar"), r = b.getBoundingClientRect();
-  ok(r.height >= 30 && r.width > 300 && W.getComputedStyle(b).visibility === "visible", where + ": banner visible");
-  const hit = D.elementFromPoint(r.left + 40, r.top + r.height / 2);
-  ok(hit && b.contains(hit), where + ": banner on top (" + (hit && hit.className) + ")");
-  ok(txt(b).includes("Demo mode: simulated buses"), where + ": banner words");
+/** The demo pill is visible with its words, and it (not the map) takes a tap at its middle. */
+function pillOn(where) {
+  const p = $("#pill"), r = p.getBoundingClientRect();
+  ok(!p.hidden && r.height >= 44 && r.width > 200 && W.getComputedStyle(p).visibility === "visible", where + ": pill visible");
+  eq(txt($("#pillText")), "Simulated buses", where + ": pill words");
+  const hit = D.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  ok(hit && hit.closest('[data-action="demo:info"]'), where + ": the whole pill is the button (" + (hit && hit.className) + ")");
 }
 const passioRequests = () => W.performance.getEntriesByType("resource").map((e) => e.name).filter((u) => /passio3\.com/.test(u));
+const dialog = () => D.querySelector("dialog.v-confirm[open]");
 
 async function boot() {
   localStorage.setItem("sb:hiddenRoutes", JSON.stringify([]));
@@ -41,32 +44,28 @@ async function boot() {
   document.body.appendChild(F);
   await new Promise((r) => F.addEventListener("load", r, { once: true }));
   W = F.contentWindow; D = W.document;
-  const s = D.createElement("script");   // the app's own store instance (same module URL as main.js imports)
+  const s = D.createElement("script");   // the app's own module instances (same URLs as main.js imports)
   s.type = "module";
-  s.textContent = 'import { store } from "./js/state.js"; window.__demoStore = store;';
+  s.textContent = 'import { store } from "./js/state.js"; import * as demo from "./js/ui/demo.js"; window.__demoStore = store; window.__demoUI = demo;';
   D.head.appendChild(s);
-  await waitFor(() => store() && store().get().staticLoaded && store().get().buses.length > 0, "simulated buses in the store", 20000);
+  await waitFor(() => store() && store().get().staticLoaded && store().get().buses.length > 0 && W.__demoUI, "simulated buses in the store", 20000);
 }
 
-test("demo: banner first in #app, words, Exit demo link drops only ?demo=1", () => {
-  const b = $("#demobar");
-  ok(b && $("#app").firstElementChild === b, "first in the document order");
-  eq([b.getAttribute("role"), b.getAttribute("aria-label")], ["region", "Demo mode"]);
-  const a = b.querySelector("a.demobar-exit");
-  ok(a && /Exit demo/.test(txt(a)), "exit link");
-  const u = new URL(a.href);
-  ok(!u.searchParams.has("demo") && u.pathname === W.location.pathname, "exit link goes to the same page, live: " + a.href);
-  ok(D.documentElement.classList.contains("is-demo"), "layout offset on");
-  ok($("#topbar").getBoundingClientRect().top >= b.getBoundingClientRect().bottom, "search bar below the banner");
-  bannerOnTop("Current trip");
+test("demo: no banner; the status pill says 'Simulated buses' (the one indicator) on Current trip", async () => {
+  ok(!$("#demobar") && !$(".demobar"), "no demo banner");
+  ok(!D.documentElement.classList.contains("is-demo"), "no layout offset class");
+  ok($("#topbar").getBoundingClientRect().top < 30, "search bar at the top, not pushed down");
+  await waitFor(() => !$("#pill").hidden, "pill shown");
+  pillOn("Current trip");
+  ok(!/Demo mode/.test(txt($("#topbar")) + txt($("#pill"))), "no banner words in the chrome");
 });
 
-test("demo: simulated buses everywhere, the live feed is never fetched, no stale pill", async () => {
+test("demo: simulated buses everywhere, the live feed is never fetched", async () => {
   const s = store().get();
   ok(s.buses.length >= 1 && s.buses.every((b) => String(b.vehicle.id).startsWith("demo-")), "only simulated vehicles: " + s.buses.length);
   ok(s.liveLoaded && !s.failed && s.lastOk > 0, "feed state like a healthy live feed");
   eq(passioRequests(), [], "no request to passio3.com");
-  ok($("#pill").hidden, "fresh simulated feed: no status pill");
+  ok($("#pill").classList.contains("info") && $("#pillRetry").hidden && $("#pillAlert").hidden, "quiet info pill, no Retry / See alert");
   await waitFor(() => $("#map .sb-busicon"), "bus markers on the map");
   const tok = (el, k) => W.getComputedStyle(el).getPropertyValue(k).trim().toLowerCase();
   const dark = $("#map").classList.contains("sb-dark");
@@ -75,19 +74,45 @@ test("demo: simulated buses everywhere, the live feed is never fetched, no stale
   ok(txt(al).includes("Demo mode: simulated buses"), txt(al));
 });
 
-test("demo: banner stays on Routes (buses running), route detail, My Routes and over Settings", async () => {
+test("demo: tapping the pill explains; Keep demo stays, Show live buses reloads without ?demo=1", async () => {
+  $('#pill [data-action="demo:info"]').click();
+  const d = await waitFor(dialog, "demo explanation dialog");
+  ok(/Simulated buses/.test(txt(d.querySelector("h2"))) && /simulated from the published schedule/.test(txt(d)) && /not live data/.test(txt(d)), "explains: " + txt(d));
+  ok(/Nothing you change in the demo is saved/.test(txt(d)), "says nothing is stored");
+  eq([txt(d.querySelector('[data-confirm="no"]')), txt(d.querySelector('[data-confirm="yes"]'))], ["Keep demo", "Show live buses"]);
+  ok(D.activeElement === d.querySelector('[data-confirm="no"]'), "Keep demo focused (the safe choice)");
+  await sleep(400);   // past the confirm dialog's double-tap guard
+  d.querySelector('[data-confirm="no"]').click();
+  await waitFor(() => !dialog(), "dialog closed");
+  ok(W.location.search.includes("demo=1"), "still in the demo");
+  let went = null;
+  const go = W.__demoUI.demoDeps.go;
+  W.__demoUI.demoDeps.go = (href) => { went = href; };
+  try {
+    $('#pill [data-action="demo:info"]').click();
+    const d2 = await waitFor(dialog, "dialog again");
+    await sleep(400);
+    d2.querySelector('[data-confirm="yes"]').click();
+    await waitFor(() => went, "Show live buses leaves the demo");
+    const u = new URL(went, W.location.href);
+    ok(!u.searchParams.has("demo") && u.pathname === W.location.pathname, "same page, live: " + went);
+  } finally {
+    W.__demoUI.demoDeps.go = go;
+  }
+});
+
+test("demo: the pill stays on Routes (buses running), route detail and My Routes; Settings says alerts are off", async () => {
   tab("routes");
   await waitFor(() => title() === "Routes" && /bus(es)? running/.test(txt($("#content"))), "Routes with running buses");
-  bannerOnTop("Routes");
+  pillOn("Routes");
   $('#content [data-action="route:open"]').click();
   await waitFor(() => store().get().view === "route" && $("#content .v-tl"), "route detail");
-  bannerOnTop("Route detail");
+  pillOn("Route detail");
   tab("myroutes");
   await waitFor(() => title() === "My Routes", "My Routes");
-  bannerOnTop("My Routes");
+  pillOn("My Routes");
   $("#settingsBtn").click();
   const o = await waitFor(() => { const x = $("#settingsOverlay"); return x && !x.hidden && x.dataset.state === "open" ? x : null; }, "Settings open");
-  bannerOnTop("Settings");
   ok(txt(o).includes("Bus alerts are off in demo mode"), "Settings says bus alerts are off");
   ok(!o.querySelector('[data-st="perm"]'), "no Allow notifications button: alerts are off and the demo asks for nothing");
   o.querySelector(".sto-done").click();

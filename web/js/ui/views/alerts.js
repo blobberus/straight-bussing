@@ -9,7 +9,7 @@ import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { nowS, clock, shortDate, sameDay } from "../../core/time.js";
 import { activeAlerts } from "../../core/arrivals.js";
-import { routeChip, emptyState, skeleton } from "../components.js";
+import { routeChip, emptyState, skeleton, officialLinks, OFFICIAL_PHONE, OFFICIAL_TEL, OFFICIAL_URL } from "../components.js";
 
 const WARN = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>';
 const INFO = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>';
@@ -37,6 +37,9 @@ function windowText(a, now) {
   return "";
 }
 
+/** A US phone number as alerts write it ("773-655-9934", "(773) 655-9934", "773.655.9934"); group 2 = the number. */
+const PHONE_RE = /(^|[^\d])(\(?\d{3}\)?[ .-]?\d{3}[.-]\d{4})(?!\d)/g;
+
 /**
  * Escaped alert text with its phone numbers as call links ("773-655-9934" -> tel:+17736559934), so a rider
  * can call the number an operator alert gives in one tap.
@@ -44,8 +47,67 @@ function windowText(a, now) {
  * @returns {string} HTML
  */
 export function alertBodyHTML(text) {
-  return esc(text).replace(/(^|[^\d])(\(?\d{3}\)?[ .-]?\d{3}[.-]\d{4})(?!\d)/g,
-    (m, pre, num) => `${pre}<a href="tel:+1${num.replace(/\D/g, "")}">${num}</a>`);
+  return esc(text).replace(PHONE_RE, (m, pre, num) => `${pre}<a href="tel:+1${num.replace(/\D/g, "")}">${num}</a>`);
+}
+
+/** Active alerts for the no-bus screens (route detail: only the ones not tied to a route; it lists its own). */
+function operatorAlerts(state, now, rid) {
+  const act = activeAlerts(state, now);
+  return rid ? act.filter((a) => !(a.informed_entity || []).some((e) => e && e.route_id)) : act;
+}
+
+/**
+ * The operator's phone number from the live feed (owner decision 2026-10-11): the first number in the active alerts
+ * (title, then description, in feed order), exactly as written, never our own 773.702.8181 and never hardcoded.
+ * @param {object} state
+ * @param {number} [now]
+ * @param {{rid?:string|null}} [o] rid: as operatorAlertsHTML (route detail)
+ * @returns {{text:string, tel:string}|null} text as the alert writes it; tel "tel:+1XXXXXXXXXX"
+ */
+export function operatorPhone(state, now = nowS(), { rid = null } = {}) {
+  const own = OFFICIAL_TEL.replace(/\D/g, "");
+  for (const a of operatorAlerts(state, now, rid)) {
+    for (const t of [alertText(a.header_text), alertText(a.description_text)]) {
+      for (const m of t.matchAll(PHONE_RE)) {
+        const d = "1" + m[2].replace(/\D/g, "");
+        if (d !== own) return { text: m[2], tel: "tel:+" + d };
+      }
+    }
+  }
+  return null;
+}
+
+const PHONE_IC = '<svg class="v-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>';   // Lucide phone
+
+/**
+ * Who to call when no bus reports. With an operator number in the live alerts: "Call bus route help: <number as
+ * written>" is the main call and "Safety or urgent: 773.702.8181" the second; then the official page. Without one,
+ * the usual official line (773.702.8181 stays the call). Labels stack, never wrap mid-phrase (at 320 px too).
+ * @param {object} state
+ * @param {number} [now]
+ * @param {{rid?:string|null, primary?:boolean}} [o] primary: false when the screen already has its one primary action
+ *   (Current trip's "Use my location", a stop's "Directions to here"): the main call then takes the secondary style
+ * @returns {string}
+ */
+export function callsHTML(state, now = nowS(), { rid = null, primary = true } = {}) {
+  const op = operatorPhone(state, now, { rid });
+  if (!op) return '<p class="v-official">' + officialLinks() + "</p>";
+  const two = (a, b) => `<span class="v-calltxt"><span>${a}</span> <span class="v-callnum">${b}</span></span>`;
+  return `<div class="v-calls" role="group" aria-label="Call for help">`
+    + `<a class="v-btn ${primary ? "v-btn--primary" : "v-btn--secondary"} v-btn--block v-call" href="${esc(op.tel)}">${PHONE_IC}${two("Call bus route help:", esc(op.text))}</a>`
+    + `<a class="v-btn v-btn--secondary v-btn--block v-call v-call--safety" href="${OFFICIAL_TEL}">${two("Safety or urgent:", OFFICIAL_PHONE)}</a>`
+    + `<p class="v-official"><a href="${OFFICIAL_URL}" target="_blank" rel="noopener">Official transportation page</a></p></div>`;
+}
+
+/**
+ * Everything a no-bus screen adds after its empty state: the operator's alerts in full, then who to call.
+ * @param {object} state
+ * @param {number} [now]
+ * @param {{rid?:string|null, max?:number, primary?:boolean}} [o]
+ * @returns {string}
+ */
+export function noBusHelpHTML(state, now = nowS(), o = {}) {
+  return operatorAlertsHTML(state, now, o) + callsHTML(state, now, o);
 }
 
 /** One alert as a list item (Alerts view and operatorAlertsHTML). */
@@ -67,8 +129,7 @@ function alertItem(a, state, now) {
  * @returns {string}
  */
 export function operatorAlertsHTML(state, now = nowS(), { rid = null, max = 2 } = {}) {
-  let act = activeAlerts(state, now);
-  if (rid) act = act.filter((a) => !(a.informed_entity || []).some((e) => e && e.route_id));
+  const act = operatorAlerts(state, now, rid);
   if (!act.length) return "";
   const more = act.length > max ? `<button type="button" class="v-link v-opmore" data-action="alerts:open">All ${act.length} service alerts</button>` : "";
   return `<section class="v-opalerts" aria-label="Service alerts from the shuttle operator"><h3 class="v-h">From the shuttle operator</h3><ul class="v-alertlist">${act.slice(0, max).map((a) => alertItem(a, state, now)).join("")}</ul>${more}</section>`;
@@ -94,8 +155,9 @@ export function renderAlerts(state, now = nowS()) {
 }
 
 /**
- * Nearby's alert banner: count + first alert title, '' when nothing is active. Not color alone:
- * the warning icon and the words "Service alert(s)" carry the state.
+ * Current trip's alert row: ONE line (owner decision 2026-10-11, so the next bus fits the half detent), count + first
+ * alert title, cut with an ellipsis; the full text is in its label and in Alerts. '' when nothing is active. Not
+ * color alone: the warning icon and the words "Service alert(s)" carry the state.
  * @param {object} state
  * @param {number} [now]
  * @returns {string}
@@ -108,7 +170,7 @@ export function alertBanner(state, now = nowS()) {
   const n = act.length;
   const head = n === 1 ? "Service alert" : `${n} service alerts`;
   const more = n > 1 ? ` and ${n - 1} more` : "";
-  return `<button type="button" class="v-row v-alertbanner" data-action="alerts:open" aria-label="${esc(`${head}: ${first}${more}. Open alerts`)}"><span class="v-alertic" aria-hidden="true">${WARN}</span><span class="v-grow"><span class="v-prim">${esc(head)}</span><span class="v-sec v-alertfirst">${esc(first)}${esc(more)}</span></span><span class="v-chev" aria-hidden="true"><svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l6 6-6 6"/></svg></span></button>`;
+  return `<button type="button" class="v-row v-alertbanner" data-action="alerts:open" aria-label="${esc(`${head}: ${first}${more}. Open alerts`)}"><span class="v-alertic" aria-hidden="true">${WARN}</span><span class="v-grow v-alertline"><b>${esc(head)}:</b> <span class="v-alertfirst">${esc(first)}${esc(more)}</span></span><span class="v-chev" aria-hidden="true"><svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l6 6-6 6"/></svg></span></button>`;
 }
 
 registerView("alerts", {

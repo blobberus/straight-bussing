@@ -194,12 +194,23 @@ input::placeholder { color: var(--text-2); opacity: 1; }
   .card, .cta.alt { outline: 1px solid currentColor; }
 }
 
-/* Nearby: service-alert banner (alerts are a sub view now) + favorites card (SHELL) */
-.v-alertbanner { margin: 0 0 var(--s2); padding: var(--s2) var(--s3); min-height: 56px; border-radius: var(--r-card); background: var(--warn-bg); }
+/* Current trip: service-alert row, ONE line (owner decision 2026-10-11: the next bus must fit the half detent under it;
+   the full alert is in its label and in Alerts) + favorites card (SHELL) */
+.v-row.v-alertbanner { gap: var(--s2); margin: 0 0 var(--s2); padding: 0 var(--s3); min-height: var(--tap); border-radius: var(--r-card); background: var(--warn-bg); }
 .v-alertbanner + .v-alertbanner::before, .v-alertbanner::before { display: none; }
-.v-alertbanner .v-alertic { color: var(--warn); padding-top: 0; }
-.v-alertbanner .v-prim { font-weight: 650; color: var(--text); }
-.v-alertbanner .v-alertfirst { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--text); }
+.v-alertbanner .v-alertic { display: grid; place-items: center; color: var(--warn); padding-top: 0; }
+.v-alertbanner .v-alertic svg { width: 20px; height: 20px; }
+.v-alertbanner .v-alertline { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text); }
+.v-alertbanner .v-alertline b { font-weight: 650; }
+/* who to call when no bus reports (alerts.js callsHTML): the operator's number from the live alert first, then
+   "Safety or urgent: 773.702.8181"; a label stacks at its colon instead of wrapping mid-phrase (320 px) */
+.v-calls { margin: var(--s3) 0 var(--s2); }
+.v-calls .v-btn { margin: 0 0 var(--s2); padding: var(--s2) var(--s4); text-align: center; }
+.v-calls .v-btn .v-ic { flex: none; width: 20px; height: 20px; }
+.v-calltxt { display: inline-flex; flex-wrap: wrap; justify-content: center; column-gap: .3em; min-width: 0; }
+.v-calltxt > span { white-space: nowrap; }
+.v-callnum { font-variant-numeric: tabular-nums; }
+.v-calls .v-official { margin: 0; }
 /* the operator's alerts next to "no bus reports" empty states (alerts.js operatorAlertsHTML); call links in alert text */
 .v-opalerts .v-alert { margin-top: 0; }
 .v-opmore { display: block; margin: 0 auto var(--s2); }

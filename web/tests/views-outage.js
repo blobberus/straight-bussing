@@ -9,6 +9,7 @@ import { renderRoutes } from "../js/ui/views/routes.js";
 import { renderRoute } from "../js/ui/views/route.js";
 import { D, resHTML } from "../js/ui/views/directions.js";
 import { renderCustom, renderEditor } from "../js/ui/views/myroutes.js";
+import { operatorPhone } from "../js/ui/views/alerts.js";
 
 const DOWN = { buses: [], trips: [], lastOk: 0, failed: true, feedTs: 0, liveLoaded: true };   // never reached the feed
 const FAILING = { buses: [], trips: [], lastOk: NOW - 90, failed: true, feedTs: NOW - 90 };    // was fine, now failing, last data empty
@@ -147,4 +148,59 @@ test("no bus reports: the operator's alert (title, text, call link) sits with th
   const many = renderNearby(fixture({ ...QUIET, alerts: [OP, ROUTE_ONLY, { ...ROUTE_ONLY, header_text: "Third" }] }), NOW);
   ok(many.includes('data-action="alerts:open"') && many.includes("All 3 service alerts") && !many.includes(">Third<"), "at most 2 inline, then a link to all");
   D.from = D.to = D.result = null;
+});
+
+// Owner decision 2026-10-11: when no bus reports and the operator's live alert gives a phone number, that number is
+// the main call ("Call bus route help: <number as written>") and 773.702.8181 the second ("Safety or urgent:
+// 773.702.8181"). No number in the feed: 773.702.8181 stays the call. Never a hardcoded operator number; the
+// operator's words stay verbatim (including "UGo", the owner's choice).
+test("no bus reports: the operator's number from the live alert is the main call, 773.702.8181 the safety call", () => {
+  const UGO = { ...OP, header_text: { translation: [{ text: "UGo Bus Route Assistance", language: "en" }] } };
+  const main = (h) => (h.match(/<a class="v-btn (v-btn--primary|v-btn--secondary) v-btn--block v-call" href="([^"]+)">[\s\S]*?<\/a>/) || []);
+  const calls = (h) => (h.match(/class="v-btn[^"]*v-call[^"]*"/g) || []).length;
+  for (const [name, over] of [["down", { ...DOWN, alerts: [UGO] }], ["silent", { ...SILENT, alerts: [UGO] }], ["quiet", { ...QUIET, alerts: [UGO] }]]) {
+    N.q = ""; N.mode = "station"; N.anchor = null;
+    Object.assign(D, { from: { lat: 41.79, lon: -87.6, label: "A" }, to: { lat: 41.795, lon: -87.595, label: "B" }, result: { options: [], walkOnly: { m: 700, min: 9 } }, missed: false });
+    const screens = { located: renderNearby(fixture({ ...over, user: { lat: 41.79, lon: -87.6 }, locState: "granted" }), NOW), routes: renderRoutes(fixture(over), NOW),
+      route: renderRoute(fixture({ ...over, routeId: "R1" }), NOW), directions: resHTML(fixture(over), NOW) };
+    for (const [where, h] of Object.entries(screens)) {
+      const m = main(h);
+      eq([m[1], m[2]], ["v-btn--primary", "tel:+17736559934"], `${name} ${where}: the operator's number is the primary call`);
+      ok(/Call bus route help:<\/span> <span class="v-callnum">773-655-9934<\/span>/.test(m[0] || ""), `${name} ${where}: labeled for its purpose, number as written`);
+      ok(/<a class="v-btn v-btn--secondary v-btn--block v-call v-call--safety" href="tel:\+17737028181"><span class="v-calltxt"><span>Safety or urgent:<\/span> <span class="v-callnum">773\.702\.8181<\/span>/.test(h), `${name} ${where}: safety call second`);
+      ok(h.indexOf("Call bus route help") < h.indexOf("Safety or urgent"), `${name} ${where}: order`);
+      ok(h.includes("UGo Bus Route Assistance"), `${name} ${where}: the operator's words verbatim`);
+      eq(calls(h), 2, `${name} ${where}: two call buttons, once`);
+    }
+    ok(!/rt-official/.test(screens.routes), name + " routes: no second 773.702.8181 line at the bottom");
+    // the screen's own primary action keeps the primary style: the main call takes the secondary one
+    const noLoc = renderNearby(fixture(over), NOW), stop = renderStop(fixture({ ...over, stopId: "S1" }), NOW);
+    eq(main(noLoc)[1], "v-btn--secondary", name + " Current trip without location: Use my location stays primary");
+    eq((noLoc.match(/v-btn--primary/g) || []).length, 1, name + " Current trip without location: one primary action");
+    eq(main(stop)[1], "v-btn--secondary", name + " stop: Directions to here stays primary");
+    eq((stop.match(/v-btn--primary/g) || []).length, 1, name + " stop: one primary action");
+  }
+  D.from = D.to = D.result = null;
+});
+
+test("no bus reports: no operator number means 773.702.8181 stays the call; the number always comes from the feed", () => {
+  N.q = ""; N.mode = "station"; N.anchor = null;
+  const plain = { ...OP, description_text: { translation: [{ text: "Buses may run late tonight.", language: "en" }] } };
+  const h = renderNearby(fixture({ ...QUIET, alerts: [plain] }), NOW);
+  ok(!h.includes("Call bus route help") && !h.includes("Safety or urgent") && h.includes("v-official") && h.includes('href="tel:+17737028181"'), "official line as before");
+  ok(!renderNearby(fixture(QUIET), NOW).includes("Call bus route help"), "no alert: no operator call");
+  const own = { ...OP, description_text: { translation: [{ text: "Questions? Call 773.702.8181.", language: "en" }] } };
+  ok(!renderNearby(fixture({ ...QUIET, alerts: [own] }), NOW).includes("Call bus route help"), "our own number is never 'bus route help'");
+  for (const [written, tel] of [["(312) 555-0199", "tel:+13125550199"], ["312.555.0199", "tel:+13125550199"], ["312-555-0199", "tel:+13125550199"]]) {
+    const other = { ...OP, description_text: { translation: [{ text: `If no bus shows, call ${written} for help.`, language: "en" }] } };
+    const r = operatorPhone(fixture({ ...QUIET, alerts: [other] }), NOW);
+    eq(r, { text: written, tel }, "as written: " + written);
+    ok(renderNearby(fixture({ ...QUIET, alerts: [other] }), NOW).includes(`<span class="v-callnum">${written}</span>`), "shown as written: " + written);
+  }
+  eq(operatorPhone(fixture({ ...QUIET, alerts: [{ ...OP, active_period: [{ start: NOW - 99, end: NOW - 9 }] }] }), NOW), null, "expired alert: no number");
+  const busy = renderNearby(fixture({ alerts: [OP] }), NOW);
+  ok(!busy.includes("Call bus route help"), "buses reporting: no call buttons, only the alert row");
+  const evil = { ...OP, header_text: "Help <img src=x onerror=alert(1)> 773-655-9934" };
+  const e = renderNearby(fixture({ ...QUIET, alerts: [evil] }), NOW);
+  ok(!e.includes("<img") && e.includes("773-655-9934"), "escaped");
 });

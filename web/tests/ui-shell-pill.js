@@ -2,6 +2,7 @@
 // render; no timers (this file is last on ui-shell.test.html, after the contextbar marquee test).
 import { test, eq, ok } from "./lib.js";
 import { pillState, pillIconSVG, createPill, PILL_ICONS } from "../js/ui/pill.js";
+import { DEMO_PILL } from "../js/core/demo.js";
 
 const NOW = 1_800_000_000;
 const fresh = { staticLoaded: true, liveLoaded: true, failed: false, lastOk: NOW - 5, feedTs: NOW - 5, buses: [{ id: "b" }], trips: [], service: {}, routes: {} };
@@ -35,8 +36,9 @@ test("pill: each state has its own icon and words (never color alone)", () => {
   eq(pillState({ liveLoaded: false, failed: false }, NOW, { bootS: NOW - 5 }).icon, "", "first poll grace");
   eq(pillState({ liveLoaded: false, failed: false }, NOW, { bootS: NOW - 60 }).icon, "feed", "never polled after the grace period");
   const icons = Object.keys(PILL_ICONS);
-  eq(icons.sort(), ["delay", "feed", "idle", "silent"]);
-  eq(new Set(icons.map((k) => PILL_ICONS[k])).size, 4, "four different drawings");
+  eq(icons.sort(), ["delay", "demo", "feed", "idle", "silent"]);
+  eq(new Set(icons.map((k) => PILL_ICONS[k])).size, 5, "five different drawings");
+  eq(pillState({ ...fresh }, NOW).demo, false, "live: never the demo pill");
   ok(pillIconSVG("feed").includes('aria-hidden="true"') && pillIconSVG("nope") === "", "decorative; unknown = none");
 });
 
@@ -58,5 +60,30 @@ test("pill: render writes the icon, text, kind and Retry; the icon slot is creat
   eq([el.querySelector(".pillbtn").hidden, see.hidden], [true, false], "an alert is up: See alert, no Retry");
   p.render(fresh, NOW);
   ok(el.hidden && !ic.innerHTML, "fresh data: no pill");
+  host.remove();
+});
+
+// Owner decision 2026-10-11: no demo banner. In demo mode (?demo=1) the pill is the one quiet, honest indicator:
+// "Simulated buses" on every screen, and the whole pill is a button that explains it (action demo:info).
+test("pill: demo mode reads 'Simulated buses' (flask icon, tap to explain); feed problems still win", () => {
+  eq(DEMO_PILL, "Simulated buses");
+  const d = pillState({ ...fresh }, NOW, { demo: true });
+  eq([d.kind, d.icon, d.msg, d.demo, d.retry, d.alert], ["info", "demo", "Simulated buses", true, false, false]);
+  eq(pillState({ liveLoaded: false, failed: false }, NOW, { bootS: NOW - 5, demo: true }).msg, "Simulated buses", "from the first frame");
+  eq(pillState({ ...fresh, buses: [] }, NOW, { demo: true }).icon, "demo", "simulated feed: never 'No shuttles running'");
+  eq(pillState({ ...fresh, failed: true, lastOk: NOW - 120 }, NOW, { demo: true }).kind, "err", "a failing feed is still an error");
+  eq(pillState({ ...fresh, feedTs: NOW - 150 }, NOW, { demo: true }).icon, "delay", "a late feed is still late");
+  const host = document.createElement("div");
+  host.innerHTML = '<div class="statuspill" role="status" hidden><span class="pilltext"></span><button class="pillbtn" hidden>Retry</button></div>';
+  document.body.appendChild(host);
+  const el = host.firstChild, p = createPill({ pill: el, text: el.querySelector(".pilltext"), retry: el.querySelector(".pillbtn") }, { demo: true });
+  const tap = el.querySelector('[data-action="demo:info"]');
+  ok(tap && tap.tagName === "BUTTON" && tap.hidden && /Simulated buses/.test(tap.getAttribute("aria-label")), "tap button created, labeled, hidden");
+  p.render({ ...fresh }, NOW);
+  eq([el.hidden, el.className, el.dataset.icon, el.querySelector(".pilltext").textContent, tap.hidden], [false, "statuspill info", "demo", "Simulated buses", false]);
+  ok(el.querySelector(".pillicon svg") && tap.querySelector("svg"), "flask icon + info mark (decorative)");
+  // geometry (the whole pill is the 44 px target) is checked against the real CSS in tests/e2e-demo.js
+  p.render({ ...fresh, failed: true, lastOk: NOW - 120 }, NOW);
+  ok(tap.hidden && !el.querySelector(".pillbtn").hidden, "feed error: Retry, no demo tap");
   host.remove();
 });

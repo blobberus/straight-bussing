@@ -6,6 +6,7 @@
  */
 import { test, eq, ok, near, holdRun, run } from "./lib.js";
 import { shellE2E } from "./ui-shell-e2e.js";
+import { currentTripE2E } from "./e2e-current.js";
 
 holdRun();
 
@@ -202,7 +203,7 @@ test("layout: search bar on top opens Directions; bottom navigation; Edit map or
   eq(top.querySelector("button")?.dataset.action, "routes:order-edit", "first control on Routes");
   ok(!$('#content [data-action="pick:open"]') && !$('#content [data-action="dir:open"]'), "no Routes to station / Directions on Routes");
   tab("nearby");
-  await waitFor(() => title() === "Current trip" && $("#content .pt-notrip"), "Current trip view with the no-trip hint");
+  await waitFor(() => title() === "Current trip" && $("#content .pt-hint") && !$("#content .pt-notrip"), "Current trip view with the quiet no-trip hint (no card)");
   eq($$('#content [data-action="dir:open"]').length, 0, "destination search lives in the top bar");
   eq($$('#content [data-action="pick:open"]').length, 1, "one Routes to station entry");
 });
@@ -440,6 +441,8 @@ test("tap outside the sheet: empty map collapses it to peek; stops and buses sti
 test("no console errors or uncaught exceptions in the app", () => {
   eq(T.errors, []);
 });
+
+currentTripE2E({ test, ok, eq, waitFor, openApp });   // the next bus at the half detent (owner decisions 2026-10-11)
 
 test("desktop window: the app runs in a 393x852 phone frame with the phone layout", async () => {
   const f = await openApp("width:1280px;height:800px");

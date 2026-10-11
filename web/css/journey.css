@@ -63,9 +63,18 @@
 .j-crit { display: block; margin-bottom: -2px; font-size: var(--fs-cap); line-height: 1rem; font-weight: 600; letter-spacing: .01em; color: var(--accent); }
 @media (forced-colors: active) { .j-crit { color: CanvasText; } }
 
-/* Current trip (nearby.js): hint card when no trip is running; actions under a trip in progress */
-.pt-notrip { display: flex; flex-direction: column; gap: 2px; margin: var(--s2) 0; padding: var(--s3) var(--s4); border-radius: var(--r-card); background: var(--surface); }
-.pt-notrip .v-sec { display: block; }
+/* Current trip (nearby.js), owner decision 2026-10-11: the next bus comes first and is fully visible at the half
+   detent (393 x 852) under the one-line alert row: stop name (2 lines there) with the walk on its right, then up to
+   3 arrivals in 52 px rows. The no-trip hint is a quiet line at the end; actions under a trip in progress. */
+.pt-next .pt-nexthead { flex-wrap: wrap; min-height: var(--tap); gap: 0 var(--s2); padding: var(--s1) 0; }
+.pt-nexthead .v-prim { flex: 1 1 200px; font-weight: 650; }   /* never cut: "(NE Corner)" tells two stops apart */
+/* narrow phones (320 px): the walk drops under the name instead of squeezing it to 4 lines */
+.pt-nextwalk { flex: none; white-space: nowrap; }
+.pt-next .row { min-height: 52px; padding: var(--s1) 0; }
+.pt-next .eta .num { line-height: 2rem; }
+[data-region="nearby-next"] .v-favhead .v-h { margin-top: var(--s1); }   /* favorites leading (no location) */
+[data-region="nearby-alt"] .v-alt { justify-content: space-between; }   /* "Routes to station…" at the right end; left when it wraps (320 px) */
+.pt-hint { margin: var(--s5) 0 var(--s2); text-align: center; }
 .pt-tripact { display: flex; flex-wrap: wrap; gap: var(--s2); }
 .pt-tripact > .v-btn { flex: 1 1 140px; }
 

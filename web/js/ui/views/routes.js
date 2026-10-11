@@ -4,11 +4,10 @@
  * "Routes to <station> x" (Plan Trip's station picker), Show all / Hide all, then the groups Running /
  * Scheduled, no live location / Not running / Hidden, each row with an eye toggle (store.hiddenRoutes,
  * persisted; honored by map, arrivals and Nearby). A scheduled route with no reporting bus is never "Not
- * running" (core/operating.js, rider safety). The official service phone and page sit at the bottom.
- * v2.1: custom-route bar ("Make this a custom route" + inline name field, or "Showing <name>" with Clear /
+ * running" (core/operating.js, rider safety). The official phone and page sit at the bottom (with the no-bus
+ * banner instead when the operator's alert gives a number, 2026-10-11). v2.1: custom-route bar ("Make this a custom route" + inline name field, or "Showing <name>" with Clear /
  * Update / Save as new), journey note, "Edit map order" mode (drag by the grip, routes-drag.js, or Move
- * up / down; store.routeOrder, drawn top-first).
- * The view mounts and owns its DOM: regions [data-region="routes-top"] and [data-region="routes-body"] are
+ * up / down; store.routeOrder, drawn top-first). The view mounts and owns its DOM: regions [data-region="routes-top"] and [data-region="routes-body"] are
  * patched in place on store changes; the top is never touched while its name field has focus.
  */
 import { registerView } from "../router.js";
@@ -22,7 +21,7 @@ import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibi
 import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, cleanName } from "../../core/custom.js";
 import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { OFFICIAL_HTML } from "./pick.js";
-import { operatorAlertsHTML } from "./alerts.js";
+import { operatorAlertsHTML, noBusHelpHTML, operatorPhone } from "./alerts.js";
 import { stationToggleHTML } from "./journey.js";
 import { attachOrderDrag } from "./routes-drag.js";
 
@@ -190,15 +189,16 @@ export function listHTML(state, now = nowS()) {
   const total = g.running.length + g.scheduled.length + g.idle.length + g.hidden.length;
   if (!total) return h + (state.routeFilter ? emptyState("No routes at this station", "Clear the filter to see every route.") : emptyState("No routes", "The schedule data did not load. Reload the app.") + OFFICIAL_HTML);
   const unknown = liveUnknown(state, now), empty = state.liveLoaded && !(state.buses || []).length;   // unknown: feed unreachable, we cannot say a route is not running
-  if (unknown && !state.routeFilter) h += emptyState("Live bus status unavailable", "Can't reach the shuttle feed. Routes are listed below for reference.") + operatorAlertsHTML(state, now);
-  else if (empty && !state.routeFilter) h += (silentService(state, now) ? emptyState("No live locations right now", silentText(state, g.scheduled, now, OFFICIAL_PHONE)) : emptyState("No shuttles running right now", "Routes are listed below for reference.")) + operatorAlertsHTML(state, now);
+  const calls = (unknown || empty) && !state.routeFilter && !!operatorPhone(state, now), help = () => (calls ? noBusHelpHTML(state, now) : operatorAlertsHTML(state, now));   // the operator's number: calls go with its alert, not at the bottom
+  if (unknown && !state.routeFilter) h += emptyState("Live bus status unavailable", "Can't reach the shuttle feed. Routes are listed below for reference.") + help();
+  else if (empty && !state.routeFilter) h += (silentService(state, now) ? emptyState("No live locations right now", silentText(state, g.scheduled, now, OFFICIAL_PHONE)) : emptyState("No shuttles running right now", "Routes are listed below for reference.")) + help();
   h += bulkHTML(state, g);
   const group = (title, ids, hidden, cls) => (ids.length ? `<h3 class="v-h">${title}</h3><div class="v-list${cls ? " " + cls : ""}">${ids.map((i) => row(state, i, hidden, now)).join("")}</div>` : "");
   h += group("Running", g.running, false, "");
   h += group("Scheduled, no live location", g.scheduled, false, "");
   h += group(unknown ? "Live status unknown" : "Not running", g.idle, false, empty ? "is-dim" : "");
   h += group(state.journey ? "Not on this trip" : "Hidden", g.hidden, true, "");
-  return h + `<div class="rt-official">${OFFICIAL_HTML}</div>`;
+  return h + (calls ? "" : `<div class="rt-official">${OFFICIAL_HTML}</div>`);
 }
 
 /** Top region: Edit map order first, then the custom-route / journey bar (empty in order mode). */

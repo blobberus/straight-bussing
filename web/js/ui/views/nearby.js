@@ -2,14 +2,15 @@
  * @module ui/views/nearby
  * Current trip tab (view id stays 'nearby'; routing, tests and persisted state use it). Destination
  * search lives in the floating search bar at the top of the screen (index.html #searchBar, dir:open).
- * Top of this view: the trip in progress (journey kind 'plan': routes, End trip, Trip steps) or a
- * "No trip in progress" hint, plus "Routes to station…" (pick:open). Below it, one glance: the next bus at the nearest stop. With location: the 3 nearest stops
- * (up to 3 arrivals at the nearest, 1 at the others). Without location (unknown, asking, denied):
- * "Use my location", a station search, "Type an address or place" (stops near that place),
- * and an "Arriving soon" list. Never a dead end; denied location is a first-class state.
- * Above everything: the service-alert banner (alerts are a sub view, not a tab). Above the nearby
- * stops: a Favorites card (state.favStops, next visible arrival each). Visibility follows
- * core/visibility.js effectiveHidden (journey > hidden routes / applied custom route).
+ * Order (owner decision 2026-10-11, Ship checklist 3: the next bus in one glance at the half detent, no taps):
+ * the one-line service-alert row (alerts are a sub view, not a tab); the trip in progress (journey kind 'plan':
+ * timeline, End trip, Trip steps, "Routes to station…") when there is one; then THE NEXT BUS: the nearest stop
+ * with up to 3 arrivals (with location, or a typed place), else the Favorites card (state.favStops, next visible
+ * arrival each); "Use my location" (the one primary action) when there is no location; the station search with
+ * "Type an address or place" and "Routes to station…" (pick:open) under it; then favorites (when a nearest stop
+ * leads), "Also nearby" (1 arrival each) or "Arriving soon", and the quiet "No trip in progress" hint last.
+ * Never a dead end; denied location is a first-class state. Visibility follows core/visibility.js
+ * effectiveHidden (journey > hidden routes / applied custom route).
  * With real location, each arrival says "Leave now" / "Leave in N min" or that it leaves before you
  * could walk to the stop (walking estimate, ./tripinfo.js catchNote; labeled est.).
  */
@@ -17,79 +18,38 @@ import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { nowS, minsUntil } from "../../core/time.js";
-import { arrivalsFor, staleLevel, liveUnknown } from "../../core/arrivals.js";
+import { arrivalsFor, liveUnknown } from "../../core/arrivals.js";
 import { routeChip, etaBlock, arrivalRow, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
 import { stopsNear, matchStations, walkText, OFFICIAL_HTML, ICONS } from "./pick.js";
 import { createPlaceSearch, placeListHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
 import { effectiveHidden } from "../../core/visibility.js";
-import { alertBanner, operatorAlertsHTML } from "./alerts.js";
-import { catchNote, stopWalkMin } from "./tripinfo.js";
+import { alertBanner, noBusHelpHTML } from "./alerts.js";
+import { stopWalkMin } from "./tripinfo.js";
+import { FAV_MAX, isStale, nameOf, guidedRow, pickArrivals, favoritesHTML, soonest } from "./nearby-cards.js";
 import { isPlanJourney } from "./journey.js";
 import { tripProgressHTML } from "./tripprogress.js";
 
-/** Favorites shown on Nearby (the rest are in My Routes). */
-export const FAV_MAX = 3;
+export { FAV_MAX, guidedRow, pickArrivals, favoritesHTML };   // their home is ./nearby-cards.js (tests import them from here)
 
 /** Farthest stop still called "nearby" (meters). */
 export const NEARBY_MAX_M = 5000;
 
 /** View-local state: search text, search mode, chosen place (stands in for location). */
 export const N = { q: "", mode: "station", anchor: null };
-let rootRef = null, ctxRef = null, offStore = null, lastRegion = null;
+let rootRef = null, ctxRef = null, offStore = null;
 const places = createPlaceSearch(() => patchResults());
-
-const isStale = (state, now) => staleLevel(state, now) !== "";
-const nameOf = (state, rid) => state.routes?.[rid]?.short || state.routes?.[rid]?.long || rid;
-
-function soonest(state, now) {
-  const hidden = effectiveHidden(state), out = [];
-  for (const id of Object.keys(state.stops || {})) {
-    if (!(state.stopRoutes?.[id] || []).length) continue;
-    const a = arrivalsFor(state, id, { hidden, nowS: now })[0];
-    if (a) out.push({ id, a });
-  }
-  return out.sort((x, y) => x.a.t - y.a.t).slice(0, 6);
-}
 
 const NO_LIVE = "Live times unavailable";
 function noService(state, now) {
+  // the operator's alert + who to call; the call is the primary button unless "Use my location" already is
+  const help = noBusHelpHTML(state, now, { primary: !locPrimary(state) });
   // a feed outage is not a service outage: never claim "no shuttles" without live data
-  if (liveUnknown(state, now)) return emptyState(NO_LIVE, "Can't reach the shuttle feed, so we can't tell which shuttles are running. Check with the official service.") + operatorAlertsHTML(state, now) + OFFICIAL_HTML;
+  if (liveUnknown(state, now)) return emptyState(NO_LIVE, "Can't reach the shuttle feed, so we can't tell which shuttles are running. Check with the official service.") + help;
   if ((state.buses || []).length) return emptyState("No upcoming arrivals", "No bus on your visible routes has a predicted arrival right now.") + OFFICIAL_HTML;
   // fresh but empty feed while routes are scheduled: GPS off or service ended early, we can't tell (rider safety)
-  if (silentService(state, now)) return emptyState("No live locations right now", silentText(state, scheduledRoutes(state, now, { hidden: effectiveHidden(state) }), now, OFFICIAL_PHONE)) + operatorAlertsHTML(state, now) + OFFICIAL_HTML;
-  return emptyState("No shuttles running right now", "Check the official schedule for service hours.") + operatorAlertsHTML(state, now) + OFFICIAL_HTML;
-}
-
-/**
- * Arrival row with walking guidance: catchable rows say when to leave, uncatchable ones are marked
- * (class pt-miss + text + aria, never color alone). The note goes into the row's aria-label too.
- * @param {object} a arrival {rid, t, bus, tripId}
- * @param {object} state
- * @param {number} now
- * @param {number} walkM walking minutes to the stop (estimate)
- * @returns {string}
- */
-export function guidedRow(a, state, now, walkM) {
-  const c = catchNote(a.t, walkM, now);
-  return arrivalRow(a, state, { now, action: "route:open", sub: c.text })
-    .replace('class="row arr"', `class="row arr pt-arr pt-${c.kind}"`)
-    .replace(/aria-label="([^"]*)"/, (m0, l) => `aria-label="${l}, ${esc(c.aria)}"`);
-}
-
-/**
- * Arrivals to list at a stop: the first `max`, plus one more when none of those can be caught on foot.
- * @param {object[]} all sorted arrivals
- * @param {number} max
- * @param {number|null} walkM walking minutes (null: no guidance)
- * @param {number} now
- * @returns {object[]}
- */
-export function pickArrivals(all, max, walkM, now) {
-  const list = all.slice(0, max);
-  if (walkM != null && list.length && all.length > max && list.every((a) => catchNote(a.t, walkM, now).kind === "miss")) list.push(all[max]);
-  return list;
+  if (silentService(state, now)) return emptyState("No live locations right now", silentText(state, scheduledRoutes(state, now, { hidden: effectiveHidden(state) }), now, OFFICIAL_PHONE)) + help;
+  return emptyState("No shuttles running right now", "Check the official schedule for service hours.") + help;
 }
 
 function stopCard(state, s, now, max, hero, guide) {
@@ -97,45 +57,35 @@ function stopCard(state, s, now, max, hero, guide) {
   const walkM = guide ? stopWalkMin(s.d) : null;
   const arr = state.liveLoaded ? pickArrivals(arrivalsFor(state, s.id, { hidden, nowS: now }), max, walkM, now) : null;
   const rs = (state.stopRoutes?.[s.id] || []).filter((r) => !hidden.includes(r));
-  const head = `<button type="button" class="v-row v-cardhead" data-action="stop:open" data-id="${esc(s.id)}"><span class="v-grow"><span class="${hero ? "v-title" : "v-prim"}">${esc(s.name)}</span><span class="v-sec">${esc(walkText(s.d))}</span></span><span class="v-chev" aria-hidden="true">${ICONS.chev}</span></button>`;
+  const chev = `<span class="v-chev" aria-hidden="true">${ICONS.chev}</span>`;
+  // hero (the next bus, owner decision 2026-10-11): the name (2 lines at 393 px) with the walk on its right, so name + 3
+  // arrivals fit the half detent under the one-line alert row; the distance stays in the spoken name
+  const head = hero
+    ? `<button type="button" class="v-row v-cardhead pt-nexthead" data-action="stop:open" data-id="${esc(s.id)}"><span class="v-grow v-prim">${esc(s.name)}</span><span class="v-sec pt-nextwalk">${esc(walkText(s.d).split(" · ")[0])}<span class="v-sr">, ${Math.round(s.d)} m</span></span>${chev}</button>`
+    : `<button type="button" class="v-row v-cardhead" data-action="stop:open" data-id="${esc(s.id)}"><span class="v-grow"><span class="v-prim">${esc(s.name)}</span><span class="v-sec">${esc(walkText(s.d))}</span></span>${chev}</button>`;
   let body;
-  if (!arr) body = skeleton(1);
+  if (!arr) body = skeleton(hero ? 3 : 1);
   else if (arr.length) body = arr.map((a) => (guide ? guidedRow(a, state, now, walkM) : arrivalRow(a, state, { now, action: "route:open" }))).join("");
   else body = `<div class="v-none"><span class="v-sec">${liveUnknown(state, now) ? NO_LIVE : silentService(state, now) ? "No live times right now" : "No upcoming arrivals"}</span><span class="v-chips">${rs.map((r) => routeChip(r, state.routes)).join("")}</span></div>`;
-  return `<section class="v-card${hero ? " v-hero" : ""}">${head}${body}</section>`;
+  return hero ? `<section class="v-card v-hero pt-next" aria-label="${esc("Next buses at " + s.name)}">${head}${body}</section>`
+    : `<section class="v-card">${head}${body}</section>`;
 }
 
-/**
- * Favorites card: up to FAV_MAX favorite stations with their next visible arrival; '' if none.
- * @param {object} state
- * @param {number} [now]
- * @returns {string}
- */
-export function favoritesHTML(state, now = nowS()) {
-  const ids = (state.favStops || []).filter((id) => state.stops?.[id]);
-  if (!ids.length) return "";
-  const hidden = effectiveHidden(state), stale = isStale(state, now), unknown = liveUnknown(state, now) || silentService(state, now);
-  const rows = ids.slice(0, FAV_MAX).map((id) => {
-    const name = state.stops[id].name || id;
-    const a = state.liveLoaded ? arrivalsFor(state, id, { hidden, nowS: now })[0] : null;
-    const m = a ? Math.max(0, minsUntil(a.t, now)) : null;
-    const label = a ? `Favorite ${name}: route ${nameOf(state, a.rid)} ${m < 1 ? "arriving now" : "in " + m + " minutes"}${stale ? ", estimate" : ""}`
-      : `Favorite ${name}: ${unknown ? "live times unavailable" : state.liveLoaded ? "no upcoming arrivals" : "loading"}`;
-    const right = a ? etaBlock(a.t, { stale, now }) : `<span class="v-sec">${unknown ? "No live times" : state.liveLoaded ? "No buses soon" : ""}</span>`;
-    return `<button type="button" class="v-row" data-action="stop:open" data-id="${esc(id)}" aria-label="${esc(label)}">${a ? routeChip(a.rid, state.routes) : `<span class="v-ic v-favic" aria-hidden="true">${ICONS.star}</span>`}<span class="v-grow"><span class="v-prim">${esc(name)}</span>${a ? `<span class="v-sec">${esc(state.routes?.[a.rid]?.long || "")}</span>` : ""}</span>${right}</button>`;
-  }).join("");
-  const more = '<button type="button" class="v-link v-favmore" data-action="nav" data-view="myroutes">All favorites</button>';
-  return `<div class="v-favhead"><h3 class="v-h">Favorites</h3>${more}</div><section class="v-card v-favs" aria-label="Favorite stations">${rows}</section>`;
-}
+/** The point the nearest stop is measured from: your location, else a typed place (N.anchor). */
+const pointOf = (state) => state.user || N.anchor;
+const nearest = (state, point, max) => stopsNear(state, point, { maxM: NEARBY_MAX_M, max, hidden: effectiveHidden(state) });
 
+/** Below the hero: the other nearby stops (1 arrival each) and the walking-estimate note. */
 function nearList(state, point, now, guide) {
-  const near = stopsNear(state, point, { maxM: NEARBY_MAX_M, max: 3, hidden: effectiveHidden(state) });
+  const near = nearest(state, point, 3);
   if (!near.length) return null;
-  let h = stopCard(state, near[0], now, 3, true, guide);
-  if (near.length > 1) h += '<h3 class="v-h">Also nearby</h3>' + near.slice(1).map((s) => stopCard(state, s, now, 1, false, guide)).join("");
+  let h = near.length > 1 ? '<h3 class="v-h">Also nearby</h3>' + near.slice(1).map((s) => stopCard(state, s, now, 1, false, guide)).join("") : "";
   if (guide) h += '<p class="v-fine pt-walknote">Leave times use a walking estimate (80 m a minute) and live bus times. Allow extra time.</p>';
-  return h + (silentService(state, now) ? noService(state, now) : "");   // say why the cards have no times
+  return h;
 }
+
+/** No bus reports (feed down, or a fresh feed with no vehicle): the stop cards cannot show times. */
+const noBusReports = (state, now) => liveUnknown(state, now) || (state.liveLoaded && !(state.buses || []).length);
 
 function soonList(state, now) {
   if (!state.liveLoaded) return '<h3 class="v-h">Arriving soon</h3>' + skeleton(3);
@@ -148,6 +98,9 @@ function soonList(state, now) {
   }).join("") + "</div>";
 }
 
+/** "Use my location" is the screen's one primary action (no location yet, not asking, not denied). */
+const locPrimary = (state) => !state.user && state.locState !== "asking" && state.locState !== "denied";
+
 function locBlock(state) {
   if (state.locState === "asking") return '<p class="v-hint" role="status">Finding your location&hellip;</p>';
   if (state.locState === "denied") {
@@ -157,24 +110,39 @@ function locBlock(state) {
   return '<button type="button" class="v-btn v-btn--primary v-btn--block" data-action="nearby:locate"><span class="v-ic" aria-hidden="true">' + ICONS.loc + "</span>Use my location</button>";
 }
 
-/** Body below the search field when nothing is typed. */
+/** The no-trip hint: a quiet line at the end of the view (owner decision 2026-10-11: no card at the top). */
+export const NO_TRIP_HINT = "No trip in progress. Search for a destination above, choose a route and tap Start.";
+
+/**
+ * The next bus, first under the title (owner decision 2026-10-11; region nearby-next): with location (or a typed
+ * place) the nearest stop and up to 3 arrivals; without, the favorites' next buses; else '' ("Use my location"
+ * then leads).
+ * @param {object} state
+ * @param {number} [now]
+ * @returns {string}
+ */
+export function nextHTML(state, now = nowS()) {
+  const point = pointOf(state);
+  if (!point) return favoritesHTML(state, now);
+  const anchor = !state.user && N.anchor ? `<div class="v-anchor"><span class="v-grow"><span class="v-sec">Showing stops near</span><span class="v-prim">${esc(N.anchor.label)}</span></span><button type="button" class="v-btn v-btn--quiet" data-action="nearby:clear-place" aria-label="Clear place ${esc(N.anchor.label)}">Clear</button></div>` : "";
+  const s = nearest(state, point, 1)[0];
+  // no bus reports: why the card has no times and who to call, right under it (rider safety)
+  return anchor + (s ? stopCard(state, s, now, 3, true, !!state.user) + (noBusReports(state, now) ? noService(state, now) : "") : "");
+}
+
+/** Body below the search field when nothing is typed: favorites (when the hero is a nearest stop), the rest. */
 export function bodyHTML(state, now = nowS()) {
-  return favoritesHTML(state, now) + placesHTML(state, now);
+  return (pointOf(state) ? favoritesHTML(state, now) : "") + placesHTML(state, now) + (isPlanJourney(state) ? "" : `<p class="v-fine pt-hint">${esc(NO_TRIP_HINT)}</p>`);
 }
 
 function placesHTML(state, now) {
   if (state.user) {
     const h = nearList(state, state.user, now, true);
-    if (h) return h;
+    if (h != null) return h;
     return '<div class="v-empty"><b>No stops near you</b><span>You seem to be more than 5 km from the shuttle network. Search a station or place above.</span></div>' + soonList(state, now);
   }
-  let h = "";
-  if (N.anchor) {
-    const list = nearList(state, N.anchor, now, false);
-    h += `<div class="v-anchor"><span class="v-grow"><span class="v-sec">Showing stops near</span><span class="v-prim">${esc(N.anchor.label)}</span></span><button type="button" class="v-btn v-btn--quiet" data-action="nearby:clear-place" aria-label="Clear place ${esc(N.anchor.label)}">Clear</button></div>`;
-    return h + (list || '<div class="v-empty"><b>No stops within 5 km of this place</b><span>Try another place or search a station.</span></div>');
-  }
-  return h + soonList(state, now);
+  if (N.anchor) return nearList(state, N.anchor, now, false) ?? '<div class="v-empty"><b>No stops within 5 km of this place</b><span>Try another place or search a station.</span></div>';
+  return soonList(state, now);
 }
 
 /** Results region while the user is typing. */
@@ -198,23 +166,36 @@ function regionHTML(state, now) {
   return N.q.trim() ? resultsHTML(state) : bodyHTML(state, now);
 }
 
+const PICK_LINK = '<button type="button" class="v-link pt-pick" data-action="pick:open">Routes to station&hellip;</button>';
+
 /**
- * Top of the Current trip view: the trip in progress (routes, End trip, Trip steps) or a hint that
- * none is running, and "Routes to station…". Directions itself opens from the top search bar.
+ * Under the station search: the place / station switch and, with no trip running, "Routes to station…" (secondary
+ * actions below the next bus; a trip in progress keeps it in its own actions). Region nearby-alt.
+ * @param {object} state
+ * @returns {string}
+ */
+export function altHTML(state) {
+  const pick = isPlanJourney(state) ? "" : PICK_LINK;
+  return N.mode === "place"
+    ? `<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="station">Search stations instead</button>${pick}</div><p class="v-fine">Places near campus are searched on your device; otherwise only the text you type (or its spelling fix) is sent to photon.komoot.io.</p>`
+    : `<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="place">Type an address or place</button>${pick}</div>`;
+}
+
+/**
+ * The trip in progress (live timeline with End trip, Trip steps, "Routes to station…"), first under the title as
+ * before; '' with no trip (the next bus leads then). Directions itself opens from the top search bar.
  * @param {object} state
  * @returns {string}
  */
 export function entryHTML(state, now = nowS()) {
-  const pick = '<button type="button" class="v-btn v-btn--secondary v-btn--block pt-pick" data-action="pick:open">Routes to station&hellip;</button>';
-  // a started trip: the live Google-Maps-style progress timeline (ui/views/tripprogress.js)
-  if (isPlanJourney(state)) return tripProgressHTML(state, now, { actionsHTML: pick });
-  return '<div class="pt-notrip"><span class="v-prim">No trip in progress</span>'
-    + '<span class="v-sec">Search for a destination above, choose a route and tap Start.</span></div>'
-    + `<div class="pt-top">${pick}</div>`;
+  if (!isPlanJourney(state)) return "";
+  return tripProgressHTML(state, now, { actionsHTML: '<button type="button" class="v-btn v-btn--secondary v-btn--block pt-pick" data-action="pick:open">Routes to station&hellip;</button>' });
 }
 
 /**
- * Render the Plan Trip (id 'nearby') view.
+ * Render the Current trip (id 'nearby') view. Order (owner decision 2026-10-11): one-line alert row, the trip in
+ * progress, the next bus (nearest stop / typed place / favorites), "Use my location" when there is no location,
+ * the station search with its secondary actions, then the rest (favorites, Also nearby, Arriving soon, hint).
  * @param {object} state store state
  * @param {number} [now] unix seconds
  * @returns {string}
@@ -223,10 +204,9 @@ export function renderNearby(state, now = nowS()) {
   if (!state.staticLoaded) return '<div class="v-nearby">' + skeleton(3) + "</div>";
   const place = N.mode === "place";
   const search = `<label class="v-search"><span class="v-ic" aria-hidden="true">${ICONS.search}</span><span class="v-sr">${place ? "Address or place" : "Search stations"}</span><input type="search" data-input="nearby-q" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${place ? "Address, building or place" : "Search stations"}" value="${esc(N.q)}"></label>`;
-  const toggle = place
-    ? '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="station">Search stations instead</button></div><p class="v-fine">Places near campus are searched on your device; otherwise only the text you type (or its spelling fix) is sent to photon.komoot.io.</p>'
-    : '<div class="v-alt"><button type="button" class="v-link" data-action="nearby:mode" data-mode="place">Type an address or place</button></div>';
-  return `<div class="v-nearby"><div data-region="nearby-alert">${alertBanner(state, now)}</div><div data-region="nearby-trip">${entryHTML(state, now)}</div><div data-region="nearby-loc">${locHTML(state)}</div>${search}${toggle}<div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
+  return `<div class="v-nearby"><div data-region="nearby-alert">${alertBanner(state, now)}</div><div data-region="nearby-trip">${entryHTML(state, now)}</div>`
+    + `<div data-region="nearby-next">${nextHTML(state, now)}</div><div data-region="nearby-loc">${locHTML(state)}</div>${search}`
+    + `<div data-region="nearby-alt">${altHTML(state)}</div><div data-region="nearby-results">${regionHTML(state, now)}</div></div>`;
 }
 
 /**
@@ -265,23 +245,26 @@ export function peekNearby(state, now = nowS()) {
 
 function curState() { return ctxRef?.store?.get?.() || {}; }
 
-let lastLoc = null, lastAlert = null, lastTrip = null;
+/** Last HTML per patched region (data-region="nearby-<key>"), so a live update touches only what changed. */
+let last = {};
+const REGIONS = Object.freeze({
+  alert: (s, now) => alertBanner(s, now), trip: (s, now) => entryHTML(s, now),   // live trip timeline: keeps keyboard focus
+  next: (s, now) => nextHTML(s, now), loc: (s) => locHTML(s), alt: (s) => altHTML(s),
+  results: (s, now) => regionHTML(s, now),
+});
 function patchResults() {
-  const al = rootRef?.querySelector?.('[data-region="nearby-alert"]'), ah = alertBanner(curState(), ctxRef?.now ? ctxRef.now() : nowS());
-  if (al && ah !== lastAlert) { setHTMLKeepFocus(al, ah); lastAlert = ah; }
-  const tr = rootRef?.querySelector?.('[data-region="nearby-trip"]'), th = entryHTML(curState(), ctxRef?.now ? ctxRef.now() : nowS());
-  if (tr && th !== lastTrip) { setHTMLKeepFocus(tr, th); lastTrip = th; }   // live trip timeline: keep keyboard focus
-  const loc = rootRef?.querySelector?.('[data-region="nearby-loc"]'), lh = locHTML(curState());
-  if (loc && lh !== lastLoc) { setHTMLKeepFocus(loc, lh); lastLoc = lh; }
-  const el = rootRef?.querySelector?.('[data-region="nearby-results"]');
-  if (!el) return;
-  const html = regionHTML(curState(), ctxRef?.now ? ctxRef.now() : nowS());
-  if (html !== lastRegion) { setHTMLKeepFocus(el, html); lastRegion = html; }
+  const s = curState(), now = ctxRef?.now ? ctxRef.now() : nowS();
+  for (const [key, html] of Object.entries(REGIONS)) {
+    const el = rootRef?.querySelector?.(`[data-region="nearby-${key}"]`);
+    if (!el) continue;
+    const h = html(s, now);
+    if (h !== last[key]) { setHTMLKeepFocus(el, h); last[key] = h; }
+  }
 }
 
 function rerender(focus) {
   if (!rootRef) return;
-  lastRegion = null; lastLoc = null; lastAlert = null; lastTrip = null;
+  last = {};
   rootRef.innerHTML = renderNearby(curState(), ctxRef?.now ? ctxRef.now() : nowS());
   if (focus) rootRef.querySelector('[data-input="nearby-q"]')?.focus({ preventScroll: true });
 }
@@ -321,7 +304,7 @@ export function choosePlace(i) {
  */
 export function mountNearby(root, ctx) {
   unmountNearby();
-  rootRef = root; ctxRef = ctx; lastRegion = null; lastLoc = null; lastAlert = null; lastTrip = null;
+  rootRef = root; ctxRef = ctx; last = {};
   root.addEventListener("input", onInput);
   root.addEventListener("keydown", onKey);
   offStore = ctx?.store?.subscribe?.((s, ch) => {

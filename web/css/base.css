@@ -35,25 +35,8 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
    button. Bottom: the navigation bar (#tabs) with the sheet resting on it. */
 .topbar {
   position: fixed; z-index: var(--z-search);
-  top: calc(var(--safe-t) + var(--demo-h) + 10px); left: calc(var(--safe-l) + 12px); right: calc(var(--safe-r) + 12px);
+  top: calc(var(--safe-t) + 10px); left: calc(var(--safe-l) + 12px); right: calc(var(--safe-r) + 12px);
 }
-/* demo mode (?demo=1, ui/demo.js): a solid amber strip above the search bar on every screen, never mistaken for live data */
-.demobar {
-  position: fixed; z-index: var(--z-demo); top: calc(var(--safe-t) + 2px); left: calc(var(--safe-l) + 12px); right: calc(var(--safe-r) + 12px);
-  height: calc(var(--demo-h) - 6px); display: flex; align-items: center; gap: var(--s2); padding: 0 4px 0 12px;
-  border-radius: var(--r-control); background: var(--warn); color: var(--bg-solid);
-  font-size: .875rem; line-height: 1.125rem; font-weight: 700; box-shadow: var(--shadow-float);
-}
-.demobar-ic { display: grid; place-items: center; }
-.demobar-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.demobar-exit {
-  flex: none; position: relative; display: grid; place-items: center; height: 28px; padding: 0 12px; border-radius: var(--r-inner);
-  background: var(--bg-solid); color: var(--warn); font-weight: 700; text-decoration: none;
-  transition: transform var(--d-press) var(--ease-enter);
-}
-.demobar-exit::after { content: ""; position: absolute; inset: -8px -4px; } /* 44px hit area */
-.demobar-exit:active { transform: scale(.97); }
-.demobar-exit:focus-visible { outline: 2px solid var(--bg-solid); outline-offset: 2px; }
 .searchbar {
   display: flex; align-items: center; height: 48px; padding: 0 2px 0 4px; border-radius: var(--r-pill);
   background: var(--bg-solid); box-shadow: var(--shadow-float);
@@ -135,6 +118,17 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
   position: relative;
 }
 .statuspill .pillbtn::after { content: ""; position: absolute; inset: -6px -4px; } /* 44px hit area */
+/* demo mode (?demo=1): "Simulated buses"; the whole pill is one button (stretched hit area) that explains it and
+   offers the way back to live buses (ui/demo.js). The info mark says it can be tapped. */
+.statuspill .pilltap {
+  flex: none; display: grid; place-items: center; width: 32px; height: 32px; margin-left: auto; padding: 0;
+  border: 0; border-radius: var(--r-inner); background: none; color: var(--accent); cursor: pointer;
+}
+.statuspill .pilltap::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-control); }
+.statuspill:has(.pilltap:not([hidden])) { transition: transform var(--d-press) var(--ease-enter); }
+.statuspill:has(.pilltap:not([hidden])):active { transform: scale(.98); }
+.statuspill .pilltap:focus-visible { outline: none; }
+.statuspill:has(.pilltap:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }   /* the whole pill is the target */
 
 /* map context bar: why the map shows fewer routes (journey / custom route), with a way out.
    Sits under the status pill (which always stays visible) and above the sheet. */
@@ -197,7 +191,6 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 @media (min-width: 768px) and (max-height: 559px) {
   .statuspill, .ctxbar { left: calc(var(--panel-w) + 24px); right: calc(var(--safe-r) + 68px); max-width: 520px; }
   .topbar { left: calc(var(--panel-w) + 24px); max-width: 560px; }
-  .demobar { max-width: calc(var(--panel-w) + 584px); }
   .bottomnav {
     left: calc(var(--safe-l) + 12px); right: auto; bottom: 12px; width: var(--panel-w); height: 58px;
     padding: 4px 8px; border: 0; border-top: 1px solid var(--hairline);
@@ -211,11 +204,10 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
   .searchbar, .bottomnav { border: 1px solid CanvasText; }
   .bottomnav button[aria-current="page"] { outline: 2px solid Highlight; }
   .statuspill .pillbtn, .ctxbar .ctx-btn { border: 1px solid ButtonText; }
-  .demobar { border: 2px solid CanvasText; }
-  .demobar-exit { border: 1px solid ButtonText; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .statuspill:has(.pilltap:not([hidden])):active { transform: none; opacity: .8; }
   *, *::before, *::after {
     animation-duration: .001ms !important; animation-iteration-count: 1 !important;
     transition-duration: var(--d-press) !important; scroll-behavior: auto !important;
