@@ -367,7 +367,6 @@ export function unmountDirections() {
 
 /** Test hook: the place-search state. */
 export const _photon = photon;
-
 registerView("directions", {
   title: () => "Directions",
   parent: "nearby",
@@ -382,10 +381,11 @@ registerView("directions", {
 
 /** dir:open from Plan Trip's "Where to?" (data-focus="to") focuses the destination field on mount. */
 registerAction("dir:open", (ds, ev, ctx) => { if (ds?.focus === "to") D.focusTo = true; ctx.navigate("directions"); });
-registerAction("dir:from-stop", (ds, ev, ctx) => { const ep = stopEndpoint(ctx.store.get(), ds.id); if (!ep) return; D.from = ep; D.to = null; D.toText = ""; D.result = null; ctx.navigate("directions"); });
+const endTrip = (ctx, yes) => { if (yes && isPlanJourney(ctx.store.get())) ctx.store.set({ journey: null }); };   // a stop's new endpoints end a started trip, never re-target it (iOS parity)
+registerAction("dir:from-stop", (ds, ev, ctx) => { const ep = stopEndpoint(ctx.store.get(), ds.id); if (!ep) return; endTrip(ctx, true); D.from = ep; D.to = null; D.toText = ""; D.result = null; ctx.navigate("directions"); });
 registerAction("dir:to-stop", (ds, ev, ctx) => {
   const s = ctx.store.get(), ep = stopEndpoint(s, ds.id); if (!ep) return;
-  D.to = ep; if (!D.from || D.from.stop === ds.id) { D.from = s.user ? me(s.user) : null; D.fromText = ""; }
+  endTrip(ctx, D.to?.stop !== ep.stop); D.to = ep; if (!D.from || D.from.stop === ds.id) { D.from = s.user ? me(s.user) : null; D.fromText = ""; }
   D.result = null; ctx.navigate("directions");
 });
 registerAction("dir:sug", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; applySug(+ds.i); });

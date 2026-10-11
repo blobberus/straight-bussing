@@ -154,6 +154,23 @@ test("directions: changing endpoints ends the trip; ending it elsewhere brings S
   unmountDirections(); el.remove();
 });
 
+test("directions: a stop's 'Directions to here' / 'From here' end a started trip, never re-target it (iOS parity)", async () => {
+  const { ctx, el } = await dirWith([opt("a", 12, "R1")]);
+  runAction("dir:start", {}, null, ctx);
+  await tick();
+  eq(ctx.store.get().journey.label, "To Hospital");
+  unmountDirections(); el.remove();
+  runAction("dir:to-stop", { id: "S3" }, null, ctx);   // the same destination: the trip goes on
+  ok(ctx.store.get().journey, "same stop: trip kept");
+  runAction("dir:to-stop", { id: "S2" }, null, ctx);   // another place: a new plan, not the old trip following it
+  eq(ctx.store.get().journey, null, "Directions to another stop ends the trip");
+  runAction("dir:start", {}, null, ctx);
+  ctx.store.set({ journey: planJourney({ ...opt("a", 12, "R1"), t0: NOW }, "Hospital") });
+  runAction("dir:from-stop", { id: "S1" }, null, ctx);
+  eq(ctx.store.get().journey, null, "From here ends the trip");
+  resetDir();
+});
+
 test("directions: leaving the view keeps the trip on the map until it ends", async () => {
   const { ctx, el } = await dirWith([opt("a", 12, "R1")]);
   runAction("dir:start", {}, null, ctx);
