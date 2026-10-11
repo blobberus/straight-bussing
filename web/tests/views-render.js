@@ -230,6 +230,8 @@ test("about: unofficial, official contact, privacy hosts, version, theme control
   for (const s of ["unofficial", "773.702.8181", "safety-security.uchicago.edu/Transportation", "photon.komoot.io", "routing.openstreetmap.de", "valhalla1.openstreetmap.de", "Version", "OpenStreetMap"]) ok(h.includes(s), s);
   // privacy honesty (taste audit 15.3): never "location stays on this device" next to a bullet that sends walking endpoints
   ok(!h.includes("stays on this device") && h.includes("live location is never stored or sent") && h.includes("only the start and end of each walking leg"), "location wording is consistent");
+  // the policy and support pages on the same site (App Store 5.1.1 asks for a reachable policy; iOS links them too)
+  ok(h.includes('href="privacy.html"') && h.includes('href="support.html"'), "privacy policy + support links");
   const el = root();
   el.innerHTML = h;
   mountAbout(el, makeCtx());

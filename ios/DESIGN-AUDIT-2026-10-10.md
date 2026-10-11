@@ -251,4 +251,5 @@ Same CI scenes, before = `ios-preview` of `7055eb3`, after = the scratch-branch 
 
 - `web/js/ui/views/pick.js` `walkText` + " · " makes two middle dots per row ("4 min walk · 320 m · N, E"); iOS reads
   "4 min walk (320 m) · N, E".
-- The web About has the privacy statements but no link to `privacy.html` / `support.html`.
+- Done after the web agent finished: the web About links `privacy.html` and `support.html` under its privacy list
+  (sw `sb-v2-32`).
