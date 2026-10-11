@@ -184,10 +184,12 @@ export function alongShape(shapeLines, routeStopsList, board, alight, fallbackLa
   if (!realFb) fb = b0 && a0 ? [b0, a0] : fb;
   try {
     if (!b0 || !a0 || !Array.isArray(shapeLines)) return fb;
-    // pick the shape line that passes closest to both stops (longest wins ties)
+    // pick the shape line that passes closest to both stops (longest wins ties). Repeated points are
+    // dropped first: a zero-length or one-point line is no road, and it must never win the pick (its score
+    // is only the distance to its one point) and send the ride to the straight fallback.
     let pick = null;
     for (const raw of shapeLines) {
-      const line = normLatLngs(raw);
+      const line = dedupe(normLatLngs(raw));
       if (line.length < 2) continue;
       const cum = cumulative(line);
       const cb = candidates(line, cum, b0), ca = candidates(line, cum, a0);

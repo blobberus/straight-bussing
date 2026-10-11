@@ -111,6 +111,38 @@ test('alongShape: a real detour between close stops keeps the shape (never a str
   near(pathLength(out), 18 * V_M + U_M, 5);
 });
 
+test('alongShape: zero-length and one-point shape lines never block road-following', () => {
+  // stops 0.05 units (11 m) off the street, as GTFS curb stops are: a zero-length line sitting on the stop
+  // scores 0 against the real line's 22 m and used to win the pick, leaving a straight (here empty) ride
+  const seq = ['O1', 'O2', 'T', 'R2', 'R1'];
+  const S = P(2, 0.05), off = 0.05 * V_M;
+  const lines = [[S, S], [S], [S, S, S], outAndBack()];
+  const out = alongShape(lines, seq, stop('O2', 2, 0.05), stop('R2', 2, 0.05), []);
+  ok(has(out, P(6)), 'O2 -> R2 still reaches the turnaround');
+  near(pathLength(out), 8 * U_M + 2 * off, 5, 'out and back along the shape');
+  near(pathLength(alongShape(lines, seq, stop('R2', 2, 0.05), stop('R1', 1, 0.05), [])), U_M + 2 * off, 5, 'R2 -> R1');
+  // two curb stops 17 m apart on a straight street, a zero-length line between them
+  const st = [P(0), P(10)], M = P(3.05, 0.1);
+  const close = alongShape([[M, M], st], ['A', 'B'], stop('A', 3, 0.1), stop('B', 3.1, 0.1), [P(3, 0.1), P(3.1, 0.1)]);
+  eq(close.length, 4, 'board, projected board, projected alight, alight (not the straight fallback)');
+  near(distM(close[1], P(3)), 0, 1);
+  near(distM(close[2], P(3.1)), 0, 1);
+  eq(alongShape([[S, S], [S]], seq, stop('O2', 2, 0.05), stop('R2', 2, 0.05), [P(2, 0.05), P(2, 0.05)]).length, 2,
+    'only degenerate lines: the fallback');
+});
+
+test('alongShape: repeated shape points (zero-length segments) change nothing', () => {
+  // a loop whose seam is open by 2 m, every vertex twice (the GTFS build rounds to 5 decimals, so real
+  // shapes repeat points): the same paths as the clean line, also through the seam
+  const clean = squareLoop().slice(0, -1).concat([P(0, 0.01)]);
+  const twice = clean.flatMap((p) => [p, p]);
+  const seq = ['A', 'B', 'C', 'D', 'A'];
+  for (const [b, a] of [[stop('A', 0, 0), stop('C', 4, 4)], [stop('C', 4, 4), stop('B', 4, 0)], [stop('D', 0, 4), stop('B', 4, 0)]]) {
+    eq(alongShape([twice], seq, b, a, []), alongShape([clean], seq, b, a, []), b.id + ' -> ' + a.id);
+  }
+  ok(!has(alongShape([twice], seq, stop('C', 4, 4), stop('B', 4, 0), []), P(0, 0), 0.5), 'no hop back to the seam point');
+});
+
 test('alongShape: real data (adjacent stops follow the road, never absurdly long)', async () => {
   const get = (f) => fetch('../data/' + f).then((r) => r.json());
   const [shapes, routeStops, stops] = await Promise.all([get('shapes.json'), get('route_stops.json'), get('stops.json')]);

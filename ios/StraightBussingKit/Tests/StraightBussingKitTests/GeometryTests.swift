@@ -141,6 +141,40 @@ final class GeometryTests: XCTestCase {
         near(Geometry.pathLength(out), 18 * V_M + U_M, 5)
     }
 
+    func testZeroLengthAndOnePointLinesNeverBlockRoadFollowing() {
+        // stops 0.05 units (11 m) off the street, as GTFS curb stops are: a zero-length line sitting on the stop
+        // scores 0 against the real line's 22 m and used to win the pick, leaving a straight (here empty) ride
+        let seq = ["O1", "O2", "T", "R2", "R1"]
+        let S = P(2, 0.05), off = 0.05 * V_M
+        let lines = [[S, S], [S], [S, S, S], outAndBack()]
+        let out = along(lines, seq, stop("O2", 2, 0.05), stop("R2", 2, 0.05))
+        XCTAssertTrue(has(out, P(6)), "O2 -> R2 still reaches the turnaround")
+        near(Geometry.pathLength(out), 8 * U_M + 2 * off, 5, "out and back along the shape")
+        near(Geometry.pathLength(along(lines, seq, stop("R2", 2, 0.05), stop("R1", 1, 0.05))), U_M + 2 * off, 5, "R2 -> R1")
+        // two curb stops 17 m apart on a straight street, a zero-length line between them
+        let st = [P(0), P(10)], M = P(3.05, 0.1)
+        let close = along([[M, M], st], ["A", "B"], stop("A", 3, 0.1), stop("B", 3.1, 0.1), [P(3, 0.1), P(3.1, 0.1)])
+        XCTAssertEqual(close.count, 4, "board, projected board, projected alight, alight (not the straight fallback)")
+        if close.count == 4 {
+            near(Geometry.distM(close[1], P(3)), 0, 1)
+            near(Geometry.distM(close[2], P(3.1)), 0, 1)
+        }
+        XCTAssertEqual(along([[S, S], [S]], seq, stop("O2", 2, 0.05), stop("R2", 2, 0.05), [P(2, 0.05), P(2, 0.05)]).count, 2,
+                       "only degenerate lines: the fallback")
+    }
+
+    func testRepeatedShapePointsChangeNothing() {
+        // a loop whose seam is open by 2 m, every vertex twice (the GTFS build rounds to 5 decimals, so real
+        // shapes repeat points): the same paths as the clean line, also through the seam
+        let clean = Array(squareLoop().dropLast()) + [P(0, 0.01)]
+        let twice = clean.flatMap { [$0, $0] }
+        let seq = ["A", "B", "C", "D", "A"]
+        for (b, a) in [(stop("A", 0, 0), stop("C", 4, 4)), (stop("C", 4, 4), stop("B", 4, 0)), (stop("D", 0, 4), stop("B", 4, 0))] {
+            assertSame(along([twice], seq, b, a), along([clean], seq, b, a), "\(b.id ?? "") -> \(a.id ?? "")")
+        }
+        XCTAssertFalse(has(along([twice], seq, stop("C", 4, 4), stop("B", 4, 0)), P(0, 0), 0.5), "no hop back to the seam point")
+    }
+
     // MARK: Real data (web/data, the files the app bundles)
 
     func place(_ id: String, _ s: StaticData, withId: Bool = true) -> Place {
@@ -200,6 +234,18 @@ final class GeometryTests: XCTestCase {
     /// Arts Block with its 1 km Garfield Blvd step, Midway Metra with two shape lines): every forward stop
     /// pair with ids, and every adjacent pair without ids (the unknown-sequence branch).
     func testGoldenPathsMatchTheWebImplementation() throws {
+        try checkGolden(nil)
+    }
+
+    /// The same web answers when the shapes carry degenerate lines and repeated points (the GTFS build rounds to 5
+    /// decimals, so real shapes repeat points): every vertex twice, a zero-length line on the boarding stop and a
+    /// one-point line on the alighting stop. Both are no road; neither may change a single path.
+    func testGoldenPathsSurviveZeroLengthAndOnePointLines() throws {
+        try checkGolden { lines, b, a in [[b, b], [a]] + lines.map { $0.flatMap { [$0, $0] } } }
+    }
+
+    /// Runs every golden case, the shape lines optionally rewritten per case (lines, board, alight).
+    func checkGolden(_ mutate: (([[LatLon]], LatLon, LatLon) -> [[LatLon]])?) throws {
         let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: TS.fixture("alongshape_golden")) as? [String: Any])
         let shapesRaw = try XCTUnwrap(root["shapes"] as? [String: [[[Double]]]])
         let routeStops = try XCTUnwrap(root["routeStops"] as? [String: [String]])
@@ -220,7 +266,8 @@ final class GeometryTests: XCTestCase {
             let bp = stops[seq[i]]!, ap = stops[seq[j]]!
             let b = Place(id: known == 1 ? seq[i] : nil, name: "", lat: bp.lat, lon: bp.lon)
             let a = Place(id: known == 1 ? seq[j] : nil, name: "", lat: ap.lat, lon: ap.lon)
-            let p = Geometry.alongShape(shapes[rid], raw, board: b, alight: a, fallback: fb)
+            let lines = mutate.map { $0(shapes[rid] ?? [], bp, ap) } ?? shapes[rid]
+            let p = Geometry.alongShape(lines, raw, board: b, alight: a, fallback: fb)
             let s = p.reduce(0.0) { $0 + $1.lat + $1.lon }, l = Geometry.pathLength(p)
             if p.count != count || abs(l - len) > 0.02 || abs(s - sum) > 2e-6 {
                 bad.append("\(rid) \(i)>\(j)\(known == 1 ? "" : " (no ids)"): \(p.count) pts \(l) m, web \(count) pts \(len) m")

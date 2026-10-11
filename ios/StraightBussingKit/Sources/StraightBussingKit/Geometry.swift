@@ -180,11 +180,13 @@ public enum Geometry {
         if !realFb && b0.isValid && a0.isValid { fb = [b0, a0] }
         guard b0.isValid, a0.isValid, let shapeLines else { return fb }
 
-        // pick the shape line that passes closest to both stops (longest wins ties)
+        // pick the shape line that passes closest to both stops (longest wins ties). Repeated points are
+        // dropped first: a zero-length or one-point line is no road, and it must never win the pick (its score
+        // is only the distance to its one point) and send the ride to the straight fallback.
         struct Pick { var line: [LatLon]; var cum: [Double]; var cb: Near; var ca: Near; var score: Double }
         var pick: Pick? = nil
         for raw in shapeLines {
-            let line = norm(raw)
+            let line = dedupe(norm(raw))
             if line.count < 2 { continue }
             let cum = cumulative(line)
             let cb = candidates(line, cum, b0), ca = candidates(line, cum, a0)
