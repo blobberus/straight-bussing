@@ -60,8 +60,9 @@ CAPITALS); never paste the contents of the .p8 key into a chat.
    releases: the same, or push a tag `v1.0.1` after Claude bumps the version.
 9. [ ] **Install it from TestFlight on your iPhone.** 10 min, then 1 to 2 weeks of riding with it. In App Store
    Connect: Apps > Straight Bussing > TestFlight > Internal Testing > (+) > group `Me` > add yourself > add the build. Install
-   **TestFlight** from the App Store, open the invite, Install. Go through the QA list in step 22 and tell Claude what
-   is off; every fix is one more run of step 8 (the build number goes up by itself).
+   **TestFlight** from the App Store, open the invite, Install. Follow `docs/TESTFLIGHT-PLAN.md` (test script, bug
+   loop, severities, the external round, when to freeze) and tell Claude what is off; every fix is one more run of
+   step 8 (the build number goes up by itself).
 10. [ ] **Make the support form.** 2 min. Recipe: "Support form" below. Paste the pre-filled link into
     `web/support-form.js` (the line `export const SUPPORT_FORM_URL = "";`) or send it to Claude. Until then the support
     page offers GitHub Issues, which also satisfies review.

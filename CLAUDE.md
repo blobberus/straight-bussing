@@ -29,7 +29,7 @@ Static site, no build step: `web/` v2 ES modules (index.html, js/{core,data,map,
 - [ ] QA pass on a real iPhone (sheet drag, safe areas, basemap render; headless Edge could not confirm basemap)
 
 ## Next deliverable
-QA on a real iPhone (Safari PWA, then the native app via TestFlight); polish from findings. App Store submission: every decision is made and the release pipeline exists; what is left is Nathan's checklist at the top of `docs/APPSTORE-SUBMIT.md` (Apple enrollment, agreements, app record, Admin API key, the `appstore` environment, secrets, run `ios-release.yml`, TestFlight, listing, submit). Local test: `cd web; python -m http.server 8000`; headless shot: msedge --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --timeout=20000 --screenshot=...
+QA on a real iPhone (Safari PWA, then the native app via TestFlight); polish from findings. TestFlight first (owner, 2026-10-11): `docs/TESTFLIGHT-PLAN.md` is the plan (Claude's Phase 0 prep, bug loop, P0-P3, internal then external round, freeze rules; targets: build 1 by Oct 15, submit Nov 2-6). App Store submission: every decision is made and the release pipeline exists; what is left is Nathan's checklist at the top of `docs/APPSTORE-SUBMIT.md` (Apple enrollment, agreements, app record, Admin API key, the `appstore` environment, secrets, run `ios-release.yml`, TestFlight, listing, submit). Local test: `cd web; python -m http.server 8000`; headless shot: msedge --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --timeout=20000 --screenshot=...
 
 ## Ship checklist (priorities and deliverables)
 Weigh EVERY change against these, in order. A lower item never justifies breaking a higher one. Tick them before shipping.
