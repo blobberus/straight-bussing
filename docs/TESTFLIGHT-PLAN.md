@@ -5,6 +5,9 @@ submit the exact build that passed. TestFlight comes with the paid Apple Develop
 plan starts with enrolling. Account setup is "Nathan's checklist" in `docs/APPSTORE-SUBMIT.md` (steps 1 to 9); this
 file is the testing loop. Dates are targets.
 
+Visual version with links, "where it can snag" tips for every step and ticks that are remembered: open
+`docs/testflight-plan.html` in a browser.
+
 ## Timeline
 
 | Phase | Dates | Who | Done when |
