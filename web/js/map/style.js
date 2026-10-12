@@ -192,19 +192,51 @@ export function createBasemap(map, isDark) {
   if (window.maplibregl && L.maplibreGL && hasWebGL()) {
     try {
       // the plugin reads attribution from options.attributionControl.customAttribution (getAttribution())
-      const layer = L.maplibreGL({ style: emptyStyle(dark), attributionControl: { customAttribution: ATTRIBUTION }, interactive: false });
-      layer.addTo(map);
-      let token = 0;
+      const make = () => {
+        const l = L.maplibreGL({ style: emptyStyle(dark), attributionControl: { customAttribution: ATTRIBUTION }, interactive: false });
+        l.addTo(map);
+        return l;
+      };
+      let layer = make(), token = 0, tries = 0, retry = 0, lostAt = 0, loaded = false;
+      const RETRY_S = [2, 5, 10, 20, 40, 60];
       const apply = () => {
         const my = ++token, want = dark;
+        clearTimeout(retry);
         loadBase(want ? 'dark' : 'positron').then((base) => {
           const gl = layer.getMaplibreMap?.();
-          if (my === token && gl) gl.setStyle(patchStyle(base, want));
-        }).catch(() => { /* offline: keep the background; overlays still work */ });
+          if (my === token && gl) { gl.setStyle(patchStyle(base, want)); tries = 0; loaded = true; }
+        }).catch(() => {   // a failed download used to leave a blank map until the next 'online' event: retry
+          if (my === token && tries < RETRY_S.length) retry = setTimeout(apply, RETRY_S[tries++] * 1000);
+        });
       };
+      // phones drop WebGL contexts (memory pressure, the app in the background): rebuild the layer if it does not
+      // come back by itself, so the streets never stay blank until a reload
+      const watchGl = () => {
+        const gl = layer.getMaplibreMap?.();
+        if (!gl?.on) return;
+        gl.on('webglcontextlost', () => { lostAt = Date.now(); setTimeout(checkGl, 2500); });
+        gl.on('webglcontextrestored', () => { lostAt = 0; });
+      };
+      const contextLost = () => {
+        try { const c = layer.getMaplibreMap?.()?.getCanvas?.(); const ctx = c && (c.getContext('webgl2') || c.getContext('webgl')); return !!ctx?.isContextLost?.(); } catch (e) { return false; }
+      };
+      const checkGl = () => {
+        if (!(lostAt && Date.now() - lostAt >= 2000) && !contextLost()) return;
+        lostAt = 0;
+        try { map.removeLayer(layer); } catch (e) { /* already gone */ }
+        layer = make();
+        watchGl();
+        apply();
+      };
+      watchGl();
       apply();
       window.addEventListener('online', apply);
-      return { kind: 'vector', layer, attribution: ATTRIBUTION, setDark(d) { if (!!d === dark) return; dark = !!d; apply(); } };
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) return;
+        if (contextLost()) checkGl(); else if (!loaded) { tries = 0; apply(); }
+      });
+      return { kind: 'vector', get layer() { return layer; }, attribution: ATTRIBUTION,
+        setDark(d) { if (!!d === dark) return; dark = !!d; tries = 0; apply(); } };
     } catch (e) { /* fall through to raster */ }
   }
   const layer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: RASTER_ATTRIBUTION, className: 'sb-raster' });

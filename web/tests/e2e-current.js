@@ -1,5 +1,5 @@
 /*
- * Current trip at the half detent, in the real app at phone sizes (owner decisions 2026-10-11, Ship checklist 3: the
+ * Current trip in the real app at phone sizes (owner decisions 2026-10-11 and 12, Ship checklist 3: the
  * next bus in one glance, no taps). e2e.js registers these with its helpers; each test opens its own app iframe
  * (393 x 852, the frame size; 320 x 640) with the e2e stubs, so the shared session is untouched.
  */
@@ -34,19 +34,22 @@ export function currentTripE2E({ test, ok, eq, waitFor, openApp }) {
     const stop = w.__e2e.stops[w.__e2e.routes[0].stops[2]];
     w.__sb.store.set({ user: { lat: stop.lat, lon: stop.lon }, locState: "granted" });
     const hero = await waitFor(() => { const x = d.querySelector("#content .pt-next"); return x && x.querySelectorAll(".row.arr").length === 3 ? x : null; }, "the next-bus block with 3 arrivals");
-    d.getElementById("sheet").style.transition = "none";   // read the settled half detent
+    d.getElementById("sheet").style.transition = "none";   // read settled states
     return { f, w, d, hero };
   }
   const box = (el) => el.getBoundingClientRect();
 
-  test("current trip, 393 x 852 half detent: the alert row (one line) and the next bus (stop + 3 arrivals) are fully visible", async () => {
+  test("current trip, 393 x 852: collapsed it names the next bus; expanded, the alert row and the next bus show without scrolling", async () => {
     const { f, w, d, hero } = await phone("width:393px;height:852px");
     try {
-      eq(d.getElementById("sheet").dataset.detent, "half", "half detent");
+      eq(d.getElementById("sheet").dataset.detent, "peek", "starts collapsed (map first, owner 2026-10-12)");
+      ok(/\d+ min|Now/.test(d.getElementById("titleRight").textContent), "the collapsed header shows the next bus: " + d.getElementById("titleRight").textContent);
+      d.querySelector('#tabs button[data-tab="nearby"]').click();
+      await waitFor(() => d.getElementById("sheet").dataset.detent === "full" || null, "expanded");
       eq(d.getElementById("content").scrollTop, 0, "not scrolled");
       const head = box(d.getElementById("sheetHead")), nav = box(d.getElementById("tabs")), sheet = box(d.getElementById("sheet"));
       const visTop = Math.max(head.bottom, sheet.top), r = box(hero);
-      ok(r.top >= visTop - 1 && r.bottom <= nav.top + 1, `next bus inside the half detent: ${Math.round(r.top)}-${Math.round(r.bottom)} in ${Math.round(visTop)}-${Math.round(nav.top)}`);
+      ok(r.top >= visTop - 1 && r.bottom <= nav.top + 1, `next bus fully visible: ${Math.round(r.top)}-${Math.round(r.bottom)} in ${Math.round(visTop)}-${Math.round(nav.top)}`);
       const al = d.querySelector('#content [data-region="nearby-alert"] .v-alertbanner');
       ok(al, "the feed's alert shows as a row");
       const a = box(al), line = al.querySelector(".v-alertline");

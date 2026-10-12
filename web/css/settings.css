@@ -115,3 +115,9 @@
   .sto { border: 1px solid CanvasText; }
   .sto-done { border: 1px solid ButtonText; }
 }
+/* Location (owner 2026-10-12): share / stop sharing and the "we never collect your location" note */
+.st-loc { padding: var(--s3) var(--s4); }
+.st-loc .st-row { display: flex; align-items: center; margin-bottom: var(--s3); }
+.st-loc .st-row .v-prim { display: inline-flex; align-items: center; gap: 6px; }
+.st-loc .v-locoff { margin: 0 0 var(--s3); }
+.st-loc .st-disclaimer { margin-bottom: 0; }

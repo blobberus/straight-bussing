@@ -2,7 +2,7 @@
 import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
 import { bindActions, hasAction } from "../js/ui/actions.js";
-import { renderSettings, mountSettings, unmountSettings, stationHTML, optsHTML, alertsHTML, searchStations, permHTML, statusHTML, ALERTS_NOTE } from "../js/ui/views/settings.js";
+import { renderSettings, mountSettings, unmountSettings, stationHTML, optsHTML, alertsHTML, searchStations, permHTML, statusHTML, ALERTS_NOTE, locHTML, LOC_DISCLAIMER } from "../js/ui/views/settings.js";
 import { getView } from "../js/ui/router.js";
 import { cleanNotify } from "../js/state.js";
 
@@ -149,4 +149,32 @@ test("settings: Live Activity preference saved for later", async () => {
     await tick();
     eq(ctx.store.get().notify.liveActivity, false);
   } finally { done(); }
+});
+
+test("settings: Location: share / stop sharing / blocked with how to fix it, and the no-collection promise (owner 2026-10-12)", async () => {
+  const off = locHTML(fixture({ user: null, locState: "unknown" }));
+  ok(off.includes('data-st="loc-on"') && off.includes("Share my location"), "not shared yet: one button that asks");
+  const on = locHTML(fixture({ user: { lat: 41.79, lon: -87.6 }, locState: "granted" }));
+  ok(on.includes("Sharing your location") && on.includes('data-st="loc-off"'), "shared: say so, offer Stop sharing");
+  const blocked = locHTML(fixture({ user: null, locState: "denied" }));
+  ok(blocked.includes("blocked") && blocked.includes("Safari Websites") && blocked.includes('data-st="loc-on"'), "blocked: the iPhone steps and Try again");
+  for (const h of [off, on, blocked]) ok(h.includes("does not collect your location"), "the disclaimer is always shown");
+  ok(LOC_DISCLAIMER.includes("nothing is stored") && !/[–—]/.test(LOC_DISCLAIMER), "plain words, no dash characters");
+  ok(renderSettings(fixture({})).includes('data-region="loc"'), "a Location section in Settings");
+  // the buttons call the device: Share asks for the location, Stop sharing forgets it
+  const ctx = makeCtx({ user: null, locState: "unknown" }, { locateResult: { lat: 41.79, lon: -87.6 } });
+  let stopped = 0;
+  ctx.stopLocation = () => { stopped++; ctx.store.set({ user: null, locState: "off" }); };
+  const el = root();
+  el.innerHTML = renderSettings(ctx.store.get());
+  mountSettings(el, ctx);
+  el.querySelector('[data-st="loc-on"]').click();
+  await tick(20);
+  eq(ctx.calls.locate, 1, "Share my location asks the device");
+  await tick(20);
+  ok(el.querySelector('[data-region="loc"]').textContent.includes("Sharing your location"), "then says it is shared");
+  el.querySelector('[data-st="loc-off"]').click();
+  eq(stopped, 1, "Stop sharing");
+  ok(el.querySelector('[data-region="loc"] [data-st="loc-on"]'), "and offers to share again");
+  unmountSettings(); el.remove();
 });

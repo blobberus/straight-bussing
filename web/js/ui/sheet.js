@@ -1,39 +1,44 @@
 /**
  * @module ui/sheet
- * Bottom sheet with three detents (peek / half / full) on phones and inside the desktop phone frame
- * (ui/frame.js); a fixed left panel only on wide + short screens (PANEL_MEDIA, e.g. phone landscape).
+ * Bottom sheet with two resting states, collapsed (peek) and expanded (full), on phones and inside the desktop
+ * phone frame (ui/frame.js); a fixed left panel only on wide + short screens (PANEL_MEDIA, e.g. phone landscape).
  * Drag math works in the sheet's own CSS px, so it stays right when the phone frame is scaled down.
- * Drag (owner 2026-10-12: "like Google Maps on an iPhone"): pointer events on the header (any part, incl.
- * the grab bar and tabs; a drag suppresses the click), tracked on the whole window while the finger is
- * down, so a drag that leaves the thin grab bar at once still counts; touch events on the content when it
- * is scrolled to the top. The sheet follows the finger 1:1 (rubber band 0.3 past the ends, one style
- * write per frame). Release projects the velocity like UIKit's scroll deceleration (px/ms * 499) and
- * snaps to the nearest detent of that point, so a slow drag settles where it is and a quick flick goes
- * all the way (full -> peek closes the sheet); any flick (> 0.4 px/ms) moves at least one detent its
- * way and never back. The settle animation starts at the finger's speed (shorter duration for a fast
- * flick). Tap on the header at peek -> half. Grabber = an adjustable control for screen readers and the
- * keyboard (role="slider" "Resize panel", value Collapsed / Half / Expanded, like the iOS app's VoiceOver
- * adjustable action): arrows / Page Up / Page Down step, Home = Collapsed, End = Expanded, Enter / Space and
- * taps cycle like a tap.
+ *
+ * Behavior (owner 2026-10-12, "copy Google Maps"): there is no midway stop. While the finger is down the sheet
+ * follows it 1:1 to any height (rubber band 0.3 past the ends); touching it while it is still settling stops it
+ * under the finger. On release the direction of the finger's last motion decides: moving up -> expanded, moving
+ * down -> collapsed; a finger that had stopped uses the direction of its last movement of 2 px or more; no
+ * movement at all is a tap (the grab bar, or a collapsed header, toggles). The settle animation starts at the
+ * finger's speed (settleMs), and the content's bottom inset changes only after it has settled (data-rest), so
+ * nothing is laid out while the sheet moves. A request for the old "half" detent (views that only say "the
+ * map matters") keeps the current state.
+ *
+ * Input: the WHOLE header strip (the top edge, the grab bar, the title line incl. its right-side summary and the
+ * Back button) is a drag handle. Touch input uses touch events with a non-passive touchmove that always claims the
+ * gesture (iOS Safari otherwise may take it as a page pan and cancel pointer events); mouse and pen use pointer
+ * events followed on the whole window while pressed. The content drags the sheet when it is scrolled to the top.
+ * Grabber = an adjustable control for screen readers and the keyboard (role="slider" "Resize panel", value
+ * Collapsed / Expanded): arrows / Page Up / Page Down / Home / End, Enter / Space and taps toggle.
  * Emits bus 'sheet:inset' {px} (visible sheet height over the map; 0 in panel mode) on every settle.
  *
- * Geometry lives in css/sheet.css (--v-peek/--v-half/--v-full; the element itself is always --v-max
- * tall, so at "full" its translateY is --v-max - --v-full, not 0, while the status pill shows); this
- * module measures it with hidden probes (data-sheet-probe="peek|half|full", read by
- * ui/settings-overlay.js too) and only sets data-detent and the --drag offset (transform only, no layout).
+ * Geometry lives in css/sheet.css (--v-peek/--v-full; the element itself is always --v-max tall, so at "full"
+ * its translateY is --v-max - --v-full, not 0, while the status pill shows); this module measures it with hidden
+ * probes (data-sheet-probe="peek|half|full", read by ui/settings-overlay.js too) and only sets data-detent,
+ * data-rest and the --drag offset (transform only, no layout).
  */
 import { bus } from "../core/events.js";
 
-/** Detent names, smallest to largest. */
-export const DETENTS = Object.freeze(["peek", "half", "full"]);
-/** What a screen reader says for each detent (the grabber's aria-valuetext; iOS BottomSheet accessibilityValue). */
-export const DETENT_TEXT = Object.freeze({ peek: "Collapsed", half: "Half", full: "Expanded" });
-const FLICK = 0.4;      // px/ms: a flick moves at least one detent in its direction
-const PROJECT_MS = 499; // velocity projection: UIKit's normal deceleration, v * 0.998 / (1 - 0.998)
+/** Resting states, smallest to largest. */
+export const DETENTS = Object.freeze(["peek", "full"]);
+/** What a screen reader says for each state (the grabber's aria-valuetext; iOS BottomSheet accessibilityValue). */
+export const DETENT_TEXT = Object.freeze({ peek: "Collapsed", full: "Expanded" });
+const STOPPED = 0.1;    // px/ms: slower than this at release, the finger counts as stopped
 const RUBBER = 0.3;
 const SLOP = 6;         // px before a press becomes a drag
+const DIR_STEP = 2;     // px: a movement this long sets the "last direction"
 const SPRING_SLOPE = 0.72 / 0.32;   // start speed of --ease-spring cubic-bezier(.32,.72,0,1), x distance / duration
 const MIN_SETTLE_MS = 160;
+const TOUCH = typeof window !== "undefined" && "ontouchstart" in window;
 
 /**
  * Rubber-band a visible height past [min, max] with resistance k.
@@ -50,31 +55,18 @@ export function rubberBand(vis, min, max, k = RUBBER) {
 }
 
 /**
- * Pick the detent to settle on.
- * @param {{peek:number, half:number, full:number}} sizes visible heights in px
- * @param {number} releaseVis visible height at release (before rubber band)
- * @param {number} [v=0] finger velocity in px/ms, positive = moving down (sheet shrinking)
- * @returns {'peek'|'half'|'full'}
+ * Where to settle on release: the direction of the finger's last motion.
+ * @param {{peek:number, full:number}} sizes visible heights in px
+ * @param {number} releaseVis visible height at release
+ * @param {number} [v=0] finger velocity at release in px/ms, positive = moving down (sheet shrinking)
+ * @param {number} [lastDir=0] sign of the finger's last movement of DIR_STEP px or more (+1 down, -1 up, 0 none)
+ * @returns {'peek'|'full'}
  */
-export function snapDetent(sizes, releaseVis, v = 0) {
-  const proj = releaseVis - v * PROJECT_MS;
-  let best = "half";
-  let bd = Infinity;
-  for (const d of DETENTS) {
-    const dd = Math.abs(sizes[d] - proj);
-    if (dd < bd) {
-      bd = dd;
-      best = d;
-    }
-  }
-  if (Math.abs(v) > FLICK) {             // a flick never stays put or goes back: at least the next detent its way
-    if (v < 0 && !(sizes[best] > releaseVis + 1)) {
-      best = DETENTS.find((d) => sizes[d] > releaseVis + 1) || "full";
-    } else if (v > 0 && !(sizes[best] < releaseVis - 1)) {
-      best = [...DETENTS].reverse().find((d) => sizes[d] < releaseVis - 1) || "peek";
-    }
-  }
-  return best;
+export function snapDetent(sizes, releaseVis, v = 0, lastDir = 0) {
+  const dir = Math.abs(v) >= STOPPED ? Math.sign(v) : Math.sign(lastDir || 0);
+  if (dir < 0) return "full";
+  if (dir > 0) return "peek";
+  return Math.abs(releaseVis - sizes.full) < Math.abs(releaseVis - sizes.peek) ? "full" : "peek";
 }
 
 /**
@@ -113,14 +105,13 @@ export function velocity(samples, windowMs = 100) {
 }
 
 /**
- * Next detent up/down from `d` (clamped).
+ * The other state up/down from `d` (clamped).
  * @param {string} d
  * @param {1|-1} dir
- * @returns {'peek'|'half'|'full'}
+ * @returns {'peek'|'full'}
  */
 export function stepDetent(d, dir) {
-  const i = Math.max(0, DETENTS.indexOf(d));
-  return DETENTS[Math.max(0, Math.min(DETENTS.length - 1, i + dir))];
+  return dir > 0 ? "full" : dir < 0 ? "peek" : DETENTS.includes(d) ? d : "peek";
 }
 
 /** Panel (left column, no detents) layout. Must match css/sheet.css, base.css, components.css. */
@@ -149,25 +140,40 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   const probes = { peek: makeProbe("--v-peek", host), half: makeProbe("--v-half", host), full: makeProbe("--v-full", host) };
   const listeners = new Set();
   const offs = [];
-  let detent = DETENTS.includes(initial) ? initial : DETENTS.includes(sheetEl.dataset.detent) ? sheetEl.dataset.detent : "half";
+  const pick = (d) => (DETENTS.includes(d) ? d : null);
+  let detent = pick(initial) || pick(sheetEl.dataset.detent) || "peek";
   let drag = null;
   let suppressClick = false;
-  let frame = 0, durTimer = 0;
+  let durTimer = 0, restTimer = 0;
 
   const on = (el, type, fn, opt) => {
     el.addEventListener(type, fn, opt);
     offs.push(() => el.removeEventListener(type, fn, opt));
   };
-  const measure = () => ({ peek: probes.peek.offsetHeight, half: probes.half.offsetHeight, full: probes.full.offsetHeight });
+  const measure = () => ({ peek: probes.peek.offsetHeight, full: probes.full.offsetHeight });
   const isPanel = () => panelMq.matches;
   const inset = () => (isPanel() ? 0 : measure()[detent] || 0);
   const emitInset = () => bus.emit("sheet:inset", { px: inset() });
 
-  if (grab) {   // adjustable control: slider semantics with three named values
-    const a = { role: "slider", "aria-label": "Resize panel", "aria-orientation": "vertical", "aria-valuemin": "0", "aria-valuemax": "2" };
+  if (grab) {   // adjustable control: slider semantics with two named values
+    const a = { role: "slider", "aria-label": "Resize panel", "aria-orientation": "vertical", "aria-valuemin": "0", "aria-valuemax": "1" };
     for (const [k, v] of Object.entries(a)) grab.setAttribute(k, v);
     if (grab.tabIndex < 0 || !grab.hasAttribute("tabindex")) grab.tabIndex = 0;
     grab.removeAttribute("aria-expanded");
+  }
+  const baseMs = () => {
+    const s = getComputedStyle(sheetEl).transitionDuration || "";
+    const n = parseFloat(s);
+    return isFinite(n) ? (s.trim().endsWith("ms") ? n : n * 1000) : 0;
+  };
+  /* data-rest = the state the content's bottom inset is laid out for (css/sheet.css). It follows data-detent
+     only once the sheet has settled: changing it lays out every row, which must not happen while it moves. */
+  function rest(now) {
+    clearTimeout(restTimer);
+    const apply = () => { if (sheetEl.dataset.rest !== detent) sheetEl.dataset.rest = detent; };
+    if (now || !sheetEl.dataset.rest) return apply();
+    const ms = (parseFloat(sheetEl.style.transitionDuration) || baseMs() || 0) + 60;
+    restTimer = setTimeout(apply, ms);
   }
   function paint() {
     sheetEl.dataset.detent = detent;
@@ -178,10 +184,12 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   }
 
   function setDetent(d) {
+    if (d === "half") d = detent;          // "the map matters": keep whatever the rider chose
     if (!DETENTS.includes(d)) return;
     const changed = d !== detent;
     detent = d;
     paint();
+    rest(!changed || isPanel());
     if (changed) for (const fn of [...listeners]) {
       try {
         fn(d);
@@ -191,27 +199,32 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     }
     emitInset();
   }
+  const toggle = () => setDetent(detent === "peek" ? "full" : "peek");
 
   /* ---- drag core (y arrives in screen px; k converts to the sheet's CSS px under a scaled frame) ---- */
   const scaleOf = () => {
     const h = sheetEl.offsetHeight, r = h ? sheetEl.getBoundingClientRect().height / h : 1;
     return r > 0.05 && isFinite(r) ? r : 1;
   };
-  const baseMs = () => {
-    const s = getComputedStyle(sheetEl).transitionDuration || "";
-    const n = parseFloat(s);
-    return isFinite(n) ? (s.trim().endsWith("ms") ? n : n * 1000) : 0;
-  };
+  /** Visible height on screen now (mid-settle it differs from the state's): the sheet's live transform. */
+  function visNow(sizes) {
+    const m = getComputedStyle(sheetEl).transform;
+    if (!m || m === "none") return sizes[detent];
+    const ty = new DOMMatrixReadOnly(m).m42;
+    const v = sheetEl.offsetHeight - ty;
+    return isFinite(v) ? v : sizes[detent];
+  }
   function begin(yRaw, source) {
     const k = scaleOf(), y = yRaw / k;
-    drag = { k, y0: y, y, sizes: measure(), startVis: 0, samples: [{ y, t: performance.now() }], moved: false, source,
-      eff: 0, base: baseMs() };
-    drag.startVis = drag.eff = drag.sizes[detent];
+    const sizes = measure(), at = visNow(sizes);
+    drag = { k, y0: y, y, lastY: y, lastDir: 0, sizes, startVis: at, home: sizes[detent], samples: [{ y, t: performance.now() }],
+      moved: false, source, eff: at, base: baseMs(), caught: false };
+    if (Math.abs(at - drag.home) > 1) {    // still settling: stop it under the finger instead of jumping later
+      drag.caught = true;
+      sheetEl.classList.add("dragging");
+      sheetEl.style.setProperty("--drag", drag.home - at + "px");
+    }
   }
-  const paintDrag = () => {        // one style write per frame, however many move events arrive
-    frame = 0;
-    if (drag) sheetEl.style.setProperty("--drag", drag.startVis - drag.eff + "px");
-  };
   function track(yRaw) {
     if (!drag) return;
     drag.y = yRaw / drag.k;
@@ -226,23 +239,26 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
       drag.moved = true;
       sheetEl.classList.add("dragging");
     }
+    if (Math.abs(y - drag.lastY) >= DIR_STEP) {
+      drag.lastDir = Math.sign(y - drag.lastY);
+      drag.lastY = y;
+    }
     drag.y = y;
-    const t = performance.now();
-    drag.samples.push({ y, t });
+    drag.samples.push({ y, t: performance.now() });
     if (drag.samples.length > 12) drag.samples.shift();
     drag.eff = rubberBand(drag.startVis - dy, drag.sizes.peek, drag.sizes.full);
-    if (!frame) frame = requestAnimationFrame(paintDrag);
+    sheetEl.style.setProperty("--drag", drag.home - drag.eff + "px");   // --drag is not inherited: cheap
     return true;
   }
   function end(cancelled) {
     const d = drag;
     drag = null;
     unwatch();
-    if (frame) {
-      cancelAnimationFrame(frame);
-      frame = 0;
-    }
     if (!d) return;
+    if (!d.moved && d.caught && !cancelled) {   // a touch that stopped a settling sheet, then let go: settle nearest
+      d.moved = true;
+      d.samples = [];
+    }
     sheetEl.classList.remove("dragging");
     sheetEl.style.removeProperty("--drag");
     if (!d.moved) return;
@@ -250,7 +266,7 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     setTimeout(() => (suppressClick = false), 350);
     if (cancelled) return emitInset();
     const v = velocity(d.samples);
-    const target = snapDetent(d.sizes, d.startVis - (d.y - d.y0), v);
+    const target = snapDetent(d.sizes, d.eff, v, d.lastDir);
     const ms = settleMs(Math.abs(d.sizes[target] - d.eff), v, d.base);
     clearTimeout(durTimer);
     if (ms < d.base) {             // only shortened: the running transition keeps this duration once started
@@ -262,16 +278,41 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     setDetent(target);
   }
 
-  /* ---- header: pointer events, followed on the whole window while pressed ---- */
+  /* ---- header, touch: the whole strip claims the gesture (iOS would otherwise pan and cancel it) ---- */
+  let ht = null;
+  const fromField = (t) => t && t.closest && t.closest("input, select, textarea, [data-nodrag]");
+  on(headEl, "touchstart", (e) => {
+    ht = null;
+    if (isPanel() || e.touches.length !== 1 || fromField(e.target)) return;
+    if (drag) end(true);
+    const t = e.touches[0];
+    ht = { id: t.identifier };
+    begin(t.clientY, "head-touch");
+  }, { passive: true });
+  on(headEl, "touchmove", (e) => {
+    if (!ht || !drag) return;
+    const t = [...e.touches].find((x) => x.identifier === ht.id) || e.touches[0];
+    if (!t) return;
+    if (e.cancelable) e.preventDefault();
+    move(t.clientY);
+  }, { passive: false });
+  const headTouchEnd = (e) => {
+    if (!ht) return;
+    const t = e.changedTouches && e.changedTouches[0];
+    if (t && drag) track(t.clientY);
+    ht = null;
+    end(e.type === "touchcancel");
+  };
+  on(headEl, "touchend", headTouchEnd);
+  on(headEl, "touchcancel", headTouchEnd);
+
+  /* ---- header, mouse / pen (and touch where touch events are missing): pointer events on the window ---- */
   let pid = null, watching = false;
+  // followed on the window, no pointer capture: capturing made WebKit stop sending a second drag's moves, and the
+  // map only pans from a press on the map itself, so it never takes over a drag that started on the header
   const onMove = (e) => {
     if (!drag || e.pointerId !== pid) return;
-    const wasMoved = drag.moved;
-    if (move(e.clientY) && !wasMoved) {
-      try {
-        headEl.setPointerCapture(e.pointerId);   // from here on the map never sees this finger
-      } catch (err) { /* pointer already gone */ }
-    }
+    move(e.clientY);
   };
   const onUp = (e) => {
     if (e.pointerId !== pid) return;
@@ -301,8 +342,12 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   offs.push(unwatch);
   on(headEl, "pointerdown", (e) => {
     if (isPanel() || (e.pointerType === "mouse" && e.button !== 0)) return;
-    if (e.target.closest("input, select, textarea, [data-nodrag]")) return;
+    if (e.pointerType === "touch" && TOUCH) return;   // the touch handlers above own touch input
+    if (fromField(e.target)) return;
     if (drag) end(true);
+    // no text selection, no native drag of an earlier selection (WebKit then stops sending this press's moves)
+    if (e.pointerType === "mouse" && e.cancelable) e.preventDefault();
+    try { window.getSelection?.()?.removeAllRanges?.(); } catch (err) { /* */ }
     pid = e.pointerId;
     begin(e.clientY, "pointer");
     watch();
@@ -313,7 +358,7 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
       end(false);
     }
   });
-  // swallow the click that follows a drag; tap on header at peek -> half
+  // swallow the click that follows a drag; a tap on the grab bar toggles, a tap on a collapsed header expands
   on(headEl, "click", (e) => {
     if (suppressClick) {
       e.preventDefault();
@@ -321,25 +366,20 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
       suppressClick = false;
       return;
     }
-    if (grab && (e.target === grab || grab.contains(e.target))) {
-      setDetent(detent === "peek" ? "half" : detent === "half" ? "full" : "half");
-      return;
-    }
-    if (detent === "peek" && !e.target.closest("button, a, input, select, textarea")) setDetent("half");
+    if (grab && (e.target === grab || grab.contains(e.target))) return toggle();
+    if (detent === "peek" && !e.target.closest("button, a, input, select, textarea")) setDetent("full");
   }, true);
   if (grab) {
     on(grab, "keydown", (e) => {
-      if (["ArrowUp", "ArrowRight", "PageUp"].includes(e.key)) setDetent(stepDetent(detent, 1));
-      else if (["ArrowDown", "ArrowLeft", "PageDown"].includes(e.key)) setDetent(stepDetent(detent, -1));
-      else if (e.key === "Home") setDetent("peek");     // slider minimum
-      else if (e.key === "End") setDetent("full");      // slider maximum
-      else if (e.key === "Enter" || e.key === " ") setDetent(detent === "peek" ? "half" : detent === "half" ? "full" : "half");
+      if (["ArrowUp", "ArrowRight", "PageUp", "End"].includes(e.key)) setDetent("full");
+      else if (["ArrowDown", "ArrowLeft", "PageDown", "Home"].includes(e.key)) setDetent("peek");
+      else if (e.key === "Enter" || e.key === " ") toggle();
       else return;
       e.preventDefault();
     });
   }
 
-  /* ---- content: touch drag when scrolled to top ---- */
+  /* ---- content: touch drag when scrolled to the top ---- */
   let tc = null;
   on(contentEl, "touchstart", (e) => {
     tc = null;
@@ -397,6 +437,7 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   }
 
   paint();
+  rest(true);
   requestAnimationFrame(emitInset);
 
   return {
@@ -407,16 +448,16 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
       listeners.add(fn);
       return () => listeners.delete(fn);
     },
-    /** One detent smaller; false if already at peek or in panel mode. */
+    /** Collapse; false if already collapsed or in panel mode. */
     stepDown() {
       if (isPanel() || detent === "peek") return false;
-      setDetent(stepDetent(detent, -1));
+      setDetent("peek");
       return true;
     },
-    /** One detent larger; false if already full or in panel mode. */
+    /** Expand; false if already expanded or in panel mode. */
     stepUp() {
       if (isPanel() || detent === "full") return false;
-      setDetent(stepDetent(detent, 1));
+      setDetent("full");
       return true;
     },
     inset,
@@ -425,6 +466,8 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
       offs.forEach((f) => f());
       Object.values(probes).forEach((p) => p.remove());
       listeners.clear();
+      clearTimeout(restTimer);
+      clearTimeout(durTimer);
     },
   };
 }

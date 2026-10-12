@@ -16,7 +16,7 @@
   background: var(--bg);
   -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
   box-shadow: var(--shadow-sheet);
-  --vis: var(--v-half);
+  --vis: var(--v-peek);
   --drag: 0px;
   transform: translate3d(0, calc(var(--v-max) - var(--vis) + var(--drag)), 0);
   transition: transform var(--d-sheet) var(--ease-spring);
@@ -25,9 +25,13 @@
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .sheet { background: var(--bg-solid); }
 }
+/* two resting states (owner 2026-10-12: no midway stop): collapsed and expanded */
 .sheet[data-detent="peek"] { --vis: var(--v-peek); }
-.sheet[data-detent="half"] { --vis: var(--v-half); }
 .sheet[data-detent="full"] { --vis: var(--v-full); }
+/* the content's bottom inset follows data-rest, which ui/sheet.js sets once the sheet has settled: changing it
+   lays out every row, so it never happens while the sheet moves (that was a visible hitch at release) */
+.sheet { --rest-vis: var(--v-peek); }
+.sheet[data-rest="full"] { --rest-vis: var(--v-full); }
 .sheet.dragging { transition: none; }
 
 /* header: whole area is a drag handle */
@@ -76,7 +80,7 @@
   flex: 1; min-height: 0;
   overflow-y: auto; overflow-x: hidden;
   overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
-  padding: var(--s1) var(--s4) calc(var(--v-max) - var(--vis) + 16px);   /* the bottom bar handles the safe area */
+  padding: var(--s1) var(--s4) calc(var(--v-max) - var(--rest-vis) + 16px);   /* the bottom bar handles the safe area */
   touch-action: pan-y;
   outline: none;
 }

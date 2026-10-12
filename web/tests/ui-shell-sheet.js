@@ -1,9 +1,10 @@
-// Tests for ui/sheet.js (D1): pure snap math + a DOM smoke test of the controller.
+// Tests for ui/sheet.js (D1): release math + DOM tests of the controller. Two resting states since 2026-10-12
+// (owner: "remove the midway stop", "copy Google Maps"): collapsed (peek) and expanded (full).
 import { test, eq, ok, near } from "./lib.js";
 import { DETENTS, rubberBand, snapDetent, settleMs, velocity, stepDetent, createSheet } from "../js/ui/sheet.js";
 import { bus } from "../js/core/events.js";
 
-const S = { peek: 112, half: 400, full: 800 };
+const S = { peek: 112, full: 800 };
 const PHONE = "(min-width: 99999px)"; // force phone (detent) mode whatever the headless window size
 
 test("sheet: rubberBand applies 0.3 resistance only past the ends", () => {
@@ -12,33 +13,16 @@ test("sheet: rubberBand applies 0.3 resistance only past the ends", () => {
   near(rubberBand(12, 112, 800), 82);
 });
 
-test("sheet: slow release snaps to the nearest detent of the projected position", () => {
-  eq(snapDetent(S, 410, 0), "half");
-  eq(snapDetent(S, 700, 0), "full");
-  eq(snapDetent(S, 200, 0), "peek");
-  // slow downward motion (0.4 px/ms) projects 80 px further down: 300 -> 220 -> peek
-  eq(snapDetent(S, 300, 0.4), "peek");
-  // slow upward motion projects up: 560 + 80 = 640 -> full
-  eq(snapDetent(S, 560, -0.4), "full");
-});
-
-test("sheet: a flick goes to the next detent in that direction", () => {
-  eq(snapDetent(S, 420, -0.8), "full", "flick up from just above half");
-  eq(snapDetent(S, 390, 0.8), "peek", "flick down from just below half");
-  eq(snapDetent(S, 760, 0.9), "half", "flick down from near full");
-  eq(snapDetent(S, 900, -2), "full", "already past full");
-  eq(snapDetent(S, 50, 2), "peek", "already below peek");
-});
-
-test("sheet: a quick swipe goes all the way, like Google Maps (owner 2026-10-12)", () => {
-  eq(snapDetent(S, 800, 1.5), "peek", "quick swipe down from full closes the sheet entirely");
-  eq(snapDetent(S, 780, 1.2), "peek", "a quick swipe a little into the drag too");
-  eq(snapDetent(S, 112, -1.5), "full", "quick swipe up from peek opens it entirely");
-  eq(snapDetent(S, 800, 0.6), "half", "a gentler flick down from full stops at half");
-  eq(snapDetent(S, 410, 0.45), "peek", "a flick never stays at the detent it left");
-  eq(snapDetent(S, 410, -0.45), "full");
-  eq(snapDetent(S, 520, 0.05), "half", "a slow drag settles where it is (nearest detent)");
-  eq(snapDetent(S, 640, -0.05), "full");
+test("sheet: two resting states; the finger's last motion decides on release", () => {
+  eq(DETENTS, ["peek", "full"]);
+  eq(snapDetent(S, 500, -0.3), "full", "moving up -> expanded, wherever it is");
+  eq(snapDetent(S, 700, 0.3), "peek", "moving down -> collapsed, even from near the top");
+  eq(snapDetent(S, 150, -0.2), "full", "a short push up from collapsed expands");
+  eq(snapDetent(S, 780, 2.5), "peek", "a fast swipe down collapses");
+  eq(snapDetent(S, 450, 0.02, -1), "full", "held still at the end: the last movement (up) decides");
+  eq(snapDetent(S, 450, 0, 1), "peek", "held still, last movement down");
+  eq(snapDetent(S, 700, 0, 0), "full", "no motion at all: the nearer state");
+  eq(snapDetent(S, 200, 0, 0), "peek");
 });
 
 test("sheet: settleMs shortens the animation for a fast flick so it starts at the finger's speed", () => {
@@ -57,121 +41,141 @@ test("sheet: velocity uses the last 100 ms of samples", () => {
   near(velocity([{ y: 300, t: 0 }, { y: 250, t: 50 }]), -1);
 });
 
-test("sheet: stepDetent clamps", () => {
-  eq(DETENTS, ["peek", "half", "full"]);
+test("sheet: stepDetent goes to the other state", () => {
   eq(stepDetent("peek", -1), "peek");
-  eq(stepDetent("peek", 1), "half");
+  eq(stepDetent("peek", 1), "full");
   eq(stepDetent("full", 1), "full");
-  eq(stepDetent("bogus", 1), "half");
+  eq(stepDetent("full", -1), "peek");
+  eq(stepDetent("bogus", 0), "peek");
 });
 
-test("sheet: controller sets data-detent, the grabber's slider value, emits sheet:inset, keyboard steps", async () => {
+function makeSheet(initial) {
   const sheetEl = document.createElement("section");
   sheetEl.className = "sheet";
-  sheetEl.innerHTML = '<header class="sheet-head"><button class="grab" type="button"></button><h1>T</h1></header><div class="sheet-content"></div>';
+  sheetEl.innerHTML = '<header class="sheet-head"><div class="grab"></div><div class="titleline"><button class="back" type="button">Back</button><h1>Title</h1><span class="titleright">53RD 4 min</span></div></header><div class="sheet-content"></div>';
   document.body.appendChild(sheetEl);
+  const sh = createSheet({ sheetEl, headEl: sheetEl.querySelector("header"), contentEl: sheetEl.querySelector(".sheet-content"), initial, panelMedia: PHONE });
+  return { sheetEl, sh, head: sheetEl.querySelector("header"), grab: sheetEl.querySelector(".grab"), done: () => { sh.destroy(); sheetEl.remove(); } };
+}
+
+test("sheet: controller starts collapsed, toggles on taps, keeps its state for a 'half' request, emits sheet:inset", () => {
   const insets = [];
   const off = bus.on("sheet:inset", (p) => insets.push(p.px));
-  const sh = createSheet({ sheetEl, headEl: sheetEl.querySelector("header"), contentEl: sheetEl.querySelector(".sheet-content"), panelMedia: PHONE });
+  const { sheetEl, sh, grab, done } = makeSheet();
   const changes = [];
   sh.onChange((d) => changes.push(d));
-  eq(sh.getDetent(), "half");
-  eq(sheetEl.dataset.detent, "half");
-  sh.setDetent("peek");
-  eq(sheetEl.dataset.detent, "peek");
-  eq(sheetEl.querySelector(".grab").getAttribute("aria-valuetext"), "Collapsed");
+  eq([sh.getDetent(), sheetEl.dataset.detent, sheetEl.dataset.rest], ["peek", "peek", "peek"], "starts collapsed, map first");
+  eq(grab.getAttribute("aria-valuetext"), "Collapsed");
+  sh.setDetent("half");
+  eq(sh.getDetent(), "peek", "no midway stop: 'half' keeps the current state");
   sh.setDetent("nonsense");
   eq(sh.getDetent(), "peek");
-  const grab = sheetEl.querySelector(".grab");
-  grab.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
-  eq(sh.getDetent(), "half");
-  grab.click(); // tap cycles half -> full
-  eq(sh.getDetent(), "full");
-  ok(sh.stepDown());
-  eq(sh.getDetent(), "half");
-  ok(insets.length >= 3, "inset emitted on settle: " + insets.length);
-  ok(insets.every((n) => typeof n === "number" && n >= 0));
-  eq(changes.slice(0, 2), ["peek", "half"]);
-  // tapping the header area at peek expands to half
-  sh.setDetent("peek");
+  grab.click();
+  eq(sh.getDetent(), "full", "a tap on the grab bar expands");
+  sh.setDetent("half");
+  eq(sh.getDetent(), "full", "and keeps expanded");
+  grab.click();
+  eq(sh.getDetent(), "peek", "a second tap collapses");
   sheetEl.querySelector("h1").click();
-  eq(sh.getDetent(), "half");
+  eq(sh.getDetent(), "full", "a tap on a collapsed header expands");
+  ok(sh.stepDown());
+  eq(sh.getDetent(), "peek");
+  ok(!sh.stepDown(), "already collapsed");
+  ok(insets.length >= 3 && insets.every((n) => typeof n === "number" && n >= 0), "inset emitted on settle: " + insets.length);
+  eq(changes, ["full", "peek", "full", "peek"]);
   off();
-  sh.destroy();
-  sheetEl.remove();
+  done();
 });
 
-test("sheet: grabber is an adjustable control: Resize panel, Collapsed / Half / Expanded, arrows / Page / Home / End / Enter (iOS parity)", () => {
-  const sheetEl = document.createElement("section");
-  sheetEl.className = "sheet";
-  sheetEl.innerHTML = '<header class="sheet-head"><div class="grab"></div><h1>T</h1></header><div class="sheet-content"></div>';
-  document.body.appendChild(sheetEl);
-  const sh = createSheet({ sheetEl, headEl: sheetEl.querySelector("header"), contentEl: sheetEl.querySelector(".sheet-content"), initial: "half", panelMedia: PHONE });
-  const g = sheetEl.querySelector(".grab");
+test("sheet: grabber is an adjustable control: Resize panel, Collapsed / Expanded (iOS parity)", () => {
+  const { sh, grab: g, done } = makeSheet("full");
   const at = (k) => g.getAttribute(k);
-  eq([at("role"), at("aria-label"), at("aria-orientation"), at("aria-valuemin"), at("aria-valuemax"), at("tabindex")], ["slider", "Resize panel", "vertical", "0", "2", "0"]);
-  eq([at("aria-valuenow"), at("aria-valuetext")], ["1", "Half"]);
+  eq([at("role"), at("aria-label"), at("aria-orientation"), at("aria-valuemin"), at("aria-valuemax"), at("tabindex")], ["slider", "Resize panel", "vertical", "0", "1", "0"]);
+  eq([at("aria-valuenow"), at("aria-valuetext")], ["1", "Expanded"]);
   ok(!g.hasAttribute("aria-expanded"), "no aria-expanded on a slider");
   const key = (k) => { const e = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }); g.dispatchEvent(e); return e.defaultPrevented; };
   const seen = [];
-  for (const k of ["ArrowUp", "ArrowUp", "ArrowDown", "PageDown", "PageDown", "PageUp", "End", "Home", "ArrowRight", "ArrowLeft", "Enter", " "]) {
+  for (const k of ["ArrowDown", "ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", "ArrowLeft", "ArrowRight", "Enter", " "]) {
     ok(key(k), k + " handled");
     seen.push(at("aria-valuetext"));
   }
-  eq(seen, ["Expanded", "Expanded", "Half", "Collapsed", "Collapsed", "Half", "Expanded", "Collapsed", "Half", "Collapsed", "Half", "Expanded"]);
-  eq([sh.getDetent(), at("aria-valuenow")], ["full", "2"]);
+  eq(seen, ["Collapsed", "Collapsed", "Expanded", "Collapsed", "Expanded", "Collapsed", "Expanded", "Collapsed", "Expanded", "Collapsed", "Expanded"]);
+  eq([sh.getDetent(), at("aria-valuenow")], ["full", "1"]);
   ok(!key("a"), "other keys pass through");
-  sh.destroy();
-  sheetEl.remove();
+  done();
 });
 
-const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+const tick = () => new Promise((r) => setTimeout(r, 0));   // headless can starve requestAnimationFrame
+const pointer = (el, type, y, id = 7, kind = "mouse") => el.dispatchEvent(new PointerEvent(type, { pointerId: id, clientY: y, bubbles: true, cancelable: true, pointerType: kind, isPrimary: true, button: 0 }));
 
-test("sheet: pointer drag far up snaps to full; pointercancel restores", async () => {
-  const sheetEl = document.createElement("section");
-  sheetEl.className = "sheet";
-  sheetEl.innerHTML = '<header class="sheet-head"><button class="grab" type="button"></button><h1>T</h1></header><div class="sheet-content"></div>';
-  document.body.appendChild(sheetEl);
-  const head = sheetEl.querySelector("header");
-  const sh = createSheet({ sheetEl, headEl: head, contentEl: sheetEl.querySelector(".sheet-content"), initial: "half", panelMedia: PHONE });
-  ok(!sh.isPanel());
-  const pe = (type, y) => head.dispatchEvent(new PointerEvent(type, { pointerId: 7, clientY: y, bubbles: true, pointerType: "touch", isPrimary: true }));
-  pe("pointerdown", 500);
-  pe("pointermove", 480);
+test("sheet: while held it follows the finger anywhere; release follows the last motion; cancel restores", async () => {
+  const { sheetEl, sh, head, done } = makeSheet("peek");
+  pointer(head, "pointerdown", 600);
+  pointer(head, "pointermove", 580);
   ok(sheetEl.classList.contains("dragging"), "dragging class while moving");
-  await frame();
-  ok(sheetEl.style.getPropertyValue("--drag") !== "", "--drag set (one write per frame)");
-  pe("pointermove", 100);
-  pe("pointerup", -400); // far past full: settles on full whatever the viewport size
+  pointer(head, "pointermove", 400);
+  ok(parseFloat(sheetEl.style.getPropertyValue("--drag")) < -150, "the sheet is part way up, wherever the finger is: " + sheetEl.style.getPropertyValue("--drag"));
+  pointer(head, "pointerup", 400);
   ok(!sheetEl.classList.contains("dragging"));
   eq(sheetEl.style.getPropertyValue("--drag"), "");
-  eq(sh.getDetent(), "full");
-  pe("pointerdown", 300);
-  pe("pointermove", 500);
-  pe("pointercancel", 500);
-  eq(sh.getDetent(), "full", "cancel never changes detent");
+  eq(sh.getDetent(), "full", "last motion up: expanded (no midway stop)");
+  pointer(head, "pointerdown", 300);
+  pointer(head, "pointermove", 360);
+  pointer(head, "pointermove", 420);
+  pointer(head, "pointerup", 420);
+  eq(sh.getDetent(), "peek", "last motion down: collapsed");
+  pointer(head, "pointerdown", 600);
+  pointer(head, "pointermove", 500);
+  pointer(head, "pointercancel", 500);
+  eq(sh.getDetent(), "peek", "cancel never changes the state");
   eq(sheetEl.style.getPropertyValue("--drag"), "");
-  sh.destroy();
-  sheetEl.remove();
+  await tick();
+  done();
 });
 
-test("sheet: a drag from the grab bar counts even when the finger leaves the header at once", async () => {
-  const sheetEl = document.createElement("section");
-  sheetEl.className = "sheet";
-  sheetEl.innerHTML = '<header class="sheet-head"><div class="grab"></div><h1>T</h1></header><div class="sheet-content"></div>';
-  document.body.appendChild(sheetEl);
-  const head = sheetEl.querySelector("header"), grab = sheetEl.querySelector(".grab");
-  const sh = createSheet({ sheetEl, headEl: head, contentEl: sheetEl.querySelector(".sheet-content"), initial: "half", panelMedia: PHONE });
-  const pe = (el, type, y) => el.dispatchEvent(new PointerEvent(type, { pointerId: 11, clientY: y, bubbles: true, pointerType: "touch", isPrimary: true }));
-  pe(grab, "pointerdown", 500);
-  pe(document.body, "pointermove", 470);   // the next events land on the map, not on the header
-  pe(document.body, "pointermove", 300);
-  await frame();
-  ok(sheetEl.classList.contains("dragging") && sheetEl.style.getPropertyValue("--drag") !== "", "the sheet follows");
-  pe(document.body, "pointerup", -400);
-  eq(sh.getDetent(), "full");
-  pe(document.body, "pointermove", 0);     // after release: nothing listens any more
-  ok(!sheetEl.classList.contains("dragging"));
-  sh.destroy();
-  sheetEl.remove();
+test("sheet: pull up, then back down a little before letting go: it collapses (the last motion wins)", async () => {
+  const { sh, head, done } = makeSheet("peek");
+  pointer(head, "pointerdown", 600);
+  for (const y of [580, 520, 450, 380, 330]) pointer(head, "pointermove", y);
+  for (const y of [340, 352, 366]) pointer(head, "pointermove", y);   // the finger turns back down
+  await new Promise((r) => setTimeout(r, 140));                          // and stops before lifting
+  pointer(head, "pointerup", 366);
+  eq(sh.getDetent(), "peek");
+  done();
+});
+
+test("sheet: the title line and the Back button start a drag too (the whole header strip)", async () => {
+  const { sh, sheetEl, done } = makeSheet("peek");
+  const title = sheetEl.querySelector("h1"), right = sheetEl.querySelector(".titleright"), backBtn = sheetEl.querySelector(".back");
+  for (const [el, id] of [[title, 21], [right, 22], [backBtn, 23]]) {
+    sh.setDetent("peek");
+    pointer(el, "pointerdown", 600, id);
+    pointer(document.body, "pointermove", 560, id);   // off the header at once
+    pointer(document.body, "pointermove", 420, id);
+    pointer(document.body, "pointerup", 400, id);
+    eq(sh.getDetent(), "full", (el.className || el.tagName) + " drags the sheet");
+  }
+  await tick();
+  done();
+});
+
+test("sheet: touch on the header claims the gesture (touchmove default prevented) and drags", async () => {
+  if (typeof Touch !== "function" || typeof TouchEvent !== "function") return ok(true, "no Touch constructor here");
+  const { sh, head, sheetEl, done } = makeSheet("full");
+  const title = sheetEl.querySelector("h1");
+  const te = (type, y) => {
+    const t = new Touch({ identifier: 5, target: title, clientX: 100, clientY: y });
+    const e = new TouchEvent(type, { touches: type === "touchend" ? [] : [t], changedTouches: [t], targetTouches: type === "touchend" ? [] : [t], bubbles: true, cancelable: true });
+    title.dispatchEvent(e);
+    return e;
+  };
+  te("touchstart", 200);
+  const m1 = te("touchmove", 230);
+  ok(m1.defaultPrevented, "iOS cannot turn it into a page pan");
+  te("touchmove", 300);
+  te("touchmove", 380);
+  te("touchend", 380);
+  eq(sh.getDetent(), "peek", "dragged down from the title: collapsed");
+  await tick();
+  done();
 });

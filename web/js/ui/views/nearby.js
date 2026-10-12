@@ -98,13 +98,16 @@ function soonList(state, now) {
   }).join("") + "</div>";
 }
 
+/** How to unblock location (the browser only asks once; after a "Don't Allow" it never asks again by itself). */
+export const LOC_BLOCKED_HELP = "On iPhone: Settings > Privacy & Security > Location Services > Safari Websites > While Using the App, then in Safari tap the aA button > Website Settings > Location > Allow. Elsewhere: allow location for this site in the browser's site settings.";
+
 /** "Use my location" is the screen's one primary action (no location yet, not asking, not denied). */
 const locPrimary = (state) => !state.user && state.locState !== "asking" && state.locState !== "denied";
 
 function locBlock(state) {
   if (state.locState === "asking") return '<p class="v-hint" role="status">Finding your location&hellip;</p>';
   if (state.locState === "denied") {
-    return '<div class="v-locoff" role="status"><span class="v-ic" aria-hidden="true">' + ICONS.loc + '</span><span class="v-grow"><b>Location is off.</b> To see stops near you, allow location for this site in your browser settings. You can still search below.</span></div>'
+    return '<div class="v-locoff" role="status"><span class="v-ic" aria-hidden="true">' + ICONS.loc + '</span><span class="v-grow"><b>Location is blocked for this site.</b> ' + esc(LOC_BLOCKED_HELP) + ' You can still search below.</span></div>'
       + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="nearby:locate">Try location again</button>';
   }
   return '<button type="button" class="v-btn v-btn--primary v-btn--block" data-action="nearby:locate"><span class="v-ic" aria-hidden="true">' + ICONS.loc + "</span>Use my location</button>";

@@ -115,7 +115,7 @@
   /* sheet heights are measured from the top of the bottom navigation. The sheet element is always
      --v-max tall (so a chip or pill appearing never changes its layout); --v-full is shorter while the
      status pill shows (sheet.css), which only changes the full detent's translateY. */
-  --v-peek: 104px;
+  --v-peek: 76px;    /* collapsed: the grab bar and the title line only (owner 2026-10-12, like Google Maps) */
   --v-half: calc(var(--app-h) * .42);
   --v-max: calc(var(--app-h) - var(--nav-h) - var(--chip-top));
   --v-full: var(--v-max);

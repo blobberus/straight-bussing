@@ -49,6 +49,8 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
     </button>
   </div>
+  <!-- Directions: the bar turns into the Start / Destination card here (views/directions.js) -->
+  <div id="dirbar" class="dirbar" role="group" aria-label="Trip start and destination" hidden></div>
 </div>
 
 <button id="locateBtn" class="fab" type="button" aria-label="Show my location">
@@ -58,7 +60,7 @@
 <div id="pill" class="statuspill" role="status" aria-live="polite" hidden><span id="pillIcon" class="pillicon" aria-hidden="true"></span><span id="pillText" class="pilltext"></span><button id="pillRetry" class="pillbtn" type="button" data-action="retry" hidden>Retry</button><button id="pillAlert" class="pillbtn" type="button" data-action="alerts:open" aria-label="Read the service alert" hidden>See alert</button></div>
 <div id="ctxbar" class="ctxbar" role="status" aria-live="polite" hidden></div>
 
-<section id="sheet" class="sheet" data-detent="half" role="dialog" aria-modal="false" aria-labelledby="title">
+<section id="sheet" class="sheet" data-detent="peek" role="dialog" aria-modal="false" aria-labelledby="title">
   <header id="sheetHead" class="sheet-head">
     <div id="grab" class="grab" role="slider" tabindex="0" aria-label="Resize panel" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1" aria-valuetext="Half" aria-controls="content"></div>
     <div class="titleline">

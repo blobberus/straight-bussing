@@ -15,6 +15,18 @@ import { toggleFav } from "../../core/custom.js";
 import { routeChip, arrivalRow, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
 import { noBusHelpHTML } from "./alerts.js";
+import { isStale, nameOf } from "./nearby-cards.js";
+import { minsUntil } from "../../core/time.js";
+
+/** The collapsed sheet's one-line summary at a stop (owner 2026-10-12: a map tap keeps the sheet collapsed): its next bus. */
+export function metaStop(state, now = nowS()) {
+  const id = state.stopId;
+  if (!id || !state.staticLoaded || !state.liveLoaded) return "";
+  const a = arrivalsFor(state, id, { hidden: effectiveHidden(state), nowS: now })[0];
+  if (!a) return "";
+  const m = minsUntil(a.t, now);
+  return nameOf(state, a.rid) + " · " + (m < 1 ? "Now" : (isStale(state, now) ? "~" : "") + m + " min");
+}
 
 /** Max arrivals listed on the stop screen. */
 export const MAX_ARRIVALS = 10;
@@ -106,7 +118,8 @@ export function openStop(id, ctx) {
 
 registerView("stop", {
   title: (state) => state.stops?.[state.stopId]?.name || "Stop",
-  detent: "half",
+  detent: "half",   // = keep the sheet as it is (ui/sheet.js): a map tap leaves it collapsed, the header names the stop
+  meta: (state) => metaStop(state),
   render: (state) => renderStop(state),
   unmount: () => {},
 });

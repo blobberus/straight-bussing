@@ -12,11 +12,12 @@
  * that trip's routes, the plan stays drawn (also after leaving the view), and the sheet switches to Current trip
  * with the trip in progress first. Back here, a trip bar with "End trip" (journey:end, registered by the shell)
  * heads the results. Picking another option updates the journey; changing an endpoint ends it. Opened from the
- * search bar (dir:open, data-focus="to"); parent view 'nearby' (Current trip). Opening from the bar grows the
- * Start / Destination fields out of it (owner 2026-10-12: the bar must not feel like a plain button):
- * morphFromBar animates a copy of the bar's bubble into the fields' final place with the sheet's own duration and
- * curve while the sheet rises, then the real fields fade in (no morph with Reduce Motion or in the landscape
- * panel). Walking is always visible: card + step markup in ./tripinfo.js.
+ * search bar (dir:open, data-focus="to"); parent view 'nearby' (Current trip). Like Google Maps (owner 2026-10-12):
+ * the search bar itself turns into a card with the Start / Destination fields at the top of the screen (#dirbar,
+ * in the bar's place; FLIP from the bar's rect), the sheet below holds the suggestions and options; collapsing
+ * the sheet puts the keyboard away and leaves the map visible under the card; leaving Directions shrinks the card
+ * back into the bar. Focusing a field expands the sheet. In the landscape panel the fields stay in the panel.
+ * Walking is always visible: card + step markup in ./tripinfo.js.
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -176,14 +177,18 @@ function field(key) {
  * @returns {string}
  */
 export function renderDirections(state, now = nowS()) {
-  return `<div class="v-dir"><div class="v-dirbox">${field("from")}${field("to")}<button type="button" class="v-dswap" data-action="dir:swap" aria-label="Swap start and destination">${SWAP_IC}</button></div><div data-region="dir-sug">${sugHTML()}</div><div data-region="dir-res">${resHTML(state, now)}</div></div>`;
+  return `<div class="v-dir">${useBar() ? "" : dirboxHTML()}<div data-region="dir-sug">${sugHTML()}</div><div data-region="dir-res">${resHTML(state, now)}</div></div>`;
+}
+/** The Start / Destination fields with the swap button (in the top card, or in the panel). */
+function dirboxHTML() {
+  return `<div class="v-dirbox">${field("from")}${field("to")}<button type="button" class="v-dswap" data-action="dir:swap" aria-label="Swap start and destination">${SWAP_IC}</button></div>`;
 }
 
 const lastHtml = {};
 function patch(region, html) { const el = rootRef?.querySelector?.(`[data-region="${region}"]`); if (el && lastHtml[region] !== html) { setHTMLKeepFocus(el, html); lastHtml[region] = html; } }
 function patchSug() { if (D.active) { D.sugs = computeSugs(cur(), D.active === "from" ? D.fromText : D.toText); if (D.active === "to" && !D.from && !cur().user) D.sugs = D.sugs.filter((s) => s.kind !== "me"); } patch("dir-sug", sugHTML()); }   // no start yet: the results' "Start from my location" is the one location action
 function patchRes() { patch("dir-res", resHTML(cur(), nowFn())); }
-function setInput(key) { const el = rootRef?.querySelector?.(`[data-input="dir-${key}"]`); if (el) el.value = D[key]?.label || (key === "from" ? D.fromText : D.toText); }
+function setInput(key) { const el = fq(`[data-input="dir-${key}"]`); if (el) el.value = D[key]?.label || (key === "from" ? D.fromText : D.toText); }
 
 /** Draw the selected option (or the walk-only line) on the map; optionally fit to it. */
 export function drawSel(fit) {
@@ -248,7 +253,7 @@ export function startTrip() {
   ctxRef.store.set({ journey: j });
   drawSel(true);
   let moved = false;
-  try { moved = ctxRef.navigate?.("nearby", { detent: "half" }) === true; } catch (e) { moved = false; }
+  try { moved = ctxRef.navigate?.("nearby", { detent: "full" }) === true; } catch (e) { moved = false; }
   if (moved) {
     // the view renders after the store flush (main.js scheduleRender): focus its trip title once it is there
     setTimeout(() => { if (isPlanJourney(cur())) document.querySelector?.(".tp-title")?.focus({ preventScroll: true }); }, 0);
@@ -281,14 +286,14 @@ function endPlanJourney() {
   if (isPlanJourney(cur())) ctxRef.store.set({ journey: null });
 }
 
-function focusField(key) { rootRef?.querySelector?.(`[data-input="dir-${key}"]`)?.focus({ preventScroll: true }); }
+function focusField(key) { fq(`[data-input="dir-${key}"]`)?.focus({ preventScroll: true }); }
 function afterSet() {
   D.active = null; D.sugs = []; patch("dir-sug", "");
   replan({ fresh: true });
   const a = document.activeElement, lost = !a || a === document.body;   // a keyboard pick removed the focused suggestion
   if (!D.to) focusField("to"); else if (!D.from) focusField("from");
   else if (lost) rootRef?.querySelector?.('[data-region="dir-res"] .v-opt.is-on .v-optmain, [data-region="dir-res"] .v-optmain')?.focus({ preventScroll: true });
-  else if (rootRef?.contains?.(a)) a.blur?.();   // a tap while typing: drop the keyboard
+  else if (inFields(a)) a.blur?.();   // a tap while typing: drop the keyboard
 }
 
 /** Set an endpoint ('from'|'to') and re-plan. */
@@ -322,7 +327,11 @@ export function swap() {
 }
 
 const keyOf = (t) => (t?.matches?.('[data-input="dir-from"]') ? "from" : t?.matches?.('[data-input="dir-to"]') ? "to" : null);
-function onFocus(e) { const k = keyOf(e.target); if (!k) return; D.active = k; e.target.select?.(); patchSug(); patchRes(); }
+function onFocus(e) {
+  const k = keyOf(e.target); if (!k) return;
+  D.active = k; e.target.select?.(); patchSug(); patchRes();
+  try { ctxRef?.setDetent?.("full"); } catch (err) { /* sheet optional */ }   // typing: the suggestions need the sheet up
+}
 function onInput(e) {
   const k = keyOf(e.target); if (!k) return;
   endPlanJourney();
@@ -334,7 +343,7 @@ function onKey(e) {
   const k = keyOf(e.target); if (!k) return;
   if (e.key === "Enter") { e.preventDefault(); if (D.sugs.length) applySug(0); }
   else if (e.key === "Escape" && D.active) { e.preventDefault(); e.stopPropagation(); D.active = null; D.sugs = []; patch("dir-sug", ""); patchRes(); }
-  else if (e.key === "ArrowDown") { const b = rootRef.querySelector('[data-action="dir:sug"]'); if (b) { e.preventDefault(); b.focus(); } }
+  else if (e.key === "ArrowDown") { const b = rootRef?.querySelector?.('[data-action="dir:sug"]'); if (b) { e.preventDefault(); b.focus(); } }
 }
 
 /** Mount: default start = My location (if available), listeners, live re-plan subscription. */
@@ -342,6 +351,8 @@ export function mountDirections(root, ctx) {
   unmountDirections();
   offPlanWatch?.(); offPlanWatch = null;
   rootRef = root; ctxRef = ctx; lastHtml["dir-sug"] = lastHtml["dir-res"] = undefined; liveReplan.reset();
+  const from = D.morphFrom; D.morphFrom = null;
+  if (useBar()) showBar(from);
   const state = cur();
   if (!D.from && !D.fromText && state.user) { D.from = me(state.user); setInput("from"); }
   lastUser = state.user;
@@ -360,7 +371,6 @@ export function mountDirections(root, ctx) {
   }
   replan({ fresh: true });
   Promise.resolve(deps.predict?.ready).then(() => { if (rootRef && D.from && D.to) replan(); }).catch(() => {});
-  if (D.morphFrom) { const m = D.morphFrom; D.morphFrom = null; try { morphFromBar(root, m); } catch (e) { clearMorph(); } }
   if (D.focusTo) { D.focusTo = false; focusField("to"); }
   else if (D.from && !D.to) focusField("to"); else if (!D.from && D.to) focusField("from");
 }
@@ -381,71 +391,71 @@ export function barRects() {
   return { bubble, label: btn ? btn.getBoundingClientRect() : null, html: btn ? btn.innerHTML : "" };
 }
 
-let morphEls = [];
-function clearMorph() {
-  for (const el of morphEls) el.remove();
-  morphEls = [];
+/* ---------- the top card (owner 2026-10-12, like Google Maps): Start / Destination live where the search bar is ---------- */
+let barEl = null, barObs = null;
+const reduced = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+/** The fields go to the top card (#dirbar) on phones and in the phone frame; in the landscape panel they stay in it. */
+export function useBar() {
+  return typeof document !== "undefined" && !!document.getElementById("dirbar") && !(typeof matchMedia === "function" && matchMedia(PANEL_MEDIA).matches);
 }
-
-/**
- * Grow the Start / Destination fields out of the search bar. The fields live in the sheet, which is starting its
- * own transition to the new detent, so their final place is where they are now plus the sheet's remaining travel;
- * a fixed copy of the bubble animates from the bar to there with the sheet's duration and curve (both paths are
- * linear in the same eased progress, so they meet exactly), while the bar's label fades and the real fields fade
- * in over the last part.
- * @param {HTMLElement} root the view root
- * @param {{bubble:DOMRect, label:DOMRect|null, html:string}} from barRects() before the view switch
- * @returns {boolean} whether a morph ran
- */
-export function morphFromBar(root, from) {
-  const box = root?.querySelector?.(".v-dirbox");
-  if (!from || !box || typeof box.animate !== "function") return false;
-  clearMorph();
-  const sheet = root.closest(".sheet") || document.getElementById("sheet");
-  const c0 = box.getBoundingClientRect();
-  let dy = 0, k = 1;
-  if (sheet && sheet.offsetHeight) {
-    k = sheet.getBoundingClientRect().height / sheet.offsetHeight || 1;   // the desktop phone frame is scaled
-    const probe = document.querySelector(`[data-sheet-probe="${sheet.dataset.detent}"]`);
-    const m = getComputedStyle(sheet).transform;
-    const cur = m && m !== "none" ? new DOMMatrixReadOnly(m).m42 : 0;   // where the sheet's transition starts
-    if (probe) dy = (sheet.offsetHeight - probe.offsetHeight - cur) * k;
-  }
-  const fin = { left: c0.left, top: c0.top + dy, width: c0.width, height: c0.height };
-  if (!(fin.width > 0 && fin.height > 0)) return false;
+/** Look a selector up in the top card first, then in the sheet. */
+const fq = (sel) => barEl?.querySelector?.(sel) || rootRef?.querySelector?.(sel) || null;
+const inFields = (el) => !!el && (!!barEl?.contains?.(el) || !!rootRef?.contains?.(el));
+function timing() {
   const css = getComputedStyle(document.documentElement);
-  const dur = parseFloat(css.getPropertyValue("--d-sheet")) || 320;
-  const ease = css.getPropertyValue("--ease-spring").trim() || "cubic-bezier(.32, .72, 0, 1)";
-  const b = from.bubble, sx = b.width / fin.width, sy = b.height / fin.height, r = b.height / 2;
-  const ghost = document.createElement("div");
-  ghost.className = "dir-morph";
-  ghost.setAttribute("aria-hidden", "true");
-  Object.assign(ghost.style, { left: fin.left + "px", top: fin.top + "px", width: fin.width + "px", height: fin.height + "px" });
-  document.body.appendChild(ghost);
-  morphEls.push(ghost);
-  ghost.animate([
-    { transform: `translate(${b.left - fin.left}px, ${b.top - fin.top}px) scale(${sx}, ${sy})`, borderRadius: `${r / sx}px / ${r / sy}px` },
-    { transform: "none", borderRadius: `${14 * k}px` },
-  ], { duration: dur, easing: ease, fill: "both" });
-  const fade = ghost.animate([{ opacity: 1 }, { opacity: 1, offset: 0.55 }, { opacity: 0 }], { duration: dur + 80, fill: "both" });
-  if (from.label && from.html) {   // the bar's own text and icon stay put and fade as the bubble grows
-    const lab = document.createElement("div");
-    lab.className = "dir-morph-label";
-    lab.setAttribute("aria-hidden", "true");
-    lab.innerHTML = from.html;
-    Object.assign(lab.style, { left: from.label.left + "px", top: from.label.top + "px",
-      width: from.label.width / k + "px", height: from.label.height / k + "px", transform: `scale(${k})` });
-    document.body.appendChild(lab);
-    morphEls.push(lab);
-    lab.animate([{ opacity: 1 }, { opacity: 0 }], { duration: Math.min(160, dur / 2), easing: "ease-out", fill: "both" });
-  }
-  box.animate([{ opacity: 0 }, { opacity: 0, offset: 0.45 }, { opacity: 1 }], { duration: dur + 80 });
-  fade.finished.then(clearMorph, clearMorph);
+  return { dur: parseFloat(css.getPropertyValue("--d-sheet")) || 320, ease: css.getPropertyValue("--ease-spring").trim() || "cubic-bezier(.32, .72, 0, 1)" };
+}
+/** FLIP: animate `el` from rect `from` to where it is now, its children fading in over the second part. */
+function flipFrom(el, from, round) {
+  if (!el || !from || typeof el.animate !== "function" || reduced()) return false;
+  const r = el.getBoundingClientRect();
+  if (!(r.width > 0 && r.height > 0 && from.width > 0 && from.height > 0)) return false;
+  const { dur, ease } = timing(), sx = from.width / r.width, sy = from.height / r.height;
+  const end = getComputedStyle(el).borderRadius || "14px", rad = round != null ? round : from.height / 2;
+  el.animate([
+    { transform: `translate(${from.left - r.left}px, ${from.top - r.top}px) scale(${sx}, ${sy})`, borderRadius: `${rad / sx}px / ${rad / sy}px` },
+    { transform: "none", borderRadius: end },
+  ], { duration: dur, easing: ease });
+  for (const kid of el.children) kid.animate([{ opacity: 0 }, { opacity: 0, offset: 0.35 }, { opacity: 1 }], { duration: dur });
   return true;
+}
+function showBar(from) {
+  barEl = document.getElementById("dirbar");
+  if (!barEl) return;
+  barEl.innerHTML = dirboxHTML();
+  barEl.hidden = false;
+  barEl.addEventListener("focusin", onFocus);
+  barEl.addEventListener("input", onInput);
+  barEl.addEventListener("keydown", onKey);
+  const app = document.getElementById("app");
+  const fit = () => app?.style?.setProperty("--dirbar-h", barEl.offsetHeight + "px");   // the sheet's top stops below it
+  fit();
+  barObs?.disconnect();
+  if (typeof ResizeObserver === "function") { barObs = new ResizeObserver(fit); barObs.observe(barEl); }
+  flipFrom(barEl, from?.bubble);              // the bar itself grows into the card, in the same place
+}
+function hideBar() {
+  if (!barEl) return;
+  const el = barEl;
+  barEl = null;
+  barObs?.disconnect(); barObs = null;
+  el.removeEventListener("focusin", onFocus);
+  el.removeEventListener("input", onInput);
+  el.removeEventListener("keydown", onKey);
+  const card = el.hidden ? null : el.getBoundingClientRect();
+  if (el.contains(document.activeElement)) document.activeElement.blur?.();
+  el.hidden = true;
+  el.innerHTML = "";
+  document.getElementById("app")?.style?.removeProperty("--dirbar-h");
+  const app = document.getElementById("app");
+  if (card && app?.dataset?.view !== "directions") {   // leaving Directions: the card shrinks back into the bar
+    const bar = document.querySelector("#topbar .searchbar");
+    flipFrom(bar, card, 14);
+  }
 }
 
 export function unmountDirections() {
-  clearMorph();
+  hideBar();
   if (rootRef) { rootRef.removeEventListener("focusin", onFocus); rootRef.removeEventListener("input", onInput); rootRef.removeEventListener("keydown", onKey); }
   offStore?.(); offStore = null; photon.cancel(); liveReplan.reset(); D.token++; D.active = null; D.sugs = [];
   const st = ctxRef?.store, keep = !!st && isPlanJourney(st.get());

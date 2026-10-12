@@ -169,10 +169,11 @@ export function navigate(view, p = {}) {
   }
   params = { ...p };
   store.set({ view, prevView: s.view === view ? s.prevView : s.view, stopId, routeId });
-  // switching tabs keeps the user's detent (only lifts the sheet out of peek); sub views use their own
+  // switching tabs keeps an expanded sheet and expands a collapsed one (the rider asked for that tab's content);
+  // sub views use their own ("half" = the map matters: the sheet keeps its state, ui/sheet.js)
   const nowD = detentNow();
-  const keep = TABS.includes(view) && nowD && nowD !== "peek";
-  applyDetent(p.detent || (keep ? null : def.detent));
+  const tab = TABS.includes(view);
+  applyDetent(p.detent || (tab ? (nowD === "full" ? null : "full") : def.detent));
   return true;
 }
 

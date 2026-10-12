@@ -87,7 +87,7 @@ test("journey: trip bar and station toggle escape text and expose state", () => 
 
 /* ---------------- directions ---------------- */
 
-test("directions: Start sets the journey, keeps the plan drawn and switches to Current trip at the half detent", async () => {
+test("directions: Start sets the journey, keeps the plan drawn and switches to Current trip, expanded", async () => {
   const { ctx, el } = await dirWith([opt("a", 12, "R1", "R2"), opt("b", 15, "R3")]);
   const res = el.querySelector('[data-region="dir-res"]');
   const start = res.querySelector('[data-action="dir:start"]');
@@ -99,7 +99,7 @@ test("directions: Start sets the journey, keeps the plan drawn and switches to C
   eq([jn.rids, jn.label, jn.kind, jn.to], [["R1", "R2"], "To Hospital", "plan", "Hospital"]);
   eq(jn.legs.map((l) => l.type + (l.rid || "")), ["walk", "busR1", "busR2"], "compact legs stored for the Current trip timeline");
   eq(last(ctx.calls.drawPlan).key, "a", "plan drawn");
-  eq(last(ctx.calls.navigate), ["nearby", { detent: "half" }], "Current trip (the trip in progress) at the half detent, so the map shows");
+  eq(last(ctx.calls.navigate), ["nearby", { detent: "full" }], "Current trip with the trip in progress, expanded");
   eq(ctx.store.get().view, "nearby");
   ok(res.querySelector(".j-trip") && res.textContent.includes("End trip"), "back in Directions: the trip bar");
   ok(!res.querySelector('[data-action="dir:start"]'), "Start replaced while the trip is on");

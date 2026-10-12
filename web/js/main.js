@@ -98,6 +98,15 @@ function syncMap(s, changed) {
 
 /* ---------------- geolocation ---------------- */
 let locating = null, watchId = null;
+const LOC_OFF = "sb-loc-off";   // the rider chose Stop sharing in Settings: no automatic location at the next launch
+const locOptOut = () => { try { return localStorage.getItem(LOC_OFF) === "1"; } catch (e) { return false; } };
+/** Settings > Stop sharing: forget the position, stop watching, remember the choice. */
+function stopLocation() {
+  try { if (watchId !== null) navigator.geolocation.clearWatch(watchId); } catch (e) { /* */ }
+  watchId = null;
+  try { localStorage.setItem(LOC_OFF, "1"); } catch (e) { /* private mode */ }
+  store.set({ user: null, locState: "off" });
+}
 function startWatch() {
   if (watchId !== null || !navigator.geolocation || !navigator.geolocation.watchPosition) return;
   try {
@@ -125,6 +134,7 @@ function locate() {
       resolve(okv);
     };
     if (!navigator.geolocation) return finish(false, { locState: "denied" });
+    try { localStorage.removeItem(LOC_OFF); } catch (e) { /* private mode */ }   // asked for again: sharing is on
     store.set({ locState: "asking" });
     const guard = setTimeout(() => finish(false, { locState: prev === "asking" ? "unknown" : prev }), 30000);
     try {
@@ -317,8 +327,13 @@ async function boot() {
   bus.on("toast", (p) => toast(p && p.text));
   bus.on("settings:toggle", () => syncHistory());   // Settings overlay opened / closed (ui/settings-overlay.js)
   sheet = createSheet({ sheetEl: el.sheet, contentEl: el.content, headEl: el.head, grabEl: el.grab });
+  // collapsing the sheet puts the keyboard away (owner 2026-10-12): blur a focused field in the app
+  sheet.onChange((d) => {
+    const a = document.activeElement;
+    if (d === "peek" && a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && el.app?.contains?.(a)) a.blur();
+  });
   initRouter({ store, setDetent: sheet.setDetent, getDetent: sheet.getDetent });
-  ctx = { store, map, navigate, back, setDetent: (d) => sheet.setDetent(d), toast, now: nowS, locate };
+  ctx = { store, map, navigate, back, setDetent: (d) => sheet.setDetent(d), toast, now: nowS, locate, stopLocation };
   wireUI();
 
   mapCall("onStopTap", (x) => {
@@ -357,7 +372,7 @@ async function boot() {
   try {
     if (navigator.permissions && navigator.permissions.query) {
       const p = await navigator.permissions.query({ name: "geolocation" });
-      if (p.state === "granted") locate();
+      if (p.state === "granted" && !locOptOut()) locate();
       else if (p.state === "denied") store.set({ locState: "denied" });
     }
   } catch (e) { /* permissions API unsupported */ }

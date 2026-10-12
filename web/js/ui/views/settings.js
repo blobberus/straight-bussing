@@ -25,6 +25,29 @@ import { routeChip, officialLinks } from "../components.js";
 import { alertBodyHTML } from "./alerts.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen } from "../settings-overlay.js";
+import { LOC_BLOCKED_HELP } from "./nearby.js";
+
+/** The location promise in Settings (owner 2026-10-12: "no user location data will be collected"); matches privacy.html. */
+export const LOC_DISCLAIMER = "Straight Bussing does not collect your location. It stays on your device to find the stops and buses near you; for walking directions only a rounded start and end point goes to a routing service (OSRM or Valhalla), and nothing is stored.";
+
+/** Settings > Location: share / stop sharing, the blocked state with how to fix it, the disclaimer. */
+export function locHTML(state) {
+  const ls = state.locState;
+  let body;
+  if (state.user) {
+    body = `<div class="st-row"><span class="v-grow"><span class="v-prim">${OK} Sharing your location</span><span class="v-sec">Used on this device for nearby stops and walking times.</span></span></div>`
+      + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-st="loc-off" data-key="loc-off">Stop sharing my location</button>';
+  } else if (ls === "asking") {
+    body = '<p class="v-hint" role="status">Asking for your location&hellip;</p>';
+  } else if (ls === "denied") {
+    body = `<div class="v-locoff" role="status"><span class="v-grow"><b>Location is blocked for this site.</b> ${esc(LOC_BLOCKED_HELP)}</span></div>`
+      + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-st="loc-on" data-key="loc-on">Try again</button>';
+  } else {
+    body = '<button type="button" class="v-btn v-btn--primary v-btn--block" data-st="loc-on" data-key="loc-on">Share my location</button>'
+      + '<p class="v-sec st-note">Shows the stops and buses near you. Your browser asks for permission first.</p>';
+  }
+  return `<div class="v-card st-loc">${body}<p class="v-sec st-note st-disclaimer">${esc(LOC_DISCLAIMER)}</p></div>`;
+}
 
 const MINUTES = [0, 2, 5, 10];
 const MAX_RESULTS = 6;
@@ -200,6 +223,7 @@ export function renderSettings(state, now = nowS()) {
   const n = N(state), nAlerts = state.liveLoaded ? activeAlerts(state, now).length : 0;
   return `<div class="st">
 <h3 class="v-h">Appearance</h3><div class="st-theme" data-region="theme"></div>
+<h3 class="v-h">Location</h3><div data-region="loc">${locHTML(state)}</div>
 <h3 class="v-h">Service alerts${nAlerts ? ` <span class="st-count">${nAlerts} active</span>` : ""}</h3><div data-region="alerts">${alertsHTML(state, now)}</div>
 <h3 class="v-h">Bus alerts</h3><p class="v-sec st-intro">Notify me when my bus is near a station. Times are estimates from live predictions.</p>${DEMO ? '<p class="v-foot v-foot--warn" role="note">Bus alerts are off in demo mode: the buses are simulated.</p>' : ""}
 <div data-region="station">${stationHTML(state)}</div><div data-region="opts">${optsHTML(state)}</div><div data-region="status">${statusHTML(state, now)}</div>
@@ -250,7 +274,15 @@ function onClick(e, root, ctx) {
     setNotify(ctx, { stopId: null, rids: [] });
     ctx.toast?.("Bus alerts turned off");
   } else if (what === "anyroute") setNotify(ctx, { rids: [] });
-  else if (what === "perm") {
+  else if (what === "loc-on") {
+    // straight from the tap (iOS shows its permission prompt only for a user gesture)
+    Promise.resolve(ctx.locate?.()).then((okv) => { patch(root, "loc", locHTML(ctx.store.get())); if (okv) ctx.toast?.("Sharing your location"); });
+    patch(root, "loc", locHTML(ctx.store.get()));
+  } else if (what === "loc-off") {
+    ctx.stopLocation?.();
+    patch(root, "loc", locHTML(ctx.store.get()));
+    ctx.toast?.("Location sharing turned off");
+  } else if (what === "perm") {
     requestPermission().then((p) => { patch(root, "perm", permHTML(p)); if (p === "granted") ctx.toast?.("Notifications allowed"); });
   }
 }
@@ -294,6 +326,7 @@ export function mountSettings(root, ctx) {
     const now = typeof ctx.now === "function" ? ctx.now() : nowS();
     const has = (...k) => !ch || k.some((x) => ch.has(x));
     if (has("alerts", "liveLoaded", "failed")) patch(root, "alerts", alertsHTML(s, now));
+    if (has("user", "locState")) patch(root, "loc", locHTML(s));
     const typing = document.activeElement?.id === "st-q" && root.contains(document.activeElement);
     if (has("notify", "favStops", "user", "stops", "stopRoutes", "addresses") && !typing) patch(root, "station", stationHTML(s));
     if (has("notify", "stopRoutes", "routes", "hiddenRoutes", "journey")) patch(root, "opts", optsHTML(s));

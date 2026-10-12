@@ -271,7 +271,7 @@ test("sheet: the grab bar is never covered, and a drag from it that leaves the h
   const grab = $("#grab"), sheet = $("#sheet");
   const key = (k) => grab.dispatchEvent(new W.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
   const settle = async () => { await sleep(30); for (const an of sheet.getAnimations()) an.finish(); await sleep(30); };
-  for (const [k, d] of [["Home", "peek"], ["ArrowUp", "half"], ["End", "full"]]) {
+  for (const [k, d] of [["Home", "peek"], ["End", "full"]]) {
     key(k);
     await settle();
     eq(sheet.dataset.detent, d);
@@ -281,49 +281,65 @@ test("sheet: the grab bar is never covered, and a drag from it that leaves the h
       ok(hit && (hit === grab || grab.contains(hit)), `${d}: the grab bar is on top at ${fx * 100}% (got ${hit && (hit.id || hit.className)})`);
     }
   }
-  key("ArrowDown");   // half
+  key("Home");   // collapsed
   await settle();
   const r = grab.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
   const pe = (el, type, yy) => el.dispatchEvent(new W.PointerEvent(type, { pointerId: 21, clientX: x, clientY: yy, bubbles: true, cancelable: true, pointerType: "touch", isPrimary: true }));
   pe(grab, "pointerdown", y);
   const map = $("#map");
   pe(map, "pointermove", y - 30);          // the finger is over the map from the first move on
-  pe(map, "pointermove", y - 260);
+  pe(map, "pointermove", y - 160);
   await sleep(40);
   ok(sheet.classList.contains("dragging"), "the sheet follows the finger");
-  pe(map, "pointerup", y - 300);
-  eq(sheet.dataset.detent, "full", "dragged up from half to full");
+  pe(map, "pointerup", y - 170);
+  eq(sheet.dataset.detent, "full", "a short pull up expands it (no midway stop)");
   await settle();
-  key("ArrowDown");                        // back to half for the next tests
+  // the title line drags too (owner 2026-10-12: "any part where it includes the title")
+  const tr = $("#title").getBoundingClientRect(), ty = tr.top + tr.height / 2;
+  const pt = (el, type, yy) => el.dispatchEvent(new W.PointerEvent(type, { pointerId: 22, clientX: tr.left + 10, clientY: yy, bubbles: true, cancelable: true, pointerType: "touch", isPrimary: true }));
+  pt($("#title"), "pointerdown", ty);
+  pt(map, "pointermove", ty + 40);
+  pt(map, "pointermove", ty + 120);
+  pt(map, "pointerup", ty + 130);
+  eq(sheet.dataset.detent, "peek", "dragged down by the title: collapsed");
   await settle();
-  eq(sheet.dataset.detent, "half");
 });
 
 test("directions: place + station, stubbed sidewalk walking, option drawn on the map", async () => {
   tab("nearby");
-  // the Start / Destination fields grow out of the search bar's bubble (owner 2026-10-12)
+  // like Google Maps (owner 2026-10-12): the search bar itself turns into the Start / Destination card at the top
   const bar = $("#topbar .searchbar").getBoundingClientRect();
+  const near = (a, b) => Math.abs(a.left - b.left) < 2 && Math.abs(a.top - b.top) < 2 && Math.abs(a.width - b.width) < 2;
+  const r4 = (r) => [r.left, r.top, r.width, r.height].map(Math.round);
   click($("#searchBar"), "search bar");
-  const ghost = await waitFor(() => $(".dir-morph"), "the bubble growing into the fields");
-  const box = await waitFor(() => $("#content .v-dirbox"), "the fields");
-  const anims = D.getAnimations();
-  const at = (ms) => anims.forEach((an) => { an.pause(); an.currentTime = ms; });
-  at(0);
-  const g0 = ghost.getBoundingClientRect();
-  ok(Math.abs(g0.left - bar.left) < 2 && Math.abs(g0.top - bar.top) < 2 && Math.abs(g0.width - bar.width) < 2 && Math.abs(g0.height - bar.height) < 2,
-    `starts as the bar: ${[g0.left, g0.top, g0.width, g0.height].map(Math.round)} vs ${[bar.left, bar.top, bar.width, bar.height].map(Math.round)}`);
-  at(320);   // --d-sheet: the sheet and the bubble arrive together
-  const g1 = ghost.getBoundingClientRect(), b1 = box.getBoundingClientRect();
-  ok(Math.abs(g1.left - b1.left) < 2 && Math.abs(g1.top - b1.top) < 2 && Math.abs(g1.width - b1.width) < 2 && Math.abs(g1.height - b1.height) < 2,
-    `lands on the fields: ${[g1.left, g1.top, g1.width, g1.height].map(Math.round)} vs ${[b1.left, b1.top, b1.width, b1.height].map(Math.round)}`);
-  anims.forEach((an) => an.finish());
-  await waitFor(() => !$(".dir-morph") && !$(".dir-morph-label"), "the copy is removed");
-  const from = await waitFor(() => state().view === "directions" && $('#content [data-input="dir-from"]'), "start field");
+  const card = await waitFor(() => { const c = $("#dirbar"); return c && !c.hidden && c.querySelector('[data-input="dir-to"]') ? c : null; }, "the card with the fields");
+  const anims = card.getAnimations();
+  if (anims.length) {
+    anims.forEach((an) => { an.pause(); an.currentTime = 0; });
+    const g0 = card.getBoundingClientRect();
+    ok(near(g0, bar) && Math.abs(g0.height - bar.height) < 2, `starts as the bar: ${r4(g0)} vs ${r4(bar)}`);
+    anims.forEach((an) => an.finish());
+  }
+  const c1 = card.getBoundingClientRect();
+  ok(near(c1, bar), `the card sits where the bar was: ${r4(c1)} vs ${r4(bar)}`);
+  eq(W.getComputedStyle($("#topbar .searchbar")).display, "none", "the bar itself is gone");
+  ok(!$("#content .v-dirbox"), "the fields are not in the sheet");
+  await waitFor(() => D.activeElement === card.querySelector('[data-input="dir-to"]'), "keyboard on Destination");
+  eq($("#sheet").dataset.detent, "full", "the sheet holds the suggestions");
+  const sheetTopUp = () => { const sh = $("#sheet"), t = W.getComputedStyle(sh).transform; return sh.getBoundingClientRect().top - (t && t !== "none" ? new W.DOMMatrixReadOnly(t).m42 : 0); };
+  ok(sheetTopUp() >= c1.bottom - 1, `the sheet never rises over the card: ${Math.round(sheetTopUp())} vs ${Math.round(c1.bottom)}`);
+  // collapsing puts the keyboard away and leaves the map between the card and the collapsed sheet
+  $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true }));
+  await waitFor(() => $("#sheet").dataset.detent === "peek" || null, "collapsed");
+  ok(!/^(INPUT|TEXTAREA)$/.test(D.activeElement?.tagName || ""), "keyboard put away when collapsed");
+  ok(!card.hidden && near(card.getBoundingClientRect(), bar), "the card stays at the top");
+  const from = await waitFor(() => state().view === "directions" && $('#dirbar [data-input="dir-from"]'), "start field");
   from.focus();
+  await waitFor(() => $("#sheet").dataset.detent === "full" || null, "focusing a field expands the sheet");
   type(from, "e2e start", "start field");
   const placeSug = await waitFor(() => $$('#content [data-action="dir:sug"]').find((b) => /E2E Start Place/.test(txt(b))), "place suggestion");
   click(placeSug, "place suggestion");
-  const to = $('#content [data-input="dir-to"]');
+  const to = $('#dirbar [data-input="dir-to"]');
   to.focus();
   type(to, stopName(T.Dst), "destination field");
   const stopSug = await waitFor(() => $$('#content [data-action="dir:sug"]').find((b) => txt(b).startsWith(stopName(T.Dst))), "stop suggestion");
@@ -355,7 +371,10 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
   eq(state().journey && state().journey.kind, "plan", "trip started");
   eq(title(), "Current trip", "sheet title");
   eq($('#tabs button[data-tab="nearby"]').getAttribute("aria-current"), "page", "Current trip tab selected");
-  eq($("#sheet").dataset.detent, "half", "half detent, the map shows the trip");
+  eq($("#sheet").dataset.detent, "full", "expanded: the trip progress");
+  ok($("#dirbar").hidden && W.getComputedStyle($("#topbar .searchbar")).display !== "none", "leaving Directions: the card turns back into the bar");
+  for (const an of $("#topbar .searchbar").getAnimations()) an.finish();
+  ok(near($("#topbar .searchbar").getBoundingClientRect(), bar), "the bar is back in the same place");
   ok($("#content [data-region='nearby-trip'] .tp-title"), "the trip in progress leads, above the next bus");
   await waitFor(() => D.activeElement === tt, "focus on the trip title");
   ok($$("#map .sb-plan-casing").length > 0, "the trip stays on the map");
@@ -479,7 +498,8 @@ test("tap outside the sheet: empty map collapses it to peek; stops and buses sti
     moves.length = 0;
     halo.dispatchEvent(new W.MouseEvent("click", { bubbles: true, cancelable: true }));
     await waitFor(() => state().view === "stop" || null, "a stop tap still opens the stop");
-    ok(det() !== "peek", "the stop tap did not collapse the sheet");
+    eq(det(), "peek", "a stop tap keeps the sheet collapsed: the map stays in view (no midway stop)");
+    await waitFor(() => title() === state().stops[state().stopId].name || null, "the collapsed header names the stop");
     eq(moves, [], "a stop tap moves no camera");
     eq(await after(), before, "a stop tap keeps the map view");
     click($("#back"), "back");

@@ -37,7 +37,7 @@ export function shellE2E(h, which) {
       const apply = () => h.store().set({ customRoutes: [{ id: "e2s", name: "E2E shell", rids: [R], highlight: [] }], activeCustom: "e2s",
         prevHidden: [], hiddenRoutes: rids.filter((r) => r !== R) });
       const clear = () => h.store().set({ activeCustom: null, hiddenRoutes: [], prevHidden: [] });
-      for (const d of ["half", "full", "peek"]) {
+      for (const d of ["full", "peek"]) {
         setDetent(d);
         await waitFor(() => $("#sheet").dataset.detent === d, "detent " + d);
         const before = sheetGeo();
@@ -51,14 +51,14 @@ export function shellE2E(h, which) {
         await waitFor(() => $("#ctxbar").hidden, "chip cleared");
         eq(sheetGeo(), before, `chip cleared at ${d}: sheet unchanged`);
       }
-      setDetent("half");
+      setDetent("peek");
       h.store().set({ customRoutes: [] });
     });
     return;
   }
 
   test("map credit: plain text above the sheet at load (no bubble, no (i) button, no copyright sign), gone after 5 s", async () => {
-    setDetent("half");
+    setDetent("peek");
     const cr = await waitFor(() => $("#map .sb-credits"), "map credit");
     ok(!$("#map .leaflet-control-attribution"), "no Leaflet attribution control");
     ok(!COPY.test($("#map").innerHTML), "no copyright sign in the map");

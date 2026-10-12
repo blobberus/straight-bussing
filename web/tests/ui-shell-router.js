@@ -83,7 +83,7 @@ test("router: same view+params does not push", () => {
   eq(_stack().length, 1);
 });
 
-test("router: tab navigation resets the stack and keeps a non-peek detent", () => {
+test("router: tab navigation resets the stack, keeps an expanded sheet and expands a collapsed one", () => {
   const t = setup();
   navigate("stop", { stopId: "a" });
   t.setD("full");
@@ -93,7 +93,7 @@ test("router: tab navigation resets the stack and keeps a non-peek detent", () =
   eq(t.getD(), "full", "tab switch keeps detent");
   t.setD("peek");
   navigate("routes");
-  eq(t.getD(), "half", "tab switch lifts out of peek");
+  eq(t.getD(), "full", "tab switch from collapsed expands (no midway stop)");
 });
 
 test("router: back with empty stack goes to parent", () => {

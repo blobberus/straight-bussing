@@ -30,7 +30,7 @@ async function frame(w, h) {
   return {
     f, d, $, rect,
     set(o) {
-      if ("detent" in o) $("sheet").dataset.detent = o.detent;
+      if ("detent" in o) { $("sheet").dataset.detent = o.detent; $("sheet").dataset.rest = o.detent; }   // a settled sheet
       if ("chip" in o) $("ctxbar").hidden = !o.chip;
       if ("pill" in o) $("pill").hidden = !o.pill;
       void d.body.offsetHeight;

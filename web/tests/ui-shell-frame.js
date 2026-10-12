@@ -33,11 +33,10 @@ test("sheet: drag distance is measured in the frame's CSS px when the frame is s
   pe("pointerdown", 300);
   pe("pointermove", 290);
   pe("pointermove", 270); // 30 screen px up at scale .5 = 60 CSS px
-  await new Promise((r) => requestAnimationFrame(() => r()));   // the offset is written once per frame
   const d = parseFloat(sheetEl.style.getPropertyValue("--drag"));
   near(d, -60, 0.5, "--drag in CSS px: " + d);
   pe("pointercancel", 270);
-  eq(sh.getDetent(), "half");
+  eq(sh.getDetent(), "peek", "cancel keeps the state ('half' is no resting state any more)");
   sh.destroy();
   wrap.remove();
 });
