@@ -143,6 +143,36 @@ def test_missing_run_file_is_noop():
     assert s["added"] == 0 and body(d / "arrivals.csv") == [row(T0)], s
 
 
+def prow(epoch, lead, plead, stop="A", veh="V1", pred=None):
+    from arrivals_lib import PRED_COLUMNS
+    r = {c: "" for c in PRED_COLUMNS}
+    pred = epoch + 30 if pred is None else pred
+    r.update(epoch=str(epoch), vehicle_id=veh, stop_id=stop, lead_target_s=str(lead), pred_epoch=str(pred),
+             pred_made_epoch=str(epoch - plead), pred_lead_s=str(plead), pred_minus_actual_s=str(pred - epoch),
+             stop_name='"Stop, with comma"')
+    return ",".join(r[c] for c in PRED_COLUMNS) + "\n"
+
+
+def test_predictions_merge_keeps_the_fresher_duplicate():
+    import merge_predictions as MP
+    d = tmp()
+    (d / "a.csv").write_text(MP.HEADER + prow(T0, 600, 700) + prow(T0, 1800, 1850), encoding="utf-8", newline="")
+    s = MP.merge(d / "p.csv", d / "a.csv")
+    assert s["added"] == 2, s
+    # another run, the same arrival timed 8 s later: fresher at 600 (replaces), staler at 1800 (dup), new lead 60
+    (d / "b.csv").write_text(MP.HEADER + prow(T0 + 8, 600, 640) + prow(T0 + 8, 1800, 1900) + prow(T0 + 8, 60, 70),
+                             encoding="utf-8", newline="")
+    s = MP.merge(d / "p.csv", d / "b.csv")
+    assert (s["added"], s["replaced"], s["dup"]) == (1, 1, 1), s
+    lines = body(d / "p.csv")
+    assert prow(T0 + 8, 600, 640) in lines and prow(T0, 1800, 1850) in lines and prow(T0 + 8, 60, 70) in lines
+    assert len(lines) == 3
+    assert MP.merge(d / "p.csv", d / "b.csv")["added"] == 0                        # idempotent
+    (d / "c.csv").write_text(MP.HEADER + prow(T0 + 1500, 600, 650) + "junk,line\n", encoding="utf-8", newline="")
+    s = MP.merge(d / "p.csv", d / "c.csv")                                           # next lap: a new arrival
+    assert (s["added"], s["bad"]) == (1, 1), s
+
+
 TESTS = [v for k, v in dict(globals()).items() if k.startswith("test_")]
 
 

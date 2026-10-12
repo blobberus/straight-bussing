@@ -20,6 +20,8 @@ from pathlib import Path
 REPO = os.environ.get("SB_REPO", "blobberus/straight-bussing")
 WORKFLOW = "collect.yml"
 CSV = "data/ground_truth/arrivals.csv"
+PRED_CSV = "data/ground_truth/predictions.csv"   # Passio's prediction 1-30 min ahead per arrival (merge_predictions.py)
+PRED_SEED_S = 3600 + 600                        # reload prediction logs this recent into a new chunk (--pred-seed)
 FEED = "https://passio3.com/chicago/passioTransit/gtfs/realtime/vehiclePositions.json"
 RUN_S = 70 * 60                  # one CI run logs this long (collect.yml --duration 4200)
 UA = "StraightBussing-monitor (student project)"
@@ -45,6 +47,13 @@ class Ctx:
         self.runs, self.merged, self.wt = d / "runs", d / "merged", d / "databranch"
         self.pid, self.state, self.log, self.seed, self.stop = (d / "monitor.pid", d / "state.json",
                                                                d / "monitor.log", d / "seed.csv", d / "STOP")
+        self.predlog = d / "predlog"          # each chunk's Passio prediction updates; the next chunk reloads them
+
+
+def pred_partner(run_file):
+    """runs/run-<stamp>.csv -> runs/pred-<stamp>.csv (the same chunk's predictions.csv rows)."""
+    p = Path(run_file)
+    return p.with_name("pred-" + p.name[len("run-"):]) if p.name.startswith("run-") else None
 
 
 # ---------------------------------------------------------------- helpers
@@ -395,6 +404,7 @@ def publish(ctx, files, model=True):
         try:
             prepare_worktree(ctx)
             into, added = ctx.wt / CSV, 0
+            mp = ctx.root / "tools" / "merge_predictions.py"
             for f in files:
                 r = subprocess.run([sys.executable, str(ctx.root / "tools" / "merge_arrivals.py"), "--into", str(into),
                                     "--add", str(f), "--rotate-mb", "40"], capture_output=True, text=True, cwd=ctx.root)
@@ -403,6 +413,12 @@ def publish(ctx, files, model=True):
                 for tok in r.stdout.split():
                     if tok.startswith("added="):
                         added += int(tok[6:])
+                pf = pred_partner(f)
+                if pf is not None and mp.exists() and has_rows(pf):
+                    r = subprocess.run([sys.executable, str(mp), "--into", str(ctx.wt / PRED_CSV), "--add", str(pf),
+                                        "--rotate-mb", "40"], capture_output=True, text=True, cwd=ctx.root)
+                    if r.returncode:
+                        raise RuntimeError("merge_predictions failed: " + (r.stderr or r.stdout)[-300:])
             rm = ctx.root / "tools" / "refresh_model.py"
             if model and rm.exists():
                 subprocess.run([sys.executable, str(rm), "--data", str(into), "--out", str(ctx.wt / "web/data/learned.json")],
@@ -435,13 +451,19 @@ def publish_pending(ctx, st, active, model):
     if ok:
         for f in files:
             os.replace(f, ctx.merged / f.name)
+            pf = pred_partner(f)
+            if pf is not None and pf.exists():
+                os.replace(pf, ctx.merged / pf.name)
         st["files_merged"] = st.get("files_merged", 0) + len(files)
         st["rows_added"] = st.get("rows_added", 0) + added
         st["last_publish"], st["last_error"] = time.time(), ""
     else:
         st["last_error"] = msg
-    for old in ctx.merged.glob("run-*.csv"):                  # keep a week of pushed runs for audit
+    for old in [*ctx.merged.glob("run-*.csv"), *ctx.merged.glob("pred-*.csv")]:   # keep a week for audit
         if time.time() - old.stat().st_mtime > 7 * 86400:
+            old.unlink(missing_ok=True)
+    for old in ctx.predlog.glob("*.jsonl") if ctx.predlog.exists() else ():
+        if time.time() - old.stat().st_mtime > 2 * 86400:
             old.unlink(missing_ok=True)
     save_state(ctx, st)
 
@@ -461,7 +483,7 @@ def lock(ctx):
 
 
 def local(ctx, a, resume=False):
-    for d in (ctx.dir, ctx.runs, ctx.merged):
+    for d in (ctx.dir, ctx.runs, ctx.merged, ctx.predlog):
         d.mkdir(parents=True, exist_ok=True)
     if not lock(ctx):
         print(f"already running (pid {read_pid(ctx)}); nothing to do")
@@ -498,10 +520,15 @@ def local(ctx, a, resume=False):
                 dur = D if end is None else min(D, end - now)
                 path = ctx.runs / f"run-{datetime.now():%Y%m%d-%H%M%S}.csv"
                 refresh_seed(ctx)
+                # chunks are 30 min with a short overlap: each new logger reloads the last hour of Passio's
+                # prediction updates (the older chunks' logs), so 30-min-ahead predictions are never cut off
+                seeds = [str(f) for f in sorted(ctx.predlog.glob("*.jsonl")) if now - f.stat().st_mtime < PRED_SEED_S]
                 logf = open(ctx.dir / "logger.log", "ab")
                 p = subprocess.Popen([sys.executable, str(ctx.root / "tools" / "truth_logger.py"), "--duration",
                                       f"{dur:.0f}", "--seed", str(ctx.seed), "--out", str(path),
-                                      "--interval", str(a.interval)], cwd=ctx.root, stdout=logf, stderr=subprocess.STDOUT)
+                                      "--interval", str(a.interval), "--pred-out", str(pred_partner(path)),
+                                      "--pred-log", str(ctx.predlog / (path.stem + ".jsonl")), "--pred-seed", *seeds],
+                                     cwd=ctx.root, stdout=logf, stderr=subprocess.STDOUT)
                 logf.close()
                 active.append((p, path))
                 next_start = now + max(1.0, dur - overlap)

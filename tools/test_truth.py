@@ -413,6 +413,88 @@ def loop_terminal_prediction_matches_the_visit_index():
 
 
 @test
+def predictions_at_every_target_lead():
+    """predictions.csv (owner goal 2026-10-12, the 10% rule): for each target lead L the newest prediction made
+    at least L before the arrival; leads with none are left out."""
+    tr = Tracker(fake_static())
+    arr = T0 + 5000
+    for made, pred in ((arr - 1900, arr + 100), (arr - 1000, arr + 40), (arr - 650, arr + 20),
+                       (arr - 320, arr + 10), (arr - 130, arr + 4), (arr - 50, arr + 1)):
+        tr.add_prediction("T1", "B", made, pred, veh="V1")
+    got = tr.preds_at("T1", "B", arr, veh="V1")
+    want = {1800: (arr + 100, arr - 1900), 1200: (arr + 100, arr - 1900), 900: (arr + 40, arr - 1000),
+            600: (arr + 20, arr - 650), 300: (arr + 10, arr - 320), 180: (arr + 10, arr - 320),
+            120: (arr + 4, arr - 130), 60: (arr + 4, arr - 130)}
+    assert got == want, got
+    assert tr.pred_for("T1", "B", arr, veh="V1") == (arr + 4, 130)          # the arrivals.csv column, unchanged
+    assert tr.preds_at("T1", "B", arr, veh="V2") == {}                      # another bus's arrival: nothing
+
+
+@test
+def predictions_about_the_previous_lap_are_skipped():
+    """A loop that keeps its trip id (the Downtown Campus Connector's frequency trip): predictions made before the
+    bus's previous visit to the stop, or still predicting that visit, are not about this arrival."""
+    tr = Tracker(fake_static())
+    arr = T0 + 5000
+    tr.visits[("V1", "B")] = (arr - 1500, "F", 1)                           # the same bus was at B 25 min ago
+    tr.add_prediction("F", "B", arr - 1700, arr - 1500, veh="V1")           # made for that earlier visit
+    tr.add_prediction("F", "B", arr - 1450, arr - 1440, veh="V1")           # made after it, still about it
+    tr.add_prediction("F", "B", arr - 1000, arr + 20, veh="V1")             # this lap
+    assert tr.preds_at("F", "B", arr, veh="V1") == {lt: (arr + 20, arr - 1000) for lt in (60, 120, 180, 300, 600, 900)}
+    assert tr.pred_for("F", "B", arr, veh="V1") == (arr + 20, 1000)
+    tr.visits[("V1", "B")] = (arr - 3 * L.STATE_TTL, "F", 1)                # too long ago to matter
+    assert tr.preds_at("F", "B", arr, veh="V1")[1200] == (arr - 1440, arr - 1450)
+
+
+@test
+def arrivals_record_visits_and_prediction_rows():
+    """The detector remembers each bus's visits (seeded from the CSV tail too) and an arrival event carries the
+    predictions.csv leads; Writer writes those rows next to the arrivals row."""
+    import truth_logger as TL, io as _io, csv as _csv
+    st = fake_static()
+    reps, truth = simulate(st, ["A", "B", "C"])
+    tr = Tracker(st)
+    for made, lt in ((T0 - 1900, 1800), (T0 - 700, 600)):
+        tr.add_prediction("T1", "C", made, int(truth[2]) + 30, veh="V1")
+    ev = run(tr, reps)
+    at_c = next(e for e in ev if e["idx"] == 2)
+    assert sorted(at_c["preds"]) == [60, 120, 180, 300, 600, 900, 1200, 1800], sorted(at_c["preds"])
+    assert tr.visits[("V1", "C")] == (at_c["epoch"], "T1", 2)
+    d = Path(tempfile.mkdtemp(prefix="sb-pred-"))
+    w = TL.Writer(d / "run.csv", st, d / "run_pred.csv")
+    w.write([at_c])
+    rows = list(_csv.DictReader(_io.StringIO((d / "run_pred.csv").read_text(encoding="utf-8"))))
+    assert w.n == 1 and w.np == 8 == len(rows), (w.n, w.np, len(rows))
+    r30 = next(r for r in rows if r["lead_target_s"] == "1800")
+    assert int(r30["pred_minus_actual_s"]) == int(truth[2]) + 30 - at_c["epoch"]
+    assert int(r30["pred_lead_s"]) == at_c["epoch"] - (T0 - 1900) and r30["stop_name"] == "Stop C"
+    tr2 = Tracker(st)
+    tr2.seed([{"epoch": str(at_c["epoch"]), "stop_index": "2", "vehicle_id": "V1", "trip_id": "T1",
+               "route_id": "R", "stop_id": "C", "dwell_s": ""}], at_c["epoch"] + 60)
+    assert tr2.visits[("V1", "C")] == (at_c["epoch"], "T1", 2)
+
+
+@test
+def prediction_log_round_trip():
+    """--pred-log / --pred-seed: a new run reloads the last hour of Passio's updates, in time order, once each."""
+    import truth_logger as TL
+    d = Path(tempfile.mkdtemp(prefix="sb-plog-"))
+    tr = Tracker(fake_static())
+    log = TL.PredLog(d / "a.jsonl")
+    tr.on_pred = log
+    now = T0 + 7200
+    tr.add_prediction("T1", "B", now - 4000, now + 10, 2, "V1")     # older than an hour: not reloaded
+    tr.add_prediction("T1", "B", now - 900, now + 20, 2, "V1")
+    tr.add_prediction("T1", "B", now - 900, now + 20, 2, "V1")      # repeated update: logged once
+    tr.add_prediction("T1", "B", now - 300, now + 25, 2, "V1")
+    log.flush()
+    assert log.n == 3
+    tr2 = Tracker(fake_static())
+    assert TL.seed_predictions(tr2, [d / "a.jsonl", d / "a.jsonl", d / "missing.jsonl"], now) == 4
+    assert list(tr2.preds[("V1", "T1", "B")]) == [(now - 900, now + 20, 2), (now - 300, now + 25, 2)]
+
+
+@test
 def chicago_dst_rule():
     cases = {datetime(2026, 7, 1, 12, tzinfo=timezone.utc): "2026-07-01 07:00",
              datetime(2026, 1, 15, 12, tzinfo=timezone.utc): "2026-01-15 06:00",

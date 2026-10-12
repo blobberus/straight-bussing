@@ -67,8 +67,11 @@ jobs:
         continue-on-error: true              # rows are flushed as they are found; keep what we have
         run: |
           date +%s > "$RUNNER_TEMP/log.t0"
+          # --pred-out: Passio's prediction 1 to 30 min ahead of each arrival (predictions.csv, the 10% rule);
+          # --pred-log: every prediction update Passio published (artifact below, for re-analysis)
           python tools/truth_logger.py --duration 4200 --seed "$RUNNER_TEMP/seed.csv" --out "$RUNNER_TEMP/run.csv" \
-            --status-file "$RUNNER_TEMP/logger.json" --raw-out "$RUNNER_TEMP/raw/raw-polls.jsonl"
+            --status-file "$RUNNER_TEMP/logger.json" --raw-out "$RUNNER_TEMP/raw/raw-polls.jsonl" \
+            --pred-out "$RUNNER_TEMP/run_pred.csv" --pred-log "$RUNNER_TEMP/pred/pred-updates.jsonl"
       - name: Keep the raw position polls (RouteKnower E03; artifact, 90 days, never on the data branch)
         if: always()
         continue-on-error: true
@@ -76,6 +79,15 @@ jobs:
         with:
           name: raw-polls-${{ github.run_id }}
           path: ${{ runner.temp }}/raw/raw-polls.jsonl
+          retention-days: 90
+          if-no-files-found: ignore
+      - name: Keep Passio's prediction updates (artifact, 90 days; re-score any lead or attribution rule later)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: pred-updates-${{ github.run_id }}
+          path: ${{ runner.temp }}/pred/pred-updates.jsonl
           retention-days: 90
           if-no-files-found: ignore
       - name: Check the logging run (annotates problems; the job stays green so the merge always runs)
@@ -139,6 +151,10 @@ jobs:
               printf '# data branch\nAutomated ground-truth data. See docs/DATA.md on main.\n' > databranch/README.md
             fi
             python tools/merge_arrivals.py --into databranch/data/ground_truth/arrivals.csv --add "$RUNNER_TEMP/run.csv" --rotate-mb 40
+            if [ -s "$RUNNER_TEMP/run_pred.csv" ]; then
+              python tools/merge_predictions.py --into databranch/data/ground_truth/predictions.csv \
+                --add "$RUNNER_TEMP/run_pred.csv" --rotate-mb 40
+            fi
             python tools/refresh_model.py --data databranch/data/ground_truth/arrivals.csv \
               --out databranch/web/data/learned.json || echo "refresh_model failed; arrivals are still committed"
             git -C databranch add -A data README.md 2>/dev/null || git -C databranch add -A data

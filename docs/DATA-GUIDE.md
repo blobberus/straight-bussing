@@ -4,7 +4,8 @@ This guide explains the shuttle arrival files for someone who has never seen the
 file opens in Excel, Google Sheets or Numbers. (The technical version, with how arrivals are detected, is
 `docs/DATA.md`.)
 
-**Which files this covers:** all of these have the same 25 columns.
+**Which files this covers:** all of these have the same 25 columns. (The predictions file added on October 12,
+2026 is different; it has its own section, "The companion file", below.)
 - `data/ground_truth/arrivals.csv` on the `data` branch of this repo (everything, in one file)
 - `data/arrivals/<day>/<route>.csv` in the public data repo
   [github.com/blobberus/straight-bussing-data](https://github.com/blobberus/straight-bussing-data) (one file per
@@ -130,8 +131,8 @@ Part of that drop is simply predicting further ahead; most of it is an old predi
 drifted away from.
 
 **What this column cannot tell you:** how good the official prediction is 5 or 10 minutes ahead, when you might
-decide to leave home. A lead of 5 minutes or more here is a stuck prediction, not a fair test. Storing the 5- and
-10-minute predictions as extra columns is planned (RouteKnower.md, E01 "B5").
+decide to leave home. A lead of 5 minutes or more here is a stuck prediction, not a fair test. Since October 12,
+2026 those longer-range predictions are kept in the companion file `predictions.csv` (section below).
 
 **Where was the bus when the prediction was made?** Filter the file to the same `vehicle_id` and `trip_id`, and look
 at its rows whose `epoch` is between this row's `epoch` minus `passio_pred_lead_s` and this row's `epoch`: those are
@@ -142,6 +143,28 @@ the stops it still had to reach.
 | Column | What it means | Example |
 |---|---|---|
 | `source` | How the arrival was detected. `transition`: the feed's "next stop" for this bus moved past this stop, and the time is when the bus actually passed it. `proximity`: the bus was seen standing within 40 meters of the stop. Both are real arrivals; about 2 in 3 rows are `transition`. | `transition` |
+
+## The companion file: predictions made 1 to 30 minutes ahead (`predictions.csv`)
+
+Since October 12, 2026, a second file sits next to the arrivals file on the `data` branch:
+`data/ground_truth/predictions.csv`. The arrivals file is unchanged (same 25 columns). For each arrival, this file
+has **one row per "how far ahead"**: what the official feed predicted 1, 2, 3, 5, 10, 15, 20 and 30 minutes before
+the bus arrived. It exists to check the project's goal, the **10% rule**: a prediction made 10 minutes ahead should
+be right to within 1 minute, one made 30 minutes ahead to within 3 minutes.
+
+| Column | What it means | Example |
+|---|---|---|
+| `epoch`, `local_time`, `route_id`, `route_name`, `trip_id`, `vehicle_id`, `stop_id`, `stop_name`, `stop_index` | The arrival, exactly as in the arrivals file. To find the matching arrivals row, look for the same `vehicle_id` and `stop_id` with an `epoch` within a few seconds. | `2026-10-12 12:16:49`, Apostolic/Drexel, bus `4538` at Bernard Mitchell Hospital |
+| `lead_target_s` | How far ahead this row looks, in seconds: 60, 120, 180, 300, 600, 900, 1200 or 1800 (30 minutes). | `120` (2 minutes ahead) |
+| `pred_epoch` | The feed's newest prediction that was made at least that far ahead. | `1791825335` (12:15:35 PM) |
+| `pred_made_epoch` | When the feed made that prediction. | `1791825286` (12:14:46 PM) |
+| `pred_lead_s` | How long before the arrival it was made. Never under `lead_target_s`; the difference is how old the prediction already was at that point (see "Reading the prediction lead" above). | `123` |
+| `pred_minus_actual_s` | Predicted time minus real arrival time, in seconds. **Positive means the prediction was too late: the bus came earlier than predicted**, which is how riders miss a bus. Negative means the bus came later than predicted (riders wait). | `-74` (the bus came 74 s later than predicted) |
+
+**A missing row is information too:** if an arrival has a 2-minute row but no 30-minute row, the feed had no
+prediction for that bus at that stop 30 minutes ahead (it usually predicts a run only once the bus has started it).
+
+**Checking the 10% rule in a spreadsheet:** a row passes if `ABS(pred_minus_actual_s) <= 0.1 * lead_target_s`.
 
 ## Reading one row, start to finish
 

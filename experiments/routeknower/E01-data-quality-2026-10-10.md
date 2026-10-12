@@ -43,7 +43,7 @@ Other observations: the snapshot has no rows after 2026-10-09 20:28 CDT, althoug
 
 Test sets differ slightly (the rules drop rows), so read the direction, not the decimals. Still one split over ~1.3 days: inconclusive.
 
-## Collector bugs found (proposed patches; B1-B4 applied 2026-10-10 in `cc40831`, `9eb11c7`, `2ba339c`, `c3831ca`; B5 open)
+## Collector bugs found (proposed patches; B1-B4 applied 2026-10-10 in `cc40831`, `9eb11c7`, `2ba339c`, `c3831ca`; B5 done 2026-10-12 as a separate predictions.csv)
 Rows logged before those commits keep the defects, so the `load_rows` rules stay. Each fix has its tests in
 `tools/test_truth.py` / `tools/test_merge.py`; deviations from the patches below are explained in the commit messages.
 
@@ -136,7 +136,7 @@ applied at the source); `last_arr` and prev only move forward in time. Simulated
 Drexel 501404). Test for `test_merge.py`: shared row (V, S, t) + run row (V, S, t + 141, same trip) -> dup; (V, S, t + 960) -> added.
 **Applied** in `c3831ca` as patched. The 10 pairs already on the data branch stay until `merge_arrivals.py --dedupe` is run.
 
-**B5. Only one Passio prediction per arrival is stored**, so Passio cannot be scored at 5, 10 or 15 minutes ahead. Proposal: add columns
+**B5 (done 2026-10-12, differently: the owner asked to keep the arrivals format, so the 1, 2, 3, 5, 10, 15, 20 and 30 min predictions go to `data/ground_truth/predictions.csv`, one row per arrival and lead; docs/DATA.md).** **Only one Passio prediction per arrival is stored**, so Passio cannot be scored at 5, 10 or 15 minutes ahead. Proposal: add columns
 `passio_pred_5m`, `passio_pred_10m` (newest prediction made >= 300 / 600 s before the arrival, same vehicle and sequence rules as B1) at
 the end of `COLUMNS` (old rows read as blank). Until then `STALE_LEAD_S` in `model_core` must stay.
 

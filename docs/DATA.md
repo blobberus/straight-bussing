@@ -6,7 +6,9 @@ predictions and train our own (`tools/model_*.py`, `docs/ALGORITHMS.md`). Unoffi
 | File | Where | What |
 |---|---|---|
 | `data/ground_truth/arrivals.csv` | `data` branch only (git-ignored on main) | real arrivals, collected around the clock, merged every 30 min |
-| `data/ground_truth/archive/*.csv` | `data` branch | same schema, rotated when the live file passes 40 MB |
+| `data/ground_truth/predictions.csv` | `data` branch | since 2026-10-12: Passio's prediction 1, 2, 3, 5, 10, 15, 20 and 30 min before each arrival (one row per arrival and lead; schema below), for the owner's "10% rule" |
+| `data/ground_truth/archive/*.csv` | `data` branch | same schemas, rotated when a live file passes 40 MB |
+| CI artifacts `raw-polls-<run>`, `pred-updates-<run>` | GitHub Actions, 90 days | every position poll (E03) and every Passio prediction update `[veh, trip, stop_id, made, predicted, seq]` per run (`tools/raw_fetch.py --list`) |
 | `web/data/learned.json` | `data` branch | model refreshed after each run (if `tools/refresh_model.py` exists) |
 | `data/ground_truth/synthetic_arrivals.csv` | main | **fake**, seeded 3-week demo (ids start `syn`); `tools/make_synthetic_truth.py` |
 | `web/data/places.json` | main | named places within a 30-min walk of campus stops for on-device place search; `tools/build_places.py` (OpenStreetMap Overpass, ODbL); refreshed by the daily Pages run |
@@ -27,6 +29,28 @@ stopped here (0 = drove through, blank = unknown) · `passio_pred_epoch` Passio'
 bus + trip + stop (at a loop terminal: the one with the matching stop_sequence) made >= 120 s before the
 arrival, `passio_pred_lead_s` = epoch - when it was made · `source`
 `transition` | `proximity`. Rows are appended when the bus leaves the stop, so files are only roughly sorted.
+
+## predictions.csv (added 2026-10-12; one row = one arrival x one target lead)
+The arrivals file keeps its 25 columns; this file sits next to it. Join on `vehicle_id` + `stop_id` + `epoch`
+(within 300 s: two collector runs can time one arrival a few seconds apart). Owner goal, the **10% rule**: a
+prediction made L before the arrival should be right to 10% of L (1 min at 10 min ahead, 3 min at 30 min ahead).
+
+`epoch` `local_time` `route_id` `route_name` `trip_id` `vehicle_id` `stop_id` `stop_name` `stop_index` (as in
+arrivals.csv) · `lead_target_s` 60, 120, 180, 300, 600, 900, 1200 or 1800 · `pred_epoch` Passio's newest
+prediction for this bus at this stop made at least `lead_target_s` before the arrival · `pred_made_epoch` when it
+was made (Passio's trip-update timestamp) · `pred_lead_s` = epoch - pred_made_epoch (>= lead_target_s; the excess
+is how stale the prediction was at that moment) · `pred_minus_actual_s` = pred_epoch - epoch (**positive = the
+prediction was later than the actual arrival: the bus came early**, the case riders miss). A missing row = Passio
+had no prediction that old for this arrival (it often does not predict a trip before it starts).
+
+Attribution (`Tracker._candidates`, same rules as `passio_pred_*` in arrivals.csv since 2026-10-12): this bus's own
+predictions (E01 B1); at a loop stop only the matching stop_sequence; and **not** a prediction made before the bus's
+previous visit to this stop, or predicting a time within 120 s of it (`PREV_VISIT_GAP_S`): that one was about the
+earlier lap of a loop that keeps its trip id (Downtown Campus Connector). A stop_sequence that names this visit on
+the same trip overrides it (one update predicts both ends of a loop). Coverage: a CI run only knows predictions
+from its own start (runs overlap ~30 min, so each arrival is covered by the run that started 30 to 70 min before
+it); local chunks reload the last hour of updates from the previous chunks (`--pred-seed`). Merge:
+`tools/merge_predictions.py` (duplicate = vehicle + stop + lead within 300 s; the fresher prediction stays).
 
 ## Detection (`tools/arrival_detector.py`, every 10 s on Passio `vehiclePositions` + `tripUpdates`)
 - **transition**: the vehicle's `stop_id` moves forward along the route (up to half the loop: night
@@ -65,7 +89,7 @@ or at a trip's first stop, and `passio_pred_lead_s` is ~2-4 min unless Passio ha
 lead >= 5 min is a failure case, not a 5-minute forecast). `tools/model_core.py` `load_rows` handles all of these
 (`clean_dicts`); read the CSV raw only with that in mind. Collector fixes B1-B4 (2026-10-10: `cc40831` per-bus
 predictions, `9eb11c7` far-away transitions, `2ba339c` stale links, `c3831ca` 300 s merge window) stop new rows from
-having the first four; rows logged before keep them, and the lead caveat stays until fixed-lead logging (E01 B5).
+having the first four; rows logged before keep them, and the lead caveat stays for this column; fixed-lead logging exists since 2026-10-12 (`predictions.csv`, below).
 
 ## Run it
 ```

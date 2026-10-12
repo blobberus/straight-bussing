@@ -6,8 +6,8 @@ Rules: docs/DATA.md "Detection". Tests: tools/test_truth.py.
 import math
 from collections import defaultdict, deque
 
-from arrivals_lib import (DEPART_SPEED, HIST, MAX_GAP, MAX_LINK_S, MAX_SKIP, MIN_PRED_AGE, NEAR_M, RADIUS_M,
-                          SAME_VISIT_S, STATE_TTL, STOP_SPEED, hav_m)
+from arrivals_lib import (DEPART_SPEED, HIST, MAX_GAP, MAX_LINK_S, MAX_SKIP, MIN_PRED_AGE, NEAR_M, PRED_LEADS,
+                          PREV_VISIT_GAP_S, RADIUS_M, SAME_VISIT_S, STATE_TTL, STOP_SPEED, hav_m)
 
 
 class Tracker:
@@ -20,6 +20,8 @@ class Tracker:
         self.preds = defaultdict(lambda: deque(maxlen=400))    # (veh|None, trip, stop_id) -> (made, predicted, seq)
         self.trip_seq = {}                                     # trip -> {stop_id: {stop_sequence}}
         self.last_arr = {}                                     # veh -> (stop_id, epoch, prev dict) of last arrival
+        self.visits = {}                                       # (veh, stop_id) -> (epoch, trip, idx) of its last arrival there
+        self.on_pred = None                                    # callback(veh, trip, stop_id, made, predicted, seq)
 
     # ---- Passio predictions (tripUpdates) ----
     @staticmethod
@@ -37,24 +39,55 @@ class Tracker:
         d = self.preds[(self._veh(veh), trip, stop_id)]
         if not d or d[-1] != (made, predicted, seq):
             d.append((made, predicted, seq))
+            if self.on_pred is not None:                 # the run's prediction log (truth_logger --pred-log)
+                self.on_pred(self._veh(veh), trip, stop_id, made, predicted, seq)
         if seq is not None:
             self.trip_seq.setdefault(trip, {}).setdefault(stop_id, set()).add(seq)
             while len(self.trip_seq) > 3000:
                 del self.trip_seq[next(iter(self.trip_seq))]
 
-    def pred_for(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False):
-        """Most recent prediction made >= MIN_PRED_AGE s before epoch -> (pred_epoch, lead_s) | None.
+    def _candidates(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False):
+        """Predictions that can be about THIS arrival, oldest first: (made, predicted).
         This vehicle's own predictions, else the trip's predictions that came without a vehicle id. At a
         loop stop (in the route twice) only a prediction whose stop_sequence is idx + 1 counts (or that
-        has no sequence): one update predicts the terminal both as stop 1 and as stop N."""
-        best = None
+        has no sequence): one update predicts the terminal both as stop 1 and as stop N. A prediction made
+        before the bus's previous visit to this stop, or predicting a time within PREV_VISIT_GAP_S of that
+        visit, was about the earlier lap (loops that keep one trip id, the Downtown Campus Connector's
+        frequency trip) and is skipped, unless its stop_sequence names this visit and the previous one was
+        another index of the same trip (the loop terminal: one update predicts both ends of the loop)."""
         d = self.preds.get((self._veh(veh), trip, stop_id)) or self.preds.get((None, trip, stop_id), ())
+        pv = self.visits.get((self._veh(veh), stop_id))
+        if pv is not None and not 0 < epoch - pv[0] <= 2 * STATE_TTL:
+            pv = None
         for made, pred, seq in d:
             if loop_stop and seq is not None and idx is not None and seq != idx + 1:
                 continue
-            if made <= epoch - MIN_PRED_AGE and abs(pred - epoch) < 3600:
+            if abs(pred - epoch) >= 3600:
+                continue
+            if pv is not None and (made <= pv[0] or pred < pv[0] + PREV_VISIT_GAP_S):
+                named = seq is not None and idx is not None and seq == idx + 1 and pv[1] == trip and pv[2] != idx
+                if not named:
+                    continue
+            yield made, pred
+
+    def pred_for(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False):
+        """Most recent prediction made >= MIN_PRED_AGE s before epoch -> (pred_epoch, lead_s) | None
+        (the arrivals.csv passio_pred_* columns)."""
+        best = None
+        for made, pred in self._candidates(trip, stop_id, epoch, veh, idx, loop_stop):
+            if made <= epoch - MIN_PRED_AGE:
                 best = (made, pred)
         return (best[1], epoch - best[0]) if best else None
+
+    def preds_at(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False, leads=PRED_LEADS):
+        """For each target lead L: the newest prediction made >= L s before epoch -> {L: (pred_epoch, made)}
+        (predictions.csv; leads without one are left out)."""
+        out = {}
+        for made, pred in self._candidates(trip, stop_id, epoch, veh, idx, loop_stop):
+            for lt in leads:
+                if made <= epoch - lt:
+                    out[lt] = (pred, made)
+        return out
 
     # ---- resume from CSV tail ----
     def seed(self, rows, now):
@@ -70,6 +103,9 @@ class Tracker:
                 la = self.last_arr.get(r["vehicle_id"])
                 if la is None or ep >= la[1]:
                     self.last_arr[r["vehicle_id"]] = (r["stop_id"], ep, s["prev"])
+                vk = (self._veh(r["vehicle_id"]), r["stop_id"])
+                if ep > self.visits.get(vk, (0,))[0]:
+                    self.visits[vk] = (ep, r["trip_id"], idx)
             except (ValueError, KeyError):
                 continue
 
@@ -334,7 +370,11 @@ class Tracker:
         s["pend"] = {"epoch": epoch, "route": route, "trip": key[1], "veh": key[0], "idx": idx, "source": source,
                      "prev": prev, "dwell": None,
                      "pred": self.pred_for(key[1], sid, epoch, veh=key[0], idx=idx, loop_stop=loop_stop),
+                     "preds": self.preds_at(key[1], sid, epoch, veh=key[0], idx=idx, loop_stop=loop_stop),
                      "stop_vt": sv, "after_vt": av}
+        vk = (self._veh(key[0]), sid)
+        if epoch > self.visits.get(vk, (0,))[0]:      # after the lookups: they need the previous visit
+            self.visits[vk] = (epoch, key[1], idx)
         if pv is None or epoch >= pv["epoch"]:       # (a deferred arrival logged after a later one is not
             s["prev"] = {"idx": idx, "epoch": epoch, "dwell": None}   # what the next stop follows)
         if la is None or epoch >= la[1]:             # the bus's latest arrival by time, as in seed()
@@ -359,4 +399,6 @@ class Tracker:
                 del self.v[key]
         for k in [k for k, d in self.preds.items() if d and d[-1][0] < now - 2 * STATE_TTL]:
             del self.preds[k]
+        for k in [k for k, t in self.visits.items() if t[0] < now - 2 * STATE_TTL]:
+            del self.visits[k]
         return out

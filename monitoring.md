@@ -12,8 +12,13 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   Off switch: repo variable `COLLECT_CHAIN=off`, or Disable workflow. A run's summary says `Self-chain: done:dispatched`. Each run merges its rows with `tools/merge_arrivals.py`
   (drops overlap duplicates) into `data/ground_truth/arrivals.csv` on the orphan **`data`** branch, refreshes
   `web/data/learned.json` there, and re-enables itself (60-day idle rule). Schema and details: `docs/DATA.md`.
+  Since 2026-10-12 each run also writes Passio's prediction 1 to 30 min before every arrival and merges it into
+  `data/ground_truth/predictions.csv` (`tools/merge_predictions.py`; the arrivals file is unchanged), and keeps every
+  prediction update as the artifact `pred-updates-<run>` (90 days) next to `raw-polls-<run>`.
 - **Local fallback** `tools/monitor.py local`: the same pipeline from this PC (30-min overlapping chunks,
-  same merge + push to `data`). Safe to run next to CI. State lives in `data/monitor/` (git-ignored).
+  same merge + push to `data`, predictions included: each chunk reloads the last hour of prediction updates from
+  `data/monitor/predlog/`, kept 2 days). Safe to run next to CI. State lives in `data/monitor/` (git-ignored).
+  After a collector code change, restart it (`python tools/monitor.py stop`, then `resume`) so it runs the new code.
 - No rows overnight is normal: no shuttles run, so nothing is committed.
 
 ## Run it

@@ -8,6 +8,8 @@ per true bus arrival at a stop (schema in arrivals_lib.COLUMNS, docs in docs/DAT
   python tools/truth_logger.py --seed arrivals.csv --out run.csv   # new rows only (CI; merge_arrivals.py)
   python tools/truth_logger.py ... --status-file s.json            # polls/rows/error counts at exit (CI)
   python tools/truth_logger.py ... --raw-out raw.jsonl              # also keep every position poll (E03)
+  python tools/truth_logger.py ... --pred-out run_pred.csv          # Passio's prediction 1-30 min ahead per arrival
+  python tools/truth_logger.py ... --pred-log p.jsonl --pred-seed old.jsonl   # keep / reload prediction updates
 A failed fetch, bad JSON or a malformed feed entry only skips that feed or entry for one poll; it is
 counted (status line, final 'done:' line, --status-file) and the run keeps going.
 No rider data exists in these feeds; nothing personal is collected.
@@ -200,30 +202,92 @@ def poll(tr, w, now, err, get=fetch, raw=None):
     return summary
 
 
+def _open_csv(path, columns):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists() or path.stat().st_size == 0:
+        path.write_text(",".join(columns) + "\n", encoding="utf-8", newline="\n")
+    else:                                        # a crash mid-write may leave a partial last line
+        with open(path, "rb+") as f:
+            f.seek(-1, 2)
+            if f.read(1) != b"\n":
+                f.write(b"\n")
+
+
 class Writer:
-    def __init__(self, path, st):
-        self.path, self.st, self.n = Path(path), st, 0
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.path.exists() or self.path.stat().st_size == 0:
-            self.path.write_text(",".join(L.COLUMNS) + "\n", encoding="utf-8", newline="\n")
-        else:                                    # a crash mid-write may leave a partial last line
-            with open(self.path, "rb+") as f:
-                f.seek(-1, 2)
-                if f.read(1) != b"\n":
-                    f.write(b"\n")
+    """arrivals.csv rows; with pred_path also predictions.csv rows (L.PRED_COLUMNS) for the same arrivals."""
+    def __init__(self, path, st, pred_path=None):
+        self.path, self.st, self.n, self.np = Path(path), st, 0, 0
+        self.pred_path = Path(pred_path) if pred_path else None
+        _open_csv(self.path, L.COLUMNS)
+        if self.pred_path:
+            _open_csv(self.pred_path, L.PRED_COLUMNS)
 
     def write(self, events):
         if not events:
             return
         events.sort(key=lambda e: e.get("epoch") or 0)
+        done = []
         with open(self.path, "a", encoding="utf-8", newline="") as f:
             for e in events:
                 try:
                     f.write(L.row_text(L.fmt_row(self.st, e)))
                     self.n += 1
+                    done.append(e)
                 except (KeyError, IndexError, TypeError, ValueError) as ex:   # stop missing from static data
                     print(f"skip row {e.get('route')}/{e.get('idx')}: {ex!r}", file=sys.stderr)
             f.flush()
+        if self.pred_path and done:
+            with open(self.pred_path, "a", encoding="utf-8", newline="") as f:
+                for e in done:
+                    try:
+                        for row in L.fmt_pred_rows(self.st, e):
+                            f.write(L.row_text(row))
+                            self.np += 1
+                    except (KeyError, IndexError, TypeError, ValueError) as ex:
+                        print(f"skip predictions {e.get('route')}/{e.get('idx')}: {ex!r}", file=sys.stderr)
+                f.flush()
+
+
+class PredLog:
+    """Every new Passio prediction update as one JSON line [veh, trip, stop_id, made, predicted, seq]: lets the
+    next run start with the last hour of predictions (--pred-seed), so 30-min-ahead rows exist from its first
+    minute, and keeps what Passio said for re-analysis (CI artifact)."""
+    def __init__(self, path):
+        self.path, self.n, self.buf = Path(path), 0, []
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def __call__(self, veh, trip, stop_id, made, predicted, seq):
+        self.buf.append([veh, trip, stop_id, made, predicted, seq])
+
+    def flush(self):
+        if not self.buf:
+            return
+        with open(self.path, "a", encoding="utf-8", newline="\n") as f:
+            f.write("".join(json.dumps(x, separators=(",", ":")) + "\n" for x in self.buf))
+        self.n += len(self.buf)
+        self.buf = []
+
+
+def seed_predictions(tr, paths, now, max_age=L.PRED_SEED_S):
+    """Reload prediction updates made in the last max_age s from PredLog files -> how many were added."""
+    n = 0
+    for p in paths:
+        try:
+            lines = Path(p).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for ln in lines:
+            try:
+                veh, trip, stop_id, made, pred, seq = json.loads(ln)
+                if now - max_age <= made <= now:
+                    tr.add_prediction(trip, stop_id, made, pred, seq, veh)
+                    n += 1
+            except (ValueError, TypeError):
+                continue
+    for k in list(tr.preds):                     # several logs, out of order: keep each deque time-sorted
+        d = tr.preds[k]
+        tr.preds[k] = type(d)(sorted(set(d), key=lambda x: (x[0], x[1])), maxlen=d.maxlen)
+    return n
 
 
 def rotate(path, max_mb):
@@ -247,13 +311,29 @@ def main():
     ap.add_argument("--seed", help="CSV whose tail seeds the detector (default --out); lets a run write only its own rows")
     ap.add_argument("--status-file", help="write {polls, rows, errors, fetch_errors, ...} as JSON here at exit")
     ap.add_argument("--raw-out", help="append every vehiclePositions poll here as JSON lines (RawPolls)")
+    ap.add_argument("--pred-out", help="also write predictions.csv rows here (Passio's prediction 1-30 min ahead)")
+    ap.add_argument("--pred-log", help="append every new Passio prediction update here as JSON lines (PredLog)")
+    ap.add_argument("--pred-seed", nargs="*", default=[], help="PredLog files to reload the last hour from")
     a = ap.parse_args()
     a.interval = max(5.0, a.interval)
     st = L.Static()
     if not st.route_stops:
         sys.exit("web/data/route_stops.json missing (run tools/build_gtfs.py)")
     rotate(Path(a.out), a.rotate_mb)
-    tr, w, err = Tracker(st), Writer(a.out, st), Errors()
+    tr, w, err = Tracker(st), Writer(a.out, st, a.pred_out), Errors()
+    plog = None
+    try:
+        n = seed_predictions(tr, a.pred_seed, int(time.time())) if a.pred_seed else 0
+        if a.pred_seed:
+            print(f"pred seed: {n} prediction updates from {len(a.pred_seed)} file(s)")
+    except Exception as ex:                      # only costs the long leads for the first half hour
+        err("pred seed", ex)
+    if a.pred_log:
+        try:
+            plog = PredLog(a.pred_log)
+            tr.on_pred = plog
+        except OSError as ex:
+            err("pred log", ex)
     raw = None
     if a.raw_out:
         try:
@@ -270,6 +350,11 @@ def main():
         while True:
             t0 = time.time()
             s = poll(tr, w, int(t0), err, raw=raw)
+            if plog is not None:
+                try:
+                    plog.flush()
+                except OSError as ex:
+                    err("pred log", ex)
             if s is not None:
                 summary = s
             polls += 1
@@ -292,11 +377,13 @@ def main():
                 Path(a.status_file).write_text(json.dumps(
                     {"started": int(started), "ended": int(time.time()), "duration": a.duration, "polls": polls,
                      "rows": w.n, "errors": err.proc, "fetch_errors": err.fetch, "first_error": err.first,
-                     "raw_polls": raw.n if raw else None}),
+                     "raw_polls": raw.n if raw else None, "pred_rows": w.np if a.pred_out else None,
+                     "pred_updates": plog.n if plog else None}),
                     encoding="utf-8")
             except OSError as ex:
                 print(f"could not write {a.status_file}: {ex}", file=sys.stderr)
-    print(f"done: {w.n} rows appended to {a.out}; polls={polls} errors={err.proc} fetch_errors={err.fetch}")
+    print(f"done: {w.n} rows appended to {a.out}; polls={polls} errors={err.proc} fetch_errors={err.fetch}"
+          + (f"; {w.np} prediction rows to {a.pred_out}" if a.pred_out else ""))
 
 
 if __name__ == "__main__":

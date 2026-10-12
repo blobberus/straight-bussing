@@ -15,6 +15,16 @@ COLUMNS = ("epoch,ts_utc,local_time,dow,hour,minute_of_day,route_id,route_name,t
            "stop_name,stop_address,stop_lat,stop_lon,stop_index,prev_stop_id,dist_prev_m,prev_arrival_epoch,"
            "segment_s,speed_mps,dwell_s,passio_pred_epoch,passio_pred_lead_s,source").split(",")
 
+# predictions.csv (owner goal 2026-10-12, the "10% rule": 1 min at 10 min ahead, 3 min at 30 min ahead): for each
+# arrival, Passio's newest prediction made at least lead_target_s before it, one row per target lead. The arrivals
+# file keeps its 25 columns; rows join on vehicle_id + stop_id + epoch.
+PRED_COLUMNS = ("epoch,local_time,route_id,route_name,trip_id,vehicle_id,stop_id,stop_name,stop_index,"
+                "lead_target_s,pred_epoch,pred_made_epoch,pred_lead_s,pred_minus_actual_s").split(",")
+PRED_LEADS = (60, 120, 180, 300, 600, 900, 1200, 1800)
+PRED_SEED_S = 3600       # a new logger run reloads prediction updates up to this old (--pred-seed)
+PREV_VISIT_GAP_S = 120   # a prediction counts for this arrival only if made after the bus's previous visit to the
+                         # stop and predicting a time this far past it (else it was about the earlier lap)
+
 RADIUS_M = 40.0          # proximity arrival radius
 STOP_SPEED = 1.0         # m/s: "stopped" threshold for proximity arrivals
 DEPART_SPEED = 2.0       # m/s: moving this fast (or leaving the radius) ends the dwell
@@ -169,6 +179,18 @@ def fmt_row(st, e):
             s["lat"], s["lon"], idx, psid, dist, pe, seg, speed,
             "" if e.get("dwell") is None else e["dwell"],
             pred[0] if pred else "", pred[1] if pred else "", e["source"]]
+
+
+def fmt_pred_rows(st, e):
+    """e: an arrival event with preds {lead_target_s: (pred_epoch, made_epoch)} -> predictions.csv rows."""
+    rid, idx = e["route"], e["idx"]
+    sid = st.route_stops[rid][idx]
+    local = chicago(e["epoch"]).strftime("%Y-%m-%d %H:%M:%S")
+    out = []
+    for lt, (pred, made) in sorted((e.get("preds") or {}).items()):
+        out.append([e["epoch"], local, rid, st.route_name(rid), e["trip"], e["veh"], sid,
+                    st.stops[sid].get("name", ""), idx, lt, pred, made, e["epoch"] - made, pred - e["epoch"]])
+    return out
 
 
 def row_text(row):

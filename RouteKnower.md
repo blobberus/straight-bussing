@@ -115,7 +115,7 @@ Totals: ~4,000-4,500 rows a day, ~30k a week, ~1 MB a day. The CSV rotates to `a
 ### 3.3 Data quality issues to fix first (they hurt every model)
 Items 1-5 were audited in **E01 (2026-10-10)**, `experiments/routeknower/E01-data-quality-2026-10-10.md`. `load_rows` now
 applies the E01 rules (`model_core.clean_dicts`). Collector fixes **B1-B4 applied 2026-10-10** (`cc40831` per-bus Passio
-keys, `9eb11c7` no far-away transition rows, `2ba339c` no stale links, `c3831ca` merge window 300 s); B5 is open. Rows
+keys, `9eb11c7` no far-away transition rows, `2ba339c` no stale links, `c3831ca` merge window 300 s); B5 done 2026-10-12 as a separate `predictions.csv` (leads 1-30 min; the arrivals schema is unchanged). Rows
 logged before then keep the defects, so the `load_rows` rules stay.
 1. **Downtown Campus Connector**: many distinct (prev, stop) pairs with tiny counts: skipped stops making
    non-adjacent pairs, or route variants. Check `route_stops.json` against live trips (E01).
@@ -144,7 +144,7 @@ logged before then keep the defects, so the `load_rows` rules stay.
    old is stored, so a lead >= 5 min means Passio stopped updating that trip: those bins sample failures. `load_rows` now
    withholds Passio on shared trip ids, trip starts and leads >= 300 s (Passio MAE 147 -> 74 s). Since `cc40831` (B1) the
    logger keeps predictions per bus and matches the loop-terminal stop_sequence, so rows from then on can relax the
-   shared-trip and trip-start rules once enough exist. Fixed-lead logging (B5) is needed before Passio can be scored
+   shared-trip and trip-start rules once enough exist. Fixed-lead logging (B5, `predictions.csv` since 2026-10-12) is needed before Passio can be scored
    beyond 5 minutes.
 6. **Detector truth check**: the +-10 s claim comes from simulation. Validate in the field: 20+ hand-logged arrivals at
    one stop with a phone clock (E02).
@@ -413,4 +413,5 @@ Checked every claim in the first version against the data and primary sources. C
 
 Still unverified (do not rely on them yet): the detector's +-10 s accuracy on real buses (E02); how well Midway
 weather represents campus (§12). Passio's 5-10 min outliers are explained (E01: logger, not Passio), but Passio
-beyond 5 minutes ahead cannot be scored until fixed-lead predictions are logged (E01 B5).
+beyond 5 minutes ahead cannot be scored until fixed-lead predictions are logged (E01 B5; logged in
+`data/ground_truth/predictions.csv` since 2026-10-12).
