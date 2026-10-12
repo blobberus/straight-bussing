@@ -41,7 +41,7 @@ struct BottomSheet<Header: View, Content: View>: View {
     }
 
     static var shape: UnevenRoundedRectangle { UnevenRoundedRectangle(topLeadingRadius: Radius.sheet, topTrailingRadius: Radius.sheet, style: .continuous) }
-    static let grabH: CGFloat = 30
+    static var grabH: CGFloat { 30 }
 
     static func height(for d: Detent, available: CGFloat, headerH: CGFloat) -> CGFloat {
         switch d {
