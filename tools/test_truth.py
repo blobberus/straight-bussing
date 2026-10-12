@@ -418,14 +418,15 @@ def predictions_at_every_target_lead():
     at least L before the arrival; leads with none are left out."""
     tr = Tracker(fake_static())
     arr = T0 + 5000
-    for made, pred in ((arr - 1900, arr + 100), (arr - 1000, arr + 40), (arr - 650, arr + 20),
-                       (arr - 320, arr + 10), (arr - 130, arr + 4), (arr - 50, arr + 1)):
-        tr.add_prediction("T1", "B", made, pred, veh="V1")
+    ups = ((arr - 1900, arr + 100), (arr - 1000, arr + 40), (arr - 650, arr + 20),
+           (arr - 320, arr + 10), (arr - 130, arr + 4), (arr - 50, arr + 1))
+    for i, (made, pred) in enumerate(ups):                                  # each one shown until the next appears
+        tr.add_prediction("T1", "B", made, pred, veh="V1", last=(ups[i + 1][0] - 10) if i + 1 < len(ups) else arr)
     got = tr.preds_at("T1", "B", arr, veh="V1")
     want = {1800: (arr + 100, arr - 1900), 1200: (arr + 100, arr - 1900), 900: (arr + 40, arr - 1000),
             600: (arr + 20, arr - 650), 300: (arr + 10, arr - 320), 180: (arr + 10, arr - 320),
             120: (arr + 4, arr - 130), 60: (arr + 4, arr - 130)}
-    assert got == want, got
+    assert got == {k: (p, m, m) for k, (p, m) in want.items()}, got     # (pred, made, first seen)
     assert tr.pred_for("T1", "B", arr, veh="V1") == (arr + 4, 130)          # the arrivals.csv column, unchanged
     assert tr.preds_at("T1", "B", arr, veh="V2") == {}                      # another bus's arrival: nothing
 
@@ -437,13 +438,13 @@ def predictions_about_the_previous_lap_are_skipped():
     tr = Tracker(fake_static())
     arr = T0 + 5000
     tr.visits[("V1", "B")] = (arr - 1500, "F", 1)                           # the same bus was at B 25 min ago
-    tr.add_prediction("F", "B", arr - 1700, arr - 1500, veh="V1")           # made for that earlier visit
-    tr.add_prediction("F", "B", arr - 1450, arr - 1440, veh="V1")           # made after it, still about it
-    tr.add_prediction("F", "B", arr - 1000, arr + 20, veh="V1")             # this lap
-    assert tr.preds_at("F", "B", arr, veh="V1") == {lt: (arr + 20, arr - 1000) for lt in (60, 120, 180, 300, 600, 900)}
+    tr.add_prediction("F", "B", arr - 1700, arr - 1500, veh="V1", last=arr - 1460)   # made for that earlier visit
+    tr.add_prediction("F", "B", arr - 1450, arr - 1440, veh="V1", last=arr - 1010)   # made after it, still about it
+    tr.add_prediction("F", "B", arr - 1000, arr + 20, veh="V1", last=arr)   # this lap, on display until it came
+    assert tr.preds_at("F", "B", arr, veh="V1") == {lt: (arr + 20, arr - 1000, arr - 1000) for lt in (60, 120, 180, 300, 600, 900)}
     assert tr.pred_for("F", "B", arr, veh="V1") == (arr + 20, 1000)
     tr.visits[("V1", "B")] = (arr - 3 * L.STATE_TTL, "F", 1)                # too long ago to matter
-    assert tr.preds_at("F", "B", arr, veh="V1")[1200] == (arr - 1440, arr - 1450)
+    assert tr.preds_at("F", "B", arr, veh="V1")[1200] == (arr - 1440, arr - 1450, arr - 1450)
 
 
 @test
@@ -454,8 +455,8 @@ def arrivals_record_visits_and_prediction_rows():
     st = fake_static()
     reps, truth = simulate(st, ["A", "B", "C"])
     tr = Tracker(st)
-    for made, lt in ((T0 - 1900, 1800), (T0 - 700, 600)):
-        tr.add_prediction("T1", "C", made, int(truth[2]) + 30, veh="V1")
+    tr.add_prediction("T1", "C", T0 - 1900, int(truth[2]) + 30, veh="V1", last=T0 - 710)
+    tr.add_prediction("T1", "C", T0 - 700, int(truth[2]) + 30, veh="V1", last=int(truth[2]))
     ev = run(tr, reps)
     at_c = next(e for e in ev if e["idx"] == 2)
     assert sorted(at_c["preds"]) == [60, 120, 180, 300, 600, 900, 1200, 1800], sorted(at_c["preds"])
@@ -466,6 +467,7 @@ def arrivals_record_visits_and_prediction_rows():
     rows = list(_csv.DictReader(_io.StringIO((d / "run_pred.csv").read_text(encoding="utf-8"))))
     assert w.n == 1 and w.np == 8 == len(rows), (w.n, w.np, len(rows))
     r30 = next(r for r in rows if r["lead_target_s"] == "1800")
+    assert r30["pred_seen_epoch"] == str(T0 - 1900) and list(rows[0]) == L.PRED_COLUMNS
     assert int(r30["pred_minus_actual_s"]) == int(truth[2]) + 30 - at_c["epoch"]
     assert int(r30["pred_lead_s"]) == at_c["epoch"] - (T0 - 1900) and r30["stop_name"] == "Stop C"
     tr2 = Tracker(st)
@@ -491,7 +493,59 @@ def prediction_log_round_trip():
     assert log.n == 3
     tr2 = Tracker(fake_static())
     assert TL.seed_predictions(tr2, [d / "a.jsonl", d / "a.jsonl", d / "missing.jsonl"], now) == 4
-    assert list(tr2.preds[("V1", "T1", "B")]) == [(now - 900, now + 20, 2), (now - 300, now + 25, 2)]
+    assert list(tr2.preds[("V1", "T1", "B")]) == [(now - 900, now + 20, 2, now - 900, now - 900),
+                                                   (now - 300, now + 25, 2, now - 300, now - 300)]
+    (d / "old.jsonl").write_text('["V1","T1","C",%d,%d,3]\n' % (now - 100, now + 50), encoding="utf-8")   # 6 fields
+    assert TL.seed_predictions(tr2, [d / "old.jsonl"], now) == 1
+    assert list(tr2.preds[("V1", "T1", "C")]) == [(now - 100, now + 50, 3, now - 100, now - 100)]
+    # still shown 70 s later: logged again with the newer 'last', and a reload keeps first and last sighting
+    tr.add_prediction("T1", "B", now - 300, now + 25, 2, "V1", seen=now - 230, last=now - 230)
+    tr.add_prediction("T1", "B", now - 300, now + 25, 2, "V1", seen=now - 200, last=now - 200)   # < 60 s: not logged
+    log.flush()
+    assert log.n == 4, log.n
+    tr3 = Tracker(fake_static())
+    TL.seed_predictions(tr3, [d / "a.jsonl"], now)
+    assert list(tr3.preds[("V1", "T1", "B")])[-1] == (now - 300, now + 25, 2, now - 300, now - 230)
+
+
+@test
+def a_changed_prediction_with_an_old_timestamp_counts_from_when_it_appeared():
+    """Passio sometimes changes the predicted time and keeps the old trip-update timestamp (57 of 651 updates on
+    2026-10-12). Such an update was not on display before it appeared, so it can't stand in for an earlier lead."""
+    tr = Tracker(fake_static())
+    arr = T0 + 5000
+    tr.add_prediction("T1", "B", arr - 700, arr + 90, veh="V1", seen=arr - 695, last=arr - 40)
+    tr.add_prediction("T1", "B", arr - 700, arr + 3, veh="V1", seen=arr - 30, last=arr)   # same timestamp, new time
+    got = tr.preds_at("T1", "B", arr, veh="V1")
+    assert got[600] == (arr + 90, arr - 700, arr - 695) and got[60] == got[600], got
+    assert tr.pred_for("T1", "B", arr, veh="V1") == (arr + 90, 700)
+
+
+@test
+def a_withdrawn_prediction_is_not_on_display():
+    """Owner goal / E19 fix 3: for lead L use the prediction Passio was SHOWING at arrival - L. One it had stopped
+    publishing by then gives no row ("no prediction shown"), not an old number; arrivals.csv's column is unchanged."""
+    tr = Tracker(fake_static())
+    arr = T0 + 5000
+    tr.add_prediction("T1", "B", arr - 700, arr + 15, veh="V1", seen=arr - 700, last=arr - 695)   # gone in 5 s
+    assert tr.preds_at("T1", "B", arr, veh="V1") == {}
+    assert tr.pred_for("T1", "B", arr, veh="V1") == (arr + 15, 700)
+    tr.add_prediction("T1", "B", arr - 700, arr + 15, veh="V1", seen=arr - 100, last=arr - 100)   # shown again later
+    got = tr.preds_at("T1", "B", arr, veh="V1")
+    assert sorted(got) == [60, 120, 180, 300, 600] and got[600] == (arr + 15, arr - 700, arr - 700), got
+
+
+@test
+def updates_without_a_vehicle_id_count_only_for_the_only_bus_on_the_trip():
+    """E01 B1 follow-up: an update with no vehicle id can't be attributed when two buses share the trip id."""
+    st = fake_static()
+    tr = Tracker(st)
+    arr = T0 + 5000
+    tr.add_prediction("F", "B", arr - 400, arr + 9)                               # no vehicle id
+    tr._state(("V1", "F"), "R", arr)["last_t"] = arr
+    assert tr.pred_for("F", "B", arr, veh="V1") == (arr + 9, 400)                 # V1 is alone on F
+    tr._state(("V2", "F"), "R", arr)["last_t"] = arr - 60
+    assert tr.pred_for("F", "B", arr, veh="V1") is None and tr.preds_at("F", "B", arr, veh="V1") == {}
 
 
 @test

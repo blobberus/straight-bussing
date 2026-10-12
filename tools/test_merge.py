@@ -171,6 +171,11 @@ def test_predictions_merge_keeps_the_fresher_duplicate():
     (d / "c.csv").write_text(MP.HEADER + prow(T0 + 1500, 600, 650) + "junk,line\n", encoding="utf-8", newline="")
     s = MP.merge(d / "p.csv", d / "c.csv")                                           # next lap: a new arrival
     assert (s["added"], s["bad"]) == (1, 1), s
+    old = prow(T0 + 3000, 600, 650).rstrip("\n").rsplit(",", 1)[0] + "\n"            # 14 columns, before pred_seen_epoch
+    (d / "o.csv").write_text(old, encoding="utf-8", newline="")
+    assert MP.merge(d / "p.csv", d / "o.csv")["added"] == 1
+    assert prow(T0 + 3000, 600, 650) in body(d / "p.csv")                           # padded to the current schema
+    assert all(ln.count(",") == body(d / "p.csv")[0].count(",") for ln in body(d / "p.csv"))
 
 
 TESTS = [v for k, v in dict(globals()).items() if k.startswith("test_")]

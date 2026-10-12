@@ -19,9 +19,11 @@ COLUMNS = ("epoch,ts_utc,local_time,dow,hour,minute_of_day,route_id,route_name,t
 # arrival, Passio's newest prediction made at least lead_target_s before it, one row per target lead. The arrivals
 # file keeps its 25 columns; rows join on vehicle_id + stop_id + epoch.
 PRED_COLUMNS = ("epoch,local_time,route_id,route_name,trip_id,vehicle_id,stop_id,stop_name,stop_index,"
-                "lead_target_s,pred_epoch,pred_made_epoch,pred_lead_s,pred_minus_actual_s").split(",")
+                "lead_target_s,pred_epoch,pred_made_epoch,pred_lead_s,pred_minus_actual_s,pred_seen_epoch").split(",")
 PRED_LEADS = (60, 120, 180, 300, 600, 900, 1200, 1800)
 PRED_SEED_S = 3600       # a new logger run reloads prediction updates up to this old (--pred-seed)
+SHOW_GRACE_S = 90        # predictions.csv: a prediction counts as on display at a moment if a poll still showed it
+                         # within this long before (polls every 10 s; covers a short feed or collector hiccup)
 PREV_VISIT_GAP_S = 120   # a prediction counts for this arrival only if made after the bus's previous visit to the
                          # stop and predicting a time this far past it (else it was about the earlier lap)
 
@@ -182,14 +184,14 @@ def fmt_row(st, e):
 
 
 def fmt_pred_rows(st, e):
-    """e: an arrival event with preds {lead_target_s: (pred_epoch, made_epoch)} -> predictions.csv rows."""
+    """e: an arrival event with preds {lead_target_s: (pred_epoch, made_epoch, seen_epoch)} -> predictions.csv rows."""
     rid, idx = e["route"], e["idx"]
     sid = st.route_stops[rid][idx]
     local = chicago(e["epoch"]).strftime("%Y-%m-%d %H:%M:%S")
     out = []
-    for lt, (pred, made) in sorted((e.get("preds") or {}).items()):
+    for lt, (pred, made, seen) in sorted((e.get("preds") or {}).items()):
         out.append([e["epoch"], local, rid, st.route_name(rid), e["trip"], e["veh"], sid,
-                    st.stops[sid].get("name", ""), idx, lt, pred, made, e["epoch"] - made, pred - e["epoch"]])
+                    st.stops[sid].get("name", ""), idx, lt, pred, made, e["epoch"] - made, pred - e["epoch"], seen])
     return out
 
 

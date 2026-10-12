@@ -8,7 +8,7 @@ predictions and train our own (`tools/model_*.py`, `docs/ALGORITHMS.md`). Unoffi
 | `data/ground_truth/arrivals.csv` | `data` branch only (git-ignored on main) | real arrivals, collected around the clock, merged every 30 min |
 | `data/ground_truth/predictions.csv` | `data` branch | since 2026-10-12: Passio's prediction 1, 2, 3, 5, 10, 15, 20 and 30 min before each arrival (one row per arrival and lead; schema below), for the owner's "10% rule" |
 | `data/ground_truth/archive/*.csv` | `data` branch | same schemas, rotated when a live file passes 40 MB |
-| CI artifacts `raw-polls-<run>`, `pred-updates-<run>` | GitHub Actions, 90 days | every position poll (E03) and every Passio prediction update `[veh, trip, stop_id, made, predicted, seq]` per run (`tools/raw_fetch.py --list`) |
+| CI artifacts `raw-polls-<run>`, `pred-updates-<run>` | GitHub Actions, 90 days | every position poll (E03) and every Passio prediction update `[veh, trip, stop_id, made, predicted, seq, seen, last]` (repeated about once a minute while it stays on display) per run (`tools/raw_fetch.py --list`) |
 | `web/data/learned.json` | `data` branch | model refreshed after each run (if `tools/refresh_model.py` exists) |
 | `data/ground_truth/synthetic_arrivals.csv` | main | **fake**, seeded 3-week demo (ids start `syn`); `tools/make_synthetic_truth.py` |
 | `web/data/places.json` | main | named places within a 30-min walk of campus stops for on-device place search; `tools/build_places.py` (OpenStreetMap Overpass, ODbL); refreshed by the daily Pages run |
@@ -37,14 +37,23 @@ prediction made L before the arrival should be right to 10% of L (1 min at 10 mi
 
 `epoch` `local_time` `route_id` `route_name` `trip_id` `vehicle_id` `stop_id` `stop_name` `stop_index` (as in
 arrivals.csv) · `lead_target_s` 60, 120, 180, 300, 600, 900, 1200 or 1800 · `pred_epoch` Passio's newest
-prediction for this bus at this stop made at least `lead_target_s` before the arrival · `pred_made_epoch` when it
-was made (Passio's trip-update timestamp) · `pred_lead_s` = epoch - pred_made_epoch (>= lead_target_s; the excess
-is how stale the prediction was at that moment) · `pred_minus_actual_s` = pred_epoch - epoch (**positive = the
-prediction was later than the actual arrival: the bus came early**, the case riders miss). A missing row = Passio
-had no prediction that old for this arrival (it often does not predict a trip before it starts).
+prediction for this bus at this stop **on display** `lead_target_s` before the arrival (made and first seen by our
+poll by then) · `pred_made_epoch` when it was made (Passio's trip-update timestamp) · `pred_lead_s` = epoch -
+pred_made_epoch (>= lead_target_s; the excess is how stale the prediction was at that moment) ·
+`pred_minus_actual_s` = pred_epoch - epoch (**positive = the prediction was later than the actual arrival: the bus
+came early**, the case riders miss) · `pred_seen_epoch` the poll that first showed this update (blank on rows
+logged 2026-10-12 12:20 to about 13:00 CDT, before the column existed). Passio sometimes changes the predicted time
+and keeps the old timestamp (57 of 651 updates on 2026-10-12), so the lead is judged by max(made, seen): a
+prediction that appeared 30 s before the bus can't pass for a 10-minute one. It must also still have been on
+display then: a poll showed it within 90 s of that moment (`SHOW_GRACE_S`; the tracker keeps each update's first and
+last sighting). A missing row = **no prediction on display** at that lead (none yet, it often does not predict a run
+before it starts, or Passio had withdrawn it), which is itself a rider-facing count, not a data gap.
+**Scoring notes** (`experiments/routeknower/E19-*`): at a route's first stop Passio predicts the departure, so
+compare there with epoch + dwell_s; score Passio on rows from 2026-10-10 05:18 CDT on (collector fixes B1-B4).
 
 Attribution (`Tracker._candidates`, same rules as `passio_pred_*` in arrivals.csv since 2026-10-12): this bus's own
-predictions (E01 B1); at a loop stop only the matching stop_sequence; and **not** a prediction made before the bus's
+predictions (E01 B1; an update without a vehicle id only when no other bus has that trip id); at a loop stop only
+the matching stop_sequence; and **not** a prediction made before the bus's
 previous visit to this stop, or predicting a time within 120 s of it (`PREV_VISIT_GAP_S`): that one was about the
 earlier lap of a loop that keeps its trip id (Downtown Campus Connector). A stop_sequence that names this visit on
 the same trip overrides it (one update predicts both ends of a loop). Coverage: a CI run only knows predictions

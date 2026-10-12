@@ -7,7 +7,7 @@ import math
 from collections import defaultdict, deque
 
 from arrivals_lib import (DEPART_SPEED, HIST, MAX_GAP, MAX_LINK_S, MAX_SKIP, MIN_PRED_AGE, NEAR_M, PRED_LEADS,
-                          PREV_VISIT_GAP_S, RADIUS_M, SAME_VISIT_S, STATE_TTL, STOP_SPEED, hav_m)
+                          PREV_VISIT_GAP_S, RADIUS_M, SAME_VISIT_S, SHOW_GRACE_S, STATE_TTL, STOP_SPEED, hav_m)
 
 
 class Tracker:
@@ -17,7 +17,8 @@ class Tracker:
     def __init__(self, st):
         self.st = st
         self.v = {}                                            # (veh, trip) -> state
-        self.preds = defaultdict(lambda: deque(maxlen=400))    # (veh|None, trip, stop_id) -> (made, predicted, seq)
+        self.preds = defaultdict(lambda: deque(maxlen=400))    # key -> (made, predicted, seq, seen, last seen)
+        self._logged = {}                                      # key -> last 'last seen' written to the pred log
         self.trip_seq = {}                                     # trip -> {stop_id: {stop_sequence}}
         self.last_arr = {}                                     # veh -> (stop_id, epoch, prev dict) of last arrival
         self.visits = {}                                       # (veh, stop_id) -> (epoch, trip, idx) of its last arrival there
@@ -28,19 +29,32 @@ class Tracker:
     def _veh(veh):
         return None if veh is None or veh == "" else str(veh)
 
-    def add_prediction(self, trip, stop_id, made, predicted, seq=None, veh=None):
+    def add_prediction(self, trip, stop_id, made, predicted, seq=None, veh=None, seen=None, last=None):
         """Keyed per vehicle (trip_update.vehicle.id): buses can share a trip id (every Downtown Campus
         Connector bus runs one frequency trip), and their predictions must not overwrite each other.
-        Updates without a vehicle id are kept under veh None."""
+        Updates without a vehicle id are kept under veh None. seen = the poll that first showed this update
+        (Passio sometimes changes the predicted time and keeps the old timestamp: 57 of 651 updates on
+        2026-10-12), so 'on display L before the arrival' is judged by max(made, seen), never by made alone.
+        last = the latest poll still showing it: a prediction Passio stopped publishing was not on display."""
         try:
             seq = None if seq is None else int(seq)
         except (TypeError, ValueError):
             seq = None
-        d = self.preds[(self._veh(veh), trip, stop_id)]
-        if not d or d[-1] != (made, predicted, seq):
-            d.append((made, predicted, seq))
-            if self.on_pred is not None:                 # the run's prediction log (truth_logger --pred-log)
-                self.on_pred(self._veh(veh), trip, stop_id, made, predicted, seq)
+        seen = made if seen is None else max(made, seen)
+        last = seen if last is None else max(last, seen)
+        key = (self._veh(veh), trip, stop_id)
+        d = self.preds[key]
+        if d and d[-1][:3] == (made, predicted, seq):    # the same update shown again: it is still on display
+            if last > d[-1][4]:
+                d[-1] = d[-1][:4] + (last,)
+                if self.on_pred is not None and last - self._logged.get(key, last) >= 60:
+                    self._logged[key] = last             # about once a minute while it stays up (next run's seed)
+                    self.on_pred(key[0], trip, stop_id, made, predicted, seq, d[-1][3], last)
+            return
+        d.append((made, predicted, seq, seen, last))
+        if self.on_pred is not None:                     # the run's prediction log (truth_logger --pred-log)
+            self._logged[key] = last
+            self.on_pred(key[0], trip, stop_id, made, predicted, seq, seen, last)
         if seq is not None:
             self.trip_seq.setdefault(trip, {}).setdefault(stop_id, set()).add(seq)
             while len(self.trip_seq) > 3000:
@@ -55,11 +69,13 @@ class Tracker:
         visit, was about the earlier lap (loops that keep one trip id, the Downtown Campus Connector's
         frequency trip) and is skipped, unless its stop_sequence names this visit and the previous one was
         another index of the same trip (the loop terminal: one update predicts both ends of the loop)."""
-        d = self.preds.get((self._veh(veh), trip, stop_id)) or self.preds.get((None, trip, stop_id), ())
+        d = self.preds.get((self._veh(veh), trip, stop_id))
+        if not d and self._only_bus(trip, veh, epoch):    # updates without a vehicle id: only if no other bus has
+            d = self.preds.get((None, trip, stop_id), ())  # this trip id (shared trip ids, E01 B1)
         pv = self.visits.get((self._veh(veh), stop_id))
         if pv is not None and not 0 < epoch - pv[0] <= 2 * STATE_TTL:
             pv = None
-        for made, pred, seq in d:
+        for made, pred, seq, seen, last in d or ():
             if loop_stop and seq is not None and idx is not None and seq != idx + 1:
                 continue
             if abs(pred - epoch) >= 3600:
@@ -68,26 +84,33 @@ class Tracker:
                 named = seq is not None and idx is not None and seq == idx + 1 and pv[1] == trip and pv[2] != idx
                 if not named:
                     continue
-            yield made, pred
+            yield made, pred, seen, last
+
+    def _only_bus(self, trip, veh, epoch):
+        """No other vehicle reported on this trip id within 10 min of epoch."""
+        me = self._veh(veh)
+        return not any(k[1] == trip and self._veh(k[0]) != me and abs(s.get("last_t", 0) - epoch) <= 600
+                       for k, s in self.v.items())
 
     def pred_for(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False):
         """Most recent prediction made >= MIN_PRED_AGE s before epoch -> (pred_epoch, lead_s) | None
         (the arrivals.csv passio_pred_* columns)."""
         best = None
-        for made, pred in self._candidates(trip, stop_id, epoch, veh, idx, loop_stop):
-            if made <= epoch - MIN_PRED_AGE:
+        for made, pred, seen, last in self._candidates(trip, stop_id, epoch, veh, idx, loop_stop):
+            if seen <= epoch - MIN_PRED_AGE:
                 best = (made, pred)
         return (best[1], epoch - best[0]) if best else None
 
     def preds_at(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False, leads=PRED_LEADS):
-        """For each target lead L: the newest prediction made >= L s before epoch -> {L: (pred_epoch, made)}
-        (predictions.csv; leads without one are left out)."""
-        out = {}
-        for made, pred in self._candidates(trip, stop_id, epoch, veh, idx, loop_stop):
+        """For each target lead L, the prediction on display L s before epoch: the newest one made and first seen
+        by then, if a poll still showed it within SHOW_GRACE_S of that moment -> {L: (pred_epoch, made, seen)}
+        (predictions.csv). No row for L = no prediction on display then (none yet, or Passio had withdrawn it)."""
+        newest = {}
+        for made, pred, seen, last in self._candidates(trip, stop_id, epoch, veh, idx, loop_stop):
             for lt in leads:
-                if made <= epoch - lt:
-                    out[lt] = (pred, made)
-        return out
+                if seen <= epoch - lt:
+                    newest[lt] = (pred, made, seen, last)
+        return {lt: v[:3] for lt, v in newest.items() if v[3] >= epoch - lt - SHOW_GRACE_S}
 
     # ---- resume from CSV tail ----
     def seed(self, rows, now):

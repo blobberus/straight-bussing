@@ -6,7 +6,8 @@
 > Claude agent. Agents: read this whole file before running an experiment, follow **§10 Agent
 > protocol**, and log every result in **§11**.
 >
-> Status: **collecting arrivals + weather/traffic context; E00, E01, E04, E15, E18 done.** Created 2026-10-08,
+> Status: **collecting arrivals, Passio's predictions 1-30 min ahead (`predictions.csv`, since 2026-10-12) and
+> weather/traffic context; E00, E01, E04, E15, E18, E19 done.** Owner goal since 2026-10-12: the **10% rule** (E19). Created 2026-10-08,
 > revised the same day after an objective review (§13). Ship target: **Fri Nov 20, 2026**, before
 > Thanksgiving Break (§8). Improving the data and the model continues after shipping.
 
@@ -320,6 +321,8 @@ A failed gate keeps the current source for that output; logged as "not yet". No 
 | E16 | Weather effect on shuttle run time and dwell (M14 re-estimate) | T2 + 10 wet days | multipliers with CIs; compare to E15 prior |
 | E17 | CTA bus GPS on Hyde Park streets as a live traffic feed | Nathan's CTA developer key | adopt if it improves on M13 |
 | E18 | One-minute goal (owner request): Passio's error per stop and what M2 / M10 buy, 2-3 min ahead | T0 | **done 2026-10-12**: worth pursuing, inconclusive for shipping (4 test days); re-run weekly, decide at T1 |
+| E19 | **The 10% rule** (owner goal 2026-10-12: error <= 10% of the lead, 1 min at 10 min, 3 min at 30 min; "under 1% too late") on the data we have, and what the huge errors are | T0 | **done 2026-10-12**: no source meets it yet; predictions.csv (1-30 min) collected from today |
+| E20 | Passio at 1-30 min from `predictions.csv` under the 10% rule (E19 scoring rule), plus our layover / run-matching model | 1 week of predictions.csv | first look Oct 19, decide at T1 |
 
 ## 8. Timeline to ship before December
 
@@ -385,6 +388,7 @@ Reproduce: <exact commands>
 | E01 | 2026-10-10 | data commit `ab837cf`: 6,824 rows, 2026-10-08 04:59 to 2026-10-09 20:28 CDT (2 service days) + GTFS zip + tripUpdates fixture | DCC: one frequency trip id for all buses; 18% stale links, 48 mistimed transitions, route_stops correct. Drexel 0.86 per full lap (0.50 per trip id); misses follow trip-id flaps. Midway Metra variant (57th St Metra NB) missing from route_stops. Tails: holds at lots/turnarounds, layovers, stale links, > 20 m/s artefacts. Passio: logger mixes DCC buses (618 s vs 78 s MAE); leads >= 5 min sample Passio failures. Rules cut 2.3% of segments, keys 233 -> 192; backtest 2-5 min Passio 114 -> 62 s, shrunk 63 -> 53 s | **Adopt** `load_rows` rules (analysis side). Collector bugs B1-B4 applied 2026-10-10 (`cc40831`, `9eb11c7`, `2ba339c`, `c3831ca`); B5 open. `experiments/routeknower/E01-data-quality-2026-10-10.md` |
 | E04 | 2026-10-08 | 2026-27 College Catalog | `data/calendar.json`: Autumn begins Sep 28; Thanksgiving Break Nov 23-27; reading Dec 5-7; finals Dec 8-11; quarter ends Dec 12; Winter Jan 4 - Mar 13; Spring Mar 22 - Jun 5 | **Done**; ship date moved to Nov 20 (§8) |
 | E18 | 2026-10-12 | data `2c7f653`: 9,569 rows, Oct 8 to 12 (4 test days, rolling origin by day); 6,973 rider-facing Passio predictions, 2-3 min ahead | Passio today: 60% within 1 min, 30% of stops (36 of 119) have 80% of predictions within 1 min; buses come 40 s later than shown on average, a per-stop offset that is real (drive-through vs stopped r = 0.92) and stable (r = 0.89 across days). Per-stop offset fitted on earlier days: 62 -> 87% within 1 min, stops at goal 31 -> 85%, MAE 67 -> 42 s, but bus > 1 min early 3 -> 7% (quantile 0.8 per stop x daypart: 74%, early 3%). Our model / blends add nothing at this lead | **Worth pursuing; inconclusive** (< 10 test days). B5 first (score 5-10 min), then decide at T1 with the early-miss rule. `experiments/routeknower/E18-one-minute-goal-2026-10-12.md` |
+| E19 | 2026-10-12 | data `2c7f653` (Oct 8-12, 4 test days) + raw polls Oct 10-12 + GTFS | 10% rule: Passio 2-5 min 13% (60% with a 1-min floor); ours 30% at 10 min, 20% at 30 min; timetable + current delay 63% at 30 min. 1% rule: reading B (at most 1% of L too late for most) holds, A1/A2 (< 1% too late) unreachable without destroying accuracy. Huge errors (> 5 min, 9.9% of rows, 1.1% post-fix at 2 min): 51% old logger bugs (fixed B1), 5% other-lap attribution (fixed today), 31% Passio stale (70% of post-fix: layovers), 5% Passio on the wrong run (bus 5-35 min early, dangerous) | **Not met**; collector now logs Passio at 1-30 min with previous-visit, per-bus, first-seen and on-display rules (`predictions.csv`); E20 next. `experiments/routeknower/E19-ten-percent-rule-2026-10-12.md` |
 | E15 | 2026-10-08 | Traffic Tracker regions 2022-01..2026-04 x MDW METARs (64,551 joined hours) | Hyde Park speeds -2.0 % light rain, -3.5 % heavy rain, -3.5 % snow (95% CIs exclude 0); ~20 wet / ~5 snow service days expected Oct 8-Nov 30 | **Adopt as prior** for M14; weather secondary. `experiments/routeknower/E15-weather-traffic-prior.md` |
 
 ## 12. Open questions

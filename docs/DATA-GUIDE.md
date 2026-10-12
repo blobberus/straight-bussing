@@ -156,13 +156,16 @@ be right to within 1 minute, one made 30 minutes ahead to within 3 minutes.
 |---|---|---|
 | `epoch`, `local_time`, `route_id`, `route_name`, `trip_id`, `vehicle_id`, `stop_id`, `stop_name`, `stop_index` | The arrival, exactly as in the arrivals file. To find the matching arrivals row, look for the same `vehicle_id` and `stop_id` with an `epoch` within a few seconds. | `2026-10-12 12:16:49`, Apostolic/Drexel, bus `4538` at Bernard Mitchell Hospital |
 | `lead_target_s` | How far ahead this row looks, in seconds: 60, 120, 180, 300, 600, 900, 1200 or 1800 (30 minutes). | `120` (2 minutes ahead) |
-| `pred_epoch` | The feed's newest prediction that was made at least that far ahead. | `1791825335` (12:15:35 PM) |
+| `pred_epoch` | The prediction the feed was showing that far ahead of the arrival (its newest one at that moment). | `1791825335` (12:15:35 PM) |
 | `pred_made_epoch` | When the feed made that prediction. | `1791825286` (12:14:46 PM) |
 | `pred_lead_s` | How long before the arrival it was made. Never under `lead_target_s`; the difference is how old the prediction already was at that point (see "Reading the prediction lead" above). | `123` |
 | `pred_minus_actual_s` | Predicted time minus real arrival time, in seconds. **Positive means the prediction was too late: the bus came earlier than predicted**, which is how riders miss a bus. Negative means the bus came later than predicted (riders wait). | `-74` (the bus came 74 s later than predicted) |
+| `pred_seen_epoch` | When our collector first saw that prediction. Usually a few seconds after `pred_made_epoch`. It matters because the feed sometimes changes a predicted time without updating its own timestamp; we count a prediction from the moment it actually appeared, so a last-minute change never passes for a 10-minute-ahead prediction. Blank on the first rows (October 12, 12:20 to about 1 PM), before this column existed. | a few seconds after `pred_made_epoch` |
 
-**A missing row is information too:** if an arrival has a 2-minute row but no 30-minute row, the feed had no
-prediction for that bus at that stop 30 minutes ahead (it usually predicts a run only once the bus has started it).
+**A missing row is information too:** if an arrival has a 2-minute row but no 30-minute row, the feed was not
+showing any prediction for that bus at that stop 30 minutes ahead (it usually predicts a run only once the bus has
+started it, and it sometimes drops a prediction while a bus waits at the end of its route). Only predictions the
+feed was actually showing at that moment count.
 
 **Checking the 10% rule in a spreadsheet:** a row passes if `ABS(pred_minus_actual_s) <= 0.1 * lead_target_s`.
 

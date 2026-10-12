@@ -116,7 +116,7 @@ def store_predictions(tr, feed, now, err=None):
             for st in u.get("stop_time_update") or []:
                 t = (st.get("arrival") or st.get("departure") or {}).get("time")
                 if trip and t is not None and st.get("stop_id"):
-                    tr.add_prediction(trip, st["stop_id"], made, t, st.get("stop_sequence"), veh)
+                    tr.add_prediction(trip, st["stop_id"], made, t, st.get("stop_sequence"), veh, seen=now, last=now)
         except Exception as ex:
             if err is None:
                 raise
@@ -249,15 +249,17 @@ class Writer:
 
 
 class PredLog:
-    """Every new Passio prediction update as one JSON line [veh, trip, stop_id, made, predicted, seq]: lets the
+    """Every new Passio prediction update as one JSON line [veh, trip, stop_id, made, predicted, seq, seen, last]
+    (again about once a minute while it stays on display, with a newer last): lets the
     next run start with the last hour of predictions (--pred-seed), so 30-min-ahead rows exist from its first
     minute, and keeps what Passio said for re-analysis (CI artifact)."""
     def __init__(self, path):
         self.path, self.n, self.buf = Path(path), 0, []
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    def __call__(self, veh, trip, stop_id, made, predicted, seq):
-        self.buf.append([veh, trip, stop_id, made, predicted, seq])
+    def __call__(self, veh, trip, stop_id, made, predicted, seq, seen=None, last=None):
+        seen = made if seen is None else seen
+        self.buf.append([veh, trip, stop_id, made, predicted, seq, seen, seen if last is None else last])
 
     def flush(self):
         if not self.buf:
@@ -278,15 +280,22 @@ def seed_predictions(tr, paths, now, max_age=L.PRED_SEED_S):
             continue
         for ln in lines:
             try:
-                veh, trip, stop_id, made, pred, seq = json.loads(ln)
+                x = json.loads(ln)
+                veh, trip, stop_id, made, pred, seq = x[:6]
+                seen = x[6] if len(x) > 6 else made          # logs written before 'seen' existed
+                last = x[7] if len(x) > 7 else seen
                 if now - max_age <= made <= now:
-                    tr.add_prediction(trip, stop_id, made, pred, seq, veh)
+                    tr.add_prediction(trip, stop_id, made, pred, seq, veh, seen=seen, last=last)
                     n += 1
             except (ValueError, TypeError):
                 continue
     for k in list(tr.preds):                     # several logs, out of order: keep each deque time-sorted
         d = tr.preds[k]
-        tr.preds[k] = type(d)(sorted(set(d), key=lambda x: (x[0], x[1])), maxlen=d.maxlen)
+        best = {}                                # one entry per update: its earliest and latest sighting
+        for x in d:
+            b = best.get(x[:3])
+            best[x[:3]] = x if b is None else x[:3] + (min(b[3], x[3]), max(b[4], x[4]))
+        tr.preds[k] = type(d)(sorted(best.values(), key=lambda x: (x[3], x[0], x[1])), maxlen=d.maxlen)
     return n
 
 

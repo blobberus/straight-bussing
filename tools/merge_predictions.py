@@ -22,15 +22,30 @@ I_EPOCH, I_VEH, I_STOP, I_LEAD, I_PLEAD = (PRED_COLUMNS.index(c) for c in
                                            ("epoch", "vehicle_id", "stop_id", "lead_target_s", "pred_lead_s"))
 
 
+OLD_LEN = len(PRED_COLUMNS) - 1                   # rows from before pred_seen_epoch existed (2026-10-12 12:20-13:00)
+
+
 def parse(line):
     """-> (fields, epoch, pred_lead) or None for headers, blank or malformed lines."""
     try:
         r = next(csv.reader([line]))
+        if len(r) == OLD_LEN:
+            r.append("")
         if len(r) != len(PRED_COLUMNS):
             return None
         return r, int(r[I_EPOCH]), int(r[I_PLEAD])
     except (StopIteration, ValueError, csv.Error):
         return None
+
+
+def normalize(line):
+    """An old-schema line gets an empty pred_seen_epoch, so the shared file has one column count."""
+    try:
+        if len(next(csv.reader([line]))) == OLD_LEN:
+            return line.rstrip("\n") + ",\n"
+    except (StopIteration, csv.Error):
+        pass
+    return line
 
 
 def key(r):
@@ -46,7 +61,7 @@ def read_lines(p):
 def merge(into, add, rotate_mb=0.0):
     """-> dict(added, replaced, dup, bad). Writes `into` atomically; may rotate it to archive/."""
     into, add = Path(into), Path(add)
-    lines = [ln for ln in read_lines(into) if not ln.startswith("epoch,")]
+    lines = [normalize(ln) for ln in read_lines(into) if not ln.startswith("epoch,")]
     index = {}                                    # key -> [(epoch, line_no or None)]
     for i, ln in enumerate(lines):
         p = parse(ln)
@@ -69,6 +84,7 @@ def merge(into, add, rotate_mb=0.0):
             stats["bad"] += 1
             continue
         r, ep, plead = p
+        ln = normalize(ln)
         k = key(r)
         if any(abs(ep - e) <= DUP_S for e in archived.get(k, ())):
             stats["dup"] += 1
