@@ -11,8 +11,12 @@
  * Start (selected option with a bus) begins a trip: store.journey {rids, label, kind:'plan'} so the map shows only
  * that trip's routes, the plan stays drawn (also after leaving the view), and the sheet switches to Current trip
  * with the trip in progress first. Back here, a trip bar with "End trip" (journey:end, registered by the shell)
- * heads the results. Picking another option updates the journey; changing an endpoint ends it. Opened from the search bar (dir:open, data-focus="to"); parent view 'nearby' (Current
- * trip). Walking is always visible: card + step markup in ./tripinfo.js.
+ * heads the results. Picking another option updates the journey; changing an endpoint ends it. Opened from the
+ * search bar (dir:open, data-focus="to"); parent view 'nearby' (Current trip). Opening from the bar grows the
+ * Start / Destination fields out of it (owner 2026-10-12: the bar must not feel like a plain button):
+ * morphFromBar animates a copy of the bar's bubble into the fields' final place with the sheet's own duration and
+ * curve while the sheet rises, then the real fields fade in (no morph with Reduce Motion or in the landscape
+ * panel). Walking is always visible: card + step markup in ./tripinfo.js.
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -28,6 +32,7 @@ import { walkRoute } from "../../core/walk.js";
 import { createThrottle } from "../../core/throttle.js";
 import { predict } from "../../core/predict.js";
 import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
+import { PANEL_MEDIA } from "../sheet.js";
 import { matchStations, ICONS } from "./pick.js";
 import { noBusHelpHTML } from "./alerts.js";   // the operator's own words + who to call when no bus reports (rider safety)
 import { createPlaceSearch, assumeNoteHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
@@ -355,12 +360,92 @@ export function mountDirections(root, ctx) {
   }
   replan({ fresh: true });
   Promise.resolve(deps.predict?.ready).then(() => { if (rootRef && D.from && D.to) replan(); }).catch(() => {});
+  if (D.morphFrom) { const m = D.morphFrom; D.morphFrom = null; try { morphFromBar(root, m); } catch (e) { clearMorph(); } }
   if (D.focusTo) { D.focusTo = false; focusField("to"); }
   else if (D.from && !D.to) focusField("to"); else if (!D.from && D.to) focusField("from");
 }
 
 /** Unmount: clear the plan from the map (kept while a trip is on, until it ends), stop async updates (endpoints are kept). */
+/**
+ * The search bar's bubble and label rects, read before the view switch hides the bar; null when no morph should
+ * run (no bar, Reduce Motion, panel layout, no Web Animations).
+ * @returns {{bubble:DOMRect, label:DOMRect|null, html:string}|null}
+ */
+export function barRects() {
+  if (typeof document === "undefined") return null;
+  const bar = document.querySelector("#topbar .searchbar"), btn = document.getElementById("searchBar");
+  if (!bar || typeof bar.animate !== "function") return null;
+  if (matchMedia?.("(prefers-reduced-motion: reduce)").matches || matchMedia?.(PANEL_MEDIA).matches) return null;
+  const bubble = bar.getBoundingClientRect();
+  if (!(bubble.width > 0 && bubble.height > 0)) return null;
+  return { bubble, label: btn ? btn.getBoundingClientRect() : null, html: btn ? btn.innerHTML : "" };
+}
+
+let morphEls = [];
+function clearMorph() {
+  for (const el of morphEls) el.remove();
+  morphEls = [];
+}
+
+/**
+ * Grow the Start / Destination fields out of the search bar. The fields live in the sheet, which is starting its
+ * own transition to the new detent, so their final place is where they are now plus the sheet's remaining travel;
+ * a fixed copy of the bubble animates from the bar to there with the sheet's duration and curve (both paths are
+ * linear in the same eased progress, so they meet exactly), while the bar's label fades and the real fields fade
+ * in over the last part.
+ * @param {HTMLElement} root the view root
+ * @param {{bubble:DOMRect, label:DOMRect|null, html:string}} from barRects() before the view switch
+ * @returns {boolean} whether a morph ran
+ */
+export function morphFromBar(root, from) {
+  const box = root?.querySelector?.(".v-dirbox");
+  if (!from || !box || typeof box.animate !== "function") return false;
+  clearMorph();
+  const sheet = root.closest(".sheet") || document.getElementById("sheet");
+  const c0 = box.getBoundingClientRect();
+  let dy = 0, k = 1;
+  if (sheet && sheet.offsetHeight) {
+    k = sheet.getBoundingClientRect().height / sheet.offsetHeight || 1;   // the desktop phone frame is scaled
+    const probe = document.querySelector(`[data-sheet-probe="${sheet.dataset.detent}"]`);
+    const m = getComputedStyle(sheet).transform;
+    const cur = m && m !== "none" ? new DOMMatrixReadOnly(m).m42 : 0;   // where the sheet's transition starts
+    if (probe) dy = (sheet.offsetHeight - probe.offsetHeight - cur) * k;
+  }
+  const fin = { left: c0.left, top: c0.top + dy, width: c0.width, height: c0.height };
+  if (!(fin.width > 0 && fin.height > 0)) return false;
+  const css = getComputedStyle(document.documentElement);
+  const dur = parseFloat(css.getPropertyValue("--d-sheet")) || 320;
+  const ease = css.getPropertyValue("--ease-spring").trim() || "cubic-bezier(.32, .72, 0, 1)";
+  const b = from.bubble, sx = b.width / fin.width, sy = b.height / fin.height, r = b.height / 2;
+  const ghost = document.createElement("div");
+  ghost.className = "dir-morph";
+  ghost.setAttribute("aria-hidden", "true");
+  Object.assign(ghost.style, { left: fin.left + "px", top: fin.top + "px", width: fin.width + "px", height: fin.height + "px" });
+  document.body.appendChild(ghost);
+  morphEls.push(ghost);
+  ghost.animate([
+    { transform: `translate(${b.left - fin.left}px, ${b.top - fin.top}px) scale(${sx}, ${sy})`, borderRadius: `${r / sx}px / ${r / sy}px` },
+    { transform: "none", borderRadius: `${14 * k}px` },
+  ], { duration: dur, easing: ease, fill: "both" });
+  const fade = ghost.animate([{ opacity: 1 }, { opacity: 1, offset: 0.55 }, { opacity: 0 }], { duration: dur + 80, fill: "both" });
+  if (from.label && from.html) {   // the bar's own text and icon stay put and fade as the bubble grows
+    const lab = document.createElement("div");
+    lab.className = "dir-morph-label";
+    lab.setAttribute("aria-hidden", "true");
+    lab.innerHTML = from.html;
+    Object.assign(lab.style, { left: from.label.left + "px", top: from.label.top + "px",
+      width: from.label.width / k + "px", height: from.label.height / k + "px", transform: `scale(${k})` });
+    document.body.appendChild(lab);
+    morphEls.push(lab);
+    lab.animate([{ opacity: 1 }, { opacity: 0 }], { duration: Math.min(160, dur / 2), easing: "ease-out", fill: "both" });
+  }
+  box.animate([{ opacity: 0 }, { opacity: 0, offset: 0.45 }, { opacity: 1 }], { duration: dur + 80 });
+  fade.finished.then(clearMorph, clearMorph);
+  return true;
+}
+
 export function unmountDirections() {
+  clearMorph();
   if (rootRef) { rootRef.removeEventListener("focusin", onFocus); rootRef.removeEventListener("input", onInput); rootRef.removeEventListener("keydown", onKey); }
   offStore?.(); offStore = null; photon.cancel(); liveReplan.reset(); D.token++; D.active = null; D.sugs = [];
   const st = ctxRef?.store, keep = !!st && isPlanJourney(st.get());
@@ -392,7 +477,13 @@ registerView("directions", {
 });
 
 /** dir:open from Plan Trip's "Where to?" (data-focus="to") focuses the destination field on mount. */
-registerAction("dir:open", (ds, ev, ctx) => { if (ds?.focus === "to") D.focusTo = true; ctx.navigate("directions"); });
+registerAction("dir:open", (ds, ev, ctx) => {
+  if (ds?.focus === "to") {
+    D.focusTo = true;
+    try { D.morphFrom = barRects(); } catch (e) { D.morphFrom = null; }   // before the switch hides the bar
+  }
+  ctx.navigate("directions");
+});
 const endTrip = (ctx, yes) => { if (yes && isPlanJourney(ctx.store.get())) ctx.store.set({ journey: null }); };   // a stop's new endpoints end a started trip, never re-target it (iOS parity)
 registerAction("dir:from-stop", (ds, ev, ctx) => { const ep = stopEndpoint(ctx.store.get(), ds.id); if (!ep) return; endTrip(ctx, true); D.from = ep; D.to = null; D.toText = ""; D.result = null; ctx.navigate("directions"); });
 registerAction("dir:to-stop", (ds, ev, ctx) => {

@@ -3,10 +3,15 @@
  * Bottom sheet with three detents (peek / half / full) on phones and inside the desktop phone frame
  * (ui/frame.js); a fixed left panel only on wide + short screens (PANEL_MEDIA, e.g. phone landscape).
  * Drag math works in the sheet's own CSS px, so it stays right when the phone frame is scaled down.
- * Drag: pointer events on the header (any part, incl. tabs; a drag suppresses the click), touch
- * events on the content when it is scrolled to the top. Release projects velocity (px/ms * 200)
- * and snaps; a flick (>0.5 px/ms) goes to the next detent in that direction. Rubber band 0.3 past
- * the ends. Tap on the header at peek -> half. Grabber = an adjustable control for screen readers and the
+ * Drag (owner 2026-10-12: "like Google Maps on an iPhone"): pointer events on the header (any part, incl.
+ * the grab bar and tabs; a drag suppresses the click), tracked on the whole window while the finger is
+ * down, so a drag that leaves the thin grab bar at once still counts; touch events on the content when it
+ * is scrolled to the top. The sheet follows the finger 1:1 (rubber band 0.3 past the ends, one style
+ * write per frame). Release projects the velocity like UIKit's scroll deceleration (px/ms * 499) and
+ * snaps to the nearest detent of that point, so a slow drag settles where it is and a quick flick goes
+ * all the way (full -> peek closes the sheet); any flick (> 0.4 px/ms) moves at least one detent its
+ * way and never back. The settle animation starts at the finger's speed (shorter duration for a fast
+ * flick). Tap on the header at peek -> half. Grabber = an adjustable control for screen readers and the
  * keyboard (role="slider" "Resize panel", value Collapsed / Half / Expanded, like the iOS app's VoiceOver
  * adjustable action): arrows / Page Up / Page Down step, Home = Collapsed, End = Expanded, Enter / Space and
  * taps cycle like a tap.
@@ -23,10 +28,12 @@ import { bus } from "../core/events.js";
 export const DETENTS = Object.freeze(["peek", "half", "full"]);
 /** What a screen reader says for each detent (the grabber's aria-valuetext; iOS BottomSheet accessibilityValue). */
 export const DETENT_TEXT = Object.freeze({ peek: "Collapsed", half: "Half", full: "Expanded" });
-const FLICK = 0.5;      // px/ms
-const PROJECT_MS = 200; // velocity projection
+const FLICK = 0.4;      // px/ms: a flick moves at least one detent in its direction
+const PROJECT_MS = 499; // velocity projection: UIKit's normal deceleration, v * 0.998 / (1 - 0.998)
 const RUBBER = 0.3;
 const SLOP = 6;         // px before a press becomes a drag
+const SPRING_SLOPE = 0.72 / 0.32;   // start speed of --ease-spring cubic-bezier(.32,.72,0,1), x distance / duration
+const MIN_SETTLE_MS = 160;
 
 /**
  * Rubber-band a visible height past [min, max] with resistance k.
@@ -50,14 +57,6 @@ export function rubberBand(vis, min, max, k = RUBBER) {
  * @returns {'peek'|'half'|'full'}
  */
 export function snapDetent(sizes, releaseVis, v = 0) {
-  if (Math.abs(v) > FLICK) {
-    if (v < 0) {
-      for (const d of DETENTS) if (sizes[d] > releaseVis + 1) return d;
-      return "full";
-    }
-    for (const d of [...DETENTS].reverse()) if (sizes[d] < releaseVis - 1) return d;
-    return "peek";
-  }
   const proj = releaseVis - v * PROJECT_MS;
   let best = "half";
   let bd = Infinity;
@@ -68,7 +67,29 @@ export function snapDetent(sizes, releaseVis, v = 0) {
       best = d;
     }
   }
+  if (Math.abs(v) > FLICK) {             // a flick never stays put or goes back: at least the next detent its way
+    if (v < 0 && !(sizes[best] > releaseVis + 1)) {
+      best = DETENTS.find((d) => sizes[d] > releaseVis + 1) || "full";
+    } else if (v > 0 && !(sizes[best] < releaseVis - 1)) {
+      best = [...DETENTS].reverse().find((d) => sizes[d] < releaseVis - 1) || "peek";
+    }
+  }
   return best;
+}
+
+/**
+ * How long the settle animation should take so it starts at the finger's speed: the spring curve starts at
+ * SPRING_SLOPE x distance / duration, so a fast flick over a short distance gets a shorter animation (never
+ * a stall after release); slow releases keep the normal duration.
+ * @param {number} distance px still to travel
+ * @param {number} v release velocity, px/ms
+ * @param {number} base the normal duration, ms
+ * @returns {number} ms
+ */
+export function settleMs(distance, v, base) {
+  const s = Math.abs(v);
+  if (!(base > MIN_SETTLE_MS) || s < 0.1 || !(distance > 0)) return base;
+  return Math.max(MIN_SETTLE_MS, Math.min(base, (SPRING_SLOPE * distance) / s));
 }
 
 /**
@@ -131,6 +152,7 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   let detent = DETENTS.includes(initial) ? initial : DETENTS.includes(sheetEl.dataset.detent) ? sheetEl.dataset.detent : "half";
   let drag = null;
   let suppressClick = false;
+  let frame = 0, durTimer = 0;
 
   const on = (el, type, fn, opt) => {
     el.addEventListener(type, fn, opt);
@@ -175,11 +197,21 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     const h = sheetEl.offsetHeight, r = h ? sheetEl.getBoundingClientRect().height / h : 1;
     return r > 0.05 && isFinite(r) ? r : 1;
   };
+  const baseMs = () => {
+    const s = getComputedStyle(sheetEl).transitionDuration || "";
+    const n = parseFloat(s);
+    return isFinite(n) ? (s.trim().endsWith("ms") ? n : n * 1000) : 0;
+  };
   function begin(yRaw, source) {
     const k = scaleOf(), y = yRaw / k;
-    drag = { k, y0: y, y, sizes: measure(), startVis: 0, samples: [{ y, t: performance.now() }], moved: false, source };
-    drag.startVis = drag.sizes[detent];
+    drag = { k, y0: y, y, sizes: measure(), startVis: 0, samples: [{ y, t: performance.now() }], moved: false, source,
+      eff: 0, base: baseMs() };
+    drag.startVis = drag.eff = drag.sizes[detent];
   }
+  const paintDrag = () => {        // one style write per frame, however many move events arrive
+    frame = 0;
+    if (drag) sheetEl.style.setProperty("--drag", drag.startVis - drag.eff + "px");
+  };
   function track(yRaw) {
     if (!drag) return;
     drag.y = yRaw / drag.k;
@@ -198,13 +230,18 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     const t = performance.now();
     drag.samples.push({ y, t });
     if (drag.samples.length > 12) drag.samples.shift();
-    const eff = rubberBand(drag.startVis - dy, drag.sizes.peek, drag.sizes.full);
-    sheetEl.style.setProperty("--drag", drag.startVis - eff + "px");
+    drag.eff = rubberBand(drag.startVis - dy, drag.sizes.peek, drag.sizes.full);
+    if (!frame) frame = requestAnimationFrame(paintDrag);
     return true;
   }
   function end(cancelled) {
     const d = drag;
     drag = null;
+    unwatch();
+    if (frame) {
+      cancelAnimationFrame(frame);
+      frame = 0;
+    }
     if (!d) return;
     sheetEl.classList.remove("dragging");
     sheetEl.style.removeProperty("--drag");
@@ -212,36 +249,63 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     suppressClick = true;
     setTimeout(() => (suppressClick = false), 350);
     if (cancelled) return emitInset();
-    setDetent(snapDetent(d.sizes, d.startVis - (d.y - d.y0), velocity(d.samples)));
+    const v = velocity(d.samples);
+    const target = snapDetent(d.sizes, d.startVis - (d.y - d.y0), v);
+    const ms = settleMs(Math.abs(d.sizes[target] - d.eff), v, d.base);
+    clearTimeout(durTimer);
+    if (ms < d.base) {             // only shortened: the running transition keeps this duration once started
+      sheetEl.style.transitionDuration = ms + "ms";
+      durTimer = setTimeout(() => sheetEl.style.removeProperty("transition-duration"), ms + 100);
+    } else {
+      sheetEl.style.removeProperty("transition-duration");
+    }
+    setDetent(target);
   }
 
-  /* ---- header: pointer events ---- */
-  let pid = null;
-  on(headEl, "pointerdown", (e) => {
-    if (isPanel() || (e.pointerType === "mouse" && e.button !== 0)) return;
-    if (e.target.closest("input, select, textarea, [data-nodrag]")) return;
-    pid = e.pointerId;
-    begin(e.clientY, "pointer");
-  });
-  on(headEl, "pointermove", (e) => {
+  /* ---- header: pointer events, followed on the whole window while pressed ---- */
+  let pid = null, watching = false;
+  const onMove = (e) => {
     if (!drag || e.pointerId !== pid) return;
     const wasMoved = drag.moved;
     if (move(e.clientY) && !wasMoved) {
       try {
-        headEl.setPointerCapture(e.pointerId);
+        headEl.setPointerCapture(e.pointerId);   // from here on the map never sees this finger
       } catch (err) { /* pointer already gone */ }
     }
-  });
-  on(headEl, "pointerup", (e) => {
+  };
+  const onUp = (e) => {
     if (e.pointerId !== pid) return;
     track(e.clientY);
     pid = null;
     end(false);
-  });
-  on(headEl, "pointercancel", (e) => {
+  };
+  const onCancel = (e) => {
     if (e.pointerId !== pid) return;
     pid = null;
     end(true);
+  };
+  function watch() {   // a fast drag up from the 28 px grab bar leaves the header before the first move event
+    if (watching) return;
+    watching = true;
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onCancel, true);
+  }
+  function unwatch() {
+    if (!watching) return;
+    watching = false;
+    window.removeEventListener("pointermove", onMove, true);
+    window.removeEventListener("pointerup", onUp, true);
+    window.removeEventListener("pointercancel", onCancel, true);
+  }
+  offs.push(unwatch);
+  on(headEl, "pointerdown", (e) => {
+    if (isPanel() || (e.pointerType === "mouse" && e.button !== 0)) return;
+    if (e.target.closest("input, select, textarea, [data-nodrag]")) return;
+    if (drag) end(true);
+    pid = e.pointerId;
+    begin(e.clientY, "pointer");
+    watch();
   });
   on(headEl, "lostpointercapture", () => {
     if (drag && drag.source === "pointer" && pid !== null) {

@@ -19,7 +19,7 @@ test("frame: scale fits the window, never above 1, keeps a margin", () => {
   ok(frameScale(10, 10) >= 0.3, "clamped");
 });
 
-test("sheet: drag distance is measured in the frame's CSS px when the frame is scaled", () => {
+test("sheet: drag distance is measured in the frame's CSS px when the frame is scaled", async () => {
   const wrap = document.createElement("div");
   wrap.style.cssText = "position:fixed;left:0;top:0;width:400px;height:800px;transform:scale(.5);transform-origin:0 0";
   const sheetEl = document.createElement("section");
@@ -33,6 +33,7 @@ test("sheet: drag distance is measured in the frame's CSS px when the frame is s
   pe("pointerdown", 300);
   pe("pointermove", 290);
   pe("pointermove", 270); // 30 screen px up at scale .5 = 60 CSS px
+  await new Promise((r) => requestAnimationFrame(() => r()));   // the offset is written once per frame
   const d = parseFloat(sheetEl.style.getPropertyValue("--drag"));
   near(d, -60, 0.5, "--drag in CSS px: " + d);
   pe("pointercancel", 270);

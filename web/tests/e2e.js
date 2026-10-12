@@ -266,9 +266,58 @@ test("routes to station: 'Type an address or place' lists stops near the place",
   await waitFor(() => !state().routeFilter, "filter cleared");
 });
 
+test("sheet: the grab bar is never covered, and a drag from it that leaves the header at once moves the sheet", async () => {
+  tab("nearby");
+  const grab = $("#grab"), sheet = $("#sheet");
+  const key = (k) => grab.dispatchEvent(new W.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+  const settle = async () => { await sleep(30); for (const an of sheet.getAnimations()) an.finish(); await sleep(30); };
+  for (const [k, d] of [["Home", "peek"], ["ArrowUp", "half"], ["End", "full"]]) {
+    key(k);
+    await settle();
+    eq(sheet.dataset.detent, d);
+    const r = grab.getBoundingClientRect();
+    for (const fx of [0.2, 0.5, 0.8]) {
+      const hit = D.elementFromPoint(r.left + r.width * fx, r.top + r.height / 2);
+      ok(hit && (hit === grab || grab.contains(hit)), `${d}: the grab bar is on top at ${fx * 100}% (got ${hit && (hit.id || hit.className)})`);
+    }
+  }
+  key("ArrowDown");   // half
+  await settle();
+  const r = grab.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+  const pe = (el, type, yy) => el.dispatchEvent(new W.PointerEvent(type, { pointerId: 21, clientX: x, clientY: yy, bubbles: true, cancelable: true, pointerType: "touch", isPrimary: true }));
+  pe(grab, "pointerdown", y);
+  const map = $("#map");
+  pe(map, "pointermove", y - 30);          // the finger is over the map from the first move on
+  pe(map, "pointermove", y - 260);
+  await sleep(40);
+  ok(sheet.classList.contains("dragging"), "the sheet follows the finger");
+  pe(map, "pointerup", y - 300);
+  eq(sheet.dataset.detent, "full", "dragged up from half to full");
+  await settle();
+  key("ArrowDown");                        // back to half for the next tests
+  await settle();
+  eq(sheet.dataset.detent, "half");
+});
+
 test("directions: place + station, stubbed sidewalk walking, option drawn on the map", async () => {
   tab("nearby");
+  // the Start / Destination fields grow out of the search bar's bubble (owner 2026-10-12)
+  const bar = $("#topbar .searchbar").getBoundingClientRect();
   click($("#searchBar"), "search bar");
+  const ghost = await waitFor(() => $(".dir-morph"), "the bubble growing into the fields");
+  const box = await waitFor(() => $("#content .v-dirbox"), "the fields");
+  const anims = D.getAnimations();
+  const at = (ms) => anims.forEach((an) => { an.pause(); an.currentTime = ms; });
+  at(0);
+  const g0 = ghost.getBoundingClientRect();
+  ok(Math.abs(g0.left - bar.left) < 2 && Math.abs(g0.top - bar.top) < 2 && Math.abs(g0.width - bar.width) < 2 && Math.abs(g0.height - bar.height) < 2,
+    `starts as the bar: ${[g0.left, g0.top, g0.width, g0.height].map(Math.round)} vs ${[bar.left, bar.top, bar.width, bar.height].map(Math.round)}`);
+  at(320);   // --d-sheet: the sheet and the bubble arrive together
+  const g1 = ghost.getBoundingClientRect(), b1 = box.getBoundingClientRect();
+  ok(Math.abs(g1.left - b1.left) < 2 && Math.abs(g1.top - b1.top) < 2 && Math.abs(g1.width - b1.width) < 2 && Math.abs(g1.height - b1.height) < 2,
+    `lands on the fields: ${[g1.left, g1.top, g1.width, g1.height].map(Math.round)} vs ${[b1.left, b1.top, b1.width, b1.height].map(Math.round)}`);
+  anims.forEach((an) => an.finish());
+  await waitFor(() => !$(".dir-morph") && !$(".dir-morph-label"), "the copy is removed");
   const from = await waitFor(() => state().view === "directions" && $('#content [data-input="dir-from"]'), "start field");
   from.focus();
   type(from, "e2e start", "start field");

@@ -136,6 +136,19 @@ button.v-row:active { transform: scale(.98); opacity: .8; }
 .v-segbtn.is-on { background: var(--seg-on); box-shadow: var(--shadow-thumb); }
 
 /* ---------- directions ---------- */
+/* the search bar's bubble growing into the Start / Destination fields (directions.js morphFromBar) */
+.dir-morph {
+  position: fixed; z-index: var(--z-search); transform-origin: 0 0; pointer-events: none;
+  background: var(--bg-solid); box-shadow: var(--shadow-float); border-radius: var(--r-card);
+  will-change: transform, opacity;
+}
+.dir-morph-label {
+  position: fixed; z-index: calc(var(--z-search) + 1); transform-origin: 0 0; pointer-events: none;
+  display: flex; align-items: center; gap: 10px; padding: 0 12px; box-sizing: border-box;
+  color: var(--text-2); font-size: 1rem; line-height: 1.25rem; white-space: nowrap; overflow: hidden;
+}
+.dir-morph-label svg { flex: none; color: var(--text); }
+.dir-morph-label .searchbar-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .v-dirbox { position: relative; display: flex; flex-direction: column; gap: 6px; margin: var(--s1) 0 var(--s2); padding-right: 52px; }
 .v-dfield { position: relative; }
 .v-pin { position: absolute; left: 14px; top: 50%; width: 12px; height: 12px; margin-top: -6px; box-sizing: border-box; border-radius: 50%; border: 3px solid var(--bg-solid); box-shadow: 0 0 0 1px var(--hairline-strong); }

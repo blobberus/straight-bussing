@@ -5,6 +5,9 @@
    full detent, with the normal transform transition, and never makes the sheet jump at peek / half.
    It sits on top of the bottom navigation (#tabs.bottomnav, --nav-h); the search bar floats above it.
    ui/sheet.js sets data-detent (peek|half|full) and --drag (px, live finger offset) on .sheet. */
+/* --drag changes on every frame of a drag: not inherited, so only the sheet's own transform recomputes, not
+   the style of every row inside it (that recompute made dragging stutter on phones) */
+@property --drag { syntax: "<length>"; inherits: false; initial-value: 0px; }
 .sheet {
   position: fixed; z-index: var(--z-sheet); left: 0; right: 0; bottom: var(--nav-h);
   height: var(--v-max);
