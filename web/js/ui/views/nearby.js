@@ -98,17 +98,15 @@ function soonList(state, now) {
   }).join("") + "</div>";
 }
 
-/** How to unblock location (the browser only asks once; after a "Don't Allow" it never asks again by itself). */
-export const LOC_BLOCKED_HELP = "On iPhone: Settings > Privacy & Security > Location Services > Safari Websites > While Using the App, then in Safari tap the aA button > Website Settings > Location > Allow. Elsewhere: allow location for this site in the browser's site settings.";
-
 /** "Use my location" is the screen's one primary action (no location yet, not asking, not denied). */
 const locPrimary = (state) => !state.user && state.locState !== "asking" && state.locState !== "denied";
 
 function locBlock(state) {
   if (state.locState === "asking") return '<p class="v-hint" role="status">Finding your location&hellip;</p>';
   if (state.locState === "denied") {
-    return '<div class="v-locoff" role="status"><span class="v-ic" aria-hidden="true">' + ICONS.loc + '</span><span class="v-grow"><b>Location is blocked for this site.</b> ' + esc(LOC_BLOCKED_HELP) + ' You can still search below.</span></div>'
-      + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="nearby:locate">Try location again</button>';
+    return '<div class="v-locoff" role="status"><span class="v-ic" aria-hidden="true">' + ICONS.loc + '</span><span class="v-grow"><b>Location is blocked for this site.</b> Your browser will not ask again by itself; it has to be allowed in your settings. You can still search below.</span></div>'
+      + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="settings:open" data-section="loc">How to allow location</button>'
+      + '<button type="button" class="v-btn v-btn--quiet v-btn--block" data-action="nearby:locate">Try location again</button>';
   }
   return '<button type="button" class="v-btn v-btn--primary v-btn--block" data-action="nearby:locate"><span class="v-ic" aria-hidden="true">' + ICONS.loc + "</span>Use my location</button>";
 }
@@ -345,7 +343,8 @@ registerAction("nearby:locate", async (ds, ev, ctx) => {
   try { ok = await ctx.locate(); } catch (e) { ok = false; }
   const u = ctx.store.get().user;
   if (ok && u) { N.anchor = null; try { ctx.map?.flyTo?.(u, 16); } catch (e) { /* map optional */ } }
-  else ctx.toast?.("Location is off. You can still search stations or places.");
+  else if (ctx.store.get().locErr?.code === 1) ctx.toast?.("Still blocked, so no popup. Tap \"How to allow location\" for the steps.");
+  else ctx.toast?.("Couldn't get your location. You can still search stations or places.");
 });
 registerAction("nearby:mode", (ds, ev, ctx) => {
   ctxRef = ctx || ctxRef;

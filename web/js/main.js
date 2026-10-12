@@ -126,6 +126,8 @@ function locate() {
   locating = new Promise((resolve) => {
     const prev = store.get().locState;
     let done = false;
+    // a failed attempt: code + time + how many failed in a row, so two taps in the same minute still read differently
+    const failed = (code) => ({ code, at: Date.now(), n: ((store.get().locErr && store.get().locErr.n) || 0) + 1 });
     const finish = (okv, patch) => {
       if (done) return;
       done = true;
@@ -133,22 +135,23 @@ function locate() {
       locating = null;
       resolve(okv);
     };
-    if (!navigator.geolocation) return finish(false, { locState: "denied" });
+    if (!navigator.geolocation) return finish(false, { locState: "denied", locErr: failed(1) });
     try { localStorage.removeItem(LOC_OFF); } catch (e) { /* private mode */ }   // asked for again: sharing is on
     store.set({ locState: "asking" });
-    const guard = setTimeout(() => finish(false, { locState: prev === "asking" ? "unknown" : prev }), 30000);
+    const guard = setTimeout(() => finish(false, { locState: prev === "asking" ? "unknown" : prev, locErr: failed(3) }), 15000);
     try {
       navigator.geolocation.getCurrentPosition((p) => {
         clearTimeout(guard);
-        finish(true, { user: { lat: p.coords.latitude, lon: p.coords.longitude, accuracy: p.coords.accuracy }, locState: "granted" });
+        finish(true, { user: { lat: p.coords.latitude, lon: p.coords.longitude, accuracy: p.coords.accuracy }, locState: "granted", locErr: null });
         startWatch();
       }, (err) => {
         clearTimeout(guard);
         const denied = err && err.code === 1;
         if (!denied) toast("Couldn't get your location. You can still pick a station.");
-        finish(false, { locState: denied ? "denied" : prev === "granted" ? "granted" : "unknown" });
+        // every attempt leaves a visible result (Settings > Location, Current trip): a blocked site fails at once, no popup
+        finish(false, { locState: denied ? "denied" : prev === "granted" ? "granted" : "unknown", locErr: failed((err && err.code) || 0) });
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 });
-    } catch (e) { clearTimeout(guard); finish(false, { locState: "unknown" }); }
+    } catch (e) { clearTimeout(guard); finish(false, { locState: "unknown", locErr: failed(0) }); }
   });
   return locating;
 }

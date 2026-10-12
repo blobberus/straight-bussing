@@ -125,7 +125,7 @@ test("nearby: no location -> Use my location, search, address option, Arriving s
 test("nearby: denied location is first-class and still usable", () => {
   resetNearby();
   const h = renderNearby(fixture({ locState: "denied" }), NOW);
-  ok(h.includes("Location is blocked for this site") && h.includes("Safari Websites"), "says how to allow it again (iPhone steps)");
+  ok(h.includes("Location is blocked for this site") && h.includes('data-action="settings:open" data-section="loc"'), "says it is blocked and opens the exact steps in Settings");
   ok(h.includes("Arriving soon") && h.includes('data-input="nearby-q"'), "still usable");
   ok(!h.includes("Use my location<"), "primary CTA swapped for retry");
   ok(h.includes("Try location again"));

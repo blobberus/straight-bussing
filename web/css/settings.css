@@ -121,3 +121,9 @@
 .st-loc .st-row .v-prim { display: inline-flex; align-items: center; gap: 6px; }
 .st-loc .v-locoff { margin: 0 0 var(--s3); }
 .st-loc .st-disclaimer { margin-bottom: 0; }
+.st-steps-h { margin: var(--s3) 0 var(--s1); font-size: var(--fs-body); font-weight: 650; color: var(--text); }
+.st-steps { margin: 0 0 var(--s3); padding-left: 1.4em; color: var(--text); font-size: var(--fs-body); line-height: var(--lh-body); }
+.st-steps li { margin: 0 0 var(--s2); }
+.st-other { margin: 0 0 var(--s3); }
+.st-other summary { min-height: var(--tap); display: flex; align-items: center; cursor: pointer; color: var(--accent); font-weight: 600; }
+.st-tried { margin: var(--s2) 0 0; }

@@ -92,7 +92,7 @@ export function initialState() {
     buses: [], trips: [], alerts: [],
     feedTs: 0, lastOk: 0, failed: false, liveLoaded: false,
     // user/prefs
-    user: null, locState: 'unknown',
+    user: null, locState: 'unknown', locErr: null,
     hiddenRoutes: cleanHidden(load(KEYS.hiddenRoutes, [])),
     theme: cleanTheme(load(KEYS.theme, 'auto')),
     routeOrder: cleanHidden(load(KEYS.routeOrder, [])),        // map draw priority, first = drawn on top

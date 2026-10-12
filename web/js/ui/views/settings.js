@@ -25,14 +25,30 @@ import { routeChip, officialLinks } from "../components.js";
 import { alertBodyHTML } from "./alerts.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen } from "../settings-overlay.js";
-import { LOC_BLOCKED_HELP } from "./nearby.js";
+import { locPlatform, locEnv, LOC_STEPS, LOC_ORDER, locResultText } from "../../core/lochelp.js";
 
 /** The location promise in Settings (owner 2026-10-12: "no user location data will be collected"); matches privacy.html. */
 export const LOC_DISCLAIMER = "Straight Bussing does not collect your location. It stays on your device to find the stops and buses near you; for walking directions only a rounded start and end point goes to a routing service (OSRM or Valhalla), and nothing is stored.";
 
+const stepsHTML = (k) => `<ol class="st-steps">${LOC_STEPS[k].steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>`;
+
+/**
+ * Exact steps for this device first, the others one tap away (core/lochelp.js).
+ * @param {string} [platform] locPlatform() key (default: this browser)
+ * @returns {string}
+ */
+export function locStepsHTML(platform = locPlatform(locEnv())) {
+  const k = LOC_STEPS[platform] ? platform : "other";
+  const others = LOC_ORDER.filter((x) => x !== k).map((x) => `<h4 class="st-steps-h">${esc(LOC_STEPS[x].title)}</h4>${stepsHTML(x)}`).join("");
+  return `<h4 class="st-steps-h">${esc(LOC_STEPS[k].title)}</h4>${stepsHTML(k)}`
+    + `<details class="st-other"><summary>Using a different phone or browser?</summary>${others}</details>`;
+}
+
 /** Settings > Location: share / stop sharing, the blocked state with how to fix it, the disclaimer. */
-export function locHTML(state) {
+export function locHTML(state, platform) {
   const ls = state.locState;
+  const tried = locResultText(state.locErr, (t) => clock(t));
+  const triedHTML = tried ? `<p class="v-sec st-tried" role="status">${esc(tried)}</p>` : "";
   let body;
   if (state.user) {
     body = `<div class="st-row"><span class="v-grow"><span class="v-prim">${OK} Sharing your location</span><span class="v-sec">Used on this device for nearby stops and walking times.</span></span></div>`
@@ -40,11 +56,12 @@ export function locHTML(state) {
   } else if (ls === "asking") {
     body = '<p class="v-hint" role="status">Asking for your location&hellip;</p>';
   } else if (ls === "denied") {
-    body = `<div class="v-locoff" role="status"><span class="v-grow"><b>Location is blocked for this site.</b> ${esc(LOC_BLOCKED_HELP)}</span></div>`
-      + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-st="loc-on" data-key="loc-on">Try again</button>';
+    body = '<div class="v-locoff"><span class="v-grow"><b>Location is blocked for this site.</b> Your browser shows its location popup only once. After a "Don\'t Allow", or while location is off for websites, it blocks the request straight away and shows nothing, so it has to be switched back on in your settings:</span></div>'
+      + locStepsHTML(platform)
+      + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-st="loc-on" data-key="loc-on">Try again</button>' + triedHTML;
   } else {
     body = '<button type="button" class="v-btn v-btn--primary v-btn--block" data-st="loc-on" data-key="loc-on">Share my location</button>'
-      + '<p class="v-sec st-note">Shows the stops and buses near you. Your browser asks for permission first.</p>';
+      + '<p class="v-sec st-note">Shows the stops and buses near you. Your browser asks for permission first.</p>' + triedHTML;
   }
   return `<div class="v-card st-loc">${body}<p class="v-sec st-note st-disclaimer">${esc(LOC_DISCLAIMER)}</p></div>`;
 }
@@ -276,7 +293,11 @@ function onClick(e, root, ctx) {
   } else if (what === "anyroute") setNotify(ctx, { rids: [] });
   else if (what === "loc-on") {
     // straight from the tap (iOS shows its permission prompt only for a user gesture)
-    Promise.resolve(ctx.locate?.()).then((okv) => { patch(root, "loc", locHTML(ctx.store.get())); if (okv) ctx.toast?.("Sharing your location"); });
+    Promise.resolve(ctx.locate?.()).then((okv) => {
+      patch(root, "loc", locHTML(ctx.store.get()));
+      if (okv) ctx.toast?.("Sharing your location");
+      else root.querySelector(".st-tried")?.scrollIntoView?.({ block: "nearest" });   // the result sits under the button, often off screen
+    });
     patch(root, "loc", locHTML(ctx.store.get()));
   } else if (what === "loc-off") {
     ctx.stopLocation?.();
@@ -326,7 +347,7 @@ export function mountSettings(root, ctx) {
     const now = typeof ctx.now === "function" ? ctx.now() : nowS();
     const has = (...k) => !ch || k.some((x) => ch.has(x));
     if (has("alerts", "liveLoaded", "failed")) patch(root, "alerts", alertsHTML(s, now));
-    if (has("user", "locState")) patch(root, "loc", locHTML(s));
+    if (has("user", "locState", "locErr")) patch(root, "loc", locHTML(s));
     const typing = document.activeElement?.id === "st-q" && root.contains(document.activeElement);
     if (has("notify", "favStops", "user", "stops", "stopRoutes", "addresses") && !typing) patch(root, "station", stationHTML(s));
     if (has("notify", "stopRoutes", "routes", "hiddenRoutes", "journey")) patch(root, "opts", optsHTML(s));
@@ -381,6 +402,14 @@ registerView("settings", {
 
 // The gear toggles the overlay.
 registerAction("settings:open", (ds, ev, ctx) => {
-  if (isSettingsOpen()) return void closeSettingsOverlay();
-  openSettings(ctx, ev?.target?.closest?.("[data-action]") || undefined);
+  if (isSettingsOpen() && !ds?.section) return void closeSettingsOverlay();
+  const o = isSettingsOpen() ? document.getElementById("settingsOverlay") : openSettings(ctx, ev?.target?.closest?.("[data-action]") || undefined);
+  if (ds?.section) {   // e.g. Current trip's "How to allow location": open Settings at that section
+    document.getElementById("toast")?.classList.add("hide");   // the "Still blocked" toast would cover the steps
+    setTimeout(() => {
+      const sec = o?.querySelector?.(`[data-region="${CSS.escape(ds.section)}"]`);
+      sec?.scrollIntoView?.({ block: "start" });
+      sec?.querySelector?.("button, summary")?.focus?.({ preventScroll: true });
+    }, 60);
+  }
 });

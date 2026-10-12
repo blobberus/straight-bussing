@@ -75,7 +75,7 @@ export function createStore(initial): { get(), set(patch), subscribe(fn)->off } 
   alerts:[{header_text, description_text, active_period, informed_entity}],
   feedTs:0, lastOk:0, failed:false, liveLoaded:false,
   // user/prefs (persisted via storage.js where noted)
-  user:null /* {lat,lon} */, locState:'unknown' /* unknown|asking|granted|denied */,
+  user:null /* {lat,lon} */, locState:'unknown' /* unknown|asking|granted|denied|off */, locErr:null /* {code: 1 denied | 2 unavailable | 3 timeout, at: ms} of the last failed try; Settings > Location and Current trip show it (core/lochelp.js has the per-device steps) */,
   hiddenRoutes:[] /* persisted */, theme:'auto' /* persisted: auto|light|dark */,
   // nav (ui/router.js writes)
   view:'nearby', prevView:null, stopId:null, routeId:null,
@@ -183,7 +183,7 @@ export function navigate(view, params={})   // sets store.view/prevView/stopId/r
 export function back()
 // ui/actions.js
 export function registerAction(name, fn)    // fn(dataset, event, ctx); markup uses data-action="name" data-id="..." (event delegation on the sheet content)
-// ctx passed to render/mount/actions: { store, map /*MapApi*/, navigate, back, setDetent(d), toast(text), now: nowS, locate(): Promise<boolean> /* asks geolocation, sets store.user/locState, never throws */ }
+// ctx passed to render/mount/actions: { store, map /*MapApi*/, navigate, back, setDetent(d), toast(text), now: nowS, locate(): Promise<boolean> /* asks geolocation, sets store.user/locState/locErr, never throws */, stopLocation() /* Settings > Stop sharing */ }
 // Views import core/* and data/geocode.js directly (planner, walk, predict, arrivals, geocode). Each view file calls registerView(...) and registerAction(...) at import time; main.js imports every view file.
 // Held tap (2026-10-10): runAction / navigate on a name or view not registered yet (slow network: the search bar, gear and tabs work before the view modules load) return false and hold that tap (one slot, actions.js holdTap; router.js imports it, never the reverse); registerAction / registerView runs it once, next tick, if under PENDING_MS (20 s) old. Any newer action, navigate or back that runs drops it; a newer held tap replaces it.
 // ui/components.js (pure HTML-string builders, all escape inputs)

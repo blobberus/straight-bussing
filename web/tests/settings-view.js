@@ -3,6 +3,7 @@ import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
 import { bindActions, hasAction } from "../js/ui/actions.js";
 import { renderSettings, mountSettings, unmountSettings, stationHTML, optsHTML, alertsHTML, searchStations, permHTML, statusHTML, ALERTS_NOTE, locHTML, LOC_DISCLAIMER } from "../js/ui/views/settings.js";
+import { locPlatform, LOC_STEPS, LOC_ORDER, locResultText } from "../js/core/lochelp.js";
 import { getView } from "../js/ui/router.js";
 import { cleanNotify } from "../js/state.js";
 
@@ -177,4 +178,36 @@ test("settings: Location: share / stop sharing / blocked with how to fix it, and
   eq(stopped, 1, "Stop sharing");
   ok(el.querySelector('[data-region="loc"] [data-st="loc-on"]'), "and offers to share again");
   unmountSettings(); el.remove();
+});
+
+test("location help: the right steps for each device, exact screens, and what the last try found", () => {
+  const UA = {
+    iphone: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1",
+    ipad: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15",
+    ioschrome: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0 Mobile/15E148 Safari/604.1",
+    android: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36",
+    edge: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 Edg/130.0",
+    mac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15",
+  };
+  eq(locPlatform({ ua: UA.iphone }), "ios-safari");
+  eq(locPlatform({ ua: UA.iphone, standalone: true }), "ios-home", "the Home Screen app keeps its own answer");
+  eq(locPlatform({ ua: UA.ipad, maxTouchPoints: 5 }), "ios-safari", "iPadOS asks as a Mac");
+  eq(locPlatform({ ua: UA.ioschrome }), "ios-chrome");
+  eq(locPlatform({ ua: UA.android }), "android-chrome");
+  eq(locPlatform({ ua: UA.edge }), "edge");
+  eq(locPlatform({ ua: UA.mac, maxTouchPoints: 0 }), "mac-safari");
+  eq(locPlatform({ ua: "Lynx" }), "other");
+  for (const k of [...LOC_ORDER, "other"]) ok(LOC_STEPS[k] && LOC_STEPS[k].steps.length >= 2, k + " has steps");
+  const ios = LOC_STEPS["ios-safari"].steps.join(" ");
+  ok(ios.includes('"Privacy & Security"') && ios.includes('"Location Services"') && ios.includes('"Safari Websites"') && ios.includes('"While Using the App"'), "iPhone: the exact Settings screens");
+  ok(ios.includes('"Website Settings"') && ios.includes('"Allow"'), "and the per-site switch in Safari");
+  ok(!/[–—]/.test(JSON.stringify(LOC_STEPS)), "no dash characters");
+  const blocked = locHTML(fixture({ locState: "denied", locErr: { code: 1, at: NOW * 1000 } }), "ios-safari");
+  ok(blocked.includes("<ol") && blocked.indexOf("Safari Websites") < blocked.indexOf("Using a different phone"), "numbered steps for this device first, others folded away");
+  ok(blocked.includes("still blocks location for this site") && blocked.includes("did not show a popup"), "Try again says what happened");
+  ok(locResultText({ code: 2, at: NOW * 1000 }, () => "3:42 PM").includes("could not find its position"));
+  ok(locResultText({ code: 3, at: NOW * 1000 }, () => "3:42 PM").includes("took too long"));
+  eq(locResultText(null, () => ""), "");
+  ok(locResultText({ code: 1, at: NOW * 1000, n: 2 }, () => "3:42 PM").startsWith("Tried at 3:42 PM (try 2):"), "a second tap in the same minute still reads differently");
+  ok(!locResultText({ code: 1, at: NOW * 1000, n: 1 }, () => "3:42 PM").includes("(try"), "first try has no count");
 });
