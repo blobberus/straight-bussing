@@ -87,8 +87,8 @@ test("journey: trip bar and station toggle escape text and expose state", () => 
 
 /* ---------------- directions ---------------- */
 
-test("directions: Start sets the journey, keeps the plan drawn, lowers the sheet, shows the trip bar", async () => {
-  const { ctx, el, detents } = await dirWith([opt("a", 12, "R1", "R2"), opt("b", 15, "R3")]);
+test("directions: Start sets the journey, keeps the plan drawn and switches to Current trip at the half detent", async () => {
+  const { ctx, el } = await dirWith([opt("a", 12, "R1", "R2"), opt("b", 15, "R3")]);
   const res = el.querySelector('[data-region="dir-res"]');
   const start = res.querySelector('[data-action="dir:start"]');
   ok(start && start.closest(".v-opt.is-on"), "Start on the selected option only");
@@ -99,9 +99,25 @@ test("directions: Start sets the journey, keeps the plan drawn, lowers the sheet
   eq([jn.rids, jn.label, jn.kind, jn.to], [["R1", "R2"], "To Hospital", "plan", "Hospital"]);
   eq(jn.legs.map((l) => l.type + (l.rid || "")), ["walk", "busR1", "busR2"], "compact legs stored for the Current trip timeline");
   eq(last(ctx.calls.drawPlan).key, "a", "plan drawn");
-  eq(last(detents), "half", "sheet lowered so the map shows");
-  ok(res.querySelector(".j-trip") && res.textContent.includes("End trip"), "trip bar");
+  eq(last(ctx.calls.navigate), ["nearby", { detent: "half" }], "Current trip (the trip in progress) at the half detent, so the map shows");
+  eq(ctx.store.get().view, "nearby");
+  ok(res.querySelector(".j-trip") && res.textContent.includes("End trip"), "back in Directions: the trip bar");
   ok(!res.querySelector('[data-action="dir:start"]'), "Start replaced while the trip is on");
+  unmountDirections(); el.remove();
+  const n = ctx.calls.drawPlan.length;
+  await tick();
+  eq(ctx.calls.drawPlan.length, n, "leaving Directions keeps the trip on the map");
+});
+
+test("directions: Start without a router stays here, lowers the sheet and focuses the trip bar", async () => {
+  const { ctx, el, detents } = await dirWith([opt("a", 12, "R1")]);
+  ctx.navigate = undefined;
+  runAction("dir:start", {}, null, ctx);
+  await tick();
+  eq(ctx.store.get().journey.kind, "plan");
+  eq(ctx.store.get().view, "directions");
+  eq(last(detents), "half", "sheet lowered so the map shows");
+  const res = el.querySelector('[data-region="dir-res"]');
   ok(document.activeElement === res.querySelector(".j-title"), "focus moved to the trip bar");
   unmountDirections(); el.remove();
 });

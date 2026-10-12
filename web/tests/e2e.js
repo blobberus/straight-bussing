@@ -300,6 +300,19 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
     const inner = ll.slice(1, -1), onShape = inner.filter((p) => shapePts.some((s) => Math.abs(s[0] - p.lat) < 1e-6 && Math.abs(s[1] - p.lng) < 1e-6));
     ok(inner.length >= 3 && onShape.length >= inner.length - 2, `bus leg along the road shape: ${onShape.length}/${inner.length} inner points are shape vertices`);
   }
+  // Start switches the sheet to Current trip with the trip in progress first (owner, 2026-10-12; iOS parity)
+  click(await waitFor(() => $('#content .v-opt.is-on [data-action="dir:start"]'), "Start on the selected option"), "Start");
+  const tt = await waitFor(() => state().view === "nearby" && $("#content .tp-title"), "Current trip with the trip in progress");
+  eq(state().journey && state().journey.kind, "plan", "trip started");
+  eq(title(), "Current trip", "sheet title");
+  eq($('#tabs button[data-tab="nearby"]').getAttribute("aria-current"), "page", "Current trip tab selected");
+  eq($("#sheet").dataset.detent, "half", "half detent, the map shows the trip");
+  ok($("#content [data-region='nearby-trip'] .tp-title"), "the trip in progress leads, above the next bus");
+  await waitFor(() => D.activeElement === tt, "focus on the trip title");
+  ok($$("#map .sb-plan-casing").length > 0, "the trip stays on the map");
+  click($('#content [data-action="journey:end"]'), "End trip");
+  await waitFor(() => !state().journey && !$("#content .tp-title"), "trip ended");
+  await waitFor(() => $$("#map .sb-plan-casing").length === 0, "plan cleared from the map");
 });
 
 test("theme: About's Auto / Light / Dark updates the page and the map", async () => {

@@ -9,9 +9,9 @@
  * deferred while a new plan refines, skipped while the feed fails), keep the selected card by key, never move
  * the map, and patch only the results region, so typing focus is never stolen.
  * Start (selected option with a bus) begins a trip: store.journey {rids, label, kind:'plan'} so the map shows only
- * that trip's routes, the plan stays drawn (also after leaving the view) and a trip bar with "End trip"
- * (journey:end, registered by the shell) heads the results. Picking another option updates the journey; changing
- * an endpoint ends it. Opened from the search bar (dir:open, data-focus="to"); parent view 'nearby' (Current
+ * that trip's routes, the plan stays drawn (also after leaving the view), and the sheet switches to Current trip
+ * with the trip in progress first. Back here, a trip bar with "End trip" (journey:end, registered by the shell)
+ * heads the results. Picking another option updates the journey; changing an endpoint ends it. Opened from the search bar (dir:open, data-focus="to"); parent view 'nearby' (Current
  * trip). Walking is always visible: card + step markup in ./tripinfo.js.
  */
 import { registerView } from "../router.js";
@@ -231,12 +231,24 @@ export async function replan({ fresh = false } = {}) {
   D.refining = false; pickSel(fresh); syncJourney(); patchRes(); drawSel(fresh);
 }
 
-/** Start a trip with the selected option: only its routes stay on the map. @returns {boolean} */
+/**
+ * Start a trip with the selected option: only its routes stay on the map, and the sheet switches to Current trip
+ * (half detent), where the trip in progress leads (owner, 2026-10-12; iOS AppModel.startTrip sets tab = .current).
+ * The plan stays drawn: unmountDirections keeps it while the trip is on. Focus goes to the trip's title.
+ * @returns {boolean}
+ */
 export function startTrip() {
   const j = planJourney(D.result?.options?.[D.sel], D.to?.label);
   if (!j || !ctxRef?.store) return false;
   ctxRef.store.set({ journey: j });
   drawSel(true);
+  let moved = false;
+  try { moved = ctxRef.navigate?.("nearby", { detent: "half" }) === true; } catch (e) { moved = false; }
+  if (moved) {
+    // the view renders after the store flush (main.js scheduleRender): focus its trip title once it is there
+    setTimeout(() => { if (isPlanJourney(cur())) document.querySelector?.(".tp-title")?.focus({ preventScroll: true }); }, 0);
+    return true;
+  }
   try { ctxRef.setDetent?.("half"); } catch (e) { /* sheet optional */ }
   patchRes();
   const t = rootRef?.querySelector?.(".j-title");
