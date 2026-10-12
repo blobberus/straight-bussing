@@ -22,6 +22,7 @@ WORKFLOW = "collect.yml"
 CSV = "data/ground_truth/arrivals.csv"
 PRED_CSV = "data/ground_truth/predictions.csv"   # Passio's prediction 1-30 min ahead per arrival (merge_predictions.py)
 PRED_SEED_S = 3600 + 600                        # reload prediction logs this recent into a new chunk (--pred-seed)
+LOG_KEEP_S = 14 * 86400                         # local prediction logs + raw polls: long enough to archive a day CI missed
 FEED = "https://passio3.com/chicago/passioTransit/gtfs/realtime/vehiclePositions.json"
 RUN_S = 70 * 60                  # one CI run logs this long (collect.yml --duration 4200)
 UA = "StraightBussing-monitor (student project)"
@@ -48,6 +49,7 @@ class Ctx:
         self.pid, self.state, self.log, self.seed, self.stop = (d / "monitor.pid", d / "state.json",
                                                                d / "monitor.log", d / "seed.csv", d / "STOP")
         self.predlog = d / "predlog"          # each chunk's Passio prediction updates; the next chunk reloads them
+        self.raw = d / "raw"                  # each chunk's position polls (tools/archive_day.py --local)
 
 
 def pred_partner(run_file):
@@ -462,9 +464,10 @@ def publish_pending(ctx, st, active, model):
     for old in [*ctx.merged.glob("run-*.csv"), *ctx.merged.glob("pred-*.csv")]:   # keep a week for audit
         if time.time() - old.stat().st_mtime > 7 * 86400:
             old.unlink(missing_ok=True)
-    for old in ctx.predlog.glob("*.jsonl") if ctx.predlog.exists() else ():
-        if time.time() - old.stat().st_mtime > 2 * 86400:
-            old.unlink(missing_ok=True)
+    for d in (ctx.predlog, ctx.raw):
+        for old in d.glob("*.jsonl") if d.exists() else ():
+            if time.time() - old.stat().st_mtime > LOG_KEEP_S:
+                old.unlink(missing_ok=True)
     save_state(ctx, st)
 
 
@@ -483,7 +486,7 @@ def lock(ctx):
 
 
 def local(ctx, a, resume=False):
-    for d in (ctx.dir, ctx.runs, ctx.merged, ctx.predlog):
+    for d in (ctx.dir, ctx.runs, ctx.merged, ctx.predlog, ctx.raw):
         d.mkdir(parents=True, exist_ok=True)
     if not lock(ctx):
         print(f"already running (pid {read_pid(ctx)}); nothing to do")
@@ -527,7 +530,8 @@ def local(ctx, a, resume=False):
                 p = subprocess.Popen([sys.executable, str(ctx.root / "tools" / "truth_logger.py"), "--duration",
                                       f"{dur:.0f}", "--seed", str(ctx.seed), "--out", str(path),
                                       "--interval", str(a.interval), "--pred-out", str(pred_partner(path)),
-                                      "--pred-log", str(ctx.predlog / (path.stem + ".jsonl")), "--pred-seed", *seeds],
+                                      "--pred-log", str(ctx.predlog / (path.stem + ".jsonl")),
+                                      "--raw-out", str(ctx.raw / (path.stem + ".jsonl")), "--pred-seed", *seeds],
                                      cwd=ctx.root, stdout=logf, stderr=subprocess.STDOUT)
                 logf.close()
                 active.append((p, path))

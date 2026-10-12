@@ -169,6 +169,35 @@ feed was actually showing at that moment count.
 
 **Checking the 10% rule in a spreadsheet:** a row passes if `ABS(pred_minus_actual_s) <= 0.1 * lead_target_s`.
 
+## The training table: what every source predicted, every minute (`eta-<day>.csv.gz`)
+
+From the service day of October 12, 2026 on (the first with the feed's prediction log; earlier days have the bus
+positions only), each finished day also gets a big table, kept as a download on the main repo's
+Releases page ("Prediction data archive", one release per month; files `eta-<day>.csv.gz`, open with any unzip tool
+or straight in Python or R). **One row = one minute, one bus, and one stop that bus later reached within the next 45
+minutes.** So a single arrival shows up many times: once for every minute before it, which is exactly what you need to
+ask "how good was the prediction 6, 10 or 30 minutes ahead?".
+
+The most useful columns:
+
+| Column | What it means |
+|---|---|
+| `query_local` | The minute the "question" is asked (Chicago clock). |
+| `vehicle_id`, `route_name`, `stop_name` | Which bus, which route, which stop it will reach. |
+| `lead_s` | How many seconds later the bus actually got there. 600 = 10 minutes ahead. |
+| `next_trip` | 1 if that arrival is on the bus's next run (it first has to finish its current loop and usually wait at the end). These are the hardest to predict. |
+| `stops_away`, `dist_m` | How many stops and metres the bus still had to go. |
+| `standing_s`, `last_age_s` | How long the bus had been standing still, and how long since it last reached a stop. |
+| `passio_epoch` | What the official feed was showing at that minute (blank if it showed nothing). |
+| `passio_rel` | How far off that was, as a share of the time left: -0.10 means the bus came 10% later than shown. **The goal (the 10% rule) is a value between -0.10 and +0.10.** A positive value means the prediction was too late: the bus came early. |
+| `tt_rel`, `ttd_rel` | The same for the printed timetable, and for the timetable shifted by how late the bus was running. |
+
+**Do not average all the rows**: an arrival appears in up to 45 rows. The project's daily summary
+(`data/eta/summary.csv` on the `data` branch) already counts each arrival once per "how far ahead" range (0 to 6, 6 to
+10, 10 to 15, 15 to 20, 20 to 30, 30 to 45 minutes): in a spreadsheet, the pass rate of a range is
+`pass_10 / (n - gross)`. `gross` counts predictions off by more than 10 minutes (or half the time left); they are left
+out of the pass rate but still counted, especially the ones where the bus came early.
+
 ## Reading one row, start to finish
 
 ```

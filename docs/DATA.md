@@ -9,6 +9,8 @@ predictions and train our own (`tools/model_*.py`, `docs/ALGORITHMS.md`). Unoffi
 | `data/ground_truth/predictions.csv` | `data` branch | since 2026-10-12: Passio's prediction 1, 2, 3, 5, 10, 15, 20 and 30 min before each arrival (one row per arrival and lead; schema below), for the owner's "10% rule" |
 | `data/ground_truth/archive/*.csv` | `data` branch | same schemas, rotated when a live file passes 40 MB |
 | CI artifacts `raw-polls-<run>`, `pred-updates-<run>` | GitHub Actions, 90 days | every position poll (E03) and every Passio prediction update `[veh, trip, stop_id, made, predicted, seq, seen, last]` (repeated about once a minute while it stays on display) per run (`tools/raw_fetch.py --list`) |
+| Release `data-archive-YYYY-MM` assets | GitHub Releases (prerelease), kept | from service day 2026-10-12 on (Oct 10-11: positions only), one set per service day, uploaded the morning after: `pred-updates-<day>.jsonl.gz`, `raw-polls-<day>.jsonl.gz` (the two artifacts merged and deduped), `eta-<day>.csv.gz` (forecast snapshots, below), `gtfs-<day>.zip`; about 5.5 MB a day, no growth of the git history (`.github/workflows/archive.yml`, `tools/archive_day.py`) |
+| `data/eta/summary.csv` | `data` branch | the 10% rule per service day x source x lead bin x route / segment (below); a few hundred rows a day |
 | `web/data/learned.json` | `data` branch | model refreshed after each run (if `tools/refresh_model.py` exists) |
 | `data/ground_truth/synthetic_arrivals.csv` | main | **fake**, seeded 3-week demo (ids start `syn`); `tools/make_synthetic_truth.py` |
 | `web/data/places.json` | main | named places within a 30-min walk of campus stops for on-device place search; `tools/build_places.py` (OpenStreetMap Overpass, ODbL); refreshed by the daily Pages run |
@@ -61,6 +63,39 @@ the same trip overrides it (one update predicts both ends of a loop). Coverage: 
 from its own start (runs overlap ~30 min, so each arrival is covered by the run that started 30 to 70 min before
 it); local chunks reload the last hour of updates from the previous chunks (`--pred-seed`). Merge:
 `tools/merge_predictions.py` (duplicate = vehicle + stop + lead within 300 s; the fresher prediction stays).
+
+## Forecast snapshots for training and analysis: `eta-<day>.csv.gz` (added 2026-10-12)
+`tools/build_eta_dataset.py`. **One row = (query minute t, bus, one of that bus's arrivals in (t, t + 45 min])**, plus
+rows for a visit Passio showed at t that no arrival matches (`label_status` no_arrival: a bus going out of service, a
+wrong run, or a stop the detector missed). It answers the question a rider asks at t, so it is the **training
+table**; `predictions.csv` stays the **evaluation** view (one row per arrival and fixed lead, no oversampling).
+
+Columns: `query_epoch` `query_local` `service_day` `dow` `day_type` (weekday / weekend) `cal_regime`
+(data/calendar.json) `hour` · the bus: `vehicle_id` `cur_trip_id` (from the latest position report, else its last
+arrival) `last_stop_id` `last_arrival_epoch` `last_age_s` `speed_mps` `standing_s` (seconds it has stayed within 40 m;
+raw polls) `delay_s` (its last arrival minus the timetable time of that stop) · the target: `route_id` `route_name`
+`trip_id` `stop_id` `stop_name` `stop_index` `visit_rank` (1 = the bus's next visit to that stop on that trip, 2 = the
+lap after) `next_trip` (the target is on a later trip than the one it drives now) `stops_away` `dist_m` (along the
+route shape from its last stop) `crosses_terminal` · the label: `actual_epoch` `lead_s` (= actual - t)
+`label_status` (arrived / no_arrival) · the predictions, each with `_err_s` = predicted - actual (**positive = too
+late, the bus came early**) and `_rel` = err / lead_s, so **the 10% rule is |rel| <= 0.10 at every lead and "too late"
+(reading B) is rel > +0.01**: `passio_status` (shown / none / previous_lap) `passio_epoch` `passio_made_epoch`
+`passio_seen_epoch` `passio_age_s` `passio_err_s` `passio_rel`; `tt_epoch` (GTFS timetable of the target trip; blank
+on headway trips, the Downtown Campus Connector) `tt_err_s` `tt_rel`; `ttd_epoch` (timetable + the bus's current
+delay) `ttd_err_s` `ttd_rel`. Passio at t uses the collector's rules (this bus, loop stop_sequence, first seen by t
+and still shown within 90 s, only for its next visit; an update made before the previous visit on the same trip =
+previous_lap). Inputs: the archived `pred-updates`, `raw-polls`, `gtfs` files of the day and arrivals.csv. About
+130,000 rows and 4 MB gzipped per service day.
+
+**Aggregating it (`summary()`, `data/eta/summary.csv`).** Rows of one arrival are near-copies (up to 45 per arrival),
+so never average over rows: per source and lead bin (0-6, 6-10, 10-15, 15-20, 20-30, 30-45 min) each arrival gives
+ONE sample, its row nearest the middle of the bin. Per (service_day, source, lead_bin, route or ALL, segment all /
+current_trip / next_trip): `targets` (arrivals with a row in the bin), `n` (with that source), `pass_10`
+(|err| <= 10% of lead), `pass_10_floor` (with a 60 s floor), `late_1` (err > 1% of lead), `early_10`, `gross`
+(|err| > max(10 min, half the lead): out of the pass counts, E19 rule) and `gross_early`, `mae_s`, `median_err_s`
+(without gross). Pass rate = pass_10 / (n - gross); coverage = n / targets. Across days:
+`python tools/build_eta_dataset.py report data/eta/summary.csv [--route R] [--segment next_trip]` pools the days and
+gives a 95% bootstrap interval **over days** (RouteKnower 6.5: days are the unit of noise; >= 10 days to decide).
 
 ## Detection (`tools/arrival_detector.py`, every 10 s on Passio `vehiclePositions` + `tripUpdates`)
 - **transition**: the vehicle's `stop_id` moves forward along the route (up to half the loop: night

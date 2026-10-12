@@ -10,3 +10,5 @@ monitor/
 context/
 # Raw position polls downloaded from the 90-day CI artifacts (tools/raw_fetch.py, RouteKnower E03)
 raw_polls/
+# Prediction archive work files (tools/archive_day.py; the archive itself is a GitHub Release)
+eta_work/

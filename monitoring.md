@@ -15,9 +15,16 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   Since 2026-10-12 each run also writes Passio's prediction 1 to 30 min before every arrival and merges it into
   `data/ground_truth/predictions.csv` (`tools/merge_predictions.py`; the arrivals file is unchanged), and keeps every
   prediction update as the artifact `pred-updates-<run>` (90 days) next to `raw-polls-<run>`.
+- **Daily archive** `.github/workflows/archive.yml` (about 5:40 AM Chicago, catches up the last 10 days): turns the
+  90-day artifacts into one file per service day (`pred-updates`, `raw-polls`, the 10%-rule table `eta-<day>.csv.gz`,
+  the GTFS zip) on the GitHub Release `data-archive-YYYY-MM`, and merges the day's pass rates into
+  `data/eta/summary.csv` on the data branch. Check: Releases page, or `gh release view data-archive-2026-10`. If CI
+  was down for a whole day, the local collector's logs (kept 14 days) can fill it in from this PC:
+  `python tools/archive_day.py --day YYYY-MM-DD --local --replace --gtfs <google_transit.zip>`.
 - **Local fallback** `tools/monitor.py local`: the same pipeline from this PC (30-min overlapping chunks,
   same merge + push to `data`, predictions included: each chunk reloads the last hour of prediction updates from
-  `data/monitor/predlog/`, kept 2 days). Safe to run next to CI. State lives in `data/monitor/` (git-ignored).
+  `data/monitor/predlog/`; prediction logs and position polls (`data/monitor/raw/`) are kept 14 days for the archive).
+  Safe to run next to CI. State lives in `data/monitor/` (git-ignored).
   After a collector code change, restart it (`python tools/monitor.py stop`, then `resume`) so it runs the new code.
 - No rows overnight is normal: no shuttles run, so nothing is committed.
 
