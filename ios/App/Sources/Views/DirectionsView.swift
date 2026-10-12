@@ -8,6 +8,7 @@ import StraightBussingKit
 /// another card makes the timeline follow it; changing an endpoint ends the trip.
 struct DirectionsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.directionsCardHidden) private var cardHidden
     enum Field: Hashable { case from, to }
     @FocusState private var focus: Field?
     /// Typed text stays in this view: keystrokes never touch AppModel, so the map and the rest of the UI
@@ -42,6 +43,12 @@ struct DirectionsView: View {
                         .accessibilityLabel("Swap start and destination")
                     }
                 }
+                // the search bar morph (RootView) flies a stand-in to this frame, then hands over
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: DirectionsCardFrameKey.self, value: g.frame(in: .named(RootView.space)))
+                })
+                .opacity(cardHidden ? 0 : 1)
+                .animation(.easeOut(duration: 0.14), value: cardHidden)
                 if let f = focus { suggestions(for: f) } else { results }
             }
             .padding(.horizontal, 16)

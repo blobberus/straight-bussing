@@ -14,6 +14,12 @@ struct RootView: View {
     @State private var chromeH: CGFloat = 50
     /// The keyboard is up: the tab bar steps aside so the sheet keeps its room for suggestions.
     @State private var keyboardUp = false
+    /// Search bar -> Directions (owner 2026-10-12: the start and destination fields grow out of the bar, so the bar
+    /// reads as a search field, not a button): the bar's frame, kept current, and the stand-in in flight.
+    @State private var barFrame: CGRect = .zero
+    @State private var morph: SearchMorph?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    static let space = "rootSpace"
 
     var body: some View {
         @Bindable var model = model
@@ -24,7 +30,7 @@ struct RootView: View {
             let topReserved: CGFloat = chromeH > 1 ? chromeH + 14 : 8
             let tabH: CGFloat = keyboardUp ? 0 : Self.tabBarHeight
             let available = max(200, geo.size.height - tabH - topReserved)
-            let sheetH = BottomSheet<EmptyView>.height(for: model.detent, available: available)
+            let sheetH = BottomSheet<EmptyView, EmptyView>.height(for: model.detent, available: available)
             ZStack(alignment: .bottom) {
                 // The inset is applied here, not passed in: MapScreen has no inputs, so a detent change only
                 // relayouts the map instead of re-running its body.
@@ -33,7 +39,10 @@ struct RootView: View {
                     .ignoresSafeArea()
                 VStack(spacing: 8) {
                     VStack(spacing: 8) {
-                        if !inDirections { SearchBar() }
+                        if !inDirections {
+                            SearchBar(onOpen: startMorph)
+                                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(Self.space)) }) { barFrame = $0 }
+                        }
                         StatusPill()
                         if ctx && !inDirections { ContextBar() }
                     }
@@ -46,12 +55,18 @@ struct RootView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 4)
                 VStack(spacing: 0) {
-                    BottomSheet(detent: $model.detent, available: available) { SheetContent() }
+                    BottomSheet(detent: $model.detent, available: available) { SheetHeader() } content: { SheetContent() }
+                        .environment(\.directionsCardHidden, morph != nil)
                     if !keyboardUp { TabBar() }
                 }
             }
             // Above the sheet at every detent, like a system banner.
             .overlay(alignment: .top) { ToastBanner().padding(.horizontal, 12).padding(.top, 4) }
+            .overlay(alignment: .topLeading) { if let morph { SearchMorphView(morph: morph) } }
+            .coordinateSpace(.named(Self.space))
+            .onPreferenceChange(DirectionsCardFrameKey.self) { f in
+                Task { @MainActor in flyMorph(to: f) }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
@@ -67,18 +82,98 @@ struct RootView: View {
         }
     }
 
+    /// The tap on the search bar: a stand-in starts on the bar's frame (the bar itself leaves with Directions).
+    func startMorph() {
+        guard !reduceMotion, barFrame.width > 0 else { return }
+        morph = SearchMorph(rect: barFrame, radius: barFrame.height / 2, label: 1, card: 0)
+    }
+
+    /// The fields card reported where it is: fly the stand-in there (again if the card moves while the sheet
+    /// rises), then hand over to the real card and fade the stand-in out.
+    func flyMorph(to f: CGRect) {
+        guard var m = morph, f.width > 0, f != m.target else { return }
+        let first = m.target == nil
+        m.target = f
+        morph = m
+        withAnimation(first ? .spring(response: 0.42, dampingFraction: 0.88) : .spring(response: 0.25, dampingFraction: 1)) {
+            morph?.rect = f
+            morph?.radius = Radius.card
+            morph?.label = 0
+            morph?.card = 1
+        } completion: {
+            guard morph?.target == f else { return }    // a later frame took over
+            withAnimation(.easeOut(duration: 0.14)) { morph = nil }
+        }
+    }
+
     var deleteTitle: String { "Delete \u{201C}\(model.confirmDelete?.name ?? "")\u{201D}?" }
     var deleteBinding: Binding<Bool> {
         Binding(get: { model.confirmDelete != nil }, set: { if !$0 { model.confirmDelete = nil } })
     }
 }
 
-/// Floating "Search for a destination" bar with the Settings gear at its right end.
+/// The stand-in that grows from the search bar into the Directions fields card.
+struct SearchMorph: Equatable {
+    var rect: CGRect
+    var radius: CGFloat
+    /// Opacity of the bar's "Search for a destination" label (fades out) and of the card's fill (fades in).
+    var label: Double
+    var card: Double
+    var target: CGRect?
+}
+
+struct SearchMorphView: View {
+    let morph: SearchMorph
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: morph.radius, style: .continuous)
+        ZStack(alignment: .leading) {
+            shape.fill(.regularMaterial)
+            shape.fill(Palette.card).opacity(morph.card)
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").font(.body.weight(.semibold))
+                Text("Search for a destination").foregroundStyle(Palette.text2).lineLimit(1)
+            }
+            .padding(.leading, 16)
+            .opacity(morph.label)
+        }
+        .shadow(color: Palette.shadow.opacity(0.15 * (1 - morph.card)), radius: 8, y: 2)
+        .frame(width: morph.rect.width, height: morph.rect.height)
+        .offset(x: morph.rect.minX, y: morph.rect.minY)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .transition(.opacity)
+    }
+}
+
+/// Where the Directions fields card is (in RootView's coordinate space), for the search bar morph.
+struct DirectionsCardFrameKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let n = nextValue()
+        if n.width > 0 { value = n }
+    }
+}
+
+private struct DirectionsCardHiddenKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// The search bar morph is in flight: the real fields card waits, invisible (it keeps its focus).
+    var directionsCardHidden: Bool {
+        get { self[DirectionsCardHiddenKey.self] }
+        set { self[DirectionsCardHiddenKey.self] = newValue }
+    }
+}
+
+/// Floating "Search for a destination" bar with the Settings gear at its right end. A tap opens Directions and the
+/// fields card grows out of the bar (RootView's morph).
 struct SearchBar: View {
     @Environment(AppModel.self) private var model
+    var onOpen: () -> Void = {}
     var body: some View {
         HStack(spacing: 0) {
-            Button { model.dirActiveTo = true; model.openDirections() } label: {
+            Button { onOpen(); model.dirActiveTo = true; model.openDirections() } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").font(.body.weight(.semibold))
                     Text("Search for a destination").foregroundStyle(Palette.text2)
