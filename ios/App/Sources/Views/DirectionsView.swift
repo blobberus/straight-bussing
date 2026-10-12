@@ -1,100 +1,100 @@
 import SwiftUI
 import StraightBussingKit
 
-/// Directions (ui/views/directions.js): Start / Destination with station + place suggestions (on-device first,
-/// Photon only when fewer than 5 local matches, spelling-fix note), swap, up to 4 option cards ranked least walking
-/// > earliest arrival > shortest wait with "what it minimizes", walk + leave guidance lines, steps for the selected
-/// card, Start (trip progress + Live Activity). While a trip is on, a trip bar heads the results and picking
-/// another card makes the timeline follow it; changing an endpoint ends the trip.
-struct DirectionsView: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.directionsCardHidden) private var cardHidden
+/// Directions' typed text, focused field and suggestions (owner spec 2026-10-12: the Start / Destination fields sit
+/// in a card at the top of the screen, where the search bar was, and the suggestions and trip options in the sheet
+/// below). Owned by RootView and shared by both through the environment. Keystrokes never touch AppModel, so the map
+/// and the rest of the UI don't redraw while typing.
+@MainActor @Observable
+final class DirectionsUI {
     enum Field: Hashable { case from, to }
-    @FocusState private var focus: Field?
-    /// Typed text stays in this view: keystrokes never touch AppModel, so the map and the rest of the UI
-    /// don't redraw while typing.
-    @State private var fromText = ""
-    @State private var toText = ""
-    @State private var items: [Endpoint] = []
-    @State private var places = PlaceUI()
-    @State private var itemsQuery: String?
-
-    struct SuggestionKey: Equatable {
-        var field: Field?
-        var text: String
-        var exact: Bool
-    }
+    var focus: Field?
+    var fromText = ""
+    var toText = ""
+    var items: [Endpoint] = []
+    var places = PlaceUI()
+    var itemsQuery: String?
 
     var query: String { focus == .from ? fromText : focus == .to ? toText : "" }
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                Card {
-                    HStack(spacing: 8) {
-                        VStack(spacing: 0) {
-                            field(.from, text: $fromText, placeholder: "Start")
-                            Divider().padding(.leading, 28)
-                            field(.to, text: $toText, placeholder: "Destination")
-                        }
-                        Button { model.swapEndpoints(); syncTexts() } label: {
-                            Image(systemName: "arrow.up.arrow.down").font(.body.weight(.semibold)).tapTarget()
-                        }
-                        .accessibilityLabel("Swap start and destination")
-                    }
-                }
-                // the search bar morph (RootView) flies a stand-in to this frame, then hands over
-                .background(GeometryReader { g in
-                    Color.clear.preference(key: DirectionsCardFrameKey.self, value: g.frame(in: .named(RootView.space)))
-                })
-                .opacity(cardHidden ? 0 : 1)
-                .animation(.easeOut(duration: 0.14), value: cardHidden)
-                if let f = focus { suggestions(for: f) } else { results }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
-        }
-        .onAppear {
-            syncTexts()
-            if let q = model.demoQuery { model.demoQuery = nil; toText = q; focus = .to }
-            else if model.dir.to == nil { focus = .to } else if model.dir.from == nil { focus = .from }
-        }
-        .onChange(of: model.dir.from) { _, e in fromText = e?.label ?? "" }
-        .onChange(of: model.dir.to) { _, e in toText = e?.label ?? "" }
-        .onChange(of: focus) { _, f in if let f { model.dirActiveTo = f == .to; places.exact = false; places.fix = nil } }
-        .task(id: SuggestionKey(field: focus, text: query, exact: places.exact)) { await loadSuggestions() }
-    }
-
-    func syncTexts() {
+    func sync(_ model: AppModel) {
         fromText = model.dir.from?.label ?? ""
         toText = model.dir.to?.label ?? ""
     }
 
-    /// On-device suggestions right away; Photon merged in when it answers (only if the index has < 5 matches).
-    func loadSuggestions() async {
-        guard focus != nil else { return }
-        let q = query, user = model.user, S = model.staticData
-        // one "use my location" action per screen (web DESIGN "Copy"): with no start yet, the Start field offers it
-        let dropMe = focus == .to && model.dir.from == nil && user == nil
-        func sugs(_ places: [PlaceHit], _ assumed: SearchAssumption?) -> [Endpoint] {
-            let all = AppModel.suggestions(q, user: user, staticData: S, places: places, assumed: assumed)
-            return dropMe ? all.filter { !$0.isMe } : all
+    /// A suggestion picked (or Return on the field): set the endpoint, show its name, drop the keyboard.
+    func choose(_ e: Endpoint, for f: Field, model: AppModel) {
+        if e.isMe {
+            model.useMyLocation(to: f == .to)
+        } else {
+            model.setEndpoint(f == .from ? \DirectionsState.from : \DirectionsState.to, e)
         }
-        if itemsQuery != nil { try? await Task.sleep(nanoseconds: 60_000_000) }   // typing: coalesce a burst of keystrokes
-        guard !Task.isCancelled else { return }
-        await PlaceSearchFlow.run(q, exact: places.exact, model: model, update: { st in
-            places = st
-            items = sugs(st.items, st.assumed)
-            itemsQuery = q
-        }, current: { places })
-        if PlaceIndex.norm(q).count < 2 && !Task.isCancelled {
-            items = sugs([], nil)
-            itemsQuery = q
+        sync(model)
+        focus = nil
+    }
+}
+
+/// The Start / Destination card at the top of the screen (it replaces the search bar while Directions is open, and
+/// turns back into it when Directions closes; RootView). Collapsing the sheet drops the keyboard and leaves the card
+/// in place, so the map shows between the card and the collapsed sheet.
+struct DirectionsCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(DirectionsUI.self) private var ui
+    @FocusState private var focus: DirectionsUI.Field?
+
+    var body: some View {
+        @Bindable var ui = ui
+        HStack(spacing: 8) {
+            VStack(spacing: 0) {
+                field(.from, text: $ui.fromText, placeholder: "Start")
+                Divider().padding(.leading, 28)
+                field(.to, text: $ui.toText, placeholder: "Destination")
+            }
+            Button { model.swapEndpoints(); ui.sync(model) } label: {
+                Image(systemName: "arrow.up.arrow.down").font(.body.weight(.semibold)).tapTarget()
+            }
+            .accessibilityLabel("Swap start and destination")
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 4)
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        .shadow(color: Palette.shadow.opacity(0.15), radius: 8, y: 2)
+        // map chrome: grows with text size, but not so far that it hides the map
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("directionsCard")
+        .onAppear {
+            ui.sync(model)
+            ui.places = PlaceUI()
+            ui.items = []
+            ui.itemsQuery = nil
+            if let q = model.demoQuery { model.demoQuery = nil; ui.toText = q; setFocus(.to) }
+            else if model.dir.to == nil { setFocus(.to) } else if model.dir.from == nil { setFocus(.from) }
+        }
+        .onDisappear { ui.focus = nil }
+        .onChange(of: model.dir.from) { _, e in ui.fromText = e?.label ?? "" }
+        .onChange(of: model.dir.to) { _, e in ui.toText = e?.label ?? "" }
+        .onChange(of: focus) { _, f in
+            if ui.focus != f { ui.focus = f }
+            if let f {
+                model.dirActiveTo = f == .to
+                ui.places.exact = false
+                ui.places.fix = nil
+                if model.detent == .peek { model.detent = .full }   // typing: the suggestions need the sheet
+            }
+        }
+        .onChange(of: ui.focus) { _, f in if focus != f { focus = f } }
+        // collapsing the sheet drops the keyboard; the card stays where it is
+        .onChange(of: model.detent) { _, d in if d == .peek { setFocus(nil) } }
+    }
+
+    func setFocus(_ f: DirectionsUI.Field?) {
+        focus = f
+        ui.focus = f
     }
 
     /// Start = hollow ring, destination = the red pin of the map's destination marker (green is for live data only).
-    func field(_ f: Field, text: Binding<String>, placeholder: String) -> some View {
+    func field(_ f: DirectionsUI.Field, text: Binding<String>, placeholder: String) -> some View {
         HStack(spacing: 10) {
             Group {
                 if f == .from { Circle().strokeBorder(Palette.text2, lineWidth: 2.5) } else { Circle().fill(.red) }
@@ -107,7 +107,7 @@ struct DirectionsView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .frame(minHeight: 44)
-                .onSubmit { if let first = items.first { choose(first, for: f) } }
+                .onSubmit { if let first = ui.items.first { ui.choose(first, for: f, model: model) } }
                 .accessibilityLabel("\(placeholder): station or place")
                 .accessibilityIdentifier(f == .from ? "dirFrom" : "dirTo")
             if !text.wrappedValue.isEmpty && focus == f {
@@ -116,26 +116,66 @@ struct DirectionsView: View {
             }
         }
     }
+}
 
-    func choose(_ e: Endpoint, for f: Field) {
-        if e.isMe {
-            model.useMyLocation(to: f == .to)
-        } else {
-            model.setEndpoint(f == .from ? \DirectionsState.from : \DirectionsState.to, e)
-        }
-        syncTexts()
-        focus = nil
+/// Directions in the sheet (ui/views/directions.js), under the top card: station + place suggestions for the field
+/// being typed in (on-device first, Photon only when fewer than 5 local matches, spelling-fix note), else up to 4
+/// option cards ranked least walking > earliest arrival > shortest wait with "what it minimizes", walk + leave
+/// guidance lines, steps for the selected card, Start (trip progress + Live Activity). While a trip is on, a trip bar
+/// heads the results and picking another card makes the timeline follow it; changing an endpoint ends the trip.
+struct DirectionsView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(DirectionsUI.self) private var ui
+
+    struct SuggestionKey: Equatable {
+        var field: DirectionsUI.Field?
+        var text: String
+        var exact: Bool
     }
 
-    @ViewBuilder func suggestions(for f: Field) -> some View {
-        let q = (f == .from ? fromText : toText).trimmingCharacters(in: .whitespaces)
-        let mine = q.count >= 2 && places.q == q
-        if mine { AssumeNote(state: places) { on in places.fix = on ? places.assumed : nil; places.exact = on } }
-        if !items.isEmpty {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                if let f = ui.focus { suggestions(for: f) } else { results }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
+        }
+        .task(id: SuggestionKey(field: ui.focus, text: ui.query, exact: ui.places.exact)) { await loadSuggestions() }
+    }
+
+    /// On-device suggestions right away; Photon merged in when it answers (only if the index has < 5 matches).
+    func loadSuggestions() async {
+        guard ui.focus != nil else { return }
+        let q = ui.query, user = model.user, S = model.staticData
+        // one "use my location" action per screen (web DESIGN "Copy"): with no start yet, the Start field offers it
+        let dropMe = ui.focus == .to && model.dir.from == nil && user == nil
+        func sugs(_ places: [PlaceHit], _ assumed: SearchAssumption?) -> [Endpoint] {
+            let all = AppModel.suggestions(q, user: user, staticData: S, places: places, assumed: assumed)
+            return dropMe ? all.filter { !$0.isMe } : all
+        }
+        if ui.itemsQuery != nil { try? await Task.sleep(nanoseconds: 60_000_000) }   // typing: coalesce a burst of keystrokes
+        guard !Task.isCancelled else { return }
+        await PlaceSearchFlow.run(q, exact: ui.places.exact, model: model, update: { st in
+            ui.places = st
+            ui.items = sugs(st.items, st.assumed)
+            ui.itemsQuery = q
+        }, current: { ui.places })
+        if PlaceIndex.norm(q).count < 2 && !Task.isCancelled {
+            ui.items = sugs([], nil)
+            ui.itemsQuery = q
+        }
+    }
+
+    @ViewBuilder func suggestions(for f: DirectionsUI.Field) -> some View {
+        let q = (f == .from ? ui.fromText : ui.toText).trimmingCharacters(in: .whitespaces)
+        let mine = q.count >= 2 && ui.places.q == q
+        if mine { AssumeNote(state: ui.places) { on in ui.places.fix = on ? ui.places.assumed : nil; ui.places.exact = on } }
+        if !ui.items.isEmpty {
             Card {
-                ForEach(Array(items.enumerated()), id: \.offset) { item in
+                ForEach(Array(ui.items.enumerated()), id: \.offset) { item in
                     if item.offset > 0 { Divider() }
-                    Button { choose(item.element, for: f) } label: {
+                    Button { ui.choose(item.element, for: f, model: model) } label: {
                         HStack(spacing: 10) {
                             Image(systemName: item.element.isMe ? "location.fill" : item.element.stopId != nil ? "bus" : "mappin")
                                 .frame(width: 22).foregroundStyle(Palette.text2).accessibilityHidden(true)
@@ -152,11 +192,11 @@ struct DirectionsView: View {
                 }
             }
         }
-        if mine && places.status == .busy {
-            Hint(items.contains { $0.stopId == nil && !$0.isMe } ? "Searching more places\u{2026}" : "Searching places\u{2026}")
+        if mine && ui.places.status == .busy {
+            Hint(ui.items.contains { $0.stopId == nil && !$0.isMe } ? "Searching more places\u{2026}" : "Searching places\u{2026}")
         }
-        if mine && places.status == .err { Hint("Couldn\u{2019}t search places right now. Station names still work.") }
-        if items.isEmpty && (q.count >= 2 && itemsQuery == q) && places.status == .idle {
+        if mine && ui.places.status == .err { Hint("Couldn\u{2019}t search places right now. Station names still work.") }
+        if ui.items.isEmpty && (q.count >= 2 && ui.itemsQuery == q) && ui.places.status == .idle {
             Hint("No stations or places match. Try another name or an address.")
         }
         if model.dirMeDenied { Hint("Location is off. Allow it in iOS Settings, or type a start.") }

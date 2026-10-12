@@ -9,7 +9,7 @@ import json
 import os
 
 CAPTIONS = {
-    "01-current": "Current trip at the half detent: the nearest stop and its next buses first, alert row, then more (no trip started)",
+    "01-current": "Current trip, sheet expanded: the nearest stop and its next buses first, alert row, then more (no trip started)",
     "02-trip": "Trip started: Google-Maps-style stop timeline with the live bus",
     "03-trip-full": "Trip timeline, sheet expanded: walk, bus stops with ETAs, walk",
     "04-directions": "Directions: options ranked least walking > earliest arrival > shortest wait",
@@ -33,6 +33,7 @@ CAPTIONS = {
     "22-settingsdemo": "Settings: Simulated buses (demo) switch on, privacy policy link",
     "23-simulated-settings": "Simulated buses switched on in Settings (UI test, no -demo)",
     "24-simulated-routes": "Simulated buses: the status pill reads Simulated buses on every tab, a tap opens the switch (UI test)",
+    "35-sheet-expanded": "Sheet expanded after drags on the title line and the grab bar (two states: collapsed / expanded; UI test)",
     "25-current-noloc": "Current trip without a location: Use my location first, the station search next",
     "26-nobus": "No bus reporting: the operator's alert in full, its number as the primary call, 773.702.8181 for safety or urgent",
     "27-nobus-stop": "Stop with no bus reporting: the same help and calls",

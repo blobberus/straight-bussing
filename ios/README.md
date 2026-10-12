@@ -119,9 +119,27 @@ gallery "28-livestates", "29-livestates-end") draws the card in all four states 
   the selected/started trip (bus legs in route color along the road shape between the stops, dashed walks on
   sidewalks, destination pin; the walk-only line when no shuttle helps).
 - Google-Maps-style layout: floating "Search for a destination" bar with the Settings gear, the status pill (web
-  wording), the map context bar ("Only showing routes for: …" / "My route: …"), a custom bottom sheet with three
-  detents (peek / half / full, drag + fling, VoiceOver adjustable; a tap on empty map lowers it) resting on a bottom
-  tab bar: Current trip / Routes / My Routes. Short confirmations appear as a banner and are read out.
+  wording), the map context bar ("Only showing routes for: …" / "My route: …"), a custom bottom sheet resting on a
+  bottom tab bar: Current trip / Routes / My Routes. Short confirmations appear as a banner and are read out. The
+  sheet (owner spec 2026-10-12, "like Google Maps on an iPhone") has two resting states: collapsed (grab bar + the
+  title line, whose right side keeps the one-line summary, e.g. the next bus) and expanded. The whole header strip
+  drags it (from just above the sheet's edge through the grab bar and the title line; a drag that starts on Back
+  still drags, a tap still goes back); while the finger is down it follows 1:1 to any height (rubber band past the
+  ends); on release it goes the way the finger last moved (Kit `SheetMotion`: up = expanded, down = collapsed; a
+  finger that stopped keeps the direction of its last movement of at least 2 pt). A tap on the grab bar toggles, a
+  tap on a collapsed header expands. The settle is an interpolating spring that starts at the finger's speed
+  (Reduce Motion: a 0.15 s ease); it is laid out once at full height and slid with an offset, and the content inset
+  and the map padding change only after the spring finishes, so nothing re-lays out while it moves. It launches
+  collapsed; a tab switch from collapsed, Start trip and the pages that were full (Directions, About, the editor)
+  expand it; other pages keep the rider's state; an alert the rider asked to read expands it (rider safety). A tap on
+  empty map collapses it. Directions opens from the search bar like Google Maps: the bar itself turns into a card
+  with Start and Destination at the top of the screen (matchedGeometryEffect; Reduce Motion: a crossfade), keyboard
+  on Destination, suggestions and trip options in the sheet below; collapsing the sheet drops the keyboard and keeps
+  the card, so the map shows between them; leaving Directions turns the card back into the bar. Location: "Use my
+  location" asks iOS (when-in-use) the first time; when it is off, an alert offers iOS Settings; Settings has a
+  "Share location" row (On / Off / Not allowed with Open Settings) and the line "Straight Bussing does not collect
+  your location. It stays on your iPhone to find nearby stops; for walking directions only a rounded start and end
+  point goes to Apple Maps, and nothing is stored."
 - Current trip (order set by the owner 2026-10-11, ship checklist item 3: the next bus in one glance, no taps): first
   under the title the next bus: the trip timeline (its next step first) during a trip; else the nearest stop with its
   next 3 arrivals and "Leave in N min, est." guidance, fully visible at the half detent on a 393 x 852 pt iPhone (the
@@ -165,7 +183,7 @@ Launch arguments (used by CI, handy in Xcode's scheme editor too): `-demo` (simu
 Main Quad, separate wiped prefs, no demo label), `-screen current|trip|routes|route|myroutes|directions|stop|settings|settingsdemo|liveactivity|livestates|livestatesend|about|alerts|pick|search|custom|editor|order|tripstop`,
 `-noloc` (with `-demo`: no location and no favorites, the "Use my location" first state), `-nobus` (with `-demo`: no
 bus reporting, with the operator's real help alert word for word, for the no-bus calls),
-`-detent peek|half|full`, `-tour` (automatic walk-through for the recording), `-theme light|dark`.
+`-detent peek|full` (a `-screen` opens expanded; `half` reads as full), `-tour` (automatic walk-through for the recording), `-theme light|dark`.
 
 ## Build and run on a Mac
 
@@ -420,6 +438,7 @@ Web status as of 2026-10-10 (web parity port; contracts in docs/ARCHITECTURE.md 
 | `Views/CurrentTripView.swift` locBlock | Location denied offers "Open iOS Settings" (web: "Try location again") | skipped: iOS only (a web page can't open browser settings) |
 | `Views/RootView.swift` StatusPill | Distinct icons per state (feed error, delayed, no live locations, no shuttles) | ported (`ui/pill.js`): wifi off / clock alert / antenna off / bus, always with the words |
 | `Views/BottomSheet.swift` | VoiceOver adjustable "Resize panel" (Collapsed / Half / Expanded) | ported: grabber `role="slider"` "Resize panel" Collapsed / Half / Expanded, arrows, Page Up / Down, Home / End |
+| `Views/BottomSheet.swift`, Kit `SheetMotion`, `Views/DirectionsView.swift` `DirectionsCard`, Settings "Share location" (owner spec 2026-10-12) | Two-state sheet (collapsed / expanded, no midway stop): 1:1 drag from the whole header strip, release by the finger's last motion, tap on the grab toggles, spring with the release velocity, inset and map padding after the settle; Directions fields in a top card that the search bar turns into; location prompt + Settings row with the no-collection line | web side by the parent agent the same day (same rule); content drags do not move the sheet on iOS (the header strip does) |
 | `Model/AppModel+Live.swift` refreshDirections | Directions options re-plan in the background at most every 8 s (web re-plans on every live change) | ported (`core/throttle.js`): at most every 8 s with one trailing run, picked card kept, map never moves, skipped while the feed fails |
 | `Model/LaunchConfig.swift`, Kit `DemoFeed.swift` | `-demo` mode with simulated buses (since 2026-10-11 without any label or demo alert; web: test pages only) | ported: `?demo=1` (`data/demo.js`, banner on every screen, never stored, never mixed with live data). Difference: the web simulates the routes the schedule has in service now (all routes only when none is); no fixed location or seeded routes |
 | `Views/RouteDetailView.swift` | Route detail stop rows each say "next bus in N min" / "no prediction" to VoiceOver as one element | already on the web (one labeled button per stop, same words); now also "seen N min ago" for a stale bus, tested |

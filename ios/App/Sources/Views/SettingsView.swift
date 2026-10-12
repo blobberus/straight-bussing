@@ -17,6 +17,7 @@ struct SettingsView: View {
             ScrollViewReader { proxy in
                 Form {
                     Section { ThemePicker() } header: { ListHeader("Appearance") }
+                    locationSection
                     alertsSection
                     busAlerts
                     Section {
@@ -71,6 +72,51 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("settingsDone") }
             }
+        }
+    }
+
+    // MARK: Location
+
+    /// "Share location" (owner 2026-10-12): the when-in-use permission, its state, and the way to change it. The app
+    /// can ask once; after that only iOS Settings can change it.
+    var locationSection: some View {
+        Section {
+            HStack {
+                Label("Share location", systemImage: model.locState == .granted ? "location.fill" : "location")
+                Spacer()
+                Text(Self.locationStateText(model.locState)).foregroundStyle(Palette.text2)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("shareLocationState")
+            switch model.locState {
+            case .unknown:
+                Button("Allow location") { model.locate() }
+                    .accessibilityHint("Asks iOS for your location while the app is open")
+                    .accessibilityIdentifier("shareLocationAllow")
+            case .asking:
+                Text("Waiting for your answer\u{2026}").foregroundStyle(Palette.text2)
+            case .granted:
+                Button("Change in iOS Settings") { AppModel.openAppSettings() }
+                    .accessibilityIdentifier("shareLocationSettings")
+            case .denied:
+                Button("Open Settings") { AppModel.openAppSettings() }
+                    .accessibilityHint("Location is not allowed for Straight Bussing. Opens iOS Settings")
+                    .accessibilityIdentifier("shareLocationSettings")
+            }
+        } header: {
+            ListHeader("Location")
+        } footer: {
+            Text("Straight Bussing does not collect your location. It stays on your iPhone to find nearby stops; for walking directions only a rounded start and end point goes to Apple Maps, and nothing is stored.")
+                .foregroundStyle(Palette.text2)
+        }
+    }
+
+    static func locationStateText(_ s: LocationProvider.State) -> String {
+        switch s {
+        case .granted: return "On"
+        case .denied: return "Not allowed"
+        case .asking: return "Asking"
+        case .unknown: return "Off"
         }
     }
 

@@ -29,7 +29,9 @@ enum SheetPage: Hashable {
     case route(String), stop(String), customRoute(String), editCustom(String?), about, directions, alerts, pick
 }
 
-enum Detent: Int, CaseIterable { case peek, half, full }
+/// The sheet's two resting states (owner spec 2026-10-12: no midway stop): collapsed (grab bar + title line with its
+/// one-line summary) and expanded.
+enum Detent: Int, CaseIterable { case peek, full }
 
 /// How Routes to station finds the station (web pick.js modes): current location, by name, near a place.
 enum PickMode: String { case loc, sel, addr }
@@ -196,7 +198,9 @@ final class AppModel {
     // Navigation
     var tab: Tab = .current
     var paths: [Tab: [SheetPage]] = [:]
-    var detent: Detent = .half
+    var detent: Detent = .peek
+    /// Location is off and the rider asked for it: offer iOS Settings (RootView alert).
+    var showLocationOff = false
     var showSettings = false
     var showLiveActivityPreview = false
     var editingOrder = false
@@ -298,7 +302,7 @@ final class AppModel {
     func select(_ t: Tab) {
         if t == tab { paths[t] = [] } else { tab = t }
         editingOrder = false
-        if detent == .peek { detent = .half }
+        if detent == .peek { detent = .full }       // switching tabs from collapsed expands (owner 2026-10-12)
         syncMapFocus()
     }
 
@@ -306,9 +310,9 @@ final class AppModel {
         paths[tab, default: []].append(p)
         switch p {
         case .directions, .about, .editCustom: detent = .full
-        case .route(let rid): detent = .half; fitRoute(rid)   // only choosing a route moves the map (web main.js openRoute)
-        case .stop: if detent == .peek { detent = .half }     // stop taps keep the user's map view
-        case .customRoute, .alerts, .pick: detent = .half
+        // pages that opened at the midway stop keep the rider's current state (owner 2026-10-12: two states only)
+        case .route(let rid): fitRoute(rid)   // only choosing a route moves the map (web main.js openRoute)
+        case .stop, .customRoute, .alerts, .pick: break
         }
         syncMapFocus()
     }
@@ -324,8 +328,10 @@ final class AppModel {
 
     /// The service alerts on the current tab (status pill "See alert"; Back returns to where the rider was).
     func openAlerts() {
-        if page == .alerts { if detent == .peek { detent = .half }; return }
+        // rider safety: an alert the rider asked to read is never left under a collapsed sheet
+        if page == .alerts { if detent == .peek { detent = .full }; return }
         push(.alerts)
+        if detent == .peek { detent = .full }
     }
 
     /// The route detail view focuses its route on the map (core/visibility.js mapFocus). Writes only on a

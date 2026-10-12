@@ -8,7 +8,7 @@ import StraightBussingKit
 ///                         settings | settingsdemo | liveactivity | about | alerts | pick | search | custom |
 ///                         editor | order | tripstop (UI test: a stop opened during a started trip) |
 ///                         livestates | livestatesend (the Live Activity in each arrival state, top / scrolled to the end)
-///   -detent peek|half|full
+///   -detent peek|full   (the sheet's two states; "half" is read as full)
 ///   -tour                 walk through the main screens automatically (for the screen recording)
 ///   -theme light|dark     force the color scheme
 ///   -noloc                with -demo: no location and no favorites (the "Use my location" first state)

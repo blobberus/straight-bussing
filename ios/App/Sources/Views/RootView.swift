@@ -3,23 +3,26 @@ import SwiftUI
 import UIKit
 import StraightBussingKit
 
-/// Google-Maps-style layout (web v2.4): full-screen map, floating destination search bar with the Settings
-/// gear, the status pill and the map context bar under it, a bottom sheet with three detents resting on the bottom
-/// tab bar.
+/// Google-Maps-style layout (web v2.4): full-screen map, floating destination search bar with the Settings gear (in
+/// Directions the bar itself turns into the Start / Destination card, in place, and back again when Directions
+/// closes), the status pill and the map context bar under it, a bottom sheet with two resting states (collapsed /
+/// expanded, owner spec 2026-10-12) on the bottom tab bar.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     static let tabBarHeight: CGFloat = 56
-    /// Measured height of the floating chrome above the sheet (search bar, status pill, context bar):
-    /// a long stale message or large text makes it taller, and the sheet's full detent must stay below it.
+    /// Measured height of the floating chrome above the sheet (search bar or Directions card, status pill, context
+    /// bar): a long stale message, large text or the Directions card makes it taller, and the expanded sheet must
+    /// stay below it.
     @State private var chromeH: CGFloat = 50
     /// The keyboard is up: the tab bar steps aside so the sheet keeps its room for suggestions.
     @State private var keyboardUp = false
-    /// Search bar -> Directions (owner 2026-10-12: the start and destination fields grow out of the bar, so the bar
-    /// reads as a search field, not a button): the bar's frame, kept current, and the stand-in in flight.
-    @State private var barFrame: CGRect = .zero
-    @State private var morph: SearchMorph?
+    /// The sheet's settled visible height: the map's bottom padding follows it, so the map never re-centers while the
+    /// sheet is still moving (owner 2026-10-12: no hitch).
+    @State private var settledSheetH: CGFloat = 0
+    /// Directions' typed text, focus and suggestions, shared by the top card and the sheet below it.
+    @State private var dirUI = DirectionsUI()
+    @Namespace private var searchNS
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    static let space = "rootSpace"
 
     var body: some View {
         @Bindable var model = model
@@ -30,24 +33,31 @@ struct RootView: View {
             let topReserved: CGFloat = chromeH > 1 ? chromeH + 14 : 8
             let tabH: CGFloat = keyboardUp ? 0 : Self.tabBarHeight
             let available = max(200, geo.size.height - tabH - topReserved)
-            let sheetH = BottomSheet<EmptyView, EmptyView>.height(for: model.detent, available: available)
             ZStack(alignment: .bottom) {
-                // The inset is applied here, not passed in: MapScreen has no inputs, so a detent change only
+                // The inset is applied here, not passed in: MapScreen has no inputs, so a settled sheet only
                 // relayouts the map instead of re-running its body.
                 MapScreen()
-                    .safeAreaPadding(.bottom, sheetH + tabH)
+                    .safeAreaPadding(.bottom, settledSheetH + tabH)
                     .ignoresSafeArea()
                 VStack(spacing: 8) {
                     VStack(spacing: 8) {
-                        if !inDirections {
-                            SearchBar(onOpen: startMorph)
-                                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(Self.space)) }) { barFrame = $0 }
+                        // the bar and the card are one element that changes shape (matchedGeometryEffect; Reduce
+                        // Motion: a crossfade)
+                        if inDirections {
+                            DirectionsCard()
+                                .modifier(SearchMorphEffect(ns: searchNS, on: !reduceMotion))
+                                .transition(.opacity)
+                        } else {
+                            SearchBar()
+                                .modifier(SearchMorphEffect(ns: searchNS, on: !reduceMotion))
+                                .transition(.opacity)
                         }
                         StatusPill()
                         if ctx && !inDirections { ContextBar() }
                     }
+                    .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.38, dampingFraction: 0.86), value: inDirections)
                     .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { h in
-                        if abs(h - chromeH) > 0.5 { chromeH = h }
+                        if abs(h - chromeH) > 0.5 { withAnimation(.easeOut(duration: 0.2)) { chromeH = h } }
                     }
                     if model.detent != .full { LocateButton().frame(maxWidth: .infinity, alignment: .trailing) }
                     Spacer(minLength: 0)
@@ -55,19 +65,20 @@ struct RootView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 4)
                 VStack(spacing: 0) {
-                    BottomSheet(detent: $model.detent, available: available) { SheetHeader() } content: { SheetContent() }
-                        .environment(\.directionsCardHidden, morph != nil)
+                    BottomSheet(detent: $model.detent, available: available, onSettled: { _, h in
+                        if abs(h - settledSheetH) > 0.5 { settledSheetH = h }
+                    }) {
+                        SheetHeader()
+                    } content: {
+                        SheetContent()
+                    }
                     if !keyboardUp { TabBar() }
                 }
             }
-            // Above the sheet at every detent, like a system banner.
+            // Above the sheet in both states, like a system banner.
             .overlay(alignment: .top) { ToastBanner().padding(.horizontal, 12).padding(.top, 4) }
-            .overlay(alignment: .topLeading) { if let morph { SearchMorphView(morph: morph) } }
-            .coordinateSpace(.named(Self.space))
-            .onPreferenceChange(DirectionsCardFrameKey.self) { f in
-                Task { @MainActor in flyMorph(to: f) }
-            }
         }
+        .environment(dirUI)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         .sheet(isPresented: $model.showSettings) { SettingsView() }
@@ -80,29 +91,12 @@ struct RootView: View {
         } message: { _ in
             Text("This custom route will be removed from My Routes. This can\u{2019}t be undone.")
         }
-    }
-
-    /// The tap on the search bar: a stand-in starts on the bar's frame (the bar itself leaves with Directions).
-    func startMorph() {
-        guard !reduceMotion, barFrame.width > 0 else { return }
-        morph = SearchMorph(rect: barFrame, radius: barFrame.height / 2, label: 1, card: 0)
-    }
-
-    /// The fields card reported where it is: fly the stand-in there (again if the card moves while the sheet
-    /// rises), then hand over to the real card and fade the stand-in out.
-    func flyMorph(to f: CGRect) {
-        guard var m = morph, f.width > 0, f != m.target else { return }
-        let first = m.target == nil
-        m.target = f
-        morph = m
-        withAnimation(first ? .spring(response: 0.42, dampingFraction: 0.88) : .spring(response: 0.25, dampingFraction: 1)) {
-            morph?.rect = f
-            morph?.radius = Radius.card
-            morph?.label = 0
-            morph?.card = 1
-        } completion: {
-            guard morph?.target == f else { return }    // a later frame took over
-            withAnimation(.easeOut(duration: 0.14)) { morph = nil }
+        // the rider asked for their location and it is off: one tap to the switch in iOS Settings
+        .alert("Location is off", isPresented: $model.showLocationOff) {
+            Button("Open Settings") { AppModel.openAppSettings() }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("To see stops near you and walk from where you are, allow location for Straight Bussing in iOS Settings. It stays on your iPhone.")
         }
     }
 
@@ -112,68 +106,23 @@ struct RootView: View {
     }
 }
 
-/// The stand-in that grows from the search bar into the Directions fields card.
-struct SearchMorph: Equatable {
-    var rect: CGRect
-    var radius: CGFloat
-    /// Opacity of the bar's "Search for a destination" label (fades out) and of the card's fill (fades in).
-    var label: Double
-    var card: Double
-    var target: CGRect?
-}
-
-struct SearchMorphView: View {
-    let morph: SearchMorph
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: morph.radius, style: .continuous)
-        ZStack(alignment: .leading) {
-            shape.fill(.regularMaterial)
-            shape.fill(Palette.card).opacity(morph.card)
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").font(.body.weight(.semibold))
-                Text("Search for a destination").foregroundStyle(Palette.text2).lineLimit(1)
-            }
-            .padding(.leading, 16)
-            .opacity(morph.label)
-        }
-        .shadow(color: Palette.shadow.opacity(0.15 * (1 - morph.card)), radius: 8, y: 2)
-        .frame(width: morph.rect.width, height: morph.rect.height)
-        .offset(x: morph.rect.minX, y: morph.rect.minY)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-        .transition(.opacity)
+/// The search bar and the Directions card are one element that changes shape (owner 2026-10-12, like Google Maps):
+/// a matched geometry between them; Reduce Motion: none (they crossfade).
+struct SearchMorphEffect: ViewModifier {
+    let ns: Namespace.ID
+    let on: Bool
+    func body(content: Content) -> some View {
+        if on { content.matchedGeometryEffect(id: "searchCard", in: ns) } else { content }
     }
 }
 
-/// Where the Directions fields card is (in RootView's coordinate space), for the search bar morph.
-struct DirectionsCardFrameKey: PreferenceKey {
-    static let defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        let n = nextValue()
-        if n.width > 0 { value = n }
-    }
-}
-
-private struct DirectionsCardHiddenKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
-extension EnvironmentValues {
-    /// The search bar morph is in flight: the real fields card waits, invisible (it keeps its focus).
-    var directionsCardHidden: Bool {
-        get { self[DirectionsCardHiddenKey.self] }
-        set { self[DirectionsCardHiddenKey.self] = newValue }
-    }
-}
-
-/// Floating "Search for a destination" bar with the Settings gear at its right end. A tap opens Directions and the
-/// fields card grows out of the bar (RootView's morph).
+/// Floating "Search for a destination" bar with the Settings gear at its right end. A tap opens Directions: the bar
+/// turns into the Start / Destination card in place, keyboard on Destination.
 struct SearchBar: View {
     @Environment(AppModel.self) private var model
-    var onOpen: () -> Void = {}
     var body: some View {
         HStack(spacing: 0) {
-            Button { onOpen(); model.dirActiveTo = true; model.openDirections() } label: {
+            Button { model.dirActiveTo = true; model.openDirections() } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").font(.body.weight(.semibold))
                     Text("Search for a destination").foregroundStyle(Palette.text2)
@@ -342,9 +291,7 @@ struct LocateButton: View {
     @Environment(AppModel.self) private var model
     var body: some View {
         Button {
-            if model.locState == .denied && !model.config.demo {
-                model.showInfo("Location is off. Turn it on in iOS Settings to see stops near you.")
-            }
+            if model.locState == .denied && !model.config.demo { model.showLocationOff = true; return }
             model.locate()
         } label: {
             Image(systemName: model.user == nil ? "location" : "location.fill")
@@ -414,5 +361,12 @@ struct SimulatedPill: View {
         .accessibilityLabel("Simulated buses, not real shuttles")
         .accessibilityHint("Opens Settings to turn simulated buses off")
         .accessibilityIdentifier("simulatedPill")
+    }
+}
+
+extension AppModel {
+    /// This app's page in iOS Settings (location, notifications).
+    static func openAppSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
     }
 }

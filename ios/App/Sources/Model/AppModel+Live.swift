@@ -306,7 +306,7 @@ extension AppModel {
             setEndpoint(to ? \DirectionsState.to : \DirectionsState.from, Endpoint(label: "My location", coord: u, isMe: true))
             return
         }
-        if locState == .denied { dirMeDenied = true; return }
+        if locState == .denied { dirMeDenied = true; showLocationOff = true; return }
         pendingMe = to
         locate()
     }
@@ -493,7 +493,7 @@ extension AppModel {
         paths[.current] = (paths[.current] ?? []).filter { $0 != .pick }
         paths[.routes] = []
         tab = .routes
-        if detent == .peek { detent = .half }
+        if detent == .peek { detent = .full }       // a tab switch from collapsed expands
         syncMapFocus()
         fit(rids.flatMap { (staticData.shapes[$0] ?? []).flatMap { $0 } })
     }
@@ -539,8 +539,7 @@ extension AppModel {
     func busTapped(_ rid: String) {
         lastAnnotationTap = Date().timeIntervalSince1970
         guard staticData.routes[rid] != nil else { return }
-        paths[tab, default: []].append(.route(rid))
-        if detent == .peek { detent = .half }
+        paths[tab, default: []].append(.route(rid))   // the sheet keeps its state (owner 2026-10-12)
         syncMapFocus()
     }
 
@@ -568,7 +567,7 @@ extension AppModel {
         routeState.journey = Journey(rids: j.rids, label: j.label, kind: .plan)
         paths[.current] = []
         tab = .current
-        detent = .half
+        detent = .full       // Start opens Current trip expanded (owner 2026-10-12)
         location.setTripMode(true)
         refreshTrip()
         if notify.liveActivity, let snap = tripFollow?.snapshot(staticData: staticData, now: now) {
@@ -673,7 +672,8 @@ extension AppModel {
                 demoQuery = "regnstien"
             default: break
             }
-            if let d = config.detent { detent = d == "full" ? .full : d == "peek" ? .peek : .half }
+            // screenshots and UI tests open a screen expanded; -detent peek collapses it (the old "half" = expanded)
+            if let d = config.detent { detent = d == "peek" ? .peek : .full } else if config.screen != nil { detent = .full }
             if config.tour { await runTour() }
         }
     }
@@ -689,7 +689,7 @@ extension AppModel {
         await pause(3)
         detent = .full
         await pause(3)
-        detent = .half
+        detent = .peek
         select(.routes)
         await pause(2.5)
         push(.route(DemoConfig.routeForDetail))

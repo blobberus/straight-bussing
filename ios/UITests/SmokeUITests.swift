@@ -69,6 +69,10 @@ final class SmokeUITests: XCTestCase {
         app.buttons["searchBar"].tap()
         let to = app.textFields["dirTo"]
         XCTAssertTrue(to.waitForExistence(timeout: 10), "destination field")
+        // the fields are a card at the top, where the search bar was (owner 2026-10-12), not inside the sheet
+        let card = app.descendants(matching: .any)["directionsCard"]
+        XCTAssertTrue(card.exists, "the Directions card")
+        XCTAssertLessThan(card.frame.maxY, app.staticTexts["sheetTitle"].frame.minY, "the card sits above the sheet")
         to.tap()
         to.typeText("chipotle")
         let suggestion = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Chipotle")).firstMatch
@@ -169,13 +173,59 @@ final class SmokeUITests: XCTestCase {
         waitGone(pill, 10, "turning the switch off removes the pill")
     }
 
-    /// Current trip at the half detent (ship checklist item 3, owner decision 2026-10-11): the nearest stop and its
-    /// next buses come first under the title and fit whole above the tab bar; the alert row, station search and
-    /// Routes to station come after. Without a location, "Use my location" is first and the station search next.
+    /// The grab bar's state as VoiceOver reads it: "Collapsed" or "Expanded".
+    func sheetState(_ app: XCUIApplication) -> String {
+        (app.descendants(matching: .any)["sheetGrabber"].value as? String) ?? ""
+    }
+
+    func waitSheet(_ app: XCUIApplication, _ state: String, _ why: String) {
+        let e = expectation(for: NSPredicate(format: "value == %@", state), evaluatedWith: app.descendants(matching: .any)["sheetGrabber"])
+        e.expectationDescription = why
+        wait(for: [e], timeout: 8)
+    }
+
+    /// The sheet's two states (owner spec 2026-10-12): it launches collapsed with the next bus in the title line; the
+    /// whole header strip drags it (the title text, not only the grab bar), the release goes the way the finger last
+    /// moved, and a tap on the grab bar toggles.
+    func testHeaderStripMovesTheSheet() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo"]
+        app.launch()
+        let title = app.staticTexts["sheetTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 30))
+        XCTAssertEqual(sheetState(app), "Collapsed", "launches collapsed")
+        let next = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Next bus at the nearest stop")).firstMatch
+        XCTAssertTrue(next.waitForExistence(timeout: 20), "the collapsed title line keeps the next bus")
+        // drag up from the title text: expands
+        let t = title.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        t.press(forDuration: 0.05, thenDragTo: t.withOffset(CGVector(dx: 0, dy: -300)))
+        waitSheet(app, "Expanded", "a drag up on the title expands")
+        // drag down from the grab bar: collapses
+        let grab = app.descendants(matching: .any)["sheetGrabber"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        grab.press(forDuration: 0.05, thenDragTo: grab.withOffset(CGVector(dx: 0, dy: 400)))
+        waitSheet(app, "Collapsed", "a drag down on the grab bar collapses")
+        // a drag that goes up and then back down a little: the last motion (down) wins
+        let t2 = app.staticTexts["sheetTitle"].coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
+        t2.press(forDuration: 0.05, thenDragTo: t2.withOffset(CGVector(dx: 0, dy: -250)))
+        waitSheet(app, "Expanded", "up again")
+        // a tap on the grab bar toggles
+        app.descendants(matching: .any)["sheetGrabber"].tap()
+        waitSheet(app, "Collapsed", "a tap on the grab bar collapses")
+        app.descendants(matching: .any)["sheetGrabber"].tap()
+        waitSheet(app, "Expanded", "and expands")
+        save(app, "35-sheet-expanded-light")
+    }
+
+    /// Current trip expanded (ship checklist item 3, owner decision 2026-10-11): the nearest stop and its next buses
+    /// come first under the title and fit whole above the tab bar; the alert row, station search and Routes to station
+    /// come after. Without a location, "Use my location" is first and the station search next.
     func testCurrentTripNextBusFirst() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-demo"]
         app.launch()
+        XCTAssertTrue(app.staticTexts["sheetTitle"].waitForExistence(timeout: 30))
+        app.descendants(matching: .any)["sheetGrabber"].tap()
+        waitSheet(app, "Expanded", "expanded to read the list")
         let block = app.descendants(matching: .any)["nextBusBlock"]
         XCTAssertTrue(block.waitForExistence(timeout: 30), "the nearest stop with its next buses")
         let arrival = block.buttons.matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", "minute", "arriving now")).firstMatch
@@ -183,7 +233,7 @@ final class SmokeUITests: XCTestCase {
         let title = app.staticTexts["sheetTitle"], tab = app.buttons["tab.current"], search = app.textFields["nearbySearch"]
         XCTAssertTrue(search.exists)
         XCTAssertGreaterThanOrEqual(block.frame.minY, title.frame.maxY, "under the title")
-        XCTAssertLessThanOrEqual(block.frame.maxY, tab.frame.minY, "fully visible at the half detent: \(block.frame) vs tab bar \(tab.frame)")
+        XCTAssertLessThanOrEqual(block.frame.maxY, tab.frame.minY, "fully visible above the tab bar: \(block.frame) vs tab bar \(tab.frame)")
         XCTAssertLessThan(block.frame.maxY, search.frame.minY, "the station search comes after the next bus")
         let pick = app.buttons["pickOpen"]
         XCTAssertTrue(pick.exists && pick.frame.minY > block.frame.maxY, "Routes to station comes after the next bus")
@@ -191,13 +241,16 @@ final class SmokeUITests: XCTestCase {
         app.terminate()
         app.launchArguments = ["-demo", "-noloc"]
         app.launch()
+        XCTAssertTrue(app.staticTexts["sheetTitle"].waitForExistence(timeout: 30))
+        app.descendants(matching: .any)["sheetGrabber"].tap()
+        waitSheet(app, "Expanded", "expanded")
         let useLoc = app.buttons["useMyLocation"]
         XCTAssertTrue(useLoc.waitForExistence(timeout: 30), "without a location: Use my location")
         let search2 = app.textFields["nearbySearch"]
         XCTAssertTrue(search2.exists)
         XCTAssertGreaterThanOrEqual(useLoc.frame.minY, app.staticTexts["sheetTitle"].frame.maxY)
         XCTAssertLessThan(useLoc.frame.maxY, search2.frame.minY, "Use my location first, the station search next")
-        XCTAssertLessThanOrEqual(search2.frame.maxY, app.buttons["tab.current"].frame.minY, "both visible at the half detent")
+        XCTAssertLessThanOrEqual(search2.frame.maxY, app.buttons["tab.current"].frame.minY, "both visible above the tab bar")
         XCTAssertFalse(app.descendants(matching: .any)["nextBusBlock"].exists)
     }
 }
