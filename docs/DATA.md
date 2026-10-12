@@ -53,9 +53,10 @@ compare there with epoch + dwell_s; score Passio on rows from 2026-10-10 05:18 C
 
 Attribution (`Tracker._candidates`, same rules as `passio_pred_*` in arrivals.csv since 2026-10-12): this bus's own
 predictions (E01 B1; an update without a vehicle id only when no other bus has that trip id); at a loop stop only
-the matching stop_sequence; and **not** a prediction made before the bus's
-previous visit to this stop, or predicting a time within 120 s of it (`PREV_VISIT_GAP_S`): that one was about the
-earlier lap of a loop that keeps its trip id (Downtown Campus Connector). A stop_sequence that names this visit on
+the matching stop_sequence; and, when the bus's previous visit to this stop was on the same trip id,
+**not** a prediction made before that visit or predicting a time within 120 s of it (`PREV_VISIT_GAP_S`): that one
+was about the earlier lap of a loop that keeps its trip id (Downtown Campus Connector). A previous visit under another
+trip id does not block (a real 30-min-ahead prediction for the next run of a 15-min loop is made before it). A stop_sequence that names this visit on
 the same trip overrides it (one update predicts both ends of a loop). Coverage: a CI run only knows predictions
 from its own start (runs overlap ~30 min, so each arrival is covered by the run that started 30 to 70 min before
 it); local chunks reload the last hour of updates from the previous chunks (`--pred-seed`). Merge:

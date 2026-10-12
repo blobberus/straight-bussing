@@ -75,7 +75,7 @@ The arrivals file keeps its 25 columns. New `data/ground_truth/predictions.csv`:
 15, 20 and 30 minutes before every arrival (schema in `docs/DATA.md`), merged by every CI run and the local
 collector; every prediction update is also kept as the artifact `pred-updates-<run>` (90 days) for re-scoring.
 Attribution rules, from the huge-error causes:
-1. **Previous visit:** a prediction made before the bus's previous visit to the stop (or predicting a time within
+1. **Previous visit (same trip id):** a prediction made before the bus's previous visit to the stop on the same trip id (or predicting a time within
    120 s of it) belongs to the earlier lap; skipped unless its stop_sequence names this visit (loop terminals).
 2. **Per bus:** an update without a vehicle id counts only when no other bus has that trip id.
 3. **First seen:** Passio sometimes changes the predicted time and keeps its old timestamp (57 of 651 updates

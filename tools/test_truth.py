@@ -445,6 +445,14 @@ def predictions_about_the_previous_lap_are_skipped():
     assert tr.pred_for("F", "B", arr, veh="V1") == (arr + 20, 1000)
     tr.visits[("V1", "B")] = (arr - 3 * L.STATE_TTL, "F", 1)                # too long ago to matter
     assert tr.preds_at("F", "B", arr, veh="V1")[1200] == (arr - 1440, arr - 1450, arr - 1450)
+    # the previous visit was on ANOTHER trip id (a 15-min loop, the next run): a 30-min-ahead prediction for this
+    # run, made before the bus passed the stop on the earlier one, is real and kept
+    tr2 = Tracker(fake_static())
+    tr2.visits[("V1", "B")] = (arr - 900, "E", 1)
+    tr2.add_prediction("G", "B", arr - 1850, arr + 40, veh="V1", last=arr - 1000)
+    tr2.add_prediction("G", "B", arr - 1000, arr + 10, veh="V1", last=arr)
+    got = tr2.preds_at("G", "B", arr, veh="V1")
+    assert got[1800] == (arr + 40, arr - 1850, arr - 1850) and got[600] == (arr + 10, arr - 1000, arr - 1000), got
 
 
 @test

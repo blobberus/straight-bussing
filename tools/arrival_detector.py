@@ -64,11 +64,13 @@ class Tracker:
         """Predictions that can be about THIS arrival, oldest first: (made, predicted).
         This vehicle's own predictions, else the trip's predictions that came without a vehicle id. At a
         loop stop (in the route twice) only a prediction whose stop_sequence is idx + 1 counts (or that
-        has no sequence): one update predicts the terminal both as stop 1 and as stop N. A prediction made
-        before the bus's previous visit to this stop, or predicting a time within PREV_VISIT_GAP_S of that
-        visit, was about the earlier lap (loops that keep one trip id, the Downtown Campus Connector's
-        frequency trip) and is skipped, unless its stop_sequence names this visit and the previous one was
-        another index of the same trip (the loop terminal: one update predicts both ends of the loop)."""
+        has no sequence): one update predicts the terminal both as stop 1 and as stop N. When the bus's
+        previous visit to this stop was on the SAME trip id (loops that keep one trip id for two laps, the
+        Downtown Campus Connector's frequency trip; E19 cause A3), a prediction made before that visit, or
+        predicting a time within PREV_VISIT_GAP_S of it, was about the earlier lap and is skipped, unless its
+        stop_sequence names this visit at another index (the loop terminal: one update predicts both ends).
+        A previous visit under another trip id never blocks: on a 15-min loop a real 30-min-ahead prediction
+        for the next run is made before the bus passes the stop on this one."""
         d = self.preds.get((self._veh(veh), trip, stop_id))
         if not d and self._only_bus(trip, veh, epoch):    # updates without a vehicle id: only if no other bus has
             d = self.preds.get((None, trip, stop_id), ())  # this trip id (shared trip ids, E01 B1)
@@ -80,9 +82,8 @@ class Tracker:
                 continue
             if abs(pred - epoch) >= 3600:
                 continue
-            if pv is not None and (made <= pv[0] or pred < pv[0] + PREV_VISIT_GAP_S):
-                named = seq is not None and idx is not None and seq == idx + 1 and pv[1] == trip and pv[2] != idx
-                if not named:
+            if pv is not None and pv[1] == trip and (made <= pv[0] or pred < pv[0] + PREV_VISIT_GAP_S):
+                if not (seq is not None and idx is not None and seq == idx + 1 and pv[2] != idx):
                     continue
             yield made, pred, seen, last
 
