@@ -6,7 +6,7 @@
 > Claude agent. Agents: read this whole file before running an experiment, follow **§10 Agent
 > protocol**, and log every result in **§11**.
 >
-> Status: **collecting arrivals + weather/traffic context; E00, E01, E04, E15 done.** Created 2026-10-08,
+> Status: **collecting arrivals + weather/traffic context; E00, E01, E04, E15, E18 done.** Created 2026-10-08,
 > revised the same day after an objective review (§13). Ship target: **Fri Nov 20, 2026**, before
 > Thanksgiving Break (§8). Improving the data and the model continues after shipping.
 
@@ -319,6 +319,7 @@ A failed gate keeps the current source for that output; logged as "not yet". No 
 | E15 | Weather effect on arterial traffic (prior) | history | **done 2026-10-08**: ~2-4.5 % slower; secondary factor |
 | E16 | Weather effect on shuttle run time and dwell (M14 re-estimate) | T2 + 10 wet days | multipliers with CIs; compare to E15 prior |
 | E17 | CTA bus GPS on Hyde Park streets as a live traffic feed | Nathan's CTA developer key | adopt if it improves on M13 |
+| E18 | One-minute goal (owner request): Passio's error per stop and what M2 / M10 buy, 2-3 min ahead | T0 | **done 2026-10-12**: worth pursuing, inconclusive for shipping (4 test days); re-run weekly, decide at T1 |
 
 ## 8. Timeline to ship before December
 
@@ -383,10 +384,11 @@ Reproduce: <exact commands>
 | E00 | 2026-10-08 | day 1, 1,636 usable segment rows, 8 routes; train 04:59-11:02, test 11:02-15:00 (row split) | Segment MAE: schedule 111 s, segment-hour median 96 s, shrunk hierarchy 99 s, + EWMA 103 s. Arrival at 2-5 min lead (n = 422): Passio 156 s, schedule 116 s, shrunk hierarchy 97 s. Coverage 74-75%. RMSE ~270 s | **Inconclusive**: one day, row split, 1 test day. Pipeline works on real data. `experiments/routeknower/E00-pilot-2026-10-08.md` |
 | E01 | 2026-10-10 | data commit `ab837cf`: 6,824 rows, 2026-10-08 04:59 to 2026-10-09 20:28 CDT (2 service days) + GTFS zip + tripUpdates fixture | DCC: one frequency trip id for all buses; 18% stale links, 48 mistimed transitions, route_stops correct. Drexel 0.86 per full lap (0.50 per trip id); misses follow trip-id flaps. Midway Metra variant (57th St Metra NB) missing from route_stops. Tails: holds at lots/turnarounds, layovers, stale links, > 20 m/s artefacts. Passio: logger mixes DCC buses (618 s vs 78 s MAE); leads >= 5 min sample Passio failures. Rules cut 2.3% of segments, keys 233 -> 192; backtest 2-5 min Passio 114 -> 62 s, shrunk 63 -> 53 s | **Adopt** `load_rows` rules (analysis side). Collector bugs B1-B4 applied 2026-10-10 (`cc40831`, `9eb11c7`, `2ba339c`, `c3831ca`); B5 open. `experiments/routeknower/E01-data-quality-2026-10-10.md` |
 | E04 | 2026-10-08 | 2026-27 College Catalog | `data/calendar.json`: Autumn begins Sep 28; Thanksgiving Break Nov 23-27; reading Dec 5-7; finals Dec 8-11; quarter ends Dec 12; Winter Jan 4 - Mar 13; Spring Mar 22 - Jun 5 | **Done**; ship date moved to Nov 20 (§8) |
+| E18 | 2026-10-12 | data `2c7f653`: 9,569 rows, Oct 8 to 12 (4 test days, rolling origin by day); 6,973 rider-facing Passio predictions, 2-3 min ahead | Passio today: 60% within 1 min, 30% of stops (36 of 119) have 80% of predictions within 1 min; buses come 40 s later than shown on average, a per-stop offset that is real (drive-through vs stopped r = 0.92) and stable (r = 0.89 across days). Per-stop offset fitted on earlier days: 62 -> 87% within 1 min, stops at goal 31 -> 85%, MAE 67 -> 42 s, but bus > 1 min early 3 -> 7% (quantile 0.8 per stop x daypart: 74%, early 3%). Our model / blends add nothing at this lead | **Worth pursuing; inconclusive** (< 10 test days). B5 first (score 5-10 min), then decide at T1 with the early-miss rule. `experiments/routeknower/E18-one-minute-goal-2026-10-12.md` |
 | E15 | 2026-10-08 | Traffic Tracker regions 2022-01..2026-04 x MDW METARs (64,551 joined hours) | Hyde Park speeds -2.0 % light rain, -3.5 % heavy rain, -3.5 % snow (95% CIs exclude 0); ~20 wet / ~5 snow service days expected Oct 8-Nov 30 | **Adopt as prior** for M14; weather secondary. `experiments/routeknower/E15-weather-traffic-prior.md` |
 
 ## 12. Open questions
-- Does Passio's ETA come from a schedule or from live positions? (Pilot mean error -33 s: buses beat Passio on average.) M2/M10 answer it.
+- Does Passio's ETA come from a schedule or from live positions? (Error = predicted - actual: the pilot's -33 s and E18's -40 s mean buses come *later* than Passio shows, by a stable amount per stop; corrected 2026-10-12, this line used to say the opposite.) M2/M10 answer it.
 - Are some stops request-only at night (no row when skipped)? Affects Q4 and the night-route models.
 - Does the academic calendar (class changes at :50 to :10) show up in dwell and run times? E08, E14.
 - How different is campus weather from Midway's (lake effect)? Compare `wx_*` with `gr_*` once wet days accumulate.

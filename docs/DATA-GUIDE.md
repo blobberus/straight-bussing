@@ -78,7 +78,64 @@ than 25 minutes earlier (a gap in the data), or the bus was logged on a differen
 | Column | What it means | Example |
 |---|---|---|
 | `passio_pred_epoch` | When the official tracking feed predicted this bus would arrive here, taken from a prediction made at least 2 minutes before the bus arrived (same number format as `epoch`). Compare it with `epoch` to see how far off the official prediction was. Blank if the feed had no prediction. | `1791684889` |
-| `passio_pred_lead_s` | How many seconds before the arrival that prediction was made. Usually 2 to 4 minutes. A value of 5 minutes or more usually means the feed had stopped updating that bus, so treat those rows as "the prediction was stuck", not as a good long-range forecast. | `153` (made 2.5 minutes before) |
+| `passio_pred_lead_s` | How many seconds before the arrival that prediction was made. **Always 120 or more, on purpose** (we keep the prediction a rider would have had 2 minutes ahead); usually 2 to 3 minutes. A lead longer than the drive from the previous stop is normal, not a missed prediction: see "Reading the prediction lead" below. A value of 5 minutes or more usually means the feed had stopped updating that bus, so treat those rows as "the prediction was stuck", not as a good long-range forecast. | `153` (made 2.5 minutes before) |
+
+#### Reading the prediction lead (`passio_pred_lead_s`)
+
+**What the official feed does.** While a bus drives toward a stop, the feed keeps publishing a predicted arrival
+time for it and refreshes that prediction now and then (judging by this column, about once a minute). So one
+arrival has many predictions: one made 6 minutes before, one made 3 minutes before, one made 20 seconds before, and
+so on.
+
+**Which one this file keeps.** Only one per arrival: the newest prediction that was **already at least 2 minutes
+old** when the bus arrived. Two minutes is roughly the time it takes to get to a stop, so this is the prediction a
+rider would have planned with. A prediction made 15 seconds before the bus pulls up is almost always right and
+tells you little. `passio_pred_lead_s` is how long before the arrival that kept prediction was made, so it is never
+under 120.
+
+**Why it is rarely exactly 120.** At the 2-minute mark, the feed's newest prediction is usually a little older,
+because the feed does not refresh every second. `passio_pred_lead_s` minus 120 is how old the feed's prediction was
+at the 2-minute mark. In the first five days of data (October 8 to 12, 2026), half of all leads are under 156
+seconds (a prediction 36 seconds old) and 79% are under 3 minutes.
+
+**"The lead is longer than the drive from the previous stop. Did the official app miss its chance to predict the
+arrival?"** No. In the example row below, the prediction was made 153 seconds before the bus arrived, while the
+drive from the previous stop took only 16 seconds (`segment_s`). That only means the prediction was made before the
+bus had even reached the previous stop: it was still at least 2 stops away. This is the normal case. In about 2 of
+every 3 rows the lead is longer than the drive from the previous stop, and when the kept prediction was made the bus
+still had to reach 1 stop (this one) in about a third of rows, 2 stops in another third, and 3 or more in the rest.
+The feed almost certainly kept updating its prediction after that, including while the bus stood at the previous
+stop. Those later, easier predictions are simply not stored, on purpose. So this column answers "how good was the
+prediction a rider had 2 minutes ahead?", not "did the feed predict at all?".
+
+**What a missed chance does look like:**
+- **`passio_pred_epoch` is blank.** The feed had no prediction for this bus at this stop made 2 minutes or more
+  before it arrived (about 4% of rows).
+- **The lead is well over 3 minutes.** At the 2-minute mark, the feed's newest prediction was more than a minute
+  old, so riders were looking at an old number. At **5 minutes or more** (about 8% of rows) the feed had stopped
+  updating that bus. Treat those rows as feed failures, not as long-range forecasts.
+
+**Accuracy falls as the lead grows.** How often the bus came within 1 minute of the kept prediction (October 8 to
+12, 2026; rows the collector could attribute to the right bus):
+
+| Lead | Rows | Within 1 minute | Average miss |
+|---|---:|---:|---:|
+| 120 to 129 s (fresh) | 1,044 | 69% | 56 s |
+| 130 to 149 s | 2,139 | 65% | 63 s |
+| 150 to 179 s | 2,886 | 58% | 72 s |
+| 180 to 239 s | 761 | 42% | 110 s |
+| 240 to 299 s | 143 | 22% | 179 s |
+
+Part of that drop is simply predicting further ahead; most of it is an old prediction that the bus has since
+drifted away from.
+
+**What this column cannot tell you:** how good the official prediction is 5 or 10 minutes ahead, when you might
+decide to leave home. A lead of 5 minutes or more here is a stuck prediction, not a fair test. Storing the 5- and
+10-minute predictions as extra columns is planned (RouteKnower.md, E01 "B5").
+
+**Where was the bus when the prediction was made?** Filter the file to the same `vehicle_id` and `trip_id`, and look
+at its rows whose `epoch` is between this row's `epoch` minus `passio_pred_lead_s` and this row's `epoch`: those are
+the stops it still had to reach.
 
 ### How we know
 
