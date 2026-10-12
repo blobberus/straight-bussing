@@ -4,6 +4,9 @@ This guide explains the shuttle arrival files for someone who has never seen the
 file opens in Excel, Google Sheets or Numbers. (The technical version, with how arrivals are detected, is
 `docs/DATA.md`.)
 
+**The big picture** (how the data is collected, how Passio predicts far buses, how our model works and how they
+compare under the 10% rule): open `docs/prediction-explainer.html` in a browser.
+
 **Which files this covers:** all of these have the same 25 columns. (The predictions file added on October 12,
 2026 is different; it has its own section, "The companion file", below.)
 - `data/ground_truth/arrivals.csv` on the `data` branch of this repo (everything, in one file)

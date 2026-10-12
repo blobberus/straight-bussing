@@ -14,7 +14,8 @@
 Related files (read, don't duplicate): `docs/DATA.md` (CSV schemas, detector, context data), `docs/ALGORITHMS.md`
 (math of the existing models), `docs/BACKTEST.md` (latest backtest report), browsable data + viewer:
 https://github.com/blobberus/straight-bussing-data (auto-synced mirror of the data and this methodology), `monitoring.md` (keeping the
-collectors alive), `web/js/core/predict.js` (how the app reads a model). `docs/LEARNING.md` is superseded.
+collectors alive), `web/js/core/predict.js` (how the app reads a model). `docs/LEARNING.md` is superseded. Plain-English overview for the owner (collection, Passio's far predictions, our model, the 10% rule
+comparison): `docs/prediction-explainer.html`; first Passio far-lead analysis: `experiments/routeknower/E20-prelim-*`.
 
 ---
 

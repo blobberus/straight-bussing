@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Straight Bussing: how arrival predictions work</title>
+<style>
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --surface-2:#f0f2f5; --ink:#15171a; --ink-2:#4a5058; --line:#e2e5ea;
+  --accent:#2457d6; --accent-ink:#ffffff; --accent-soft:#e9effc;
+  --warn-bg:#fff7e8; --warn-line:#eab95a; --warn-ink:#5f4200;
+  --ok:#1f7a45; --bad:#b3261e;
+  --r:14px; --r-s:8px; --r-pill:999px;
+  --shadow:0 1px 2px rgba(22,34,64,.06),0 6px 20px rgba(22,34,64,.06);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0f1115; --surface:#171a20; --surface-2:#1e222a; --ink:#eef0f3; --ink-2:#a9b0bb; --line:#2b3038;
+    --accent:#7ea5ff; --accent-ink:#0b1430; --accent-soft:#1b2640;
+    --warn-bg:#2a2311; --warn-line:#8c6c24; --warn-ink:#f2d692;
+    --ok:#5fd394; --bad:#ff8a80;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25);
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:72px}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--font);-webkit-text-size-adjust:100%}
+a{color:var(--accent);text-underline-offset:2px}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
+code{font-family:var(--mono);font-size:.86em;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:.05em .35em;overflow-wrap:anywhere}
+.wrap{max-width:1000px;margin:0 auto;padding:0 20px}
+
+.bar{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(12px);-webkit-backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid var(--line)}
+.bar .wrap{display:flex;align-items:center;gap:6px;min-height:56px;overflow-x:auto;scrollbar-width:none}
+.bar .wrap::-webkit-scrollbar{display:none}
+.bar a.nav{flex:none;text-decoration:none;color:var(--ink-2);font-size:14px;font-weight:600;padding:8px 12px;border-radius:var(--r-pill);min-height:44px;display:inline-flex;align-items:center}
+.bar a.nav:hover{background:var(--surface-2);color:var(--ink)}
+.bar .spacer{flex:1 0 8px}
+.btn{flex:none;font:600 14px var(--font);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-pill);padding:0 14px;min-height:44px;cursor:pointer}
+.btn:hover{background:var(--surface-2)}
+.btn:active{transform:scale(.98)}
+
+header.hero{padding:40px 0 8px}
+.eyebrow{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);margin:0 0 8px}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.12;letter-spacing:-.02em;margin:0 0 12px;max-width:24ch}
+.lede{color:var(--ink-2);font-size:18px;max-width:66ch;margin:0 0 24px}
+.facts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 12px}
+.fact{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.fact b{display:block;font-size:20px;letter-spacing:-.01em;line-height:1.3}
+.fact span{font-size:14px;color:var(--ink-2)}
+
+h2{font-size:26px;letter-spacing:-.015em;line-height:1.2;margin:0 0 6px}
+h3{font-size:18px;margin:22px 0 8px}
+h4{font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-2);margin:18px 0 8px}
+section.block{padding:44px 0 8px}
+.sub{color:var(--ink-2);margin:0 0 18px;max-width:72ch}
+p{max-width:76ch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:18px 20px;margin:12px 0}
+.panel > :first-child{margin-top:0}
+.panel > :last-child{margin-bottom:0}
+.callout{background:var(--accent-soft);border-radius:var(--r-s);padding:12px 16px;margin:12px 0}
+.callout > :first-child{margin-top:0}.callout > :last-child{margin-bottom:0}
+.warn{background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-ink);border-radius:var(--r-s);padding:10px 16px;margin:12px 0}
+.warn a{color:inherit}
+.warn > :first-child{margin-top:0}.warn > :last-child{margin-bottom:0}
+.tag{display:inline-block;font-size:12px;font-weight:700;border-radius:var(--r-pill);padding:1px 9px;line-height:1.7;white-space:nowrap;vertical-align:1px}
+.tag.hi{background:var(--accent);color:var(--accent-ink)}
+.tag.mid{background:var(--surface-2);color:var(--ink);border:1px solid var(--line)}
+.tag.lo{border:1.5px dashed var(--ink-2);color:var(--ink-2)}
+.tag.small{background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line)}
+
+.tablewrap{overflow-x:auto;margin:10px 0}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-top:1px solid var(--line)}
+th{font-size:12.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);border-top:0;vertical-align:bottom}
+td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+th.n{text-align:right}
+td:first-child code{white-space:nowrap;overflow-wrap:normal}
+tr.best td{font-weight:700}
+.caption{font-size:13.5px;color:var(--ink-2);margin:6px 0 0}
+
+/* flow diagram */
+.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:center;margin:16px 0}
+.node{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:12px 14px;font-size:14.5px}
+.node b{display:block;font-size:15px;margin-bottom:2px}
+.node small{color:var(--ink-2);display:block;line-height:1.45}
+.node.src{border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+.arrow{display:grid;place-items:center;color:var(--ink-2);font-weight:700;font-size:20px}
+.stack{display:flex;flex-direction:column;gap:10px}
+.flow2{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch;margin:4px 0 16px}
+
+details.dd{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);margin:10px 0;overflow:hidden}
+details.dd > summary{list-style:none;display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;min-height:52px;font-weight:650}
+details.dd > summary::-webkit-details-marker{display:none}
+details.dd > summary::after{content:"";margin-left:auto;flex:none;width:9px;height:9px;border-right:2px solid var(--ink-2);border-bottom:2px solid var(--ink-2);transform:rotate(45deg);transition:transform .2s}
+details.dd[open] > summary::after{transform:rotate(-135deg)}
+details.dd .body{padding:0 20px 16px}
+.formula{font-family:var(--mono);font-size:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-s);padding:10px 14px;overflow-x:auto;white-space:pre;margin:10px 0}
+ul.tight li{margin:4px 0}
+dl.gloss{display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:8px 18px;margin:0}
+dl.gloss dt{font-weight:700}
+dl.gloss dd{margin:0;color:var(--ink)}
+footer{padding:40px 0 60px;color:var(--ink-2);font-size:14px}
+footer ul{padding-left:20px}
+
+@media (max-width:760px){
+  .facts{grid-template-columns:repeat(2,1fr)}
+  .flow,.flow2{grid-template-columns:1fr}
+  .arrow{transform:rotate(90deg);min-height:20px}
+  dl.gloss{grid-template-columns:1fr}
+  dl.gloss dd{margin-bottom:8px}
+}
+@media print{
+  .bar,.btn{display:none!important}
+  body{background:#fff}
+  details.dd,.panel,.node{box-shadow:none}
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Sections">
+  <div class="wrap">
+    <a class="nav" href="#goal">1 Goal</a>
+    <a class="nav" href="#collect">2 Collection</a>
+    <a class="nav" href="#passio">3 Passio</a>
+    <a class="nav" href="#ours">4 Our model</a>
+    <a class="nav" href="#compare">5 Compare</a>
+    <a class="nav" href="#next">6 Next</a>
+    <a class="nav" href="#glossary">7 Glossary</a>
+    <span class="spacer"></span>
+    <button class="btn" type="button" id="toggleAll" aria-pressed="false">Expand all</button>
+  </div>
+</nav>
+
+<main class="wrap">
+
+<header class="hero">
+  <p class="eyebrow">Straight Bussing · explainer of 2026-10-12</p>
+  <h1>How arrival predictions work, and how good they are</h1>
+  <p class="lede">What we collect from the shuttle feeds, how Passio (the company behind the official Passio GO! app) predicts buses that are far away, how our own model works, and how all of them do against your 10% rule.</p>
+  <div class="facts">
+    <div class="fact"><b>10% of the lead</b><span>the goal: 1 min off at 10 min ahead, 3 min off at 30 min ahead</span></div>
+    <div class="fact"><b>15% pass</b><span>Passio at 10 min ahead today (first look, one afternoon)</span></div>
+    <div class="fact"><b>2 to 5 min later</b><span>how much later than Passio shows a far bus usually comes</span></div>
+    <div class="fact"><b>Oct 19 to 22</b><span>first honest verdict on Passio far ahead (a week of the new file)</span></div>
+  </div>
+</header>
+
+<!-- ================= 1 GOAL ================= -->
+<section class="block" id="goal">
+  <h2>1. The goal: the 10% rule</h2>
+  <p class="sub">A prediction made L minutes before a bus arrives should be right to within 10% of L. And predictions should almost never be "too late", the case where a rider misses the bus.</p>
+
+  <div class="callout">
+    <p><b>How errors are counted everywhere on this page:</b> error = predicted time minus actual time.</p>
+    <ul class="tight">
+      <li><b>Positive = too late:</b> the bus came <i>earlier</i> than shown. The rider can miss it. This is the dangerous side.</li>
+      <li><b>Negative:</b> the bus came <i>later</i> than shown. The rider waits.</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin-top:0">What the rule allows</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>How far ahead (lead)</th><th class="n">Allowed miss (10%)</th><th class="n">Allowed "too late" (1%, reading B)</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>2 min</td><td class="n">12 s</td><td class="n">1 s</td><td>Finer than the app shows (whole minutes) and our timing (about 10 s); a 1-minute floor is suggested</td></tr>
+        <tr><td>5 min</td><td class="n">30 s</td><td class="n">3 s</td><td></td></tr>
+        <tr><td>6 min</td><td class="n">36 s</td><td class="n">4 s</td><td>Where "far" starts for this page</td></tr>
+        <tr><td>10 min</td><td class="n">1 min</td><td class="n">6 s</td><td>Your example</td></tr>
+        <tr><td>15 min</td><td class="n">1.5 min</td><td class="n">9 s</td><td></td></tr>
+        <tr><td>20 min</td><td class="n">2 min</td><td class="n">12 s</td><td></td></tr>
+        <tr><td>30 min</td><td class="n">3 min</td><td class="n">18 s</td><td>Your example</td></tr>
+      </tbody>
+    </table></div>
+    <p class="caption">"Too late" uses reading B of your 1% rule: a prediction may be up to 10% of the lead too early, but at most 1% of the lead too late. Two other readings (fewer than 1% of all predictions too late at all, or too late by more than 10%) were checked in E19 and are not reachable with today's spread without wiping out the 10% passes. Please confirm the reading.</p>
+  </div>
+
+  <h3>Why buses 6+ minutes away matter most</h3>
+  <ul class="tight">
+    <li>People decide when to leave 5 to 15 minutes before the bus. That is the number they act on.</li>
+    <li>Close in, Passio is decent: 2 to 3 minutes ahead, about 6 in 10 predictions are within 1 minute (E18).</li>
+    <li>Far ahead it is not: 10 minutes ahead only about 1 in 7 passes the 10% rule, and the misses all lean one way (the bus comes later than shown). Section 5 has the numbers.</li>
+  </ul>
+</section>
+
+<!-- ================= 2 COLLECTION ================= -->
+<section class="block" id="collect">
+  <h2>2. How the data is collected</h2>
+  <p class="sub">A collector reads Passio's public live feeds every 10 seconds, around the clock, and turns them into files we can score the 10% rule on.</p>
+
+  <div class="flow" role="img" aria-label="Flow: Passio feeds every 10 seconds, to the collector, to three outputs, merged into the data branch and a daily archive.">
+    <div class="node src"><b>Passio live feeds</b><small>Every 10 s: each bus's GPS position, and each bus's predicted arrival at every upcoming stop (the same predictions the apps show), plus alerts.</small></div>
+    <div class="arrow" aria-hidden="true">&#8594;</div>
+    <div class="node"><b>Collector</b><small>Detects every real arrival of every bus at every stop, timed to about 10 s, and keeps every prediction update Passio published.</small></div>
+    <div class="arrow" aria-hidden="true">&#8594;</div>
+    <div class="stack">
+      <div class="node"><b>arrivals.csv</b><small>One row per arrival (25 columns, unchanged): the ground truth.</small></div>
+      <div class="node"><b>predictions.csv</b><small>What Passio showed 1, 2, 3, 5, 10, 15, 20 and 30 min before each arrival.</small></div>
+      <div class="node"><b>Prediction log + position polls</b><small>Every update and every GPS report, for re-scoring later.</small></div>
+    </div>
+  </div>
+  <div class="flow2" aria-hidden="false">
+    <div class="node"><b>Merge into the data branch</b><small>Overlapping runs log the same arrival; duplicates (same bus, same stop, within 5 min) are merged, the fullest row and the freshest prediction stay.</small></div>
+    <div class="arrow" aria-hidden="true">&#8594;</div>
+    <div class="node"><b>Daily archive (the morning after)</b><small>The day's logs and the training table <code>eta-&lt;day&gt;.csv.gz</code> go to the repo's Releases page (about 5.5 MB a day); the pass rates go to <code>data/eta/summary.csv</code>.</small></div>
+  </div>
+
+  <h3>Never a gap</h3>
+  <ul class="tight">
+    <li><b>Cloud runs</b> collect for 70 minutes each and start their successor 40 minutes in, so two always overlap by about 30 minutes.</li>
+    <li><b>A local backup</b> on this PC collects in 30-minute chunks and reloads the last hour of Passio's predictions at each start, so 30-minute-ahead predictions are never cut off.</li>
+  </ul>
+
+  <details class="dd"><summary>How an arrival is detected and timed</summary>
+    <div class="body">
+      <p>The collector watches every bus. An arrival counts when the stop the bus is heading to moves forward along the route (Passio flips it 20 to 50 m early, so the collector waits until the bus stops, turns away, or 60 s pass), or when the bus stands within 40 m of a stop. The time is when the bus's GPS track crosses the stop, worked out between two reports from the bus's speed. Reports come every 10 s and GPS is off by 5 to 10 m, so arrival times are good to about plus or minus 10 seconds. A row is written when the bus leaves, so the time it stood at the stop is known too.</p>
+    </div>
+  </details>
+
+  <details class="dd"><summary>Making sure a prediction belongs to the right arrival (the attribution rules)</summary>
+    <div class="body">
+      <p>Half of the huge "errors" in the old data (E19) were our logger pairing a prediction with the wrong bus or lap, not Passio's fault. The rules now:</p>
+      <ol class="tight">
+        <li><b>Per bus.</b> Several Downtown Campus Connector buses share one trip id, so predictions are kept per bus. One without a bus id counts only when a single bus is on that trip.</li>
+        <li><b>Previous lap, same trip id.</b> If the bus already passed this stop on the same trip id, a prediction made before that pass (or for a time within 2 minutes of it) was about the earlier lap and is skipped.</li>
+        <li><b>First seen.</b> Passio sometimes changes a predicted time without updating its timestamp (57 of 651 updates one morning, 21 of 8,196 that afternoon). A prediction counts from when our poll first saw it, so a last-minute change never passes for a 10-minute-ahead one.</li>
+        <li><b>On display.</b> For "10 minutes ahead" we use the prediction Passio was still showing 10 minutes before the arrival. If Passio had stopped showing it, there is no row: "showed nothing" is counted separately from "showed an old time".</li>
+      </ol>
+    </div>
+  </details>
+
+  <div class="panel">
+    <h3 style="margin-top:0">What each file can measure</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>File</th><th>One row is</th><th>Lets us measure</th><th>Limits</th></tr></thead>
+      <tbody>
+        <tr><td><code>arrivals.csv</code></td><td>One bus arriving at one stop</td><td>The truth for everything; Passio at 2 to 3 minutes ahead (one stored prediction per arrival)</td><td>Since Oct 8, 2026</td></tr>
+        <tr><td><code>predictions.csv</code></td><td>One arrival at one fixed lead</td><td>The 10% rule for Passio at 1 to 30 minutes ahead; a missing row means Passio showed nothing</td><td>Since Oct 12, 2026: about a week is needed for an honest answer</td></tr>
+        <tr><td>Prediction log</td><td>One update Passio published</td><td>Re-scoring any lead or rule later, without collecting again</td><td>Kept as daily archives</td></tr>
+        <tr><td>Position polls</td><td>One GPS report</td><td>Where a bus really was: standing buses, detector checks, our own long-range model</td><td>Kept as daily archives</td></tr>
+        <tr><td><code>eta-&lt;day&gt;.csv.gz</code></td><td>One minute, one bus, one of its arrivals in the next 45 minutes</td><td>Training: features and every source's prediction at the moment a rider asks (section 6)</td><td>About 130,000 rows a day; never average its rows (each arrival appears up to 45 times)</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ================= 3 PASSIO ================= -->
+<section class="block" id="passio">
+  <h2>3. How Passio predicts, near and far</h2>
+  <p class="sub">Passio does not publish how its predictions work. What follows is what we measured in its feed, plus what other projects found in its app. <span class="tag hi">High</span> <span class="tag mid">Medium</span> <span class="tag lo">Low</span> mark how sure we are.</p>
+
+  <h3>How the predictions reach the official app and ours</h3>
+  <div class="flow" role="img" aria-label="Bus GPS goes to Passio's servers, which feed both the Passio GO app through its own ETA call and our app through the public GTFS-Realtime feed.">
+    <div class="node src"><b>Bus GPS</b><small>Each bus reports its position to Passio's servers. All prediction math happens there.</small></div>
+    <div class="arrow" aria-hidden="true">&#8594;</div>
+    <div class="node"><b>Passio GO! app and passiogo.com</b><small>Ask Passio's own ETA service, one stop at a time, about every 10 s. It answers from a cache ("eta cache"), with a live GPS estimate as a fallback.</small></div>
+    <div class="arrow" aria-hidden="true">&#8594;</div>
+    <div class="node"><b>Straight Bussing (web and iPhone)</b><small>Reads Passio's public feed every 10 s: for each bus, a predicted time at every upcoming stop of its current trip and its next trip. The app shows these times as they are.</small></div>
+  </div>
+  <p>Both come from Passio's servers with the same bus and stop ids. When the official app's cached answer was fresh (under about a minute old), it and our feed agreed to about a minute. When the cache was old (we saw 5 to 48 minutes), they could differ a lot, for example 9.3 minutes in the official app against 17.3 in the feed for a 53rd Street Express bus that came after 18.1. In all 13 checks against real arrivals the bus came later than the official app said. <span class="tag small">25 checks, one afternoon</span> <span class="tag mid">Medium</span></p>
+
+  <h3>How the far predictions are formed <span class="tag hi">High</span></h3>
+  <div class="panel">
+    <ol class="tight">
+      <li><b>On the bus's current trip:</b> where the bus is now, plus Passio's own driving times between stops, with <b>no time standing at stops</b>. At 98% of stops Passio predicts the bus leaves 1 second after it arrives, and its stop-to-stop times are about 22 s shorter than the timetable's. So it runs optimistic, and more so the more stops are left.</li>
+      <li><b>On the bus's next trip</b> (it still has to finish its current loop): anchored on the <b>timetable</b>. The next trip's first departure equals the scheduled departure in 94% of 232 checks; later stops add Passio's driving times.</li>
+      <li><b>Lateness is not carried over.</b> Whether the bus is on time, 1 to 5 minutes late, or more than 5 minutes late, its next-trip predictions stay on the timetable (median miss about 40 to 60 s). Only in 11 of 293 cases did a late bus push its next trip later.</li>
+      <li><b>The jump at the end of a loop.</b> When the bus switches to its next trip at the terminal, often while still waiting out its break, the prediction drops the timetable and acts as if the bus leaves right now. Example, bus 4538 at 57th St and Drexel: a steady 3.5 minutes too early until 15 minutes before, then 10 minutes too early at 12 minutes before, shrinking again as the bus came.</li>
+    </ol>
+  </div>
+
+  <details class="dd"><summary>How far ahead Passio predicts, and how fresh its predictions are</summary>
+    <div class="body">
+      <div class="tablewrap"><table>
+        <thead><tr><th>Part of the feed</th><th class="n">Median reach</th><th class="n">90% reach</th></tr></thead>
+        <tbody>
+          <tr><td>Current trip</td><td class="n">8 min</td><td class="n">16 min</td></tr>
+          <tr><td>Next trip</td><td class="n">23 min</td><td class="n">28 min</td></tr>
+          <tr><td>Downtown Campus Connector (one shared trip)</td><td class="n">34 min</td><td class="n">58 min</td></tr>
+        </tbody>
+      </table></div>
+      <p>Share of arrivals that had a prediction on display that far ahead: 92% at 5 minutes, 90% at 10, 88% at 15 and 20, but only 35% at 30 minutes (two trips ahead is never listed).</p>
+      <p>Passio refreshes each bus about every 60 seconds; we first see an update about 35 seconds after it was made, so a shown prediction is typically 35 to 95 seconds old. At the end of some loops it went 12 to 13 minutes without a refresh. Predictions more than 2 minutes old pass the 10% rule only 11% of the time.</p>
+      <p class="caption">Measured on one weekday afternoon, Oct 12, 2026, 12:18 to 14:14 (8,196 updates, 11 buses, 197 arrivals). <span class="tag small">Small sample</span></p>
+    </div>
+  </details>
+
+  <details class="dd"><summary>What public sources say</summary>
+    <div class="body">
+      <ul class="tight">
+        <li>Passio's own pages and the UChicago transportation pages describe real-time locations and ETAs but not how ETAs are computed. No Passio patent on arrival prediction was found. <span class="tag hi">High</span></li>
+        <li>Independent open-source projects (MIT, UChicago and Brown student tools) that read passiogo.com describe two paths in Passio's ETA service: a stored "solid" prediction (the normal one) and a live GPS projection along the route (a fallback that is "frequently way off"). Some answers carry the note "got from schedule". <span class="tag mid">Medium</span></li>
+        <li>passiogo.com's own web code does no prediction math: it formats what the server sends and refreshes an open stop every 10 seconds. <span class="tag hi">High</span></li>
+        <li>Whether Passio learns driving times from history, uses traffic, or models stops: no source says. Our measurements suggest fixed driving times and no stops. <span class="tag lo">Low</span></li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<!-- ================= 4 OUR MODEL ================= -->
+<section class="block" id="ours">
+  <h2>4. How our own model works</h2>
+  <p class="sub">Our model is built and tested on the collected data, but the live app does not use it yet: today the app shows Passio's times as they are, and Directions uses the timetable for ride times. It ships only if it passes the ship gate below.</p>
+
+  <div class="panel">
+    <h3 style="margin-top:0">The idea in one line</h3>
+    <div class="formula">arrival at stop m = the bus's last real arrival at stop j
+                + the driving time of each stretch from j to m
+                + the time it will stand at each stop in between</div>
+    <p>A <b>stretch</b> (segment) is the drive between two neighboring stops of a route. Driving time and standing time are learned separately, because traffic drives one and riders drive the other.</p>
+  </div>
+
+  <h3>Step by step</h3>
+  <ol class="tight">
+    <li><b>Clean the history.</b> Leave out stretches longer than 30 minutes (a break or a parked bus), shorter than 3 seconds, or faster than 30 m/s (a GPS glitch), and the logging mistakes found in the E01 audit.</li>
+    <li><b>Learn each stretch from coarse to fine.</b> Five levels: all buses, then route by time of day, then the stretch, then the stretch by time of day, then the stretch by hour of the week.</li>
+    <li><b>Trust each level only as far as its data allows</b> ("shrinkage"): a level with few buses is pulled toward the level above it; one with hundreds speaks for itself. Medians are used, so one stuck bus cannot move the estimate.</li>
+    <li><b>Add the stretches up with honest uncertainty</b>, giving a likely time and an 80% range.</li>
+    <li><b>Optionally correct for today</b> (buses running slow this morning). On the data so far this correction does not help, so it stays switched off in practice.</li>
+  </ol>
+  <div class="formula">estimate = w x (median of this level) + (1 - w) x (estimate of the level above)
+w = n / (n + k)     n = buses seen at this level, k = 1 on today's data</div>
+
+  <details class="dd" open><summary>Worked example: one Red Line stretch, Thursday 8 AM</summary>
+    <div class="body">
+      <p>Red Line/Arts Block, Garfield &amp; Wabash (EB) to Washington Park Arts Incubator, 464 m:</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Level</th><th class="n">Buses seen</th><th class="n">Its estimate</th><th class="n">Weight</th><th class="n">Running estimate</th></tr></thead>
+        <tbody>
+          <tr><td>All buses (4.08 m/s)</td><td class="n">8,261</td><td class="n">114 s</td><td class="n"></td><td class="n">114 s</td></tr>
+          <tr><td>Red Line, weekday morning (5.21 m/s)</td><td class="n">302</td><td class="n">89 s</td><td class="n">1.00</td><td class="n">89 s</td></tr>
+          <tr><td>This stretch, any time</td><td class="n">80</td><td class="n">77 s</td><td class="n">0.99</td><td class="n">77 s</td></tr>
+          <tr><td>This stretch, weekday morning</td><td class="n">33</td><td class="n">74 s</td><td class="n">0.97</td><td class="n">74 s</td></tr>
+          <tr class="best"><td>This stretch, Thursday 8 AM</td><td class="n">5</td><td class="n">74 s</td><td class="n">0.83</td><td class="n">74 s</td></tr>
+        </tbody>
+      </table></div>
+      <p>The timetable says 57 s; buses really took 68 to 78 s at that hour. Adding three Red Line stretches in a row (74 s, 213 s and 101 s, 387 s in all) gives a likely 395 s with an 80% range of 322 to 484 s; tests then widen ranges by one calibrated factor (1.6 to 1.75) so that 80% ranges really hold 80% of arrivals.</p>
+    </div>
+  </details>
+
+  <details class="dd"><summary>How it is tested, and when it may ship</summary>
+    <div class="body">
+      <ul class="tight">
+        <li><b>Time order only:</b> learn on earlier days, test on later days; never mix them, which would leak tomorrow's traffic into the answer.</li>
+        <li><b>Same information as Passio:</b> for an arrival predicted 10 minutes ahead, the model may only use arrivals logged before that moment.</li>
+        <li><b>Ship gate</b> (measured on at least 4 weeks): for times shown to riders, beat Passio at 2 to 5 and 5 to 10 minutes ahead on at least 10 test days, never make "the bus came early" more common than Passio does, and no route more than 10% worse. For Directions ride times, beat the timetable by 20% with honest 80% ranges.</li>
+        <li>A position filter (Kalman) was tried in simulation only: it cleans GPS, but its speed is useless for arrival times (a bus at a stop has speed 0).</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="dd"><summary>Where the numbers in the app come from today</summary>
+    <div class="body">
+      <ul class="tight">
+        <li><b>"Bus in N min":</b> Passio's predicted time for that stop from the live feed, including the next trip's bus, which is where far buses (10, 20, 30 minutes) come from. Whole minutes, rounded down. Not adjusted.</li>
+        <li><b>Honesty labels:</b> no successful update for 60 s shows an error; feed data over 2 minutes old is marked delayed; a feed outage is never shown as "no shuttles running".</li>
+        <li><b>Directions:</b> walking from distance (refined with sidewalk routes); waiting from the next live bus you can reach; riding from Passio's own times for the same bus, else the timetable. Every derived number says "est.".</li>
+        <li><b>Current trip and the Lock Screen:</b> only the planned bus's live Passio times; "data delayed" after 2 minutes without news.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<!-- ================= 5 COMPARE ================= -->
+<section class="block" id="compare">
+  <h2>5. How they compare under the 10% rule</h2>
+  <p class="sub">Share of predictions within 10% of the lead, huge misses left out (they are counted separately). Two samples, labeled: Passio far ahead could only be scored from the new file, on one afternoon; our model and the timetable were scored on four days (E19).</p>
+
+  <div class="warn"><p><b>First look only.</b> Passio's far-ahead numbers come from about 2 hours of one weekday afternoon (Oct 12, 2026), mostly two routes. The project's rule is at least 10 days before deciding anything; that is about Oct 22.</p></div>
+
+  <div class="panel">
+    <h3 style="margin-top:0">Same afternoon, same arrivals (Oct 12)</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>How far ahead</th><th class="n">Arrivals</th><th class="n">Passio (what riders see)</th><th class="n">Plain timetable</th><th class="n">Timetable + how late the bus runs</th><th class="n">Passio too late</th></tr></thead>
+      <tbody>
+        <tr><td>5 min</td><td class="n">165</td><td class="n">7%</td><td class="n"></td><td class="n"></td><td class="n">4%</td></tr>
+        <tr><td>10 min</td><td class="n">157</td><td class="n">15%</td><td class="n">35%</td><td class="n">16%</td><td class="n">4%</td></tr>
+        <tr><td>15 min</td><td class="n">139</td><td class="n">24%</td><td class="n">41%</td><td class="n">19%</td><td class="n">3%</td></tr>
+        <tr><td>20 min</td><td class="n">126</td><td class="n">37%</td><td class="n">51%</td><td class="n">36%</td><td class="n">2%</td></tr>
+        <tr><td>30 min</td><td class="n">43</td><td class="n">16%</td><td class="n">68%</td><td class="n">78% (37)</td><td class="n">0%</td></tr>
+      </tbody>
+    </table></div>
+    <p class="caption">Passio's typical miss: 2 to 5 minutes, always the bus coming later than shown (median 2.6 min at 10 minutes ahead, 4.8 min at 30). The timetable is often too late (13 to 15%), and timetable plus delay even more (40 to 49%).</p>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin-top:0">Four days, Oct 8 to 12 (E19), our model and the timetable</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>How far ahead</th><th class="n">Our model</th><th class="n">Plain timetable</th><th class="n">Timetable + how late the bus runs</th><th class="n">Ours too late (over 1%)</th></tr></thead>
+      <tbody>
+        <tr><td>5 min</td><td class="n">25%</td><td class="n">9%</td><td class="n">7%</td><td class="n">34%</td></tr>
+        <tr><td>10 min</td><td class="n">30%</td><td class="n">19%</td><td class="n">14%</td><td class="n">26%</td></tr>
+        <tr><td>15 min</td><td class="n">36%</td><td class="n">25%</td><td class="n">23%</td><td class="n">21%</td></tr>
+        <tr><td>20 min</td><td class="n">34%</td><td class="n">30%</td><td class="n">32%</td><td class="n">16%</td></tr>
+        <tr class="best"><td>30 min</td><td class="n">20%</td><td class="n">36%</td><td class="n">63%</td><td class="n">11%</td></tr>
+      </tbody>
+    </table></div>
+    <p class="caption">Close in (2 to 5 minutes), Passio passes 13% (60% if the allowance is never under 1 minute), and 2 to 3 minutes ahead it and our model are within 1 minute 63% and 67% of the time on the same rows (E18). A per-stop correction of Passio lifted that to 87%, but made "bus came early" 3% to 7%, which fails the safety rule as is.</p>
+  </div>
+
+  <h3>Where each one fails, and why</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Source</th><th>Main failure far ahead</th><th>Cause</th></tr></thead>
+    <tbody>
+      <tr><td><b>Passio</b></td><td>Buses come 2 to 5 minutes later than shown; worst on the current trip (0 to 5% pass) and the Downtown Campus Connector (0%)</td><td>No time at stops, fast driving times, next trips stuck on the timetable whatever the delay, the jump at the end of a loop, refresh gaps</td></tr>
+      <tr><td><b>Timetable</b></td><td>Good far ahead on routes that run on time (Friend Center/Metra); often too late</td><td>On most routes the trip id a bus carries names an earlier scheduled run than the one it drives (10 to 20 minutes off)</td></tr>
+      <tr><td><b>Our model</b></td><td>Has the bus leave the end of its route too soon: at 30 minutes ahead it predicts about 5 minutes too early (median)</td><td>No model yet of the break at the terminal, of which scheduled run comes next, or of buses standing still</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ================= 6 NEXT ================= -->
+<section class="block" id="next">
+  <h2>6. What we train next</h2>
+  <p class="sub">The collector now builds a training table every day, shaped around the moment a rider asks.</p>
+
+  <div class="panel">
+    <h3 style="margin-top:0">The training table: <code>eta-&lt;day&gt;.csv.gz</code></h3>
+    <ul class="tight">
+      <li><b>One row:</b> one minute, one bus, and one stop that bus really reached within the next 45 minutes. About 130,000 rows a day.</li>
+      <li><b>What was known at that minute:</b> route, trip, whether the target is on the bus's <b>next</b> trip, stops and meters to go, the last stop it reached and how long ago, its speed and how long it has stood still, how late it runs against the timetable, time of day, weekday or weekend, the school calendar.</li>
+      <li><b>What each source predicted:</b> Passio (or "showed nothing"), the timetable, and the timetable plus delay.</li>
+      <li><b>The answer:</b> the real arrival, the error, and the error as a share of the lead. That share makes the 10% rule one number at every lead: between -0.10 and +0.10 passes; above +0.01 is "too late".</li>
+    </ul>
+    <p><b>How it is judged:</b> one sample per arrival in each range (0 to 6, 6 to 10, 10 to 15, 15 to 20, 20 to 30, 30 to 45 minutes), never an average over rows, with the uncertainty taken over days. A verdict needs at least 10 days.</p>
+  </div>
+
+  <h3>What should fix the far-ahead errors</h3>
+  <ol class="tight">
+    <li><b>Correct Passio where it is wrong in a predictable way:</b> by whether the target is on the current or next trip, stops left, break time left at the terminal, route and hour. Its error is one-sided and structural, so there is a lot of room.</li>
+    <li><b>Next trips from the timetable, done right:</b> start at the scheduled departure, but later if the bus will reach the terminal later; then add learned driving and standing times.</li>
+    <li><b>A terminal break model</b> (when does a bus really leave) and <b>run matching</b> (which scheduled run a bus is really on).</li>
+    <li><b>A standing-bus rule</b> for buses that have not moved for minutes.</li>
+    <li><b>Keep "too late" under 1% of the lead</b> while improving: any correction is checked against the bus-came-early rate first.</li>
+  </ol>
+  <p>First look at Passio far ahead with a week of data: around Oct 19, 2026. Decision with at least 10 days: around Oct 22.</p>
+</section>
+
+<!-- ================= 7 GLOSSARY ================= -->
+<section class="block" id="glossary">
+  <h2>7. Glossary</h2>
+  <div class="panel">
+    <dl class="gloss">
+      <dt>Lead</dt><dd>How long before the arrival a prediction was shown. "10 minutes ahead" = a lead of 10 minutes.</dd>
+      <dt>Error</dt><dd>Predicted time minus actual time. Positive = too late (the bus came early); negative = the bus came later than shown.</dd>
+      <dt>10% rule</dt><dd>The miss is at most 10% of the lead. With a 1-minute floor, never stricter than 1 minute.</dd>
+      <dt>Too late (reading B)</dt><dd>Predicted later than the bus came by more than 1% of the lead.</dd>
+      <dt>Huge (gross) miss</dt><dd>Off by more than 10 minutes, or half the lead if that is more. Left out of the pass rate, always counted, and a gross early bus still counts against "too late".</dd>
+      <dt>Current trip / next trip</dt><dd>The run the bus is driving now / the run it starts after finishing this one, usually after a break at the terminal.</dd>
+      <dt>Layover (break)</dt><dd>A bus waiting at the end of its route before its next run.</dd>
+      <dt>Trip id</dt><dd>Passio's name for one scheduled run. It can flip mid-run, repeat every day, or be shared by several buses.</dd>
+      <dt>Run matching</dt><dd>Working out which scheduled run a bus is really on; the trip id is often an earlier one.</dd>
+      <dt>Stretch (segment)</dt><dd>The drive between two neighboring stops of a route.</dd>
+      <dt>Shrinkage</dt><dd>Pulling an estimate from little data toward a broader one.</dd>
+      <dt>Stale</dt><dd>A prediction Passio has not refreshed; also the app's "data delayed" state.</dd>
+    </dl>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Where the numbers come from (all in this repo):</p>
+    <ul>
+      <li><code>experiments/routeknower/E18-one-minute-goal-2026-10-12.md</code>: Passio 2 to 3 minutes ahead, per stop.</li>
+      <li><code>experiments/routeknower/E19-ten-percent-rule-2026-10-12.md</code> and its two reports: the 10% rule on Oct 8 to 12, the huge errors.</li>
+      <li><code>experiments/routeknower/E20-prelim-passio-far-2026-10-12.md</code>: how Passio forms far predictions, and their accuracy on Oct 12.</li>
+      <li><code>experiments/routeknower/E20-prelim-passio-research-2026-10-12.md</code>: public sources and the official app's data path.</li>
+      <li><code>docs/DATA.md</code> and <code>docs/DATA-GUIDE.md</code>: every file and column.</li>
+    </ul>
+    <p>Straight Bussing is an unofficial student project, not affiliated with or endorsed by the University of Chicago or Passio. For official service information call 773.702.8181.</p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var toggle = document.getElementById("toggleAll");
+  function setAll(open){
+    document.querySelectorAll("details.dd").forEach(function(d){ d.open = open; });
+    toggle.textContent = open ? "Collapse all" : "Expand all";
+    toggle.setAttribute("aria-pressed", open ? "true" : "false");
+  }
+  toggle.addEventListener("click", function(){ setAll(toggle.getAttribute("aria-pressed") !== "true"); });
+  window.addEventListener("beforeprint", function(){ setAll(true); });
+  if (location.hash === "#all") setAll(true);
+})();
+</script>
+</body>
+</html>
