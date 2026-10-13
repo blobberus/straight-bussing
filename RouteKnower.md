@@ -14,8 +14,10 @@
 Related files (read, don't duplicate): `docs/DATA.md` (CSV schemas, detector, context data), `docs/ALGORITHMS.md`
 (math of the existing models), `docs/BACKTEST.md` (latest backtest report), browsable data + viewer:
 https://github.com/blobberus/straight-bussing-data (auto-synced mirror of the data and this methodology), `monitoring.md` (keeping the
-collectors alive), `web/js/core/predict.js` (how the app reads a model). `docs/LEARNING.md` is superseded. Plain-English overview for the owner (collection, Passio's far predictions, our model, the 10% rule
-comparison): `docs/prediction-explainer.html`; first Passio far-lead analysis: `experiments/routeknower/E20-prelim-*`.
+collectors alive), `web/js/core/predict.js` (how the app reads a model). `docs/LEARNING.md` is superseded. For the owner, in plain English:
+**`docs/GOAL-AND-METHOD.md`** (the 10% rule, the scoring rules, current standings, the optimization plan; keep it in step with
+this file) and `docs/DATA-GUIDE.md` (every file and column with the numbers so far); visual overview
+`docs/prediction-explainer.html`; first Passio far-lead analysis: `experiments/routeknower/E20-prelim-*`.
 
 ---
 
@@ -152,6 +154,14 @@ logged before then keep the defects, so the `load_rows` rules stay.
    one stop with a phone clock (E02).
 7. **Raw positions were not stored** before 2026-10-10, so the Kalman filter (M8) could not be tested on real data.
    Now every CI run keeps its polls as a 90-day artifact; `tools/raw_fetch.py` downloads them (E03, `docs/DATA.md`).
+8. **Stops Passio skips were never logged** (found 2026-10-13 by replaying the raw polls against GPS passes): the
+   detector only logged stops Passio named; Passio jumps over stops (night routes, Red Line), renames Red Line trips
+   mid-lap and switches 150+ m early. Logged share of the stops buses drove past: 83% (Mon Oct 12), 74% (Sun Oct 11);
+   South 48%. **B6 (`004ef84`)**: `source = pass` rows from the GPS track, and Midway Metra's afternoon pattern
+   (57th St. & Metra NB, `data/route_patterns.json`): 88% / 88%, South 88%. Rows before 2026-10-13 ~17:00 lack them,
+   so per-stop sample sizes and headways from earlier days undercount skipped stops (night routes, Red Line). Still
+   missing: buses whose Passio stop / trip freezes or that Passio files under another route (~60 bus-hours on
+   Oct 12; Red Line 62%): needs a GPS-only route matcher (E21); the archived raw polls allow re-deriving old days.
 
 ### 3.4 Context data: weather, traffic, calendar (vetted 2026-10-08)
 
@@ -323,7 +333,8 @@ A failed gate keeps the current source for that output; logged as "not yet". No 
 | E17 | CTA bus GPS on Hyde Park streets as a live traffic feed | Nathan's CTA developer key | adopt if it improves on M13 |
 | E18 | One-minute goal (owner request): Passio's error per stop and what M2 / M10 buy, 2-3 min ahead | T0 | **done 2026-10-12**: worth pursuing, inconclusive for shipping (4 test days); re-run weekly, decide at T1 |
 | E19 | **The 10% rule** (owner goal 2026-10-12: error <= 10% of the lead, 1 min at 10 min, 3 min at 30 min; "under 1% too late") on the data we have, and what the huge errors are | T0 | **done 2026-10-12**: no source meets it yet; predictions.csv (1-30 min) collected from today |
-| E20 | Passio at 1-30 min from `predictions.csv` under the 10% rule (E19 scoring rule), plus our layover / run-matching model | 1 week of predictions.csv | first look Oct 19, decide at T1 |
+| E20 | Passio at 1-30 min from `predictions.csv` under the 10% rule (E19 scoring rule), plus our layover / run-matching model; also scored in the **rider's view** (the next bus of the route at the stop, whatever its trip id: about half of Passio's gross misses at 30 min are a lap mix-up, `docs/GOAL-AND-METHOD.md` 2.9) | 1 week of predictions.csv | first look Oct 19, decide at T1 |
+| E21 | GPS-only route matcher: which route and lap a bus really drives when Passio's stop / trip freezes or names the wrong route (~60 bus-hours on 2026-10-12); re-derive the archived days | raw polls (archived) | adopt if replay coverage rises without rows lacking a GPS pass |
 
 ## 8. Timeline to ship before December
 
