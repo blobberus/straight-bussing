@@ -6,8 +6,9 @@ Rules: docs/DATA.md "Detection". Tests: tools/test_truth.py.
 import math
 from collections import defaultdict, deque
 
-from arrivals_lib import (DEPART_SPEED, HIST, MAX_GAP, MAX_LINK_S, MAX_SKIP, MIN_PRED_AGE, NEAR_M, PRED_LEADS,
-                          PREV_VISIT_GAP_S, RADIUS_M, SAME_VISIT_S, SHOW_GRACE_S, STATE_TTL, STOP_SPEED, hav_m)
+from arrivals_lib import (DEPART_SPEED, HIST, MAX_GAP, MAX_LINK_S, MAX_SKIP, MIN_PRED_AGE, NEAR_M, PASS_MIN_MOVE_M,
+                          PRED_LEADS, PREV_VISIT_GAP_S, RADIUS_M, SAME_VISIT_S, SHOW_GRACE_S, STATE_TTL, STOP_SPEED,
+                          hav_m)
 
 
 class Tracker:
@@ -138,7 +139,7 @@ class Tracker:
         if s is None:
             s = self.v[key] = {"route": route, "done": set(), "prev": None, "last_t": t, "last_vt": None,
                                "pend": None, "pnext": None, "hist": deque(maxlen=HIST), "defer": None,
-                               "handed": False}
+                               "handed": False, "pn_pass": None, "skipped": set(), "floor": None, "vnamed": None}
         return s
 
     def _resolve(self, s, order, rep):
@@ -209,6 +210,78 @@ class Tracker:
     def _stop_of(self, route, idx):
         return self.st.stops[self.st.route_stops[route][idx]]
 
+    def _close(self, sid_a, sid_b):
+        """Two stops within RADIUS_M of each other (GPS cannot tell which one the bus stands at)."""
+        a, b = self.st.stops.get(sid_a), self.st.stops.get(sid_b)
+        return bool(a and b) and hav_m(a["lat"], a["lon"], b["lat"], b["lon"]) <= RADIUS_M
+
+    def _heading(self, route, j):
+        """Direction the route runs at stop index j (from the stop before to the stop after), as (east, north)
+        metres, or None. A bus driving the other way past the stop (it serves the far side of the street)
+        does not count as passing it."""
+        order = self.st.route_stops[route]
+        n = len(order)
+        ring = order[0] == order[-1] and n > 2
+        i0 = j - 1 if j > 0 else (n - 2 if ring else j)
+        i1 = j + 1 if j < n - 1 else (1 if ring else j)
+        a, b = self.st.stops.get(order[i0]), self.st.stops.get(order[i1])
+        if not a or not b:
+            return None
+        kx = 111320.0 * math.cos(math.radians(a["lat"]))
+        v = ((b["lon"] - a["lon"]) * kx, (b["lat"] - a["lat"]) * 111320.0)
+        return v if math.hypot(*v) >= 5 else None
+
+    def _passes(self, s, key, route, out):
+        """The GPS track went past a stop of the route (the latest two reports' line comes within RADIUS_M of
+        it, moving the route's direction) that Passio's stop_id did not name: Passio jumps over stops it is
+        not asked to serve, renames the trip mid-lap, or names a stop the bus never goes to (2026-10-12 raw
+        tracks: South logged 48% of the stops its buses drove past, Red Line/Arts Block 57%, Central 76%; one
+        Red Line step in five skipped a stop). Eligible: the stops Passio jumped over (or that lie between the
+        last stop logged and a renamed trip's first named stop) and the stops after the named one, within the
+        forward skip window; they get a 'pass' row at the time of closest approach. The named stop itself only
+        keeps that time, as the fallback for a transition Passio reports too late to time from the recent
+        reports. Runs after the named stop is updated, so a stop whose transition is still deferred (Passio
+        switched early) never gets one."""
+        pn, h = s["pnext"], s["hist"]
+        if pn is None or len(h) < 2 or s["last_vt"] is None:
+            return
+        (la0, lo0, t0, _), (la1, lo1, t1, _) = h[-2], h[-1]
+        if not 0 < t1 - t0 <= MAX_GAP:
+            return
+        kx = 111320.0 * math.cos(math.radians(la0))
+        mv = ((lo1 - lo0) * kx, (la1 - la0) * 111320.0)
+        L2 = mv[0] * mv[0] + mv[1] * mv[1]
+        if L2 < PASS_MIN_MOVE_M ** 2:
+            return
+        order = self.st.route_stops[route]
+        n = len(order)
+        vonly = getattr(self.st, "variant_only", {}).get(route, ())
+        top = max(s["done"]) if s["done"] else -1
+        s["skipped"] = {j for j in s["skipped"] if j > top}     # behind the latest logged stop: never passed
+        for j in sorted(s["skipped"] | set(range(pn, min(n - 1, pn + max(MAX_SKIP, (n - 1) // 2)) + 1))):
+            if j in s["done"] or j in vonly:         # a variant's own stop: only when Passio names it
+                continue
+            a = self.st.stops.get(order[j])
+            if not a:
+                continue
+            ax, ay = (lo0 - a["lon"]) * kx, (la0 - a["lat"]) * 111320.0
+            f = max(0.0, min(1.0, -(ax * mv[0] + ay * mv[1]) / L2))
+            if math.hypot(ax + f * mv[0], ay + f * mv[1]) > RADIUS_M:
+                continue
+            hd = self._heading(route, j)
+            if hd is not None and hd[0] * mv[0] + hd[1] * mv[1] <= 0:
+                continue
+            when = t0 + f * (t1 - t0)
+            pv = self.visits.get((self._veh(key[0]), order[j]))
+            if j != pn and pv is not None and abs(when - pv[0]) < 300:
+                s["done"].add(j)                     # logged a moment ago under the bus's other trip id
+                continue
+            if j == pn:
+                if s["pn_pass"] is None or s["pn_pass"][0] != pn:
+                    s["pn_pass"] = (pn, when)
+            else:
+                self._arrive(s, key, route, j, when, "pass", out)
+
     @staticmethod
     def _spans(s, stop):
         """True if `stop` lies between the last two reports (inside the ellipse with them as foci,
@@ -256,7 +329,13 @@ class Tracker:
         if d <= NEAR_M and pd is not None and d < pd - 2 and (sp is None or sp >= STOP_SPEED):
             s["defer"] = {"idx": idx, "until": vt + 60, "last_d": d, "fb": fallback}
             return
-        self._arrive(s, key, route, idx, self._approach(s, a, fallback), "transition", out)
+        when = self._approach(s, a, fallback)
+        if when is None and d > NEAR_M:
+            # Passio moved on while the bus was still far from the stop (or long past it, unseen): no time to
+            # log, but a GPS pass still can (Red Line: Passio often switches 150+ m before the stop)
+            s["skipped"].add(idx)
+            return
+        self._arrive(s, key, route, idx, when, "transition", out)
 
     def _handoff(self, s, key, lat, lon, sp, vt, out):
         """The vehicle now reports another trip id. If it is near the stop the old trip was heading
@@ -313,10 +392,15 @@ class Tracker:
             # back on a trip id this bus left more than MAX_GAP ago (Passio flaps between ids, E01 B3):
             # its next stop, approach reports, done stops and prev link belong to an earlier stretch of
             # driving. Start it afresh, like a new state. (A flap of a poll or two keeps the state.)
-            s.update(prev=None, pnext=None, defer=None, done=set(), handed=False)
+            s.update(prev=None, pnext=None, defer=None, done=set(), handed=False, pn_pass=None, skipped=set(),
+                     floor=None)
             s["hist"].clear()
         if (new or not s["hist"]) and older:         # keep the approach history across the trip change
             s["hist"].extend(x for x in self.v[older[-1][1]]["hist"] if x[2] < vt)
+        if new and older:                            # Passio renamed the trip mid-lap (Red Line: up to twice a lap):
+            o = self.v[older[-1][1]]                 # the stops between the last one logged and the new trip's
+            if o["route"] == route and o["done"]:    # first named stop are still ahead of the bus
+                s["floor"] = max(o["done"]) + 1
         s["last_t"] = now
         nxt = self._resolve(s, order, rep)
         sp = rep["speed"]
@@ -333,10 +417,14 @@ class Tracker:
             ring = n - 1 if order[0] == order[-1] and n > 2 else 0      # loop: index n-1 == index 0
             fw, bw = ((nxt - pn) % ring, (pn - nxt) % ring) if ring else (0, 0)
             lap = bool(ring) and nxt < pn and 0 < fw <= skip and fw < bw
+            if fwd and nxt > pn + 1:                 # stops Passio jumped over: a GPS pass still counts
+                s["skipped"].update(range(pn + 1, nxt))
             if fwd or lap:                           # left stop pn (stops in between were skipped)
                 self._check_defer(s, key, route, lat, lon, sp, vt, out, force=True)
                 gap_ok = s["last_vt"] is not None and vt - s["last_vt"] <= MAX_GAP
                 fb = (s["last_vt"] + vt) / 2 if gap_ok and self._spans(s, self._stop_of(route, pn)) else None
+                if fb is None and s["pn_pass"] is not None and s["pn_pass"][0] == pn and vt - s["pn_pass"][1] <= MAX_LINK_S:
+                    fb = s["pn_pass"][1]                 # it drove past pn earlier; Passio switched late
                 if lap:
                     self._arrive(s, key, route, pn, self._approach(s, self._stop_of(route, pn), fb), "transition", out)
                 else:
@@ -345,17 +433,29 @@ class Tracker:
                 if s["pend"] is not None:
                     out.append(self._finish(s, s["pend"]))
                     s["pend"] = None
-                s["done"], s["prev"], s["defer"] = set(), None, None
+                s["done"], s["prev"], s["defer"], s["skipped"] = set(), None, None, set()
+        vonly = getattr(self.st, "variant_only", {}).get(route, ())
+        if nxt in vonly:                             # Passio names a stop only the route's other pattern serves:
+            s["vnamed"] = (nxt, vt)                  # this bus runs that pattern now
+        vn = s["vnamed"] if s["vnamed"] and vt - s["vnamed"][1] <= SAME_VISIT_S else None
         if nxt is not None and sp is not None and sp < STOP_SPEED:      # proximity + stopped
             for i in sorted({max(0, nxt - 1), nxt, min(n - 1, nxt + 1)}):
+                if i in vonly and i != nxt:          # 57th St. & Metra NB and SB are 27 m apart: the one Passio names
+                    continue
+                if vn and i != vn[0] and self._close(order[i], order[vn[0]]):
+                    continue                         # standing at the variant's stop, not at its 27 m neighbour
                 a = self.st.stops.get(order[i])
                 if i not in s["done"] and a and hav_m(lat, lon, a["lat"], a["lon"]) <= RADIUS_M:
                     self._arrive(s, key, route, i, self._approach(s, a, vt), "proximity", out)
                     break
         self._check_defer(s, key, route, lat, lon, sp, vt, out)
-        s["last_vt"] = vt
         if nxt is not None:
+            if s["floor"] is not None and s["floor"] < nxt <= s["floor"] + max(MAX_SKIP, (n - 1) // 2):
+                s["skipped"].update(range(s["floor"], nxt))
+            s["floor"] = None
             s["pnext"] = nxt
+        self._passes(s, key, route, out)
+        s["last_vt"] = vt
         return out
 
     def _arrive(self, s, key, route, idx, epoch, source, out):

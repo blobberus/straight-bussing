@@ -22,7 +22,9 @@ Plain-English version of every column, with a worked example row and spreadsheet
 `epoch` unix s (UTC) · `ts_utc` ISO · `local_time` America/Chicago wall clock · `dow` 0=Mon · `hour` ·
 `minute_of_day` · `route_id` `route_name` `trip_id` `vehicle_id` (Passio) · `stop_id` `stop_name`
 `stop_address` `stop_lat` `stop_lon` · `stop_index` position in `web/data/route_stops.json[route]` (loops: last
-index = back at the first stop) · `prev_stop_id` `prev_arrival_epoch` previous detected stop of the same
+index = back at the first stop), plus the stops only a route's other timetable pattern serves (`data/route_patterns.json`,
+since 2026-10-13: Midway Metra's afternoon 57th St. & Metra (NB) is index 14, so its loop end 57th St. & Metra (SB)
+is 15 from then on, 14 before) · `prev_stop_id` `prev_arrival_epoch` previous detected stop of the same
 trip (stops in between may have been skipped; blank if it is > 25 min old or the bus logged another arrival
 in between) · `dist_prev_m` metres along the route shape
 (`web/data/shapes.json`; else haversine x 1.15) · `segment_s` = epoch - prev_arrival_epoch (includes the
@@ -30,7 +32,8 @@ previous dwell) · `speed_mps` = dist / (segment_s - previous dwell), blank if >
 stopped here (0 = drove through, blank = unknown) · `passio_pred_epoch` Passio's newest prediction for this
 bus + trip + stop (at a loop terminal: the one with the matching stop_sequence) made >= 120 s before the
 arrival, `passio_pred_lead_s` = epoch - when it was made · `source`
-`transition` | `proximity`. Rows are appended when the bus leaves the stop, so files are only roughly sorted.
+`transition` | `proximity` | `pass` (since 2026-10-13). Rows are appended when the bus leaves the stop, so files are
+only roughly sorted.
 
 ## predictions.csv (added 2026-10-12; one row = one arrival x one target lead)
 The arrivals file keeps its 25 columns; this file sits next to it. Join on `vehicle_id` + `stop_id` + `epoch`
@@ -103,6 +106,29 @@ gives a 95% bootstrap interval **over days** (RouteKnower 6.5: days are the unit
   was heading to (its final arrival). Passio flips `stop_id` 20-50 m *before* the stop, so while the
   bus is still closing in the arrival waits until it stops, turns away, or 60 s pass.
 - **proximity**: within 40 m of the current/adjacent stop at < 1 m/s.
+- **pass** (since 2026-10-13): the GPS track itself went past a stop of the route that Passio's `stop_id` did not
+  name: the line between two reports (>= 15 m apart, <= 60 s) comes within 40 m of the stop while moving the
+  route's direction there (from the stop before to the stop after; the far side of the street does not count).
+  Eligible: stops Passio jumped over, stops between the last one logged and a renamed trip's first named stop
+  (Passio renames Red Line trips mid-lap), stops ahead of the named one within the forward skip window, and a
+  stop Passio moved past while the bus was still > 120 m short of it. Time = the closest approach on that line.
+  A pass time for the named stop itself is kept as the transition time when Passio switches too late to time it
+  from the remembered reports. Never for a stop only another pattern serves (below), and never within 300 s of
+  the same bus's row at that stop under another trip id. Raw-track replay (2026-10-12 / -11): logged share of the
+  stops buses drove past 83% -> 88% (weekday) and 74% -> 88% (Sunday night routes); South 48% -> 88%, Downtown
+  Campus Connector 70% -> 84%, Regents Express 53% -> 67%; every pass row has a GPS pass, transition times
+  unchanged.
+- **Other timetable patterns** (`data/route_patterns.json`, written by `tools/build_gtfs.py`; collector only, the
+  app keeps `route_stops.json`): stops another pattern serves join the route order after the stop they follow
+  (`arrivals_lib.union_order`). Today only Midway Metra: 20 of its 46 weekday trips (3:30 PM on) run through 57th
+  St. & Metra (NB), 27 m from the morning loop's end (SB). GPS cannot tell those two apart, so the variant's stop
+  counts only when Passio names it, and while it does, its 27 m neighbour gets no proximity row (before: the
+  afternoon visits were logged at SB).
+- **Not caught yet:** buses whose Passio `stop_id` or trip stays frozen for an hour or more while they drive (about
+  60 bus-hours on 2026-10-12, mostly Downtown Campus Connector and Red Line/Arts Block, e.g. bus 12648 6:34 to 10:46
+  AM on one Red Line trip and one stop), or that Passio files under another route. Red Line/Arts Block logged 62%
+  of its passes on 2026-10-12 for this reason. Needs a GPS-only route matcher; the raw polls are archived daily,
+  so these days can be re-derived once it exists.
 - Time = when the track crosses the stop, interpolated between reports with the reported speed; else the
   earliest closest report inside 40 m; else closest within 120 m; else (transitions only) the midpoint of
   the last two reports, if they are <= 60 s apart and the stop lies between them. No row if the bus was

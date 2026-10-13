@@ -7,6 +7,8 @@ from pathlib import Path
 
 URL = "https://passio3.com/chicago/passioTransit/gtfs/google_transit.zip"
 OUT = Path(__file__).resolve().parent.parent / "web" / "data"
+# collector-only: stop patterns a route runs besides its route_stops.json one (not deployed, so not in the app)
+PATTERNS = Path(__file__).resolve().parent.parent / "data" / "route_patterns.json"
 MAX_SHAPES_PER_DIR = 2
 
 
@@ -272,6 +274,25 @@ def build_service(z, trips, sched, freqs, today=None):
             "feed": {"start": w0.isoformat(), "end": w1.isoformat()}, "routes": out}
 
 
+def route_variants(trips, stimes, route_stops, min_trips=3):
+    """Per route, the other stop patterns (>= min_trips trips) that serve stops route_stops.json lacks: Midway
+    Metra's afternoon loop (from 3:30 PM) runs through 57th St. & Metra (NB), which its morning pattern (the one
+    in route_stops.json) does not. The collector adds those stops to its own copy of the route order
+    (arrivals_lib.Static), so they get rows; the app's route_stops.json is unchanged."""
+    pats = defaultdict(Counter)
+    for t in trips:
+        seq = tuple(sid for _, sid in sorted(stimes.get(t["trip_id"], ())))
+        if seq:
+            pats[t["route_id"]][seq] += 1
+    out = {}
+    for rid, cnt in sorted(pats.items()):
+        have = set(route_stops.get(rid) or ())
+        extra = [list(p) for p, n in cnt.most_common() if n >= min_trips and set(p) - have]
+        if have and extra:
+            out[rid] = extra
+    return out
+
+
 def dump(name, obj):
     (OUT / name).write_text(json.dumps(obj, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
 
@@ -345,6 +366,7 @@ def main():
         if n and n > best.get(t["route_id"], (0, None))[0]:
             best[t["route_id"]] = (n, t["trip_id"])
     route_stops = {rid: [sid for _, sid in sorted(stimes[tid])] for rid, (_, tid) in best.items()}
+    variants = route_variants(trips, stimes, route_stops)
     if not (routes and stops and route_stops):   # an outage page or an empty feed must not wipe web/data
         sys.exit(f"GTFS zip looks empty ({len(routes)} routes, {len(stops)} stops, {len(route_stops)} routed); "
                  "web/data left unchanged")
@@ -356,6 +378,9 @@ def main():
            "meta.json": {"generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "source": URL}}
     for name, obj in out.items():
         dump(name, obj)
+    PATTERNS.parent.mkdir(parents=True, exist_ok=True)
+    PATTERNS.write_text(json.dumps({"source": URL, "routes": variants}, indent=1, ensure_ascii=False) + "\n",
+                        encoding="utf-8")
 
     total = 0
     for p in sorted(OUT.glob("*.json")):

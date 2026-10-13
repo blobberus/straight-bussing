@@ -739,6 +739,154 @@ def raw_polls_keep_every_position_poll_and_never_stop_the_run():
     assert w.n > rows_before, (w.n, rows_before)
 
 
+def east_reps(points, t0, trip="T1", route="L", veh="V1"):
+    """Reports 10 s apart at (east metres from S0, stop_id Passio names, speed)."""
+    return [rep_m(e, 0, sid, t0 + 10 * k, sp, trip=trip, veh=veh, route=route) for k, (e, sid, sp) in enumerate(points)]
+
+
+@test
+def a_stop_passio_jumps_over_gets_a_pass_row_when_the_bus_drives_past():
+    """2026-10-12 raw tracks: Passio's stop_id jumps over stops (night routes, Red Line). The bus drives past
+    S2 without stopping while Passio names S3 from S1 on: S2 gets one 'pass' row at the time it passed."""
+    st = line_static()
+    reps, truth = simulate(st, [f"S{i}" for i in range(6)], route="L", no_stop={"S2"}, seed=7)
+    for r in reps:
+        if r["stop_id"] == "S2":
+            r["stop_id"] = "S3"
+    ev = run(Tracker(st), reps)
+    assert [e["idx"] for e in ev] == [0, 1, 2, 3, 4, 5], [(e["idx"], e["source"]) for e in ev]
+    s2 = ev[2]
+    assert s2["source"] == "pass" and abs(s2["epoch"] - truth[2]) <= 10 and s2["dwell"] == 0, s2
+    assert s2["prev"]["idx"] == 1 and ev[3]["prev"]["idx"] == 2, (s2["prev"], ev[3]["prev"])
+    assert all(e["source"] != "pass" for e in ev if e["idx"] != 2)
+
+
+@test
+def driving_past_a_stop_the_other_way_is_not_a_pass():
+    """A stop on the far side of the street: the bus goes by it against the route's direction. Westbound
+    route W (S5 -> S2): an eastbound drive past S3 is not a visit; the same drive on the eastbound route L,
+    with Passio lagging one stop behind (S2 named), is one."""
+    st = line_static()
+    st.route_stops["W"] = ["S5", "S4", "S3", "S2"]
+    pts = [(2.5 * B_EAST + 80 * k, "S4", 8) for k in range(5)]          # 0.5 to 0.82 B_EAST past S2, eastbound
+    assert pts[1][0] < 3 * B_EAST < pts[-1][0]
+    assert run(Tracker(st), east_reps(pts, T0, route="W")) == []
+    ev = run(Tracker(st), east_reps([(e, "S2", sp) for e, _, sp in pts], T0, route="L"))
+    assert [(e["idx"], e["source"]) for e in ev] == [(3, "pass")], [(e["idx"], e["source"]) for e in ev]
+
+
+@test
+def a_standing_bus_jittering_near_a_stop_is_not_a_pass():
+    """GPS jitter of a parked bus 25 m from S5 (in the forward window of the S2 Passio names) moves it a few
+    metres per report: never a pass."""
+    st = line_static()
+    rnd = random.Random(3)
+    pts = [(5 * B_EAST + rnd.uniform(-6, 6), "S2", None) for _ in range(30)]
+    reps = [rep_m(e, 25 + rnd.uniform(-6, 6), sid, T0 + 10 * k, sp, route="L") for k, (e, sid, sp) in enumerate(pts)]
+    assert run(Tracker(st), reps) == []
+
+
+@test
+def a_stop_passio_names_too_early_is_still_logged_when_the_bus_passes_it():
+    """Passio moves its stop_id from S2 to S3 while the bus is still 169 m short of S2 (more than NEAR_M):
+    no transition time then, but the drive past S2 gives it a 'pass' row (before: no row at all)."""
+    st = line_static()
+    pts = [(B_EAST, "S1", 0), (B_EAST, "S1", 0), (B_EAST + 80, "S3", 8)]
+    pts += [(B_EAST + 80 + 80 * k, "S3", 8) for k in range(1, 6)]
+    ev = run(Tracker(st), east_reps(pts, T0))
+    got = [(e["idx"], e["source"]) for e in ev]
+    assert got[0] == (2, "pass"), got            # (S1: already standing there when logging began, no row)
+    want = T0 + 20 + (B_EAST - 80) / 8           # reached S2 249 - 80 m after the report at B + 80 (T0 + 20)
+    assert abs(ev[0]["epoch"] - want) <= 10, ev[0]["epoch"] - want
+
+
+@test
+def a_late_switch_keeps_the_time_the_bus_drove_past():
+    """Passio keeps naming S2 for two minutes after the bus drove past it (longer than the HIST reports kept),
+    then names S4: S2's transition row is timed when the bus passed, and S3, passed while Passio still named
+    S2, gets a 'pass' row."""
+    st = line_static()
+    pts = [(B_EAST - 160 + 40 * k, "S2", 4) for k in range(40)]       # 4 m/s from 160 m before S1 eastward
+    pts = [(e, "S2" if k < 30 else "S4", sp) for k, (e, _, sp) in enumerate(pts)]
+    reps = east_reps(pts, T0)
+    ev = run(Tracker(st), reps)
+    got = {e["idx"]: e for e in ev}
+    assert 2 in got and got[2]["source"] == "transition", [(e["idx"], e["source"]) for e in ev]
+    passed2 = T0 + 10 * (2 * B_EAST - (B_EAST - 160)) / 40
+    assert abs(got[2]["epoch"] - passed2) <= 10, got[2]["epoch"] - passed2
+    assert 3 in got and got[3]["source"] == "pass", [(e["idx"], e["source"]) for e in ev]
+    assert reps[29]["vt"] - got[2]["epoch"] > 10 * L.HIST, "S2 must be older than the reports kept"
+
+
+@test
+def a_trip_renamed_mid_lap_still_logs_the_stops_passio_skipped():
+    """Red Line 2026-10-12: Passio renames a bus's trip in the middle of a lap and names a stop two ahead.
+    The stops between the last one logged (old trip) and the new trip's first named stop get 'pass' rows."""
+    st = line_static()
+    reps, truth = simulate(st, [f"S{i}" for i in range(6)], route="L", trip="A", no_stop={"S2", "S3"}, seed=9)
+    k = next(k for k, r in enumerate(reps) if r["stop_id"] == "S2")   # just left S1
+    for r in reps[k:]:
+        r["trip"] = "B"
+        if r["stop_id"] in ("S2", "S3"):
+            r["stop_id"] = "S4"
+    ev = run(Tracker(st), reps)
+    got = [(e["trip"], e["idx"], e["source"]) for e in ev]
+    assert [(t, i) for t, i, _ in got] == [("A", 0), ("A", 1), ("B", 2), ("B", 3), ("B", 4), ("B", 5)], got
+    assert got[2][2] == got[3][2] == "pass", got
+    for e in ev:
+        assert abs(e["epoch"] - truth[e["idx"]]) <= 10, (e["idx"], e["epoch"] - truth[e["idx"]])
+
+
+def variant_static():
+    """Loop M = T, P, Q, R, T; its other pattern P, Q, R, V, P serves V, 27 m north of T (like 57th St. & Metra
+    NB and SB on Midway Metra): union order T, P, Q, R, V, T with V variant-only."""
+    st = line_static()
+    st.stops.update({"T": {"name": "T", "lat": LAT, "lon": LON0 + 4 * STEP},
+                     "P": {"name": "P", "lat": LAT, "lon": LON0 + STEP}, "Q": {"name": "Q", "lat": LAT, "lon": LON0 + 2 * STEP},
+                     "R": {"name": "R", "lat": LAT, "lon": LON0 + 3 * STEP},
+                     "V": {"name": "V", "lat": LAT + 27 / 111320, "lon": LON0 + 4 * STEP}})
+    order, added = L.union_order(["T", "P", "Q", "R", "T"], [["P", "Q", "R", "V", "P"]])
+    st.route_stops["M"] = order
+    st.variant_only = {"M": {i for i, x in enumerate(order) if x in added}}
+    return st
+
+
+@test
+def a_second_pattern_s_own_stop_joins_the_route_order():
+    order, added = L.union_order(["T", "P", "Q", "R", "T"], [["P", "Q", "R", "V", "P"], ["T", "P", "T"]])
+    assert order == ["T", "P", "Q", "R", "V", "T"] and added == {"V"}, (order, added)
+    assert L.union_order(["A", "B"], []) == (["A", "B"], set())
+
+
+@test
+def the_stop_27_m_away_is_logged_only_when_passio_names_it():
+    """Morning: the bus stands at T (Passio names T): T gets the row, never V 27 m away. Afternoon: Passio names
+    V and the bus stands there: V gets the row, never T (before: the afternoon visits were logged at T)."""
+    st = variant_static()
+    te = 4 * B_EAST
+    am = east_reps([(te - 200, "T", 8), (te - 100, "T", 8), (te, "T", 0), (te, "T", 0), (te, "T", 0), (te, "P", 0),
+                    (te, "P", 0), (te - 100, "P", 8)], T0, route="M")
+    ev = run(Tracker(st), am)
+    assert [st.route_stops["M"][e["idx"]] for e in ev] == ["T"], [(e["idx"], e["source"]) for e in ev]
+    pm = [rep_m(te - 200, 27, "V", T0, 8, route="M"), rep_m(te - 100, 27, "V", T0 + 10, 8, route="M")]
+    pm += [rep_m(te, 27, "V" if k < 3 else "P", T0 + 20 + 10 * k, 0, route="M") for k in range(6)]
+    pm.append(rep_m(te - 100, 27, "P", T0 + 80, 8, route="M"))
+    ev = run(Tracker(st), pm)
+    assert [st.route_stops["M"][e["idx"]] for e in ev] == ["V"], [(e["idx"], e["source"]) for e in ev]
+
+
+@test
+def build_gtfs_lists_the_patterns_with_stops_route_stops_lacks():
+    import build_gtfs as BG
+    trips = [{"trip_id": f"a{i}", "route_id": "M"} for i in range(5)] + [{"trip_id": f"p{i}", "route_id": "M"} for i in range(3)]
+    trips += [{"trip_id": "x", "route_id": "M"}, {"trip_id": "s1", "route_id": "N"}]
+    stimes = {f"a{i}": list(enumerate(["T", "P", "Q", "R", "T"])) for i in range(5)}
+    stimes.update({f"p{i}": list(enumerate(["P", "Q", "R", "V", "P"])) for i in range(3)})
+    stimes.update({"x": list(enumerate(["P", "Z"])), "s1": list(enumerate(["A", "B"]))})
+    got = BG.route_variants(trips, stimes, {"M": ["T", "P", "Q", "R", "T"], "N": ["A", "B"]})
+    assert got == {"M": [["P", "Q", "R", "V", "P"]]}, got       # one-trip pattern x and route N: nothing
+
+
 def main():
     fails = 0
     for fn in TESTS:

@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 WEB_DATA = ROOT / "web" / "data"
 DEFAULT_OUT = ROOT / "data" / "ground_truth" / "arrivals.csv"
+PATTERNS = ROOT / "data" / "route_patterns.json"   # tools/build_gtfs.py: other stop patterns per route
 
 COLUMNS = ("epoch,ts_utc,local_time,dow,hour,minute_of_day,route_id,route_name,trip_id,vehicle_id,stop_id,"
            "stop_name,stop_address,stop_lat,stop_lon,stop_index,prev_stop_id,dist_prev_m,prev_arrival_epoch,"
@@ -40,6 +41,8 @@ STATE_TTL = 3600         # forget a (vehicle, trip) after this many seconds sile
 MAX_LINK_S = 1500        # s: longest real stop-to-stop time incl. dwell (DCC Lake Shore Dr hop ~15 min); an
                          # older previous arrival is not linked (collector or feed gap: stops were missed)
 HIST = 8                 # recent reports kept per (vehicle, trip) for back-dating arrivals
+PASS_MIN_MOVE_M = 15.0   # a 'pass' needs the bus to move at least this far between two reports (GPS jitter of a
+                         # standing bus never counts as driving past a stop)
 
 try:
     from zoneinfo import ZoneInfo
@@ -78,13 +81,39 @@ def load_json(p, default=None):
         return default
 
 
-class Static:
-    """Static network data + per-route along-shape cumulative stop distances."""
+def union_order(order, patterns):
+    """The route order plus the stops only another pattern serves, each inserted after the stop it follows in
+    that pattern (cyclically) -> (order, set of added stop ids). Midway Metra: ... Stony Island Parking Lot,
+    57th St. & Metra (NB) [afternoon only], 57th St. & Metra (SB) [the morning loop's end]."""
+    out, added = list(order), set()
+    for p in patterns:
+        for k, sid in enumerate(p):
+            if sid in out:
+                continue
+            pred = next((p[k - b] for b in range(1, len(p)) if p[k - b] in out), None)
+            if pred is None:
+                continue
+            out.insert(out.index(pred) + 1, sid)
+            added.add(sid)
+    return out, added
 
-    def __init__(self, web_data=WEB_DATA):
+
+class Static:
+    """Static network data + per-route along-shape cumulative stop distances. route_stops is the app's order
+    plus the stops only a route's other patterns serve (union_order; e.g. Midway Metra's afternoon stop), and
+    variant_only[route] the indexes of those added stops."""
+
+    def __init__(self, web_data=WEB_DATA, patterns=PATTERNS):
         web_data = Path(web_data)
         self.stops = load_json(web_data / "stops.json", {})
         self.route_stops = load_json(web_data / "route_stops.json", {})
+        self.variant_only = {}
+        for rid, plist in ((load_json(patterns, {}) or {}).get("routes") or {}).items():
+            if self.route_stops.get(rid) and isinstance(plist, list):
+                order, added = union_order(self.route_stops[rid], [p for p in plist if isinstance(p, list)])
+                if added:
+                    self.route_stops[rid] = order
+                    self.variant_only[rid] = {i for i, s in enumerate(order) if s in added}
         self.routes = load_json(web_data / "routes.json", {})
         self.shapes = load_json(web_data / "shapes.json", {})
         self.addr = load_json(web_data / "stop_addresses.json", {})
