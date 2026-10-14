@@ -11,7 +11,7 @@ product UI / native mobile (its section 13), so its landing-page rules (hero, be
   no duplicate CTA intent per screen, composed empty/loading/error states (skeletons match the layout), tactile `:active`,
   dots only for real state, no pure #000/#fff surfaces, tinted shadows, reduced motion, documented z-index scale, one icon
   family, safe areas, 44 px targets.
-- **Ship-checklist order still rules** (CLAUDE.md): rider safety > correct times > speed > intuitive UI > accessibility >
+- **Ship-checklist order still rules** (.claude/rules/project.md): rider safety > correct times > speed > intuitive UI > accessibility >
   privacy > App Store portability. Nothing below trades a higher item for a lower one.
 
 ## Method
@@ -208,7 +208,7 @@ Every other string was re-read (309 strings in the view modules, shell and opera
 
 ## Left deliberately (and why)
 
-- **Next bus below the fold at the half detent (CLAUDE.md item 3).** On Current trip the alert banner, "No trip in progress"
+- **Next bus below the fold at the half detent (.claude/rules/project.md item 3).** On Current trip the alert banner, "No trip in progress"
   card, "Routes to station..." and the location / search controls come before "Arriving soon" or the nearest stop, so at the
   half detent the first ETA needs a scroll. This is the owner's v2.4 layout (ARCHITECTURE "nearby"), an information-architecture
   call, not a taste fix. Recommendation: fold the "No trip in progress" hint into one line, or put the next-bus card first

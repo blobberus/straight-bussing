@@ -178,7 +178,7 @@ All of these must hold on at least 10 test days:
 2. **Too late no more often than Passio** (the 1% rule must not get worse; an early bus is a missed bus).
 3. No route more than 10% worse than Passio.
 4. In the app, every derived time stays labelled "est." with its source, and stale data is still flagged (ship
-   checklist in `CLAUDE.md`).
+   checklist in `.claude/rules/project.md`).
 
 A version that fails keeps Passio's time in the app. No exceptions near a deadline.
 

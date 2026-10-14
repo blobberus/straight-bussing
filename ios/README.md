@@ -384,7 +384,7 @@ Apple's Simulator only runs on macOS, so there is no local option on Windows. Tw
 
 ## Web parity matrix (2026-10-10)
 
-Every web feature (CLAUDE.md status table, docs/ARCHITECTURE.md contracts, web/js/ui/views/*.js, web/js/ui/*.js,
+Every web feature (.claude/rules/project.md status table, docs/ARCHITECTURE.md contracts, web/js/ui/views/*.js, web/js/ui/*.js,
 web/js/core/*.js) against the iPhone app. "done" = same behavior and wording, adapted to iOS (native sheets, swipe
 actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 

@@ -1,6 +1,6 @@
 # Conversion to App Store (playbook for a future Claude session)
 
-Use this when the owner says "turn this website into an App Store-level app". It is the **single iPhone plan**: `docs/IOS.md` only points here, `docs/APPSTORE.md` holds costs, the 4.2 analysis and the timeline (don't repeat them here). Read `CLAUDE.md` and `docs/ARCHITECTURE.md` (v2 module contract) first. The owner works on Windows with no Node and no Mac, so every Mac/Xcode step needs CI or a cloud Mac.
+Use this when the owner says "turn this website into an App Store-level app". It is the **single iPhone plan**: `docs/IOS.md` only points here, `docs/APPSTORE.md` holds costs, the 4.2 analysis and the timeline (don't repeat them here). Read `.claude/rules/project.md` and `docs/ARCHITECTURE.md` (v2 module contract) first. The owner works on Windows with no Node and no Mac, so every Mac/Xcode step needs CI or a cloud Mac.
 
 **Registering and publishing (enrollment, signing without a Mac, App Store Connect, TestFlight, review): step-by-step in `docs/APPSTORE-SUBMIT.md`.**
 
@@ -23,7 +23,7 @@ Still open: push server (P2/P7, also needed for lock-screen bus alerts), Time Se
 - The web app in `web/` stays the free fallback (GitHub Pages PWA). Target: a native-feeling iOS app, "Straight Bussing", unofficial, no UChicago branding.
 - A bare Capacitor/WKWebView wrap risks rejection under Guideline 4.2. Decision rule:
   1. Ship the PWA now. 2. Build the shared proxy + data contract (section 4) first; it serves both targets and is also the push server for section 7/8. 3. Start with Capacitor plus real native extensions (Live Activity, widget, notifications, section 9); go full SwiftUI only if review or feel demands it.
-- Blockers independent of tech: written permission from UChicago Transportation/Passio (UNRESOLVED). Do not submit publicly before it. See CLAUDE.md.
+- Blockers independent of tech: written permission from UChicago Transportation/Passio (UNRESOLVED). Do not submit publicly before it. See .claude/rules/project.md.
 - Hard rule: never hide staleness. Port `core/arrivals.js staleLevel()` (no data > 60 s, feed > 120 s/300 s old, fetch failed) to every surface, including the Live Activity and widgets.
 
 ## 2. Web vs iPhone feature map
@@ -200,11 +200,11 @@ Apple frameworks: **ActivityKit** (`ActivityAttributes`, `Activity.request(attri
 - [ ] P9 Decision gate: 4.2 feedback from TestFlight/review; SwiftUI rewrite only if needed
 - [ ] P10 Quality: stale UX on all surfaces, VoiceOver/Dynamic Type in the extension, MetricKit, unit tests for `core/notify.js`
 - [ ] P11 Release: screenshots, review notes + recording, privacy label, submit, handle review rounds
-- [ ] P12 Post-launch: monitor proxy load and push volume, Passio contact, takedown plan, update CLAUDE.md
+- [ ] P12 Post-launch: monitor proxy load and push volume, Passio contact, takedown plan, update .claude/rules/project.md
 
 ### When told to start, do this first
-1. Read CLAUDE.md, docs/ARCHITECTURE.md, docs/APPSTORE.md, this file. Ask the owner: Mac or cloud Mac access? paid Apple account yet? permission status? OK to run a small server (needed for locked-phone bus alerts)?
+1. Read .claude/rules/project.md, docs/ARCHITECTURE.md, docs/APPSTORE.md, this file. Ask the owner: Mac or cloud Mac access? paid Apple account yet? permission status? OK to run a small server (needed for locked-phone bus alerts)?
 2. Confirm the web app works (`docs/RUN.md`, `python tools/run_browser_tests.py`) and `web/data/meta.json` is fresh; check collection health (`monitoring.md`).
 3. Do P1b and P2 first (Windows-doable, de-risk both paths). Keep iPhone-only code behind `web/js/platform/` so the GitHub Pages site never ships it.
 4. Then P4 -> P5 (Live Activity with no server) -> P6 -> P7.
-5. Tick boxes here and update CLAUDE.md Status as phases complete. Do not submit publicly without the owner's explicit go-ahead.
+5. Tick boxes here and update .claude/rules/project.md Status as phases complete. Do not submit publicly without the owner's explicit go-ahead.

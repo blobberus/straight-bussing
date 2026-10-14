@@ -3,7 +3,7 @@
 Scope: the native SwiftUI app in `ios/` (every screen, light and dark). The web audit of the same day is
 `docs/DESIGN-AUDIT-2026-10-10.md`; this one mirrors the findings that apply to iOS.
 
-- **Rules, in order:** `CLAUDE.md` ship checklist (rider safety > correct times > speed > intuitive UI > accessibility >
+- **Rules, in order:** `.claude/rules/project.md` ship checklist (rider safety > correct times > speed > intuitive UI > accessibility >
   privacy > portability), `docs/DESIGN.md` (its "1b. System rules": one accent, green = live data only, radius scale,
   copy, states), then Apple's Human Interface Guidelines for layout, controls and materials. The third-party taste
   skill says it is out of scope for native mobile (its section 13), so only its universal rules were applied: zero

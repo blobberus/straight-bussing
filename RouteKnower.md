@@ -356,7 +356,7 @@ Dates are targets; the gates in §6.6 decide. Calendar dates from the 2026-27 Co
    gate file `data/model/approved.json` (committed by a human, naming the passing experiment and model version) matches.
    Otherwise ship without it; the app falls back to the schedule.
 3. `predict.js` already shrinks learned toward the schedule and tolerates a 404. Show the source ("learned" / "schedule")
-   and keep every number labelled "est." (ship checklist #2 in `CLAUDE.md`). Weather or fleet adjustments, if adopted,
+   and keep every number labelled "est." (ship checklist #2 in `.claude/rules/project.md`). Weather or fleet adjustments, if adopted,
    need the live inputs in the browser: NWS and Open-Meteo both allow cross-origin requests; fleet index comes from the
    live Passio feed the app already polls.
 4. Bump the cache name in `web/sw.js` only if `learned.json` joins the precache list (it is network-first data; it should not).
@@ -408,7 +408,7 @@ Reproduce: <exact commands>
 - Are some stops request-only at night (no row when skipped)? Affects Q4 and the night-route models.
 - Does the academic calendar (class changes at :50 to :10) show up in dwell and run times? E08, E14.
 - How different is campus weather from Midway's (lake effect)? Compare `wx_*` with `gr_*` once wet days accumulate.
-- Permission from UChicago Transportation is still unresolved (`CLAUDE.md`); collection stays low-volume, public-data-only.
+- Permission from UChicago Transportation is still unresolved (`.claude/rules/project.md`); collection stays low-volume, public-data-only.
 
 ## 13. Review log (objective review, 2026-10-08)
 

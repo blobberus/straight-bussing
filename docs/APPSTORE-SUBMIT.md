@@ -86,7 +86,7 @@ CAPITALS); never paste the contents of the .p8 key into a chat.
     Review > Submit to App Review. Apple reviews half of all submissions within 24 hours and 90% within 48. If it is
     rejected, paste the message to Claude (section 4 has the replies).
 13. [ ] **Release.** 1 min. When the status is Pending Developer Release: Release This Version. Tell Claude, who adds
-    the App Store link to the web About and `CLAUDE.md`.
+    the App Store link to the web About and `.claude/rules/project.md`.
 
 Done by Claude (2026-10-10 and 11): [x] release pipeline `.github/workflows/ios-release.yml` with a green dry run
 (section 5, step 13); [x] bundle id `io.github.blobberus.straightbussing` and version 1.0.0 in `ios/project.yml`;
@@ -162,7 +162,7 @@ The gaps the 2026-10-10 research found are all closed:
 | App Store Connect API access request | "reviewed and approved on a case-by-case basis" | [API help](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/); often immediate (unverified) |
 | Agreements, ids, app record, key, environment, secrets (checklist 2 to 7) | about 25 minutes | |
 | First TestFlight build | 20 to 30 min run (est.), then Apple processing; you get an email | [upload builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/) |
-| Real-iPhone QA on TestFlight | 1 to 2 weeks | also closes the open "QA on a real iPhone" item in `CLAUDE.md` |
+| Real-iPhone QA on TestFlight | 1 to 2 weeks | also closes the open "QA on a real iPhone" item in `.claude/rules/project.md` |
 | App Review | "at least 50% of submissions in less than 24 hours and 90% in less than 48 hours"; first apps often need 1 to 3 rounds (est.) | [App Review](https://developer.apple.com/distribute/app-review/) |
 | **Total from enrollment** | **about 2 to 4 weeks** | |
 
@@ -494,7 +494,7 @@ Submit. If the form gets more questions (a screenshot upload needs sign-in), upd
     the TestFlight tab ([upload builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/)).
 22. **[N] Internal testing (no review)** (checklist step 9). TestFlight > Internal Testing > (+) group > add yourself.
     Up to 100 internal testers, all App Store Connect users on your team; builds expire after 90 days
-    ([TestFlight](https://developer.apple.com/testflight/)). Real-iPhone QA from `CLAUDE.md`: sheet detents and drag,
+    ([TestFlight](https://developer.apple.com/testflight/)). Real-iPhone QA from `.claude/rules/project.md`: sheet detents and drag,
     safe areas, keyboard, location prompt and the "denied" path, stale banner (toggle Airplane Mode), Live Activity on
     the Lock Screen and Dynamic Island (iPhone 14 Pro or later), bus alerts, VoiceOver, Dynamic Type, dark mode,
     Contact support (opens Safari with the details filled in). Report bugs to Claude; each fix is a new build.
@@ -505,7 +505,7 @@ Submit. If the form gets more questions (a screenshot upload needs sign-in), upd
 
 ### Phase G: submit and launch
 
-24. **[N+C] Pre-submit check.** Claude ticks the `CLAUDE.md` ship checklist (stale-data honesty, "est." labels, no
+24. **[N+C] Pre-submit check.** Claude ticks the `.claude/rules/project.md` ship checklist (stale-data honesty, "est." labels, no
     "official" claims, 44 pt targets, privacy) on the TestFlight build. Nathan confirms: permission attached, simulated
     buses work, privacy and support URLs load, screenshots match the build, Content Rights and App Privacy answered.
 25. **[N] Submit** (checklist step 12). Version page > select the build > Add for Review > Submit to App Review.
@@ -513,7 +513,7 @@ Submit. If the form gets more questions (a screenshot upload needs sign-in), upd
 26. **[N+C] If rejected:** read the message under App Review, Claude prepares the fix or reply (section 4), resubmit.
     Use the appeal or the Webex appointment only when the rejection looks like a misunderstanding.
 27. **[N] Release** (checklist step 13). Pending Developer Release > Release This Version. Then [C] adds the App Store
-    link to the web About page and `CLAUDE.md`, and records the launch.
+    link to the web About page and `.claude/rules/project.md`, and records the launch.
 
 ### Phase H: after launch
 
@@ -536,7 +536,7 @@ Submit. If the form gets more questions (a screenshot upload needs sign-in), upd
 
 | Only Nathan | Claude in this repo |
 |---|---|
-| Apple Account + 2FA, enrollment + ID photo + payment, agreements, DSA declaration, (optional) App IDs, app record, API key, GitHub environment + secrets + variable, approving release runs, the Google Form, Content Rights / age rating / privacy answers (truthfulness is his), attaching the permission, submit, reply to App Review, release, renewal | Release pipeline (`ios-release.yml`, `ExportOptions.plist`, `asc.py`, `release_archive.sh`), `project.yml` bundle id / version / signing, privacy and support pages, Contact support links, simulated buses, App Store screenshot job, listing text and review notes, fixes from TestFlight QA and review, docs and `CLAUDE.md` status |
+| Apple Account + 2FA, enrollment + ID photo + payment, agreements, DSA declaration, (optional) App IDs, app record, API key, GitHub environment + secrets + variable, approving release runs, the Google Form, Content Rights / age rating / privacy answers (truthfulness is his), attaching the permission, submit, reply to App Review, release, renewal | Release pipeline (`ios-release.yml`, `ExportOptions.plist`, `asc.py`, `release_archive.sh`), `project.yml` bundle id / version / signing, privacy and support pages, Contact support links, simulated buses, App Store screenshot job, listing text and review notes, fixes from TestFlight QA and review, docs and `.claude/rules/project.md` status |
 
 ## Sources (checked 2026-10-10, signing and privacy re-checked 2026-10-11)
 

@@ -41,14 +41,14 @@ Visual version with links, "where it can snag" tips for every step and ticks tha
    - or use TestFlight's own way: tap the screenshot thumbnail > Share Beta Feedback. Claude reads these with
      `asc.py feedback`. After a crash, TestFlight asks to send a report: tap Share and add a sentence.
 2. **Claude fixes.** Files the issue with a severity, fixes it in iOS and also in the web app when the web has the
-   same bug (parity rule in `CLAUDE.md`), runs `ios.yml` and the web tests.
+   same bug (parity rule in `.claude/rules/project.md`), runs `ios.yml` and the web tests.
 3. **New build.** Claude starts `ios-release.yml`; you tap Review deployments > Approve (github.com works in your
    phone's browser). About 30 minutes later TestFlight installs it, if Automatic Updates is on in the TestFlight app.
 4. **You re-check** the fix on the new build; Claude closes the issue.
 
 Builds go out every 2 to 3 days with a batch of fixes, or the same day for a P0.
 
-## Severity (from the ship checklist in `CLAUDE.md`)
+## Severity (from the ship checklist in `.claude/rules/project.md`)
 
 | Level | What | Fixed |
 |---|---|---|

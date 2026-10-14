@@ -1,4 +1,4 @@
-# CLAUDE.md — project memory (read this first, keep it short)
+# Project notes (read this first, keep it short)
 
 Project: **Straight Bussing**, a free unofficial live UChicago shuttle tracker.
 **FINAL GOAL:** a polished website (feels like Apple Maps / Citymapper, not Passio GO!) that the owner can later prompt me to turn into an App Store-level app. Plan for that: `conversion to appstore.md`. UI rules: `docs/DESIGN.md` + `.claude/skills/taste-skill/` (third-party, MIT, reference only). Full brief: `UChicago Bus Tracker Project.md` (read only when needed).
