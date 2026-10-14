@@ -84,7 +84,8 @@
 
 /* you on a started trip (map.js setTrip, 2026-10-13): on the bus = an accent ring + "You" pill on its marker (the
    GPS dot steps back); otherwise a marker of its own (dashed when it is a guess: the boarding stop without GPS).
-   Labels on your stops: "Board here" / the get-off count, the same words as the Current trip card. */
+   Labels on your stops: "Board here" / the get-off count, the same words as the Current trip card; under the stop
+   (the destination pin and the You pill sit above their points). */
 .sb-map.sb-you-onbus .sb-meicon,.sb-map.sb-you-onbus .sb-acc{display:none}
 .sb-you-ring{position:absolute;inset:-7px;border-radius:14px;border:3px solid var(--sb-accent);box-shadow:0 0 0 2px #fff,var(--sb-shadow);
   pointer-events:none}
@@ -96,11 +97,10 @@
   box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow)}
 .sb-you--stop .sb-you-dot{background:var(--sb-chrome-solid);border:3px dashed var(--sb-accent)}
 .sb-you .sb-you-pill{bottom:calc(100% + 4px)}
-.sb-tlabel{position:absolute;left:0;bottom:11px;transform:translateX(-50%);padding:2px 8px;border-radius:8px;white-space:nowrap;
+.sb-tlabel{position:absolute;left:0;top:11px;transform:translateX(-50%);padding:2px 8px;border-radius:8px;white-space:nowrap;
   background:var(--sb-chrome-solid);color:var(--sb-text);font:700 12px/16px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
   box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow);pointer-events:none}
 .sb-tlabel--off{box-shadow:0 0 0 2px var(--sb-accent),var(--sb-shadow)}
-.sb-tlabel--board{bottom:auto;top:11px}   /* under the stop: the You pill sits above it while you wait there */
 
 /* trip plan */
 .sb-walk{stroke:var(--sb-accent)}

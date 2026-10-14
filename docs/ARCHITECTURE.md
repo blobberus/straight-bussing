@@ -318,8 +318,8 @@ tripYou(p, state): null | {phase, active, lat, lon /* null = unknown, no marker 
 ```
 Map (`MapApi.setTrip(you)`, `MapApi.inView(points)` -> true/false, null when the sheet covers the map): on the bus an
 accent ring + "You" pill on the bus marker itself (it glides with the bus) and the GPS dot steps back (`.sb-you-onbus`);
-a marker of its own when the bus is not drawn or for the boarding-stop guess; labels "Board here" (under the stop)
-and the get-off count `offShort` (above the alighting stop). `ui/tripmap.js startTripMap(store, map)`: follow camera
+a marker of its own when the bus is not drawn or for the boarding-stop guess; labels "Board here" and the get-off
+count `offShort`, under their stops (the destination pin and the You pill sit above their points). `ui/tripmap.js startTripMap(store, map)`: follow camera
 on at Start and via the locate button during a trip (`recenter`), off when the rider drags or zooms; frames
 `you.frame` on a phase / leg change or when a framed point leaves the view (not within 2 s of the last fit), waits
 while the sheet covers the map and frames on the next `sheet:inset`.
