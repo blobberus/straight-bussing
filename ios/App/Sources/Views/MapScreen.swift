@@ -95,13 +95,13 @@ struct MapScreen: View {
                 }
                 .annotationTitles(.hidden)
             }
-            // the trip's stops: "Board here" under the boarding stop, the get-off count above the alighting stop
-            // (the card's and the alerts' numbers); never in the way of a tap
+            // the trip's stops: "Board here" and the get-off count (the card's and the alerts' numbers) under their
+            // stops, as on the web (the destination marker and the You pill sit above their points); never in the way of a tap
             ForEach(labels, id: \.self) { l in
                 let board = l.text == "Board here"
-                Annotation("", coordinate: l.point.cl, anchor: board ? UnitPoint.top : UnitPoint.bottom) {
+                Annotation("", coordinate: l.point.cl, anchor: UnitPoint.top) {
                     TripStopLabel(text: l.text, off: !board)
-                        .padding(board ? Edge.Set.top : Edge.Set.bottom, 12)
+                        .padding(.top, 12)
                         .allowsHitTesting(false)
                         .accessibilityLabel("\(l.text), \(l.stopName)")
                 }

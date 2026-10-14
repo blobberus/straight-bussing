@@ -143,6 +143,18 @@ final class TripYouTests: XCTestCase {
         XCTAssertEqual(Notify.tripPausedText, "Paused during your trip: alerts follow your trip's bus.")
     }
 
+    /// A bus with an empty label (a missing one falls back to the vehicle id): "the bus" inside a sentence, and the
+    /// alerts do not name it (web core-tripyou.js "a bus without a number").
+    func testABusWithoutANumberIsTheBusInsideASentence() {
+        var st = scene("onbus")
+        st.live = TripFix.live([TripFix.bus("v101", "", "R", "tR1", "A5", "A6", 0.4)], [TripFix.trip("tR1", "R", "v101", "", [("A6", 70), ("A7", 200), ("A8", 300)])])
+        XCTAssertEqual(TripText.busMid(nil), "the bus")
+        XCTAssertEqual(you(st).text, "You are on the bus. Get off in 2 stops: Medical Center")
+        var far = st; far.user = at("A0")
+        XCTAssertEqual(you(far, accuracy: 10).text, "Your location is not near the bus. Stop counts follow the bus.")
+        XCTAssertEqual(alerts(st).alerts.first?.body, "Red Line. Your stop in about 3 min (est.).")
+    }
+
     // MARK: Trip alerts
 
     func testOnBoardGetOffIn2StopsThenNextStopOnceEach() {

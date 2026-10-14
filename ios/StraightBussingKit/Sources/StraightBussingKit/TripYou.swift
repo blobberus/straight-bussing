@@ -100,7 +100,7 @@ public struct TripYou: Hashable, Sendable {
             guard let s, let la = s.lat, let lo = s.lon else { return nil }
             return Target(id: s.id, name: s.name, lat: la, lon: lo, role: role)
         }
-        let who = TripText.busName(v)
+        let who = TripText.busMid(v)
 
         var you: LatLon? = nil, source: Source? = nil, onBus = false, far = false
         var target: Target? = nil

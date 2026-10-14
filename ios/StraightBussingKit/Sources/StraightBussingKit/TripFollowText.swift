@@ -12,6 +12,12 @@ public enum TripText {
         return "Bus \(v.label)"
     }
 
+    /// The same inside a sentence: "Bus 101" / "the bus" (web core/tripyou.js busMid).
+    public static func busMid(_ v: TripFollow.Vehicle?) -> String {
+        guard let v, !v.label.isEmpty else { return "the bus" }
+        return "Bus \(v.label)"
+    }
+
     /// "4 min" / "Now" (with "~" while live data is delayed), like the route detail timeline.
     public static func etaText(_ t: Double?, now: Double, late: Bool) -> String {
         guard let t, t != 0 else { return "" }

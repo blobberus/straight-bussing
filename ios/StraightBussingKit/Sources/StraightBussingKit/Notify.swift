@@ -254,7 +254,8 @@ public enum Notify {
         }
         fired.removeAll { $0 == "\(tk)|delayed" }
         guard leg.state == .active, let v = leg.vehicle else { return (alerts, fired) }
-        let route = routeName(S, leg.rid), who = TripText.busName(v), late = level == .late ? " Live data is delayed." : ""
+        let route = routeName(S, leg.rid), late = level == .late ? " Live data is delayed." : ""
+        let named = !v.label.isEmpty, bus = named ? TripText.busName(v) + ". " : ""   // a bus without a number is just not named
         func add(_ key: String, _ kind: BusAlert.Kind, _ title: String, _ body: String) {
             if fired.contains(key) { return }
             fired.append(key)
@@ -268,10 +269,10 @@ public enum Notify {
             if n.oneStop && away <= 1 { add("\(vk)|board1", .board1, head, body) }
             else if n.twoStops && away == 2 && !fired.contains("\(vk)|board1") { add("\(vk)|board2", .board2, head, body) }
             if n.minutes > 0, leg.boardLive, let eta = leg.boardEta, eta != 0, eta - now <= Double(n.minutes * 60) {
-                add("\(vk)|boardMin", .boardMin, "\(route): arriving at \(leg.boardName) in \(minutesText(eta, now: now))", "\(who). Next stop: \(v.nextName).")
+                add("\(vk)|boardMin", .boardMin, "\(route): arriving at \(leg.boardName) in \(minutesText(eta, now: now))", "\(bus)Next stop: \(v.nextName).")
             }
         } else if p.phase == .onBus, let left = leg.stopsLeft {
-            let body = "\(route), \(who)." + (leg.alightLive && leg.alightEta != nil && leg.alightEta != 0 ? " Your stop in \(minutesText(leg.alightEta, now: now))." : "")
+            let body = (named ? "\(route), \(TripText.busName(v))." : "\(route).") + (leg.alightLive && leg.alightEta != nil && leg.alightEta != 0 ? " Your stop in \(minutesText(leg.alightEta, now: now))." : "")
             if n.oneStop && left <= 1 { add("\(tk)|off1", .off1, TripText.offText(left, leg.alightName), body) }
             else if n.twoStops && left == 2 && !fired.contains("\(tk)|off1") { add("\(tk)|off2", .off2, TripText.offText(2, leg.alightName), body) }
         }
