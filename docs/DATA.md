@@ -7,9 +7,10 @@ predictions and train our own (`tools/model_*.py`, `docs/ALGORITHMS.md`). Unoffi
 |---|---|---|
 | `data/ground_truth/arrivals.csv` | `data` branch only (git-ignored on main) | real arrivals, collected around the clock (every 10 s), merged about every 40 min (once per CI run) |
 | `data/ground_truth/predictions.csv` | `data` branch | since 2026-10-12: Passio's prediction 1, 2, 3, 5, 10, 15, 20 and 30 min before each arrival (one row per arrival and lead; schema below), for the owner's "10% rule" |
-| `data/ground_truth/archive/*.csv` | `data` branch | same schemas, rotated when a live file passes 40 MB |
+| `data/ground_truth/alerts.csv` | `data` branch | since 2026-10-14: the operator's service alerts (Passio `serviceAlerts`), one row per alert version with when our collector first and last saw it (schema below); context for odd days (detours, reduced service), not ground truth about buses |
+| `data/ground_truth/archive/*.csv` | `data` branch | same schemas, rotated when a live file passes 40 MB (arrivals, predictions; alerts.csv never rotates) |
 | CI artifacts `raw-polls-<run>`, `pred-updates-<run>` | GitHub Actions, 90 days | every position poll (E03) and every Passio prediction update `[veh, trip, stop_id, made, predicted, seq, seen, last]` (repeated about once a minute while it stays on display) per run (`tools/raw_fetch.py --list`) |
-| Release `data-archive-YYYY-MM` assets | GitHub Releases (prerelease), kept | from service day 2026-10-12 on (Oct 10-11: positions only), one set per service day, uploaded the morning after: `pred-updates-<day>.jsonl.gz`, `raw-polls-<day>.jsonl.gz` (the two artifacts merged and deduped), `eta-<day>.csv.gz` (forecast snapshots, below), `gtfs-<day>.zip`; about 5.5 MB a day, no growth of the git history (`.github/workflows/archive.yml`, `tools/archive_day.py`) |
+| Release `data-archive-YYYY-MM` assets | GitHub Releases (prerelease), kept | from service day 2026-10-12 on (Oct 10-11: positions only), one set per service day, uploaded the morning after: `pred-updates-<day>.jsonl.gz`, `raw-polls-<day>.jsonl.gz` (the two artifacts merged and deduped), `eta-<day>.csv.gz` (forecast snapshots, below), `gtfs-<day>.zip`, and from the first day alerts were collected `alerts-<day>.csv.gz` (the alerts.csv versions in the feed at some poll of that service day; header only = none seen); about 5.5 MB a day, no growth of the git history (`.github/workflows/archive.yml`, `tools/archive_day.py`) |
 | `data/eta/summary.csv` | `data` branch | the 10% rule per service day x source x lead bin x route / segment (below); a few hundred rows a day |
 | `web/data/learned.json` | `data` branch | model refreshed after each run (if `tools/refresh_model.py` exists) |
 | `data/ground_truth/synthetic_arrivals.csv` | main | **fake**, seeded 3-week demo (ids start `syn`); `tools/make_synthetic_truth.py` |
@@ -66,6 +67,45 @@ the same trip overrides it (one update predicts both ends of a loop). Coverage: 
 from its own start (runs overlap ~30 min, so each arrival is covered by the run that started 30 to 70 min before
 it); local chunks reload the last hour of updates from the previous chunks (`--pred-seed`). Merge:
 `tools/merge_predictions.py` (duplicate = vehicle + stop + lead within 300 s; the fresher prediction stays).
+
+## alerts.csv (added 2026-10-14; one row = one version of one operator alert)
+What the operator told riders through Passio's `serviceAlerts` feed (detours, stop closures, reduced service,
+"buses delayed", the route-help phone number), with the time window our collector saw it in the feed. A context
+feature: it explains anomalies in arrivals.csv / predictions.csv, it says nothing about where buses were.
+Collected by `tools/truth_logger.py --alerts-out` (class `AlertLog`): **at the start of each run and every 5 min**
+(`--alerts-every 300`), in its own thread with its own 8 s timeout and counters, so a slow or dead alerts feed can
+never delay or stop the 10 s arrival loop. Each run writes its versions to `run_alerts.csv`; `tools/merge_alerts.py`
+merges them into this file in the same commit as the arrivals (a merge failure only warns: the arrivals are still
+pushed). Parsing and the version rule: `tools/alerts_lib.py`. Tests: `tools/test_alerts.py`.
+
+A **version** = Passio's entity id + a 12-hex hash of header, description, cause, effect, active periods and informed
+entities (order-independent; Passio's extra `startDatetime` / `endDatetime` strings are ignored). A changed text,
+window or route makes a new row; the same version seen again only moves `last_seen`. Merge: one row per
+(`alert_id`, `version`), earliest `first_seen`, latest `last_seen`; the file is rewritten whole, sorted by
+`first_seen` (a few versions a day; no rotation).
+
+`alert_id` Passio's entity id (small numbers, **reused for unrelated alerts**: always key on alert_id + version) ·
+`version` · `first_seen` `last_seen` unix s of the first / last of our polls that showed it, plus `first_seen_local`
+`last_seen_local` (Chicago clock) · `active_start` `active_end` the earliest start / latest end of its active
+periods (epoch; blank = open on that side, or no period = always active), `active_start_local` `active_end_local` ·
+`active_periods` every period as `start/end` joined with `;` (a blank side is open) · `cause` `effect` verbatim
+(blank when Passio sends none: so far it never has; never defaulted to UNKNOWN_*) · `agency_ids` (`1068` = the whole
+network) `route_ids` `stop_ids` from the informed entities, joined with `;` (a trip entity adds its route_id) ·
+`route_names` aligned with `route_ids`, filled only for ids in `web/data/routes.json` · `header` `description` the
+English (or untagged) translation, else the first, **verbatim** (commas, quotes, line breaks are CSV-quoted).
+
+**Caveats.** Times are poll times, so good to about 5 min (overlapping runs poll independently, often closer): an
+alert left the feed within ~5 min after `last_seen`, and one that appeared and vanished between two polls, or while no
+collector ran, is missing. A version that leaves the feed and comes back unchanged keeps one row (its first_seen to
+last_seen spans the gap). The first rows' `first_seen` is when collection began, not when the operator posted them:
+`active_start` is the operator's own start. **Route ids are not always GTFS ids**: on 2026-10-14 the North alert named
+route `38734` (Passio's own id; GTFS North is `1075`), so `route_names` is blank there and a join on `route_id` misses
+it; match by header text or treat it as unknown. For leakage-safe features at a moment t use only versions with
+`first_seen <= t`; "shown at t" = first_seen <= t <= last_seen (+ up to 5 min), "in effect" = active_start <= t <
+active_end. Fetch health per run: `logger.json` keys `alert_polls` `alert_ok` `alert_fetch_errors` `alert_errors`
+`alert_last_error` `alert_versions` `alert_in_feed`; the run summary line ends `alerts: N versions, F of P polls
+failed`, and a `Service alerts not collected` warning appears when more than half failed (never part of the
+"Collector run degraded" verdict).
 
 ## Forecast snapshots for training and analysis: `eta-<day>.csv.gz` (added 2026-10-12)
 `tools/build_eta_dataset.py`. **One row = (query minute t, bus, one of that bus's arrivals in (t, t + 45 min])**, plus
@@ -169,6 +209,9 @@ python tools/truth_logger.py --duration 180         # 3 minutes -> data/ground_t
 python tools/truth_logger.py --out my.csv --interval 10 --rotate-mb 40
 python tools/truth_logger.py --seed arrivals.csv --out run.csv   # write only new rows (what CI does)
 python tools/merge_arrivals.py --into arrivals.csv --add run.csv # dedupe-merge a run into the shared CSV
+python tools/truth_logger.py --once --alerts-out a.csv          # also write the service alert versions
+python tools/merge_alerts.py --into alerts.csv --add a.csv      # merge them (min first_seen, max last_seen)
+python tools/test_alerts.py                         # alerts: parsing, versions, merge, isolation tests
 python tools/truth_stats.py [csv]                   # coverage, speeds, Passio MAE by lead time
 python tools/test_truth.py                          # detector tests
 python tools/test_merge.py                          # merge / dedupe tests
@@ -192,7 +235,8 @@ Actions > Variables), or "Disable workflow" in the Actions tab (the keepalive st
 3. merges with `tools/merge_arrivals.py` into a worktree of the orphan `data` branch: duplicates from
    the overlap (same vehicle + stop within 300 s, whatever trip id or stop_index: collectors can
    disagree on Passio's trip id) are dropped, keeping the row with
-   more filled fields; the file is archived past 40 MB,
+   more filled fields; the file is archived past 40 MB; predictions.csv (`merge_predictions.py`) and alerts.csv
+   (`merge_alerts.py`, failure only warns) are merged in the same commit,
 4. refreshes `web/data/learned.json`, commits `data: arrivals <ts>`, pushes. If another run pushed first
    it re-fetches and re-merges (5 tries),
 5. re-enables its own workflow through the API so GitHub's 60-day idle rule does not switch it off

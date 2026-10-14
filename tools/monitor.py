@@ -21,6 +21,7 @@ REPO = os.environ.get("SB_REPO", "blobberus/straight-bussing")
 WORKFLOW = "collect.yml"
 CSV = "data/ground_truth/arrivals.csv"
 PRED_CSV = "data/ground_truth/predictions.csv"   # Passio's prediction 1-30 min ahead per arrival (merge_predictions.py)
+ALERTS_CSV = "data/ground_truth/alerts.csv"     # Passio's service alerts, one row per version (merge_alerts.py)
 PRED_SEED_S = 3600 + 600                        # reload prediction logs this recent into a new chunk (--pred-seed)
 LOG_KEEP_S = 14 * 86400                         # local prediction logs + raw polls: long enough to archive a day CI missed
 FEED = "https://passio3.com/chicago/passioTransit/gtfs/realtime/vehiclePositions.json"
@@ -56,6 +57,12 @@ def pred_partner(run_file):
     """runs/run-<stamp>.csv -> runs/pred-<stamp>.csv (the same chunk's predictions.csv rows)."""
     p = Path(run_file)
     return p.with_name("pred-" + p.name[len("run-"):]) if p.name.startswith("run-") else None
+
+
+def alerts_partner(run_file):
+    """runs/run-<stamp>.csv -> runs/alerts-<stamp>.csv (the same chunk's service alert versions)."""
+    p = Path(run_file)
+    return p.with_name("alerts-" + p.name[len("run-"):]) if p.name.startswith("run-") else None
 
 
 # ---------------------------------------------------------------- helpers
@@ -147,12 +154,16 @@ def save_state(ctx, st):
     os.replace(tmp, ctx.state)
 
 
-def has_rows(p):
+def has_rows(p, header="epoch,"):
     try:
         with open(p, encoding="utf-8", errors="replace") as f:
-            return any(ln.strip() and not ln.startswith("epoch,") for ln in f)
-    except OSError:
+            return any(ln.strip() and not ln.startswith(header) for ln in f)
+    except (OSError, TypeError):
         return False
+
+
+def has_alerts(run_file):
+    return has_rows(alerts_partner(run_file), "alert_id,")
 
 
 # ---------------------------------------------------------------- status
@@ -412,8 +423,9 @@ def _push(ctx):
 
 
 def publish(ctx, files, model=True):
-    """Merge run files into the data branch and push. -> (ok, rows_added, message)."""
-    files = [f for f in files if has_rows(f)]
+    """Merge run files into the data branch and push. -> (ok, rows_added, message). A chunk without arrivals still
+    counts when it saw service alerts (they run overnight too); an alerts merge failure never stops the push."""
+    files = [f for f in files if has_rows(f) or has_alerts(f)]
     if not files:
         return True, 0, "no rows"
     ident = [] if git(ctx, "config", "user.email", check=False).stdout.strip() else \
@@ -438,6 +450,15 @@ def publish(ctx, files, model=True):
                                         "--rotate-mb", "40"], capture_output=True, text=True, cwd=ctx.root)
                     if r.returncode:
                         raise RuntimeError("merge_predictions failed: " + (r.stderr or r.stdout)[-300:])
+            ma, al = ctx.root / "tools" / "merge_alerts.py", [str(alerts_partner(f)) for f in files if has_alerts(f)]
+            if ma.exists() and al:
+                try:
+                    r = subprocess.run([sys.executable, str(ma), "--into", str(ctx.wt / ALERTS_CSV), "--add", *al],
+                                       capture_output=True, text=True, cwd=ctx.root, timeout=120)
+                    if r.returncode:
+                        log(ctx, "alerts merge failed (arrivals are still pushed): " + (r.stderr or r.stdout)[-300:])
+                except Exception as e:
+                    log(ctx, f"alerts merge failed (arrivals are still pushed): {e}")
             rm = ctx.root / "tools" / "refresh_model.py"
             if model and rm.exists():
                 subprocess.run([sys.executable, str(rm), "--data", str(into), "--out", str(ctx.wt / "web/data/learned.json")],
@@ -470,15 +491,15 @@ def publish_pending(ctx, st, active, model):
     if ok:
         for f in files:
             os.replace(f, ctx.merged / f.name)
-            pf = pred_partner(f)
-            if pf is not None and pf.exists():
-                os.replace(pf, ctx.merged / pf.name)
+            for pf in (pred_partner(f), alerts_partner(f)):
+                if pf is not None and pf.exists():
+                    os.replace(pf, ctx.merged / pf.name)
         st["files_merged"] = st.get("files_merged", 0) + len(files)
         st["rows_added"] = st.get("rows_added", 0) + added
         st["last_publish"], st["last_error"] = time.time(), ""
     else:
         st["last_error"] = msg
-    for old in [*ctx.merged.glob("run-*.csv"), *ctx.merged.glob("pred-*.csv")]:   # keep a week for audit
+    for old in [*ctx.merged.glob("run-*.csv"), *ctx.merged.glob("pred-*.csv"), *ctx.merged.glob("alerts-*.csv")]:
         if time.time() - old.stat().st_mtime > 7 * 86400:
             old.unlink(missing_ok=True)
     for d in (ctx.predlog, ctx.raw):
@@ -548,7 +569,8 @@ def local(ctx, a, resume=False):
                                       f"{dur:.0f}", "--seed", str(ctx.seed), "--out", str(path),
                                       "--interval", str(a.interval), "--pred-out", str(pred_partner(path)),
                                       "--pred-log", str(ctx.predlog / (path.stem + ".jsonl")),
-                                      "--raw-out", str(ctx.raw / (path.stem + ".jsonl")), "--pred-seed", *seeds],
+                                      "--raw-out", str(ctx.raw / (path.stem + ".jsonl")),
+                                      "--alerts-out", str(alerts_partner(path)), "--pred-seed", *seeds],
                                      cwd=ctx.root, stdout=logf, stderr=subprocess.STDOUT)
                 logf.close()
                 active.append((p, path))

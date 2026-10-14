@@ -16,6 +16,7 @@ up to **Tuesday, October 13, 2026, 4:20 PM** (collection started Thursday, Octob
 | `predictions.csv` | same folder | one arrival x one "how far ahead" (1 to 30 min) | **checking** predictions against the goal | 23,915 rows, Oct 12 12:20 PM to Oct 13 |
 | `eta-<day>.csv.gz` | Releases page, "Prediction data archive" | one minute x one bus x one stop it reaches in the next 45 min | **training** a better algorithm | Oct 10, 11, 12 (Passio from Oct 12) |
 | `data/eta/summary.csv` | `data` branch | one day x predictor x lead range x route | the daily scoreboard | Oct 10 to 12 |
+| `alerts.csv` | `data` branch, `data/ground_truth/` | one version of one announcement by the operator (detour, reduced service, phone help) | explaining odd days and big misses | from Oct 14 (3 announcements in the feed that evening) |
 | per-day / per-route copies, `latest.csv` | [github.com/blobberus/straight-bussing-data](https://github.com/blobberus/straight-bussing-data) | as `arrivals.csv` | browsing in GitHub | synced every 30 min |
 
 **Where it comes from:** the shuttles' public live tracking feed (Passio, the same data the official app uses).
@@ -235,6 +236,32 @@ later** than shown (of 1,065 set aside at 15 to 30 minutes, 24 were early). Two 
    bus did come. The method now scores both ways (GOAL-AND-METHOD section 2, point 9).
 
 **Checking a row against the 10% rule in a spreadsheet:** `=ABS(pred_minus_actual_s) <= 0.1 * lead_target_s`.
+
+## `alerts.csv`: what the operator announced
+
+The shuttle operator posts announcements in the same live feed ("the North route will run every 30 minutes",
+detours, stop closures, a phone number for help). They explain days when buses ran unusually, so a big prediction
+miss on those days is not necessarily the algorithm's fault. The collector checks the announcements **every 5
+minutes** and keeps **one row per version**: when the wording, the time window or the routes change, a new row
+starts; while nothing changes, the same row's "last seen" time just moves on. The text is the operator's, word for
+word (including their own names, such as "UGo").
+
+| Column | What it means | Example |
+|---|---|---|
+| `alert_id` | The feed's number for the announcement. **The feed reuses small numbers** for unrelated announcements, so always use it together with `version`. | `2` |
+| `version` | A short code for this exact wording, time window and route list. | `f7acfe751f53` |
+| `first_seen`, `last_seen` (+ `_local`) | The first and last time our collector saw this version in the feed (seconds since 1970, and the same on a Chicago clock). Good to about 5 minutes: it was taken down within about 5 minutes after `last_seen`. | `2026-10-14 17:56:24` |
+| `active_start`, `active_end` (+ `_local`) | When the operator says it applies. Blank = no limit on that side (or no window given: always). | `2026-10-14 15:55:00` to `2026-10-15 00:00:00` |
+| `active_periods` | All the windows, if there are several, as `start/end` separated by `;`. | `1792011300/1792040400` |
+| `cause`, `effect` | The operator's category, if it sends one (it has not so far). | blank |
+| `agency_ids` | `1068` means the announcement is about the whole shuttle system. | `1068` |
+| `route_ids`, `route_names`, `stop_ids` | Which routes or stops it names, separated by `;`. **Careful:** the feed sometimes uses its own route numbers, not the timetable's (the North announcement on October 14 said `38734`; North is `1075` everywhere else), so `route_names` is blank there. | `38734` |
+| `header`, `description` | The announcement's title and text, word for word. | `North Route` / `The North route will run every 30 minutes throughout the evening.` |
+
+**Good to know:** an announcement that was up for less than 5 minutes, or while the collector was down, can be
+missing. The first rows of October 14 have `first_seen` = when collection began, not when the operator posted them
+(`active_start` shows that). The day's announcements are also kept with the daily files on the Releases page
+(`alerts-<day>.csv.gz`).
 
 ## The training table: `eta-<day>.csv.gz`
 

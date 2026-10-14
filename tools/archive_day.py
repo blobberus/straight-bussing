@@ -3,7 +3,8 @@
 and the local collector's logs after 14. Per Chicago service day (04:00 to 04:00) this merges them into one gzipped
 file each, builds the forecast-snapshot table (tools/build_eta_dataset.py) and uploads the three files to the GitHub
 Release `data-archive-YYYY-MM` (release assets: no growth of the git history; about 5.5 MB a day, plus the day's
-GTFS zip so the timetable columns can be rebuilt exactly). The day's
+GTFS zip so the timetable columns can be rebuilt exactly, and alerts-<day>.csv.gz, the operator's service alert
+versions in the feed that day, from the data branch's alerts.csv, once alert collection has begun). The day's
 aggregate rows (10% rule by lead) are merged into data/eta/summary.csv on the data branch (tiny).
 
   python tools/archive_day.py --catch-up 10 --arrivals A.csv --gtfs g.zip --data-dir databranch   # CI (archive.yml)
@@ -151,9 +152,29 @@ def inputs_from_local(day, root=LOCAL):
 
 
 # ---------------------------------------------------------------- one day
+def alerts_of_day(path, day):
+    """The service alert versions in the feed at some poll of the service day (data/ground_truth/alerts.csv), or
+    None when there is nothing to say: no file, no rows, or alert collection started after the day ended."""
+    import alerts_lib as AL
+    if not path or not Path(path).exists():
+        return None
+    rows, _ = AL.read_csv(path)
+    t0, t1 = B.day_bounds(day)
+    if not rows or min(int(r["first_seen"]) for r in rows) >= t1:
+        return None
+    return AL.in_window(rows, t0, t1)
+
+
+def write_alerts(rows, path):
+    import alerts_lib as AL
+    with gzip.open(path, "wt", encoding="utf-8", newline="", compresslevel=9) as f:
+        f.write(AL.to_text(rows))
+
+
 def archive(day, repo, arts, work, arrivals, gtfs=None, local=False, upload=True, clobber=False, web_data=None,
-            local_dir=LOCAL):
-    """Build and (optionally) upload the day's three files. -> (summary rows, message) or (None, why skipped)."""
+            local_dir=LOCAL, alerts=None):
+    """Build and (optionally) upload the day's three files (plus alerts-<day>.csv.gz when `alerts`, the data branch's
+    alerts.csv, covers the day). -> (summary rows, message) or (None, why skipped)."""
     work = Path(work)
     work.mkdir(parents=True, exist_ok=True)
     pred, raw = inputs_from_artifacts(repo, day, arts) if arts is not None else ([], [])
@@ -181,15 +202,26 @@ def archive(day, repo, arts, work, arrivals, gtfs=None, local=False, upload=True
     B.merge_summary(work / f"summary-{day}.csv", summ)
     msg = (f"{day}: {len(pred)} prediction updates, {sum(len(p['v']) for p in raw)} position reports, {len(rows)} table rows "
            f"({sum(p.stat().st_size for p in paths) / 1e6:.1f} MB gz)")
+    alert_file = None
+    try:                                      # optional: never costs the day's main files
+        day_alerts = alerts_of_day(alerts, day)
+        if day_alerts is not None:
+            alert_file = work / f"alerts-{day}.csv.gz"
+            write_alerts(day_alerts, alert_file)
+            msg += f", {len(day_alerts)} alert versions"
+    except Exception as ex:
+        alert_file = None
+        msg += f", alerts skipped ({type(ex).__name__}: {ex})"
     if upload:
         tag = tag_of(day)
         if gh("release", "view", tag, "--repo", repo, "--json", "tagName", check=False).strip() == "":
             gh("release", "create", tag, "--repo", repo, "--prerelease", "--latest=false",
                "--title", f"Prediction data archive {str(day)[:7]}",
-               "--notes", "Daily files for the 10% rule work: Passio prediction updates, raw position polls and the "
-                          "forecast-snapshot table (eta-<day>.csv.gz). Made by .github/workflows/archive.yml; "
+               "--notes", "Daily files for the 10% rule work: Passio prediction updates, raw position polls, the "
+                          "forecast-snapshot table (eta-<day>.csv.gz) and the operator's service alert versions "
+                          "(alerts-<day>.csv.gz). Made by .github/workflows/archive.yml; "
                           "schemas in docs/DATA.md. Unofficial student project; public feed data only.")
-        extra = []
+        extra = [alert_file] if alert_file else []
         if gtfs and Path(gtfs).exists():      # the timetable used (80 kB): rebuilds stay exact after a GTFS change
             g = work / f"gtfs-{day}.zip"
             g.write_bytes(Path(gtfs).read_bytes())
@@ -216,6 +248,8 @@ def main(argv=None):
     ap.add_argument("--no-upload", action="store_true", help="build into --work only")
     ap.add_argument("--arrivals", nargs="*", default=[str(LOCAL / "databranch" / "data" / "ground_truth" / "arrivals.csv")])
     ap.add_argument("--gtfs", help="google_transit.zip (timetable columns; optional)")
+    ap.add_argument("--alerts", default=str(LOCAL / "databranch" / "data" / "ground_truth" / "alerts.csv"),
+                    help="the data branch's alerts.csv: also upload alerts-<day>.csv.gz (optional; skipped if missing)")
     ap.add_argument("--data-dir", help="data branch worktree: merge the day's summary rows into data/eta/summary.csv")
     ap.add_argument("--work", default=str(L.ROOT / "data" / "eta_work"))
     ap.add_argument("--merge-summary", nargs="*", help="only merge these summary-<day>.csv files into --data-dir")
@@ -247,7 +281,7 @@ def main(argv=None):
             continue
         try:
             summ, msg = archive(day, a.repo, arts, a.work, arrivals, a.gtfs, a.local, not a.no_upload, a.replace,
-                                local_dir=a.local_dir)
+                                local_dir=a.local_dir, alerts=a.alerts)
         except Exception as ex:               # one bad day must not stop the others
             failed += 1
             print(f"{day}: FAILED {ex!r}", file=sys.stderr)
