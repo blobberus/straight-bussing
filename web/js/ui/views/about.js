@@ -2,7 +2,8 @@
  * @module ui/views/about
  * About: unofficial notice, official phone/link, privacy statements (what leaves the device:
  * typed place text -> photon.komoot.io; rounded walking-leg endpoints -> routing.openstreetmap.de /
- * valhalla1.openstreetmap.de), theme control (ui/theme.js mount), data credits and version.
+ * valhalla1.openstreetmap.de; the beta feedback form on Google Forms, only when tapped), theme control
+ * (ui/theme.js mount), data credits and version.
  */
 import { registerView } from "../router.js";
 import * as theme from "../theme.js";
@@ -33,8 +34,9 @@ export function renderAbout() {
 <ul class="v-plain">
   <li>No account, no ads, no tracking. Your location, if you allow it, is used on this device; your live location is never stored or sent anywhere. The one exception: when you ask for directions, the rounded start of a walking leg can be your location (see Walking directions).</li>
   <li>Place search: station names and places within a 30-minute walk of campus stops are searched on your device, including spelling fixes. Only when that finds fewer than 5 matches, or when you tap “Search for … instead”, is text sent to <b>photon.komoot.io</b> (OpenStreetMap geocoder): the text you typed, or its spelling fix when results are shown for the fix, and nothing else.</li>
-  <li>Network requests: the public shuttle feeds (<b>passio3.com</b>), map tiles for the area on screen (<b>tiles.openfreemap.org</b>) and the map code (<b>unpkg.com</b>), photon.komoot.io for address search (above) and the walking routers (below). The app and its schedule files come from <b>blobberus.github.io</b> (GitHub Pages).</li>
+  <li>Network requests: the public shuttle feeds (<b>passio3.com</b>), map tiles for the area on screen (<b>tiles.openfreemap.org</b>) and the map code (<b>unpkg.com</b>), photon.komoot.io for address search (above), the walking routers and the feedback form (below). The app and its schedule files come from <b>blobberus.github.io</b> (GitHub Pages).</li>
   <li>Walking directions: only the start and end of each walking leg (your location, when a trip starts there), rounded to about 10 m, are sent to <b>routing.openstreetmap.de</b> (or <b>valhalla1.openstreetmap.de</b> if that is down) to follow sidewalks. Nothing else about you or your trip is sent. If both fail, a straight-line estimate is used and labeled “estimate”.</li>
+  <li>Beta feedback: only when you tap “Give feedback” in Settings or “Go to Feedback” in the welcome popup does a <b>Google Forms</b> page open in a new tab. Nothing is added to its link, and what you type there is sent only when you press Submit.</li>
   <li>Settings (theme, hidden routes, custom routes, favorites, bus alert choices) are saved in this browser only.</li>
 </ul>
 <p class="v-sec"><a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="support.html?contact=1&amp;app=web&amp;v=${esc(encodeURIComponent(APP_VERSION))}" target="_blank" rel="noopener">Contact support</a></p>

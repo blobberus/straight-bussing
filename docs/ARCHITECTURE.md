@@ -298,6 +298,9 @@ tripAlerts(p, state, fired, nowS, {polling}): {alerts:[{key, kind:'board2'|'boar
 tripAlertsOn(p, state): boolean   // a started trip (not arrived) with notify.trip on
 ```
 
+### Beta feedback (2026-10-13, owner)
+`ui/feedback.js`: `FEEDBACK_URL` (the only place the Google Form address appears), `feedbackLinkHTML()` (a real `<a target="_blank" rel="noopener">`, never window.open after an await), the welcome popup (native `<dialog>` like ui/confirm.js: Cancel focused first, Escape / outside tap close, 350 ms double-tap guard) once per browser session (`sessionStorage`; blocked storage = once per page load), opened by main.js after the first painted render (`welcomeAfterPaint`). Settings starts with "Beta feedback" (`views/settings.js feedbackHTML`). Browser tests set the session flag before booting the app (e2e.js, e2e-demo.js).
+
 ### You on the trip map + trip alerts (2026-10-13, owner: "the Current Trip map should show the user's location in the current trip's location (especially for bus routes). Make this sync to the notification center's get off in X stops")
 ONE evaluation of the followed trip per data change, `core/tripprogress.js tripNow(state, nowS)` (memo: same journey,
 buses, trips, user, stops, routeStops, feed fields and `now` within `TRIP.MEMO_S` 10 s), feeds the Current trip card

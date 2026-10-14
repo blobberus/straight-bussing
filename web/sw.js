@@ -63,6 +63,7 @@ const PRECACHE = [
   'js/ui/confirm.js',
   'js/ui/contextbar.js',
   'js/ui/demo.js',
+  'js/ui/feedback.js',
   'js/ui/frame.js',
   'js/ui/notifier.js',
   'js/ui/pill.js',
