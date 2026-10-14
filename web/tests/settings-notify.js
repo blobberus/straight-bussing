@@ -67,10 +67,13 @@ test("notify: minutes alert from the live prediction only", () => {
   eq(minutesText(null, NOW), "");
 });
 
-test("notify: no alerts or status when live data is down or old; delayed data is labeled", () => {
-  eq(dueAlerts(st({ lastOk: 0 }), new Set(), NOW).alerts, []);
-  eq(dueAlerts(st({ failed: true }), new Set(), NOW).alerts, []);
-  eq(dueAlerts(st({ feedTs: NOW - 400 }), new Set(), NOW).alerts, []);
+test("notify: live data down or old = one 'Live data delayed' alert per outage, no status; delayed data is labeled", () => {
+  eq(dueAlerts(st({ lastOk: 0 }), new Set(), NOW).alerts, [], "never reached yet: nothing");
+  const down = dueAlerts(st({ failed: true }), new Set(), NOW);
+  eq(down.alerts.map((a) => [a.kind, a.title]), [["delayed", "Live data delayed"]]);
+  eq(dueAlerts(st({ failed: true }), down.fired, NOW + 20).alerts, [], "once per outage");
+  eq(dueAlerts(st({ feedTs: NOW - 400 }), new Set(), NOW).alerts.map((a) => a.kind), ["delayed"]);
+  eq(dueAlerts(st({ feedTs: NOW - 400 }), new Set(), NOW, { polling: false }).alerts, [], "feed paused in a background tab");
   eq(liveStatus(st({ feedTs: NOW - 400 }), NOW), null);
   const late = dueAlerts(st({ feedTs: NOW - 150, notify: N({ rids: ["R1"] }) }), new Set(), NOW).alerts[0];
   ok(late.body.includes("Live data is delayed"));

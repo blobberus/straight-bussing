@@ -53,19 +53,20 @@ export function cleanId(v) {
 
 /** Default bus-arrival notification settings (see docs/ARCHITECTURE.md "Settings"). */
 export const NOTIFY_DEFAULTS = Object.freeze({ stopId: null, rids: [], twoStops: true, oneStop: true, minutes: 0,
-  liveActivity: true, inApp: true });
+  liveActivity: true, inApp: true, trip: true });
 
 /**
  * Validate persisted notification settings (unknown keys dropped, bad values -> defaults).
  * @param {unknown} v
- * @returns {{stopId:string|null, rids:string[], twoStops:boolean, oneStop:boolean, minutes:number, liveActivity:boolean, inApp:boolean}}
+ * @returns {{stopId:string|null, rids:string[], twoStops:boolean, oneStop:boolean, minutes:number, liveActivity:boolean, inApp:boolean, trip:boolean}}
+ *   trip: alerts for a started trip (before the bus comes, before you get off; 2026-10-13)
  */
 export function cleanNotify(v) {
   const o = v && typeof v === 'object' ? v : {};
   const b = (k) => (typeof o[k] === 'boolean' ? o[k] : NOTIFY_DEFAULTS[k]);
   const m = Number(o.minutes);
   return { stopId: cleanId(o.stopId), rids: cleanHidden(o.rids), twoStops: b('twoStops'), oneStop: b('oneStop'),
-    minutes: Number.isFinite(m) && m >= 0 && m <= 30 ? Math.round(m) : 0, liveActivity: b('liveActivity'), inApp: b('inApp') };
+    minutes: Number.isFinite(m) && m >= 0 && m <= 30 ? Math.round(m) : 0, liveActivity: b('liveActivity'), inApp: b('inApp'), trip: b('trip') };
 }
 
 /**

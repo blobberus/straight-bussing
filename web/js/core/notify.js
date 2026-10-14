@@ -8,13 +8,26 @@
  * station is the bus's next stop, 1 = one stop before yours, 2 = two stops before. The bus's next
  * stop is the vehicle's live stop_id, else the first upcoming stop in its trip update. Minutes come
  * only from the live trip update at your station (never invented); every text says "est.".
+ *
+ * Trip alerts (2026-10-13, owner: in step with the map's "get off in X stops"): while a started trip is on,
+ * tripAlerts reads the SAME tripProgress result as the Current trip card and the map (core/tripprogress.js
+ * tripNow) and alerts before your bus comes (2 / 1 stops, N min) and before you get off (2 stops, next stop);
+ * station alerts pause meanwhile. When live data goes down, ONE "Live data delayed" alert per outage instead of
+ * silence (conversion to appstore.md section 7).
  */
 import { staleLevel } from "./arrivals.js";
 import { effectiveHidden } from "./visibility.js";
+import { busName, legStatus, offText } from "./tripyou.js";
 
 /** A vehicle report older than this (s) is ignored. */
 export const BUS_STALE_S = 180;
 const FIRED_MAX = 400;
+
+/** The one alert when live data goes down (old or failing) while alerts are armed. */
+export const DELAYED_TITLE = "Live data delayed";
+export const TRIP_DELAYED_BODY = "Bus positions and times may be off. Check the official app or call 773.702.8181.";
+export const STATION_DELAYED_BODY = "Bus alerts are paused: bus positions may be off. Check the official app or call 773.702.8181.";
+const capped = (fired) => (fired.size > FIRED_MAX ? new Set([...fired].slice(-FIRED_MAX)) : fired);
 
 /**
  * Route order without a loop's repeated last stop.
@@ -142,18 +155,27 @@ function alertFor(state, it, kind, now, late) {
 }
 
 /**
- * Alerts that should fire now (each trip + kind once). No alerts while live data is down or old.
+ * Station alerts that should fire now (each trip + kind once). While live data is down or old: one 'delayed'
+ * alert per outage (only after data was reached once, and only while the page polls), nothing else.
  * @param {object} state store state (needs notify, buses, trips, routeStops, stopRoutes, stops, routes, feed fields)
  * @param {Set<string>} prevFired keys already fired
  * @param {number} now unix seconds
- * @returns {{alerts:Array<{key:string, kind:'twoStops'|'oneStop'|'minutes', title:string, body:string}>, fired:Set<string>}}
+ * @param {{tripOn?:boolean, polling?:boolean}} [opts] tripOn: a started trip with trip alerts on is in progress
+ *   (station alerts pause: alerts follow the trip); polling false: the live feed is paused (background tab without
+ *   notifications), so old data is not an outage
+ * @returns {{alerts:Array<{key:string, kind:'twoStops'|'oneStop'|'minutes'|'delayed', title:string, body:string}>, fired:Set<string>}}
  */
-export function dueAlerts(state, prevFired, now) {
+export function dueAlerts(state, prevFired, now, opts = {}) {
   const fired = new Set(prevFired || []);
   const n = state?.notify;
-  if (!n || !n.stopId) return { alerts: [], fired };
-  const level = staleLevel(state, now);
-  if (level === "err" || level === "old") return { alerts: [], fired };
+  if (!n || !n.stopId || opts.tripOn) return { alerts: [], fired };
+  const level = staleLevel(state, now), dk = `${n.stopId}|delayed`;
+  if (level === "err" || level === "old") {
+    if (!state.lastOk || opts.polling === false || fired.has(dk)) return { alerts: [], fired };
+    fired.add(dk);
+    return { alerts: [{ key: dk, kind: "delayed", title: DELAYED_TITLE, body: STATION_DELAYED_BODY }], fired: capped(fired) };
+  }
+  fired.delete(dk);   // fresh again: a later outage alerts again
   const rids = watchedRoutes(state);
   if (!rids.length) return { alerts: [], fired };
   const alerts = [];
@@ -170,8 +192,74 @@ export function dueAlerts(state, prevFired, now) {
       alerts.push(a);
     }
   }
-  if (fired.size > FIRED_MAX) return { alerts, fired: new Set([...fired].slice(-FIRED_MAX)) };
-  return { alerts, fired };
+  return { alerts, fired: capped(fired) };
+}
+
+/**
+ * Trip alerts that should fire now, from the trip's ONE progress evaluation (tripNow). Before boarding, per
+ * followed bus (a different bus after a miss may alert again): 'board2' (2 stops away), 'board1' (1 stop away or
+ * your stop is next), 'boardMin' (live arrival within notify.minutes). On board, once per ride (even if the trip id
+ * rolls): 'off2' ("Get off in 2 stops: X"), 'off1' ("Get off at the next stop: X" / "Get off here: X"). The
+ * notify switches twoStops / oneStop / minutes choose which; notify.trip false turns trip alerts off. Live data
+ * down: one 'delayed' alert per outage. Titles are the card's words (legStatus / offText).
+ * @param {object|null} p tripNow / tripProgress result
+ * @param {object} state store state (notify, journey, routes, feed fields)
+ * @param {Set<string>} prevFired keys already fired
+ * @param {number} now unix seconds
+ * @param {{polling?:boolean}} [opts] polling false: the live feed is paused, old data is not an outage
+ * @returns {{alerts:Array<{key:string, kind:'board2'|'board1'|'boardMin'|'off2'|'off1'|'delayed', title:string, body:string}>, fired:Set<string>}}
+ */
+export function tripAlerts(p, state, prevFired, now, opts = {}) {
+  const fired = new Set(prevFired || []);
+  const n = state?.notify;
+  if (!p || !n || n.trip === false || p.phase === "arrived") return { alerts: [], fired };
+  const leg = (p.legs || [])[p.active];
+  if (!leg || leg.type !== "bus") return { alerts: [], fired };
+  const tk = `trip|${state.journey?.t0 ?? ""}|${p.active}|${leg.rid}:${leg.board.id}>${leg.alight.id}`;
+  const level = staleLevel(state, now), alerts = [];
+  if (level === "err" || level === "old") {
+    const dk = `${tk}|delayed`;
+    if (state.lastOk && opts.polling !== false && !fired.has(dk)) {
+      fired.add(dk);
+      alerts.push({ key: dk, kind: "delayed", title: DELAYED_TITLE, body: TRIP_DELAYED_BODY });
+    }
+    return { alerts, fired: capped(fired) };
+  }
+  fired.delete(`${tk}|delayed`);
+  const v = leg.vehicle;
+  if (leg.state !== "active" || !v) return { alerts, fired };
+  const route = routeName(state, leg.rid), who = busName(v), late = level === "late" ? " Live data is delayed." : "";
+  const add = (key, kind, title, body) => {
+    if (fired.has(key)) return;
+    fired.add(key);
+    alerts.push({ key, kind, title, body: body + late });
+  };
+  if ((p.phase === "walk-to-stop" || p.phase === "waiting") && leg.stopsAway != null) {
+    const vk = `${tk}|${v.id || v.label || ""}`;
+    const when = leg.boardLive && leg.boardEta ? ` Arrives in ${minutesText(leg.boardEta, now)}.` : "";
+    const foot = p.phase === "walk-to-stop" && leg.canCatch === false ? " You may not make it on foot." : "";
+    const head = `${route}: ${legStatus(leg)}`, body = `Board at ${leg.board.name}.${when}${foot}`;
+    if (n.oneStop && leg.stopsAway <= 1) add(`${vk}|board1`, "board1", head, body);
+    else if (n.twoStops && leg.stopsAway === 2 && !fired.has(`${vk}|board1`)) add(`${vk}|board2`, "board2", head, body);
+    if (n.minutes > 0 && leg.boardLive && leg.boardEta && leg.boardEta - now <= n.minutes * 60) {
+      add(`${vk}|boardMin`, "boardMin", `${route}: arriving at ${leg.board.name} in ${minutesText(leg.boardEta, now)}`, `${who}. Next stop: ${v.nextName}.`);
+    }
+  } else if (p.phase === "on-bus" && leg.stopsLeft != null) {
+    const body = `${route}, ${who}.` + (leg.alightLive && leg.alightEta ? ` Your stop in ${minutesText(leg.alightEta, now)}.` : "");
+    if (n.oneStop && leg.stopsLeft <= 1) add(`${tk}|off1`, "off1", offText(leg.stopsLeft, leg.alight.name), body);
+    else if (n.twoStops && leg.stopsLeft === 2 && !fired.has(`${tk}|off1`)) add(`${tk}|off2`, "off2", offText(2, leg.alight.name), body);
+  }
+  return { alerts, fired: capped(fired) };
+}
+
+/**
+ * A started trip with trip alerts on is in progress (station alerts pause meanwhile).
+ * @param {object|null} p tripNow / tripProgress result
+ * @param {object} state
+ * @returns {boolean}
+ */
+export function tripAlertsOn(p, state) {
+  return !!p && p.phase !== "arrived" && state?.notify?.trip !== false;
 }
 
 /**

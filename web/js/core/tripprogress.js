@@ -38,6 +38,7 @@ export const TRIP = Object.freeze({
   GRACE_S: 60,       // a planned time counts as passed this long after it is due
   LATE_DONE_S: 900,  // planned trip gone this long after its planned arrival -> that ride is over
   STOP_S: 90,        // rough seconds per stop when the plan has no ride time (only to skip buses you cannot reach)
+  MEMO_S: 10,        // tripNow reuses its last result for the same data this many seconds
 });
 
 const num = (x) => (typeof x === "number" && isFinite(x) ? x : null);
@@ -394,4 +395,24 @@ export function tripProgress(journey, state, nowS) {
     label: J.label || "", phase, active, arriveT, arriveLive: !allDone && !!lastBus.alightLive,
     live: !!(cur && cur.type === "bus" ? cur.live : lastBus.live), stale: staleLevel(S, now), legs,
   };
+}
+
+let memo = null;
+/**
+ * tripProgress(state.journey, state, now) evaluated ONCE per data change: the Current trip card and timeline,
+ * the map's You marker (ui/tripmap.js) and the trip alerts (ui/notifier.js) all call this, so in the same tick
+ * they read the same object and can never disagree on a stop count. Reused while the journey, buses, trips,
+ * location, static data and feed fields are the same objects and `now` is within TRIP.MEMO_S of the last call.
+ * @param {object} state store state
+ * @param {number} [nowS] unix seconds
+ * @returns {ReturnType<typeof tripProgress>}
+ */
+export function tripNow(state, nowS) {
+  const now = num(nowS) != null ? nowS : Date.now() / 1000;
+  const S = state || {};
+  const k = [S.journey, S.buses, S.trips, S.user, S.stops, S.routeStops, S.lastOk, S.feedTs, S.failed];
+  if (memo && Math.abs(now - memo.now) < TRIP.MEMO_S && memo.k.every((x, i) => x === k[i])) return memo.p;
+  const p = tripProgress(S.journey, S, now);
+  memo = { k, now, p };
+  return p;
 }
