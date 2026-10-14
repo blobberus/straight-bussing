@@ -160,11 +160,13 @@ web (web/js/map/landmarks.js, docs/ARCHITECTURE.md "Map labels"):
   #BCD0E2) with a halo and a faint plate (the halo color, white / #18181B, at 50%, corner radius 5).
 - **Drawing** (`Views/MapScreen.swift` `LandmarkLabel`): text-only `Annotation`s declared first, so stops, buses, the
   trip and you are drawn over them; never take a tap (`allowsHitTesting(false)`), hidden from VoiceOver (stops and
-  buses keep their labels); never animated. Laid out on camera END (`onMapCameraChange(frequency: .onEnd)`), when the
-  app moves the camera (fit, fly to, the follow frame), when the visible map changes size, when the stops / trip
-  labels / destination change, when the landmarks load and on a text size change (`LabelWatcher`), each time again
-  0.5 s and 1.2 s later (`MapLabelModel.layoutSoon`: in the CI simulator the camera-end callback did not lay out after
-  the app's 0.6 s camera glides, so names stayed where the camera had been); never per frame or per bus move. The
+  buses keep their labels); never animated. Laid out at camera END: every frame of a move only notes the time
+  (`onMapCameraChange(frequency: .continuous)` -> `MapLabelModel.cameraMoved`) and the layout runs once the camera has
+  been still for 0.3 s; also when the app moves the camera (fit, fly to, the follow frame), when the visible map
+  changes size, when the stops / trip labels / destination change, when the landmarks load and on a text size change
+  (`LabelWatcher`), each time again 0.5 s and 1.2 s later (`MapLabelModel.layoutSoon`). Why not `.onEnd` alone: with
+  it, the first CI shots kept the names of an earlier camera after the app's 0.6 s camera glides (names cut at the
+  screen edge, none on the Main Quad). Never a layout per frame or per bus move. The
   result lives in `AppModel.mapLabels` (`MapLabelModel`) and is assigned only when it changes; a name that changes side
   or size is a new annotation (`drawKey`). Apple's own points of interest stay off (`pointsOfInterest: .excludingAll`),
   so no place is named twice. CI shots: 36-map (opening camera), 37-map-near (`-screen near`), 38-trip-map, and the UI

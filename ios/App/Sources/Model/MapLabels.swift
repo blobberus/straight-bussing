@@ -15,6 +15,28 @@ final class MapLabelModel {
     /// The labels drawn now (assigned only when they change).
     private(set) var placed: [PlacedLandmark] = []
     @ObservationIgnored private var pending: Task<Void, Never>?
+    /// When the camera last moved (system uptime) and the task waiting for it to be still.
+    @ObservationIgnored private var lastMove: Double = 0
+    @ObservationIgnored private var stillTask: Task<Void, Never>?
+
+    /// The camera moved (MapKit reports every frame of a pan, a zoom or a glide): only the time is noted; the names are
+    /// laid out once the camera has been still for 0.3 s, so a move never costs a layout per frame and the layout
+    /// does not depend on MapKit's camera-end callback alone.
+    func cameraMoved(_ layout: @escaping @MainActor () -> Void) {
+        lastMove = ProcessInfo.processInfo.systemUptime
+        guard stillTask == nil else { return }
+        stillTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                guard let self else { return }
+                if ProcessInfo.processInfo.systemUptime - self.lastMove >= 0.3 {
+                    self.stillTask = nil
+                    layout()
+                    return
+                }
+            }
+        }
+    }
 
     func setLandmarks(_ list: [Landmark]) {
         landmarks = list

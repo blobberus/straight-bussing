@@ -157,8 +157,10 @@ struct MapScreen: View {
         }
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
         .mapControls { MapCompass() }
-        // the names are laid out when the camera stops, not on every frame of a pan or zoom
-        .onMapCameraChange(frequency: .onEnd) { _ in model.mapLabels.layoutSoon { layoutLabels(proxy, scale: labelScale) } }
+        // the names are laid out when the camera stops, not on every frame of a pan or zoom: each frame only notes the
+        // time, the layout runs once the camera has been still for 0.3 s (with .onEnd alone, the names stayed where an
+        // earlier camera had put them after the app's own camera glides in the CI simulator)
+        .onMapCameraChange(frequency: .continuous) { _ in model.mapLabels.cameraMoved { layoutLabels(proxy, scale: labelScale) } }
         // a tap on empty map lowers the sheet to peek (web onMapTap). Simultaneous, so it never blocks the stop / bus
         // buttons; `mapTapped` ignores a tap that also hit one of them.
         .simultaneousGesture(TapGesture().onEnded { model.mapTapped() })
