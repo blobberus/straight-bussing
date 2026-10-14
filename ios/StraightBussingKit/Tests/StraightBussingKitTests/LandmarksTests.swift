@@ -305,9 +305,10 @@ final class LandmarksTests: XCTestCase {
             for s in stops { XCTAssertFalse(a.box.intersects(s), "\(a.landmark.name) over a stop") }
             for b in p[(i + 1)...] { XCTAssertFalse(a.box.intersects(b.box), "\(a.landmark.name) over \(b.landmark.name)") }
         }
-        // closer in (zoom 16.75 on the Main Quad): all three tiers can show, the three Max Palevsky buildings named
-        let (p2, _) = layout(center: LatLon(lat: 41.7905, lon: -87.5995), zoom: 16.75, view: v)
-        print("LANDMARK-QUAD zoom 16.75: \(p2.count) names: " + p2.map(\.landmark.name).joined(separator: ", "))
+        // closer in (zoom 17.25 on the Main Quad; tier 3 starts at 17): all three tiers can show, the three Max
+        // Palevsky buildings named
+        let (p2, _) = layout(center: LatLon(lat: 41.7905, lon: -87.5995), zoom: 17.25, view: v)
+        print("LANDMARK-QUAD zoom 17.25: \(p2.count) names: " + p2.map(\.landmark.name).joined(separator: ", "))
         XCTAssertTrue(p2.contains { $0.landmark.tier == 3 })
         XCTAssertFalse(p2.contains { $0.landmark.name == "Max Palevsky Commons" })
     }
