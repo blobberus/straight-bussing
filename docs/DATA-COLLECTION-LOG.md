@@ -13,16 +13,37 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 ## Checkups
 | When (Chicago) | Verdict | Coverage | Data | Notes |
 |---|---|---|---|---|
-| 2026-10-14 17:33 | healthy | 100% of 33.9 h of actual logging time (job start to end), no gaps, 145/145 runs since Oct 11 succeeded | arrivals: 3,469 (Oct 12), 3,640 (Oct 13), 2,473 (Oct 14 so far); predictions.csv 46,386 rows since Oct 12 12:20; no duplicate rows; archive complete through Oct 13 | `monitor.py status` said DEGRADED: DC-004, DC-005 (both false or harmless); the data check found DC-006 to DC-009 |
+| 2026-10-14 17:33 | healthy | 100% of 33.9 h of actual logging time (job start to end), no gaps, 145/145 runs since Oct 11 succeeded | arrivals: 3,469 (Oct 12), 3,640 (Oct 13), 2,473 (Oct 14 so far); predictions.csv 46,386 rows since Oct 12 12:20; no duplicate rows; archive complete through Oct 13 | `monitor.py status` said DEGRADED: DC-004, DC-005 (both false or harmless); the data check found DC-006 to DC-011 |
 
 ## Errors
 
-### DC-008 Passio predictions vanish between leads (open, under investigation)
+### DC-011 Many 30-min predictions are another lap's time (open)
+- Found 2026-10-14 during DC-008. 35.6% of the 30-min rows and 7.2% of the 20-min rows are more than 15 min off;
+  many look like a prediction for a different lap on loops shorter than the lead (e.g. Apostolic/Drexel bus 4538
+  at Levi Hall). Either Passio really shows such times (then the rows are right and Passio is bad that far out)
+  or the selection pairs a lap's prediction with the wrong arrival. Needs its own experiment (RouteKnower) before
+  the 30-min score is trusted.
+
+### DC-010 The forecast-snapshot table has the same trip id gap as DC-008 (open)
+- Found 2026-10-14. `tools/build_eta_dataset.py` looks up Passio's prediction by the arrival's trip id only, like
+  the detector did before the DC-008 fix, so `eta-<day>.csv.gz` and `data/eta/summary.csv` miss the same
+  re-matched predictions (Central the most). Not fixed yet; port `Tracker._other_trip_preds` there.
+
+### DC-008 Passio predictions vanished between leads: our trip id lookup (fixed)
 - Found 2026-10-14 (data check of origin/data at 22:29Z).
-- What: 309 arrivals have a 20-min Passio prediction row but no 10-min row (80 on Central, whose coverage is 48% at
-  10 min vs 54% at 20 min); 207 have a 30-min row but no 20-min row.
-- Impact: if our selection drops predictions that were on screen, Passio's coverage at 10-20 min is understated.
-- Cause / resolution: being investigated.
+- What: 309 arrivals had a 20-min Passio prediction row but no 10-min row (80 on Central, 48% at 10 min vs 54% at
+  20); 207 had a 30-min row but no 20-min row.
+- Cause (Oct 13 replayed from the archived prediction updates, 144 cases): Passio's tripUpdates move a running bus
+  between 2 or 3 timetable trip ids and back while vehiclePositions keeps one, and the stop's prediction moves
+  with them; the detector looked only under the arrival's trip id (86 of 144). 44 are real gaps (Passio showed
+  nothing for that bus at that stop), 8 borderline on the 90 s display rule, 1 a loop shorter than the lead.
+- Impact: about 1.5 points of 10-min coverage lost (Central about 24); the missing rows were Passio's confused
+  moments, so its scores were slightly flattering.
+- Fixed: `Tracker._other_trip_preds` (`tools/arrival_detector.py`) fills a missing shorter lead from the SAME bus's
+  prediction under another trip id (never another bus, never its next trip, never its previous visit, not at loop
+  stops); `SHOWN_PAST_S` in `arrivals_lib.py`; 2 tests in `tools/test_truth.py`. Replaying Oct 13: +290 rows, 0
+  changed; 10 min 75.9 -> 77.2%, Central 38 -> 62%. Rows before the deploy are not rewritten (a replay of the
+  archived updates could add about 290 a day since Oct 12; no tool for that yet).
 
 ### DC-009 An operator alert names Passio's own route id, so the app's route view skips it (open, app side)
 - Found 2026-10-14 while adding DC-007. The live North alert ("The North route will run every 30 minutes...")
