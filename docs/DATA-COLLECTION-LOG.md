@@ -13,7 +13,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 ## Checkups
 | When (Chicago) | Verdict | Coverage | Data | Notes |
 |---|---|---|---|---|
-| 2026-10-14 17:33 | healthy | 100% of 33.9 h of actual logging time (job start to end), no gaps, 145/145 runs since Oct 11 succeeded | arrivals: 3,469 (Oct 12), 3,640 (Oct 13), 2,473 (Oct 14 so far); predictions.csv 46,386 rows since Oct 12 12:20; no duplicate rows; archive complete through Oct 13 | `monitor.py status` said DEGRADED: DC-004, DC-005 |
+| 2026-10-14 17:33 | healthy | 100% of 33.9 h of actual logging time (job start to end), no gaps, 145/145 runs since Oct 11 succeeded | arrivals: 3,469 (Oct 12), 3,640 (Oct 13), 2,473 (Oct 14 so far); predictions.csv 46,386 rows since Oct 12 12:20; no duplicate rows; archive complete through Oct 13 | `monitor.py status` said DEGRADED: DC-004, DC-005 (both false or harmless); the data check found DC-006 to DC-009 |
 
 ## Errors
 
@@ -24,12 +24,24 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 - Impact: if our selection drops predictions that were on screen, Passio's coverage at 10-20 min is understated.
 - Cause / resolution: being investigated.
 
-### DC-007 Operator service alerts were not recorded (open)
+### DC-009 An operator alert names Passio's own route id, so the app's route view skips it (open, app side)
+- Found 2026-10-14 while adding DC-007. The live North alert ("The North route will run every 30 minutes...")
+  names `route_id` 38734, Passio's internal id; the GTFS id the app uses for North is 1075. The web route view's
+  "Hours & service" (`web/js/ui/views/route.js` `renderService`, matching `informed_entity.route_id` to the GTFS
+  id) never shows it on North; check the same match on iOS. The alert still shows where all active alerts are listed.
+- Impact on the data: `alerts.csv` keeps the id verbatim and leaves `route_names` blank for non-GTFS ids, so a
+  learner must map 38734 -> North itself. Rider safety (ship checklist 1): fix the app's match, not the data.
+
+### DC-007 Operator service alerts were not recorded (fixed)
 - Found 2026-10-14.
 - What: the CI collector polls tripUpdates and vehiclePositions every 10 s but never serviceAlerts (only the unused
   `tools/collect.py` did). Detours, stop closures and "buses delayed" notices that explain bad arrivals were lost.
-- Impact: no alert history before the fix; cannot be recovered (Passio keeps no alert archive).
-- Resolution: in progress.
+- Impact: no alert history before 2026-10-14; cannot be recovered (Passio keeps no alert archive).
+- Fixed: `truth_logger.py` polls serviceAlerts at start and every 5 min in its own thread (8 s timeout, own
+  counters, never delays the 10 s loop); one row per alert version (id + content hash, first / last seen) merged
+  into `data/ground_truth/alerts.csv` by `tools/merge_alerts.py`; daily `alerts-<day>.csv.gz` in the archive;
+  a run whose alert polls mostly fail shows the warning "Service alerts not collected" (arrivals unaffected).
+  `tools/test_alerts.py`. The data branch now gets a commit on most runs, overnight too (last_seen moves).
 
 ### DC-006 Docs said data merges every 30 min (fixed)
 - Found 2026-10-14. `docs/DATA.md`, `docs/DATA-GUIDE.md`, `RouteKnower.md` still described the pre-2026-10-10 cadence.
