@@ -63,7 +63,23 @@ the matching stop_sequence; and, when the bus's previous visit to this stop was 
 **not** a prediction made before that visit or predicting a time within 120 s of it (`PREV_VISIT_GAP_S`): that one
 was about the earlier lap of a loop that keeps its trip id (Downtown Campus Connector). A previous visit under another
 trip id does not block (a real 30-min-ahead prediction for the next run of a 15-min loop is made before it). A stop_sequence that names this visit on
-the same trip overrides it (one update predicts both ends of a loop). Coverage: a CI run only knows predictions
+the same trip overrides it (one update predicts both ends of a loop).
+**Re-matched trip ids** (since 2026-10-14, `Tracker._other_trip_preds`; predictions.csv only, `passio_pred_*` keeps the
+own trip id): Passio's tripUpdates move a running bus between two or three timetable trip ids and back within minutes
+while vehiclePositions keeps one (Central, Apostolic/Drexel, Friend Center/Metra), and the stop's prediction moves
+with them; a screen still lists it under the bus's number. On 2026-10-13 that was 86 of the 144 arrivals with a 20-min
+row but no 10-min row (Central: 23 of 45). A lead shorter than one the own trip id filled (so the stop was still
+ahead of the bus) and left empty by it takes the earliest time **this bus** (same vehicle id; never another bus or an
+update without one) showed for the stop under another trip id, by the same display rule and no more than 30 s past
+(`SHOWN_PAST_S`), first seen after its previous visit there and predicting 120 s or more past it, from a trip update
+about the run it was on: its first stop not on display (else it is the bus's next trip, a lap ahead or rolled over
+early) and no later stop of it predicted earlier (else Passio has the bus past the stop). Never at loop stops. The
+row's `trip_id` stays the arrival's. Replaying 2026-10-13 (archived pred-updates + raw polls): +290 rows, no existing
+row changed; coverage 10 min 75.9 -> 77.2%, 20 min 57.2 -> 57.5%, 30 min unchanged; Central 10 min 38 -> 62%; the
+added rows' errors look like Passio's usual early bias (median -35 s at 1 min, -195 s at 10 min; 6 of 290 off by
+more than 15 min). Rows logged before 2026-10-14 lack them (the data branch is not rewritten). The remaining gaps
+are mostly real: Passio showed nothing for that bus at that stop then (44 of the 144), or only its next lap.
+Coverage: a CI run only knows predictions
 from its own start (runs overlap ~30 min, so each arrival is covered by the run that started 30 to 70 min before
 it); local chunks reload the last hour of updates from the previous chunks (`--pred-seed`). Merge:
 `tools/merge_predictions.py` (duplicate = vehicle + stop + lead within 300 s; the fresher prediction stays).

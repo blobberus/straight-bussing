@@ -27,6 +27,8 @@ SHOW_GRACE_S = 90        # predictions.csv: a prediction counts as on display at
                          # within this long before (polls every 10 s; covers a short feed or collector hiccup)
 PREV_VISIT_GAP_S = 120   # a prediction counts for this arrival only if made after the bus's previous visit to the
                          # stop and predicting a time this far past it (else it was about the earlier lap)
+SHOWN_PAST_S = 30        # a predicted stop time stays listed this long after it passes (web core/arrivals.js): the
+                         # other-trip rule (Tracker._other_trip_preds) takes no time a screen had dropped
 
 RADIUS_M = 40.0          # proximity arrival radius
 STOP_SPEED = 1.0         # m/s: "stopped" threshold for proximity arrivals
