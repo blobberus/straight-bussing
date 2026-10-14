@@ -28,12 +28,15 @@ extension AppModel {
         let store = scheduleStore
         let staticTask = Task.detached(priority: .userInitiated) { ScheduleStore.loadBest(bundled: dir, store: store) }
         let placesTask = Task.detached(priority: .utility) { ScheduleStore.loadBestPlaces(bundled: dir, store: store) }
+        // map labels: bundled only (curated names, not part of the daily schedule download); missing = no labels
+        let landmarksTask = Task.detached(priority: .utility) { StaticLoader.loadLandmarks(from: dir) }
         let best = await staticTask.value
         staticData = best.loaded.data
         staticFailed = best.loaded.failed
         scheduleSource = best.source
         staticVersion += 1
         finishBoot()
+        mapLabels.setLandmarks(await landmarksTask.value)
         places = await placesTask.value
         if config.demo { applyLaunchScreen() } else { refreshSchedule() }
     }
@@ -692,6 +695,7 @@ extension AppModel {
                 refreshStatus()
                 openSimulatedSetting()
             case "pick": pickMode = .loc; push(.pick)
+            case "near": locate()   // "Show my location": the map closer in (CI map-label shots)
             case "search":
                 openDirections()
                 demoQuery = "regnstien"

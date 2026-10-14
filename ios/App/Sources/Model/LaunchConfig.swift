@@ -6,7 +6,8 @@ import StraightBussingKit
 ///                         label anywhere (screenshots look like real use); the Settings switch is what riders get
 ///   -screen <name>        open a screen: current | trip | routes | route | myroutes | directions | stop |
 ///                         settings | settingsdemo | liveactivity | about | alerts | pick | search | custom |
-///                         editor | order | tripstop (UI test: a stop opened during a started trip) |
+///                         editor | order | near ("Show my location": the map closer in) |
+///                         tripstop (UI test: a stop opened during a started trip) |
 ///                         livestates | livestatesend (the Live Activity in each arrival state, top / scrolled to the end)
 ///   -detent peek|full   (the sheet's two states; "half" is read as full)
 ///   -tour                 walk through the main screens automatically (for the screen recording)

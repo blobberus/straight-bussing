@@ -55,6 +55,7 @@ data-geocode.js) so the Swift port provably behaves the same.
 | core/planner.js | Planner.swift, PlannerRefine.swift | walk at both ends (800 m, widened to 1600 m), transfers <= 150 m, live waits, refineWalking |
 | core/walk.js (`walkRoute`), directions.js replan (async half) | WalkRouting.swift | `WalkRouteCache` actor around any router: 4-decimal endpoints, plausibility, 3 s timeout, estimate fallback (retried after 60 s), shared in-flight requests, <= 6 at once; `Planner.refinePlan` refines + re-ranks the shown options and the walk-only line |
 | map/geometry.js (`alongShape`) | Geometry.swift | bus legs drawn along the route's road shape between board and alight (`BusLeg.roadPath`); tests mirror web/tests/map-geometry.js plus a golden file of the JavaScript's own paths on 4 real routes |
+| map/landmarks.js, data/static.js cleanLandmarks (2026-10-13) | Landmarks.swift (`Landmark`, `Landmarks`, `StaticLoader.loadLandmarks`) | building and place names: decoding (bad rows dropped, optional `until`), tiers by zoom, `labelSize`, greedy wrap, the 17-spot placement (`placeBoxes` = web placeLabels); tests port web/tests/map-landmarks.js; see "Map labels" below |
 | core/rank.js | Rank.swift | least walking > earliest arrival > shortest wait > criteria met; `criteriaText` labels |
 | core/notify.js | Notify.swift | stopsAway, watchedRoutes, dueAlerts (paused while `tripOn`, one 'delayed' alert per outage), minutesText; since 2026-10-13 tripAlerts (board2 / board1 / boardMin, off2 / off1, delayed), tripAlertsOn, the outage rule (feed evidence only), DELAYED_TITLE / bodies, Settings' "During your trip" line (`tripStatusLine`, web settings.js tripHTML); `NotifyPrefs.trip` with a decoder that keeps old stored prefs |
 | core/tripyou.js (2026-10-13) | TripYou.swift (`TripYou`), TripFollowText.swift (`TripText.offText` / `offShort`) | where you are on a started trip: on the bus (its live position) unless your accurate GPS is > 300 m + accuracy from it (`far`), your GPS, the boarding stop as a guess while waiting; target, frame, VoiceOver text; the map's stop labels; tests port web/tests/core-tripyou.js |
@@ -129,6 +130,48 @@ your stop is next).
   never asked (or when a station is chosen); never at launch, never in `-demo`; alerts wait for the answer. Simulated
   buses never alert.
 
+### Map labels: building and place names (owner request 2026-10-13)
+
+"If possible, the buildings on the maps should also have their names like Google maps. Not every building, but highly
+trafficked ones and promanent off campus locations relevant to the bus coverage should have names on the map
+displayed by default", and "Other locations that need naming is UChicago dorm buildings". Same data and rules as the
+web (web/js/map/landmarks.js, docs/ARCHITECTURE.md "Map labels"):
+- **Data:** the bundled `web/data/landmarks.json` (87 names: tier 1 = the busiest hubs, every UChicago dorm, the stop
+  namesakes, groceries, Metra / Green Line stations, MSI, the Obama Center, Gleacher Center; then 2 and 3), decoded by
+  Kit `Landmarks.parse` (missing or bad file = no names, bad rows dropped, optional `until`). Bundled only: the names
+  are curated, so they are not part of the daily schedule download (`ScheduleUpdater.files` is unchanged).
+- **Which:** tier 1 from zoom 13.75, 2 from 15.5, 3 from 16.5, in the web's (Leaflet) zoom, measured from the ground
+  scale at the center of the visible map (a rotated map keeps it). Deviation: the web starts tier 1 at 14.5 because it
+  opens at 15; the iPhone opens wider (`MapCameraModel.campus`, zoom 14.1 to 14.4 by width), so tier 1 starts at 13.75
+  to be on at the opening camera. `until` hides "Max Palevsky Commons" from 15.5, when Max Palevsky East / Central /
+  West (tier 2) show.
+- **Where** (Kit `Landmarks.place`, `MapScreen.layoutLabels`): priority order (tier, then the file's order); centered on
+  the building, else one of 8 sides at 4 pt, else at 14 pt, never farther; the padded box (2 pt) must fit inside the
+  visible map (below the floating chrome, above the sheet: the web uses its whole map) and cover no name already placed
+  and no obstacle; no spot = left out until you zoom in. Obstacles: every stop (the web's 13 pt square; favorite stars
+  and rings larger) and, on the iPhone only, the trip's stop labels, "You (est.)" at the boarding stop, the
+  destination marker, your location and the locate button. Buses are not obstacles (they move every poll; names
+  would blink, and the CI shots would depend on the simulated buses); they are drawn over the names. Skipped from the
+  web: "avoid the basemap's street names" (`textAt`): MapKit does not tell where it draws its street names.
+- **Text:** bold system font, tier 1 11.5 pt at zoom 14.5 to 14.5 pt at 18, tiers 2 and 3 11 to 14 pt (web
+  labelSize); Dynamic Type up to 1.25x (from xxxLarge on, the accessibility sizes included), never smaller. Wrapped at
+  8.5 em; line height 1.12 em. Widths are estimated, not measured (Helvetica Bold metrics x 1.12; a Kit test measures
+  every name with CoreText in SF Pro and checks the estimate is never narrower). Colors `Palette.mapLabel` (#2C4A66 /
+  #BCD0E2) with a halo and a faint plate (the halo color, white / #18181B, at 50%, corner radius 5).
+- **Drawing** (`Views/MapScreen.swift` `LandmarkLabel`): text-only `Annotation`s declared first, so stops, buses, the
+  trip and you are drawn over them; never take a tap (`allowsHitTesting(false)`), hidden from VoiceOver (stops and
+  buses keep their labels); never animated. Laid out at camera END: every frame of a move only notes the time
+  (`onMapCameraChange(frequency: .continuous)` -> `MapLabelModel.cameraMoved`) and the layout runs once the camera has
+  been still for 0.3 s; also when the app moves the camera (fit, fly to, the follow frame), when the visible map
+  changes size, when the stops / trip labels / destination change, when the landmarks load and on a text size change
+  (`LabelWatcher`), each time again 0.5 s and 1.2 s later (`MapLabelModel.layoutSoon`). Why not `.onEnd` alone: with
+  it, the first CI shots kept the names of an earlier camera after the app's 0.6 s camera glides (names cut at the
+  screen edge, none on the Main Quad). Never a layout per frame or per bus move. The
+  result lives in `AppModel.mapLabels` (`MapLabelModel`) and is assigned only when it changes; a name that changes side
+  or size is a new annotation (`drawKey`). Apple's own points of interest stay off (`pointsOfInterest: .excludingAll`),
+  so no place is named twice. CI shots: 36-map (opening camera), 37-map-near (`-screen near`), 38-trip-map, and the UI
+  test's 39-map-zoomed / 40-map-panned.
+
 ### Live Activity times (owner decision 2026-10-11)
 
 Never seconds for an estimated arrival (ship checklist item 2, no invented precision), and right while the app is not
@@ -153,7 +196,8 @@ gallery "28-livestates", "29-livestates-end") draws the card in all four states 
 - Map (MapKit `Map` iOS 17 API): route polylines in route colors stacked by the user's map order (focused routes
   on top, others dimmed), stops (favorites as stars), bus badges with route chip and heading, your location,
   the selected/started trip (bus legs in route color along the road shape between the stops, dashed walks on
-  sidewalks, destination pin; the walk-only line when no shuttle helps).
+  sidewalks, destination pin; the walk-only line when no shuttle helps), and the names of the busiest buildings, the
+  UChicago dorms and the places the shuttles serve ("Map labels" above).
 - Google-Maps-style layout: floating "Search for a destination" bar with the Settings gear, the status pill (web
   wording), the map context bar ("Only showing routes for: …" / "My route: …"), a custom bottom sheet resting on a
   bottom tab bar: Current trip / Routes / My Routes. Short confirmations appear as a banner and are read out. The
@@ -391,6 +435,7 @@ actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 | Web feature | iOS status | Notes |
 |---|---|---|
 | Live map: route lines in route color, stops, buses with heading, your location | done (before) | MapKit; draw order + dimming by focus (`mapLayers`) |
+| Building and place names on the map (web/js/map/landmarks.js placeLabels / labelSize / wrapLines, data/static.js cleanLandmarks, css .sb-lm; 2026-10-13) | done (2026-10-13) | Kit `Landmarks.swift` + `Views/MapScreen.swift` (`layoutLabels`, `LandmarkLabel`), `Model/MapLabels.swift`; same data, tiers, `until`, sizes, 17 spots, stop obstacles; tier 1 from 13.75 (the iPhone opens wider), the visible map as the view, more obstacles, no basemap-text rule ("Map labels" above) |
 | Non-operating buses hidden everywhere (ghost, unknown route, out of service) | done (before) | Kit `Operating`; shared trip ids now matched by vehicle too |
 | Bus markers glide to their new position | done | 1 s ease, still under Reduce Motion |
 | Bus tap opens its route without moving the map; stop tap keeps the map view | done | `busTapped` / `stopTapped` |
