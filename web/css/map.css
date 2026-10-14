@@ -78,6 +78,19 @@
 .sb-map .leaflet-marker-icon.sb-favicon:focus-visible .sb-fav{outline:2px solid var(--sb-accent);outline-offset:3px}
 .sb-sel.sb-sel-fav{fill:none}
 
+/* building and place names (map/landmarks.js, owner 2026-10-13): text only, above the route lines, a halo in the
+   map background color so a line under a letter never cuts it; never interactive */
+.sb-map{--sb-lm:#2c4a66;--sb-lm-halo:#ffffff;--sb-lm-plate:rgba(255,255,255,.5)}
+.sb-map.sb-dark{--sb-lm:#bcd0e2;--sb-lm-halo:#18181b;--sb-lm-plate:rgba(24,24,27,.5)}
+.sb-lmicon{pointer-events:none}
+.sb-lm{position:absolute;left:0;top:0;display:block;white-space:nowrap;text-align:center;line-height:1.12;
+  font-weight:700;font-family:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;color:var(--sb-lm);
+  letter-spacing:.005em;pointer-events:none;border-radius:5px;background:var(--sb-lm-plate);   /* softens basemap text in the rare spot with no clear room */
+  text-shadow:0 0 2px var(--sb-lm-halo),0 0 2px var(--sb-lm-halo),1px 1px 0 var(--sb-lm-halo),-1px -1px 0 var(--sb-lm-halo),
+    1px -1px 0 var(--sb-lm-halo),-1px 1px 0 var(--sb-lm-halo),0 1.5px 0 var(--sb-lm-halo),0 -1.5px 0 var(--sb-lm-halo),
+    1.5px 0 0 var(--sb-lm-halo),-1.5px 0 0 var(--sb-lm-halo)}
+.sb-map.sb-zooming .sb-lm{visibility:hidden}   /* re-placed at zoomend; a zoom never shows them overlapping */
+
 /* user location */
 .sb-me{box-sizing:border-box;width:20px;height:20px;border-radius:50%;background:var(--sb-accent);border:3px solid #fff;
   box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow)}

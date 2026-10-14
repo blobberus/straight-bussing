@@ -144,7 +144,7 @@ export function createNetworkLayer(map, cb) {
   const lines = L.layerGroup().addTo(map);
   const stopsG = L.layerGroup();
   const chev = createChevronLayer(map);
-  let last = '', polys = [];
+  let last = '', polys = [], stopPts = [];
   const showStops = () => {
     const on = map.getZoom() >= 14;
     if (on && !map.hasLayer(stopsG)) stopsG.addTo(map);
@@ -155,7 +155,7 @@ export function createNetworkLayer(map, cb) {
     const s = networkSig(o, dimAll);
     if (s === last) return false;
     last = s;
-    lines.clearLayers(); stopsG.clearLayers(); polys = [];
+    lines.clearLayers(); stopsG.clearLayers(); polys = []; stopPts = [];
     const routes = o.routes || {}, shapes = o.shapes || {}, hidden = new Set((o.hidden || []).map(String));
     const focus = focusSet(o.focus);
     const w = lineWeight(map.getZoom());
@@ -183,6 +183,7 @@ export function createNetworkLayer(map, cb) {
       if (!rs.length || !Number.isFinite(st?.lat) || !Number.isFinite(st?.lon)) continue;
       const single = new Set(rs).size === 1;
       const ll = [st.lat, st.lon];
+      stopPts.push(ll);
       L.circleMarker(ll, { pane: 'sbStops', radius: 5, weight: 2.5, color: single ? safeColor(routes[rs[0]]?.color) : '#5c5c63',
         className: single ? 'sb-stop' : 'sb-stop sb-stop-multi', opacity: dimAll ? 0.4 : 1, fillOpacity: dimAll ? 0.4 : 1, interactive: false }).addTo(stopsG);
       L.circleMarker(ll, { pane: 'sbStops', radius: 22, stroke: false, fillOpacity: 0, className: 'sb-halo', bubblingMouseEvents: false })
@@ -198,7 +199,7 @@ export function createNetworkLayer(map, cb) {
     showStops();
     chev.redraw();
   }
-  return { draw, restyle, chevrons: () => chev.count() };
+  return { draw, restyle, chevrons: () => chev.count(), stopPoints: () => stopPts };
 }
 
 const STALE_S = 60;

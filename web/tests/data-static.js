@@ -110,9 +110,10 @@ test('static: everything failing still sets staticLoaded with empty slices', asy
 test('static: landmarks (map labels) load as a list, bad rows dropped', async () => {
   const store = createStore({});
   await loadStatic(store, { base: 'data/', fetch: okFetch() });
-  eq(store.get().landmarks, [{ name: 'Regenstein Library', lat: 41.792, lon: -87.6, tier: 1, kind: 'library', osm: 'Joseph Regenstein Library' }]);
+  eq(store.get().landmarks, [{ name: 'Regenstein Library', lat: 41.792, lon: -87.6, tier: 1, kind: 'library', osm: 'Joseph Regenstein Library', until: null }]);
   eq(cleanLandmarks(null), []); eq(cleanLandmarks({ l: 'x' }), []);
-  eq(cleanLandmarks({ l: [['A', '41.8', '-87.6', '2']] })[0], { name: 'A', lat: 41.8, lon: -87.6, tier: 2, kind: '', osm: 'A' });
+  eq(cleanLandmarks({ l: [['A', '41.8', '-87.6', '2']] })[0], { name: 'A', lat: 41.8, lon: -87.6, tier: 2, kind: '', osm: 'A', until: null });
+  eq(cleanLandmarks({ l: [['G', 41.8, -87.6, 1, 'dorm', 'G', 15.5]] })[0].until, 15.5, 'a group name hides from that zoom');
 });
 
 test('static: deriveStopRoutes / cleanSlice edge cases', () => {

@@ -89,9 +89,10 @@ function cleanServiceRoutes(v) {
 }
 
 /**
- * landmarks.json ({l: [[label, lat, lon, tier, kind, osm], ...]}) as [{name, lat, lon, tier, kind, osm}]; bad rows dropped.
+ * landmarks.json ({l: [[label, lat, lon, tier, kind, osm, until?], ...]}) as [{name, lat, lon, tier, kind, osm, until}]; bad rows
+ * dropped; until (the zoom from which it hides) is null when absent.
  * @param {any} v parsed JSON
- * @returns {Array<{name:string, lat:number, lon:number, tier:number, kind:string, osm:string}>}
+ * @returns {Array<{name:string, lat:number, lon:number, tier:number, kind:string, osm:string, until:number|null}>}
  */
 export function cleanLandmarks(v) {
   const rows = isObj(v) && Array.isArray(v.l) ? v.l : [];
@@ -100,7 +101,8 @@ export function cleanLandmarks(v) {
     if (!Array.isArray(r) || !r[0]) continue;
     const lat = num(r[1]), lon = num(r[2]), tier = num(r[3]);
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || ![1, 2, 3].includes(tier)) continue;
-    out.push({ name: String(r[0]), lat, lon, tier, kind: String(r[4] || ''), osm: String(r[5] || r[0]) });
+    const until = r[6] == null ? NaN : num(r[6]);
+    out.push({ name: String(r[0]), lat, lon, tier, kind: String(r[4] || ''), osm: String(r[5] || r[0]), until: Number.isFinite(until) ? until : null });
   }
   return out;
 }

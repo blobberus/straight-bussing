@@ -55,6 +55,7 @@ const PRECACHE = [
   'js/map/credits.js',
   'js/map/favorites.js',
   'js/map/geometry.js',
+  'js/map/landmarks.js',
   'js/map/layers.js',
   'js/map/map.js',
   'js/map/style.js',

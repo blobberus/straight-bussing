@@ -13,6 +13,7 @@ if (q.has('demo')) {
     await import('./map-favorites.js');
     await import('./map-credits.js');
     await import('./map-trip.js');
+    await import('./map-landmarks.js');
   } catch (e) {
     lib.test('import map test modules', () => { throw e; });
   }

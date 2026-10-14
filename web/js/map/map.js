@@ -11,6 +11,7 @@ import { createBasemap } from './style.js';
 import { createNetworkLayer, createBusLayer, sig } from './layers.js';
 import { createFavoritesLayer } from './favorites.js';
 import { createCredits } from './credits.js';
+import { createLandmarkLayer } from './landmarks.js';
 import { alongShape, normLatLngs, toLatLng } from './geometry.js';
 import { safeColor, esc } from '../core/esc.js';
 import { offShort } from '../core/tripyou.js';
@@ -21,7 +22,7 @@ const TOP_PAD = 132;      // clears the floating search bar and the locate butto
 const FIT_S = 0.6;        // fitTo glide (s). flyToBounds, not fitBounds: Leaflet's CSS zoom animation scales the
                           // vector basemap canvas down on zoom-out, leaving blank margins for ~250 ms
 const PANES = { sbCasing: 380, sbLines: 390, sbFocusCasing: 392, sbFocusLines: 394, sbPlanCasing: 400, sbPlan: 402,
-  sbStops: 420, sbPlanStops: 425, sbHighlight: 430, sbSel: 440 };
+  sbLabels: 410, sbStops: 420, sbPlanStops: 425, sbHighlight: 430, sbSel: 440 };   // sbLabels: building names above the lines
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 function hub() {
@@ -62,6 +63,8 @@ export function createMap(elId) {
   const network = createNetworkLayer(map, { onStopTap: (id) => stopTap.emit(id) });
   const buses = createBusLayer(map, { onBusTap: (info) => busTap.emit(info) });
   const favs = createFavoritesLayer(map, { onStopTap: (id) => stopTap.emit(id) });
+  const landmarks = createLandmarkLayer(map, { pane: 'sbLabels', textAt: (box) => !!basemap.textAt?.(box) });
+  basemap.onIdle?.(() => landmarks.refresh());   // the basemap placed its own names: keep building names off them
   const selG = L.layerGroup().addTo(map), hlG = L.layerGroup().addTo(map), planG = L.layerGroup().addTo(map);
   const labG = L.layerGroup().addTo(map);
   let selSig = '', selStop = null, hlSig = '', planS = null, planPts = [], hlPick = null, me = null, meAcc = null;
@@ -174,7 +177,7 @@ export function createMap(elId) {
       if (!o) return;
       if (typeof o.dark === 'boolean') api.setTheme(o.dark); // same as calling setTheme(dark)
       lastNet = o;
-      network.draw(o, planActive);
+      if (network.draw(o, planActive)) landmarks.setStops(network.stopPoints());
     },
 
     /**
@@ -228,9 +231,10 @@ export function createMap(elId) {
 
     /**
      * Building and place names shown by default (web/data/landmarks.json via store.landmarks; owner 2026-10-13):
-     * drawn by the vector basemap with its collision handling, tier 1 from zoom 14.5. @param {Array<object>} list
+     * map/landmarks.js, above the route lines, placed around stops and each other; tier 1 from zoom 14.5.
+     * @param {Array<object>} list
      */
-    setLandmarks(list) { basemap.setLandmarks?.(list); },
+    setLandmarks(list) { landmarks.setData(list); basemap.setLandmarks?.(list); },
 
     /** Blue location dot (+ accuracy circle when pos.accuracy is given). @param {{lat, lon, accuracy?}|null} pos */
     setUser(pos) {
