@@ -33,10 +33,11 @@ final class LandmarksTests: XCTestCase {
                   "Snell-Hitchcock Halls", "Max Palevsky Commons", "Max Palevsky East", "Max Palevsky Central", "Max Palevsky West"] {
             XCTAssertTrue(dorms.contains { $0.name == n }, n)
         }
-        // the group name hands over to its buildings at 15.5 (the only `until`)
+        // the group name hands over to its buildings at 16, when tier 2 starts (the only `until`)
         let group = l.first { $0.name == "Max Palevsky Commons" }
         XCTAssertEqual(group?.tier, 1)
-        XCTAssertEqual(group?.until, 15.5)
+        XCTAssertEqual(group?.until, 16)
+        XCTAssertEqual(group?.until, Landmarks.minZoom[2])
         XCTAssertEqual(l.filter { $0.until != nil }.count, 1)
         XCTAssertEqual(l.first { $0.name == "Max Palevsky East" }?.tier, 2)
         for m in l {
@@ -104,14 +105,14 @@ final class LandmarksTests: XCTestCase {
     }
 
     func testTierThresholdsUntilAndOrder() {
-        let l = [mk("C", 3, 2), mk("B2", 2, 5), mk("A", 1, 1), mk("B", 2, 0), mk("Group", 1, 3, until: 15.5)]
+        let l = [mk("C", 3, 2), mk("B2", 2, 5), mk("A", 1, 1), mk("B", 2, 0), mk("Group", 1, 3, until: 16)]
         let box = GeoBox(minLat: 41.7, maxLat: 41.9, minLon: -87.7, maxLon: -87.5)
         XCTAssertEqual(Landmarks.visible(l, zoom: 13.7, in: box).map(\.name), [])
         XCTAssertEqual(Landmarks.visible(l, zoom: 13.75, in: box).map(\.name), ["A", "Group"])
-        XCTAssertEqual(Landmarks.visible(l, zoom: 15.4, in: box).map(\.name), ["A", "Group"])
-        XCTAssertEqual(Landmarks.visible(l, zoom: 15.5, in: box).map(\.name), ["A", "B", "B2"], "the group hands over at 15.5; tier, then the file's order")
-        XCTAssertEqual(Landmarks.visible(l, zoom: 16.4, in: box).map(\.name), ["A", "B", "B2"])
-        XCTAssertEqual(Landmarks.visible(l, zoom: 16.5, in: box).map(\.name), ["A", "B", "B2", "C"])
+        XCTAssertEqual(Landmarks.visible(l, zoom: 15.9, in: box).map(\.name), ["A", "Group"], "the detailed names a little closer in (owner 2026-10-14)")
+        XCTAssertEqual(Landmarks.visible(l, zoom: 16, in: box).map(\.name), ["A", "B", "B2"], "the group hands over at 16; tier, then the file's order")
+        XCTAssertEqual(Landmarks.visible(l, zoom: 16.9, in: box).map(\.name), ["A", "B", "B2"])
+        XCTAssertEqual(Landmarks.visible(l, zoom: 17, in: box).map(\.name), ["A", "B", "B2", "C"])
         XCTAssertEqual(Landmarks.visible([mk("X", 4, 0)], zoom: 20, in: box).map(\.name), [], "unknown tier never shows")
         // inside the box or within its margin (15% of its size by default, the web's bounds.pad(0.15))
         let small = GeoBox(minLat: 41.78, maxLat: 41.80, minLon: -87.61, maxLon: -87.59)
@@ -122,9 +123,9 @@ final class LandmarksTests: XCTestCase {
     }
 
     func testFontSizesLikeTheWeb() {
-        // web tests/map-landmarks.js: [labelSize(1, 14.5), labelSize(1, 18), labelSize(2, 15.5), labelSize(3, 19)]
+        // web tests/map-landmarks.js: [labelSize(1, 14.5), labelSize(1, 18), labelSize(2, 16), labelSize(3, 19)]
         XCTAssertEqual([Landmarks.fontSize(tier: 1, zoom: 14.5), Landmarks.fontSize(tier: 1, zoom: 18),
-                        Landmarks.fontSize(tier: 2, zoom: 15.5), Landmarks.fontSize(tier: 3, zoom: 19)], [11.5, 14.5, 11, 14])
+                        Landmarks.fontSize(tier: 2, zoom: 16), Landmarks.fontSize(tier: 3, zoom: 19)], [11.5, 14.5, 11, 14])
         XCTAssertGreaterThan(Landmarks.fontSize(tier: 1, zoom: 16), Landmarks.fontSize(tier: 1, zoom: 15), "grows as you zoom in")
         XCTAssertEqual(Landmarks.fontSize(tier: 1, zoom: 14), 11.5, "held below its first zoom (the iPhone's wider opening view)")
         XCTAssertEqual(Landmarks.fontSize(tier: 1, zoom: 21), 14.5)

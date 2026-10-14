@@ -126,11 +126,11 @@ public struct PlacedLandmark: Hashable, Sendable, Identifiable {
 /// The pure rules of the map labels (web map/landmarks.js, data/static.js cleanLandmarks).
 public enum Landmarks {
     /// First map zoom of each tier on the web (landmarks.js LANDMARK_Z, Leaflet zoom; the web opens at 15).
-    public static let webZoom: [Int: Double] = [1: 14.5, 2: 15.5, 3: 16.5]
+    public static let webZoom: [Int: Double] = [1: 14.5, 2: 16, 3: 17]
     /// First zoom of each tier on the iPhone, in the same zoom (`zoom(longitudeDelta:widthPoints:)`). As the web, except
     /// tier 1: the iPhone opens wider than the web (MapCameraModel.campus, 0.03 degrees of longitude: zoom 14.1 on a
     /// 375 pt iPhone to 14.4 at 440 pt, the web 15), and tier 1 must show at the opening camera.
-    public static let minZoom: [Int: Double] = [1: 13.75, 2: 15.5, 3: 16.5]
+    public static let minZoom: [Int: Double] = [1: 13.75, 2: 16, 3: 17]
     /// Box padding (points) around a name; two names never come closer than twice this (web LABEL.PAD).
     public static let pad = 2.0
     /// Half the side of a stop as an obstacle (web LABEL.STOP_R: a 13 pt square around the stop dot).
@@ -226,7 +226,7 @@ public enum Landmarks {
     /// Font size (points) of a tier at a zoom, before Dynamic Type (web labelSize): tier 1 11.5 at zoom 14.5 to 14.5 at
     /// 18, tiers 2 and 3 11 at their first zoom to 14 at 19, linear, held at the ends, to the half point.
     public static func fontSize(tier: Int, zoom: Double) -> Double {
-        let (z0, s0, z1, s1) = tier == 1 ? (14.5, 11.5, 18.0, 14.5) : (webZoom[tier] ?? 15.5, 11.0, 19.0, 14.0)
+        let (z0, s0, z1, s1) = tier == 1 ? (14.5, 11.5, 18.0, 14.5) : (webZoom[tier] ?? 16, 11.0, 19.0, 14.0)
         let k = min(1, max(0, (zoom - z0) / (z1 - z0)))
         return ((s0 + (s1 - s0) * k) * 2).rounded() / 2
     }

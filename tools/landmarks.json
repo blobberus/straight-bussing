@@ -1,10 +1,10 @@
 {
-  "about": "Curated map labels (owner request 2026-10-13: names of the busiest buildings, UChicago dorms and prominent off-campus places the shuttles serve, shown by default like Google Maps). tools/build_landmarks.py resolves every entry to OpenStreetMap coordinates (osm = the exact OSM name in web/data/places.json, or an explicit OSM object for places outside it) and writes web/data/landmarks.json. Order = label priority within a tier (first wins a collision). tier 1 = shown from zoom 14.5 (the app opens at 15), 2 = from 15.5, 3 = from 16.5; until (optional) = hidden from that zoom on (a group name that splits into its buildings when you zoom in, like Max Palevsky). kind: library, hub, dorm, dining, academic, medical, arts, sports, shop, transit, landmark. Edit this file, then run python tools/build_landmarks.py.",
+  "about": "Curated map labels (owner request 2026-10-13: names of the busiest buildings, UChicago dorms and prominent off-campus places the shuttles serve, shown by default like Google Maps). tools/build_landmarks.py resolves every entry to OpenStreetMap coordinates (osm = the exact OSM name in web/data/places.json, or an explicit OSM object for places outside it) and writes web/data/landmarks.json. Order = label priority within a tier (first wins a collision). tier 1 = shown from zoom 14.5 (the app opens at 15), 2 = from 16, 3 = from 17; until (optional) = hidden from that zoom on (a group name that splits into its buildings when you zoom in, like Max Palevsky). kind: library, hub, dorm, dining, academic, medical, arts, sports, shop, transit, landmark. Edit this file, then run python tools/build_landmarks.py.",
   "l": [
     {"label": "Regenstein Library", "osm": "Joseph Regenstein Library", "tier": 1, "kind": "library"},
     {"label": "Reynolds Club", "osm": "Reynolds Club", "tier": 1, "kind": "hub"},
     {"label": "UChicago Medicine", "osm": "University of Chicago Medicine Campus", "tier": 1, "kind": "medical"},
-    {"label": "Max Palevsky Commons", "osm": "Max Palevsky Commons Central", "tier": 1, "until": 15.5, "kind": "dorm"},
+    {"label": "Max Palevsky Commons", "osm": "Max Palevsky Commons Central", "tier": 1, "until": 16, "kind": "dorm"},
     {"label": "Campus North", "osm": "Campus North Residential Commons", "tier": 1, "kind": "dorm"},
     {"label": "Woodlawn Commons", "osm": "Woodlawn Residential & Dining Commons", "tier": 1, "kind": "dorm"},
     {"label": "Granville-Grossman Commons", "osm": "Renee Granville-Grossman Residential Commons", "tier": 1, "kind": "dorm"},

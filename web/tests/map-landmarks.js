@@ -8,13 +8,13 @@ const C = (id, x, y, w = 60, h = 14, tier = 1) => ({ id, x, y, w, h, tier });
 const view = { w: 400, h: 600 };
 
 test('landmarks: sizes by tier and zoom, word wrap', () => {
-  eq([labelSize(1, 14.5), labelSize(1, 18), labelSize(2, 15.5), labelSize(3, 19)], [11.5, 14.5, 11, 14]);
+  eq([labelSize(1, 14.5), labelSize(1, 18), labelSize(2, 16), labelSize(3, 19)], [11.5, 14.5, 11, 14]);
   ok(labelSize(1, 16) > labelSize(1, 15), 'grows as you zoom in');
   const w = (s) => s.length * 7;
   eq(wrapLines('Regenstein Library', 80, w), ['Regenstein', 'Library']);
   eq(wrapLines('Law School', 80, w), ['Law School']);
   eq(wrapLines('Supercalifragilistic', 30, w), ['Supercalifragilistic'], 'one long word stays whole');
-  eq([LANDMARK_Z[1], LANDMARK_Z[2], LANDMARK_Z[3]], [14.5, 15.5, 16.5]);
+  eq([LANDMARK_Z[1], LANDMARK_Z[2], LANDMARK_Z[3]], [14.5, 16, 17], 'the detailed names a little closer in (owner 2026-10-14)');
   ok(LANDMARK_Z[1] < 15, 'tier 1 shows when the app opens (zoom 15)');
 });
 
@@ -52,20 +52,24 @@ function box(id) {
 
 test('landmarks layer: drawn above the route lines, by zoom, escaped, hidden from screen readers, never tappable', () => {
   box('t-lm');
-  const m = window.L.map('t-lm', { zoomControl: false, attributionControl: false }).setView([41.7905, -87.599], 15);
+  const m = window.L.map('t-lm', { zoomControl: false, attributionControl: false, zoomSnap: 0.25 }).setView([41.7905, -87.599], 15);
   m.createPane('sbLabels').style.zIndex = '410';
   const layer = createLandmarkLayer(m, { pane: 'sbLabels' });
   const el = m.getContainer();
   layer.setData([
     { name: 'Regenstein Library', lat: 41.7922, lon: -87.5999, tier: 1, kind: 'library' },
     { name: 'Cobb <Hall>', lat: 41.789, lon: -87.6009, tier: 2, kind: 'academic' },
-    { name: 'Max Palevsky Commons', lat: 41.7929, lon: -87.5998, tier: 1, kind: 'dorm', until: 15.5 },
+    { name: 'Max Palevsky Commons', lat: 41.7929, lon: -87.5998, tier: 1, kind: 'dorm', until: 16 },
     { name: 'Far Away', lat: 41.9, lon: -87.6, tier: 1, kind: 'shop' },
   ]);
   const names = () => [...el.querySelectorAll('.sb-lm')].map((x) => x.textContent);
   ok(names().includes('RegensteinLibrary') || names().includes('Regenstein Library'), 'tier 1 at zoom 15: ' + names());
   ok(names().some((n) => n.startsWith('Max Palevsky')), 'the group name at zoom 15');
-  ok(!names().some((n) => n.includes('Cobb')), 'tier 2 waits for 15.5');
+  ok(!names().some((n) => n.includes('Cobb')), 'tier 2 waits for 16');
+  m.setZoom(15.5, { animate: false });
+  layer.refresh();
+  ok(!names().some((n) => n.includes('Cobb')), 'tier 2 still waits at 15.5');
+  ok(names().some((n) => n.startsWith('Max Palevsky')), 'the group name still shows at 15.5');
   ok(!names().includes('Far Away'), 'out of view: not placed');
   const lab = el.querySelector('.sb-lm');
   eq(lab.getAttribute('aria-hidden'), 'true');

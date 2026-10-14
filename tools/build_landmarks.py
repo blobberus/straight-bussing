@@ -81,7 +81,7 @@ def resolve(entries, places, stops):
         if near[0] > COVER_M:
             problems.append(f"{where}: {near[0]:.0f} m from the nearest stop ({near[1]}): outside the bus coverage")
         until = e.get("until")
-        if until is not None and not (isinstance(until, (int, float)) and until > {1: 14.5, 2: 15.5, 3: 16.5}.get(tier, 99)):
+        if until is not None and not (isinstance(until, (int, float)) and until > {1: 14.5, 2: 16, 3: 17}.get(tier, 99)):
             problems.append(f"{where}: until must be a zoom above the tier's first zoom")
         rows.append([label, round(lat, 6), round(lon, 6), tier, kind, osm, i, until])
     for a in range(len(rows)):
@@ -120,7 +120,7 @@ def main(argv=None):
     out = {"v": 1, "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
            "license": "Data (c) OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright)",
            "about": "Map labels shown by default (tools/landmarks.json, tools/build_landmarks.py). l = [label, lat, lon, tier, kind, osm name, until?]; "
-                    "tier 1 from zoom 14.5, 2 from 15.5, 3 from 16.5; until = hidden from that zoom on; order = priority.",
+                    "tier 1 from zoom 14.5, 2 from 16, 3 from 17; until = hidden from that zoom on; order = priority.",
            "l": rows}
     OUT.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     print("wrote", OUT.relative_to(ROOT))

@@ -9,14 +9,15 @@
  * or zoom (not during one), labels are placed greedily in priority order (tier, then list order): each takes the
  * first of center / below / above / right / left where its text box (measured with the label font, wrapped at
  * ~8.5 em) overlaps no label already placed and no stop circle; a label with no free spot is left out. Tier 1 shows
- * from map zoom 14.5 (the app opens at 15), tier 2 from 15.5, tier 3 from 16.5; a group name with `until` (Max
+ * from map zoom 14.5 (the app opens at 15), tier 2 from 16, tier 3 from 17 (owner 2026-10-14: the detailed names a
+ * little closer in); a group name with `until` (Max
  * Palevsky Commons) hides from that zoom on, when its buildings' own names show. Text only, never interactive,
  * hidden from screen readers (stops and buses keep their own labels). iOS MapScreen places them the same way.
  */
 import { esc } from '../core/esc.js';
 
 /** First map zoom of each tier. */
-export const LANDMARK_Z = Object.freeze({ 1: 14.5, 2: 15.5, 3: 16.5 });
+export const LANDMARK_Z = Object.freeze({ 1: 14.5, 2: 16, 3: 17 });
 /** Box padding (px) around a label and a stop circle's radius as an obstacle. */
 export const LABEL = Object.freeze({ PAD: 2, STOP_R: 6.5, MAX_EM: 8.5, LINE: 1.12, GAPS: [4, 14], STOP_OK: { 1: 0, 2: 0, 3: 0 }, TEXT_OK: { 1: true } });   // a stop circle never cuts a name; only tier 1 may sit on street text
 const SIDES = ['below', 'above', 'right', 'left', 'below-right', 'below-left', 'above-right', 'above-left'];
@@ -28,7 +29,7 @@ const SIDES = ['below', 'above', 'right', 'left', 'below-right', 'below-left', '
  * @returns {number}
  */
 export function labelSize(tier, zoom) {
-  const [z0, s0, z1, s1] = tier === 1 ? [14.5, 11.5, 18, 14.5] : [LANDMARK_Z[tier] || 15.5, 11, 19, 14];
+  const [z0, s0, z1, s1] = tier === 1 ? [14.5, 11.5, 18, 14.5] : [LANDMARK_Z[tier] || 16, 11, 19, 14];
   const k = Math.min(1, Math.max(0, (zoom - z0) / (z1 - z0)));
   return Math.round((s0 + (s1 - s0) * k) * 2) / 2;
 }

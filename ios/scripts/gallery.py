@@ -45,7 +45,7 @@ CAPTIONS = {
     "33-directions-text": "Larger text: Directions options and steps",
     "34-routes-text": "Larger text: Routes list",
     "36-map": "The map at the opening camera, sheet collapsed: names of the busiest buildings, dorms and places (tier 1)",
-    "37-map-near": "Show my location: closer in, more building names (tiers 1 and 2), placed around the stops",
+    "37-map-near": "Show my location: closer in, building names placed around the stops (the detailed ones from zoom 16)",
     "38-trip-map": "Trip on the map, sheet collapsed: building names around the trip's stops and labels, never over them",
     "39-map-zoomed": "Building names after a pinch zoom: laid out again for the closer view, more tiers (UI test)",
     "40-map-panned": "Building names after a pan (UI test)",

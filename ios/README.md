@@ -140,10 +140,11 @@ web (web/js/map/landmarks.js, docs/ARCHITECTURE.md "Map labels"):
   namesakes, groceries, Metra / Green Line stations, MSI, the Obama Center, Gleacher Center; then 2 and 3), decoded by
   Kit `Landmarks.parse` (missing or bad file = no names, bad rows dropped, optional `until`). Bundled only: the names
   are curated, so they are not part of the daily schedule download (`ScheduleUpdater.files` is unchanged).
-- **Which:** tier 1 from zoom 13.75, 2 from 15.5, 3 from 16.5, in the web's (Leaflet) zoom, measured from the ground
+- **Which:** tier 1 from zoom 13.75, 2 from 16, 3 from 17 (2026-10-14, owner: the detailed names a little closer in),
+  in the web's (Leaflet) zoom, measured from the ground
   scale at the center of the visible map (a rotated map keeps it). Deviation: the web starts tier 1 at 14.5 because it
   opens at 15; the iPhone opens wider (`MapCameraModel.campus`, zoom 14.1 to 14.4 by width), so tier 1 starts at 13.75
-  to be on at the opening camera. `until` hides "Max Palevsky Commons" from 15.5, when Max Palevsky East / Central /
+  to be on at the opening camera. `until` hides "Max Palevsky Commons" from 16, when Max Palevsky East / Central /
   West (tier 2) show.
 - **Where** (Kit `Landmarks.place`, `MapScreen.layoutLabels`): priority order (tier, then the file's order); centered on
   the building, else one of 8 sides at 4 pt, else at 14 pt, never farther; the padded box (2 pt) must fit inside the

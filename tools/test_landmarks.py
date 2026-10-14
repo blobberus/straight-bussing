@@ -30,7 +30,7 @@ def the_real_list_resolves_with_no_problem():
         assert dorm in names, dorm
     assert [r[3] for r in rows] == sorted(r[3] for r in rows), "sorted by tier"
     group = next(r for r in rows if r[0] == "Max Palevsky Commons")
-    assert group[3] == 1 and group[6] == 15.5, group
+    assert group[3] == 1 and group[6] == 16, group
 
 
 @test
