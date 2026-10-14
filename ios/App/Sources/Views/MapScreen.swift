@@ -13,9 +13,9 @@ import StraightBussingKit
 /// location is MapKit's `UserAnnotation` (no redraw per location update) and the bottom inset is applied by
 /// the caller, so this body only re-runs when buses, the trip/plan or the visible routes change.
 ///
-/// Building and place names (owner 2026-10-13, web map/style.js sb_landmarks): text-only annotations under everything
-/// else, laid out by the Kit's declutter (`Landmarks.place`) when the camera stops moving (`layoutLabels`), kept in
-/// `AppModel.mapLabels`; Apple's own points of interest stay off (they would name places twice).
+/// Building and place names (owner 2026-10-13, web map/landmarks.js): text annotations under everything else, placed
+/// by the Kit (`Landmarks.place`) when the camera stops moving (`layoutLabels`), kept in `AppModel.mapLabels`; Apple's
+/// own points of interest stay off (they would name places twice).
 struct MapScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var typeSize

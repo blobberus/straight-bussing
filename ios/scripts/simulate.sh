@@ -58,6 +58,10 @@ for mode in light dark; do
   shot 27-nobus-stop   "$mode" 9  -screen stop -nobus -detent full
   shot 28-livestates   "$mode" 10 -screen livestates
   shot 29-livestates-end "$mode" 10 -screen livestatesend
+  # the map itself, sheet collapsed: building and place names at the opening camera, near you, along a trip
+  shot 36-map          "$mode" 9  -screen current -detent peek
+  shot 37-map-near     "$mode" 9  -screen near -detent peek
+  shot 38-trip-map     "$mode" 11 -screen trip -detent peek
 done
 
 # Larger text (Dynamic Type): key rows must wrap, never clip or slide under the sheet. Light mode, the largest

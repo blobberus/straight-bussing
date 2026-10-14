@@ -695,6 +695,7 @@ extension AppModel {
                 refreshStatus()
                 openSimulatedSetting()
             case "pick": pickMode = .loc; push(.pick)
+            case "near": locate()   // "Show my location": the map closer in (CI map-label shots)
             case "search":
                 openDirections()
                 demoQuery = "regnstien"

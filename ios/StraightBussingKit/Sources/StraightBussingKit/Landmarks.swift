@@ -233,10 +233,11 @@ public enum Landmarks {
 
     // MARK: Text boxes (estimated, conservative)
 
-    /// Advance widths (1/1000 em) of printable ASCII in a bold grotesque (Helvetica Bold's metrics), from U+0020.
+    /// Advance widths (1/1000 em) of printable ASCII in a bold grotesque (Helvetica Bold's metrics; digits and the hyphen
+    /// widened to SF Pro's, which draws them wider: "55th-56th-57th" measured 6% over Helvetica's), from U+0020.
     static let asciiWidths: [Double] = [
-        278, 333, 474, 556, 556, 889, 722, 278, 333, 333, 389, 584, 278, 333, 278, 278,   // space ! " # $ % & ' ( ) * + , - . /
-        556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611,   // 0-9 : ; < = > ?
+        278, 333, 474, 556, 556, 889, 722, 278, 333, 333, 389, 584, 278, 400, 278, 278,   // space ! " # $ % & ' ( ) * + , - . /
+        680, 680, 680, 680, 680, 680, 680, 680, 680, 680, 333, 333, 584, 584, 584, 611,   // 0-9 : ; < = > ?
         975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,   // @ A-O
         667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556,   // P-Z [ \ ] ^ _
         333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,   // ` a-o
