@@ -157,6 +157,8 @@ test("tripAlerts: live data down = ONE 'Live data delayed' alert per outage, nev
   eq(kinds(r), ["off2"], "fresh again: the normal alerts");
   eq(kinds(tripAlerts(prog(down), down, r.fired, NOW + 60)), ["delayed"], "a new outage alerts again");
   eq(tripAlerts(prog(down), down, new Set(), NOW, { polling: false }).alerts, [], "paused background tab: not an outage");
+  const aged = scene("onbus", { lastOk: NOW - 400, feedTs: NOW - 400 });
+  eq(tripAlerts(prog(aged), aged, new Set(), NOW).alerts, [], "data only aged (polling paused, back from the background): no alert");
   const never = scene("onbus", { lastOk: 0 });
   eq(tripAlerts(prog(never), never, new Set(), NOW).alerts, [], "before the first good poll: nothing");
   const old = scene("stale");

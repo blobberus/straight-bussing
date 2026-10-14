@@ -15,7 +15,7 @@
  * station alerts pause meanwhile. When live data goes down, ONE "Live data delayed" alert per outage instead of
  * silence (conversion to appstore.md section 7).
  */
-import { staleLevel } from "./arrivals.js";
+import { staleLevel, ERR_AFTER_S } from "./arrivals.js";
 import { effectiveHidden } from "./visibility.js";
 import { busName, legStatus, offText } from "./tripyou.js";
 
@@ -28,6 +28,15 @@ export const DELAYED_TITLE = "Live data delayed";
 export const TRIP_DELAYED_BODY = "Bus positions and times may be off. Check the official app or call 773.702.8181.";
 export const STATION_DELAYED_BODY = "Bus alerts are paused: bus positions may be off. Check the official app or call 773.702.8181.";
 const capped = (fired) => (fired.size > FIRED_MAX ? new Set([...fired].slice(-FIRED_MAX)) : fired);
+
+/**
+ * Live data is down by the feed's own evidence: a poll failed, or a fresh poll returned an old feed. Not when data
+ * merely aged because polling paused (background tab) or the first poll is still pending.
+ */
+function outage(state, now, level, polling) {
+  if ((level !== "err" && level !== "old") || !state.lastOk || polling === false) return false;
+  return !!state.failed || (level === "old" && now - state.lastOk <= ERR_AFTER_S);
+}
 
 /**
  * Route order without a loop's repeated last stop.
@@ -156,7 +165,8 @@ function alertFor(state, it, kind, now, late) {
 
 /**
  * Station alerts that should fire now (each trip + kind once). While live data is down or old: one 'delayed'
- * alert per outage (only after data was reached once, and only while the page polls), nothing else.
+ * alert per outage (a failed poll, or a fresh poll of an old feed; never for data that only aged while polling was
+ * paused), nothing else.
  * @param {object} state store state (needs notify, buses, trips, routeStops, stopRoutes, stops, routes, feed fields)
  * @param {Set<string>} prevFired keys already fired
  * @param {number} now unix seconds
@@ -171,7 +181,7 @@ export function dueAlerts(state, prevFired, now, opts = {}) {
   if (!n || !n.stopId || opts.tripOn) return { alerts: [], fired };
   const level = staleLevel(state, now), dk = `${n.stopId}|delayed`;
   if (level === "err" || level === "old") {
-    if (!state.lastOk || opts.polling === false || fired.has(dk)) return { alerts: [], fired };
+    if (!outage(state, now, level, opts.polling) || fired.has(dk)) return { alerts: [], fired };
     fired.add(dk);
     return { alerts: [{ key: dk, kind: "delayed", title: DELAYED_TITLE, body: STATION_DELAYED_BODY }], fired: capped(fired) };
   }
@@ -219,7 +229,7 @@ export function tripAlerts(p, state, prevFired, now, opts = {}) {
   const level = staleLevel(state, now), alerts = [];
   if (level === "err" || level === "old") {
     const dk = `${tk}|delayed`;
-    if (state.lastOk && opts.polling !== false && !fired.has(dk)) {
+    if (outage(state, now, level, opts.polling) && !fired.has(dk)) {
       fired.add(dk);
       alerts.push({ key: dk, kind: "delayed", title: DELAYED_TITLE, body: TRIP_DELAYED_BODY });
     }

@@ -326,8 +326,8 @@ while the sheet covers the map and frames on the next `sheet:inset`.
 Alerts: `notify.trip` (default true, Settings > Bus alerts "Trip alerts"); the 2 stops / 1 stop / minutes / in-app choices
 time station and trip alerts alike and show without a station. Keys: board kinds per (trip, leg, followed vehicle),
 off kinds per (trip, leg) (a trip id roll never repeats them). Station alerts pause while `tripAlertsOn` (Settings
-status "Paused during your trip: alerts follow your trip's bus."). Live data down (err / old) after data was reached
-and while the page polls: one "Live data delayed" alert per outage (requirement conversion to appstore.md section 7).
+status "Paused during your trip: alerts follow your trip's bus."). Live data down by the feed's own evidence (a failed
+poll, or a fresh poll of a feed older than 5 min; never data that only aged while polling paused): one "Live data delayed" alert per outage (requirement conversion to appstore.md section 7).
 System notifications end with " Unofficial."; Start asks for notification permission once (`Notification.permission`
 'default', from the tap). Polling stays on in a background tab when a station or a trip with trip alerts is armed and
 notifications are allowed (`startNotifier().background()`).
