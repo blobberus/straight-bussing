@@ -1,6 +1,6 @@
 /** Tests for map/style.js patchStyle (fixture JSON + optional live OpenFreeMap styles). */
 import { test, eq, ok } from './lib.js';
-import { patchStyle, emptyStyle, PALETTE } from '../js/map/style.js';
+import { patchStyle, emptyStyle, PALETTE, LANDMARK_Z, landmarkGeoJSON, campusFilter } from '../js/map/style.js';
 import { POSITRON, DARK } from './map-fixtures.js';
 
 const ids = (s) => s.layers.map((l) => l.id);
@@ -68,6 +68,35 @@ for (const [name, base, dark] of [['positron', POSITRON, false], ['dark', DARK, 
     eq(new Set(L).size, L.length, 'unique layer ids');
   });
 }
+
+test('patchStyle: landmarks (building and place names, owner 2026-10-13) by tier, above minor streets, no name twice', () => {
+  const lm = [{ name: 'Regenstein Library', lat: 41.792, lon: -87.6, tier: 1, kind: 'library', osm: 'Joseph Regenstein Library' },
+    { name: 'Max Palevsky East', lat: 41.7928, lon: -87.5987, tier: 1, kind: 'dorm', osm: 'Max Palevsky Commons East' },
+    { name: 'Cobb Hall', lat: 41.789, lon: -87.601, tier: 2, kind: 'academic', osm: 'Cobb Hall' },
+    { name: 'Swift Hall', lat: 41.7889, lon: -87.6002, tier: 3, kind: 'academic', osm: 'Swift Hall' }, { name: 'bad', lat: 'x', tier: 1 }];
+  for (const [base, dark] of [[POSITRON, false], [DARK, true]]) {
+    const s = patchStyle(base, dark, lm), L = ids(s), P = dark ? PALETTE.dark : PALETTE.light;
+    const src = s.sources.sb_landmarks;
+    eq(src.type, 'geojson');
+    eq(src.data.features.map((f) => [f.properties.name, f.properties.t, f.properties.r]), [['Regenstein Library', 1, 0], ['Max Palevsky East', 1, 1], ['Cobb Hall', 2, 2], ['Swift Hall', 3, 3]]);
+    eq(src.data.features[0].geometry.coordinates, [-87.6, 41.792], 'GeoJSON is lon, lat');
+    eq([1, 2, 3].map((t) => byId(s, 'sb_landmarks_' + t).minzoom), [LANDMARK_Z[1], LANDMARK_Z[2], LANDMARK_Z[3]]);
+    ok(LANDMARK_Z[1] < 15, 'tier 1 shows at the zoom the app opens at (15)');
+    const at = (id) => L.indexOf(id);
+    ok(at('sb_name_minor') < at('sb_landmarks_3') && at('sb_landmarks_3') < at('sb_landmarks_2') && at('sb_landmarks_2') < at('sb_landmarks_1') && at('sb_landmarks_1') < at('sb_name_major'),
+      'minor streets < tier 3 < tier 2 < tier 1 < major streets (upper layers win collisions)');
+    const l1 = byId(s, 'sb_landmarks_1');
+    eq(l1.layout['symbol-sort-key'], ['get', 'r'], 'list order = priority');
+    eq(l1.layout['icon-image'], undefined, 'text only');
+    ok(contrast(l1.paint['text-color'], P.halo) >= 7, 'landmark text vs halo >= 7:1');
+    const f = JSON.stringify(byId(s, 'sb_poi_campus').filter);
+    ok(f.includes('Joseph Regenstein Library') && f.includes('Cobb Hall'), 'campus names skip what a landmark already shows');
+    eq(byId(s, 'sb_poi_campus').minzoom, 16, 'other campus names only from z16');
+  }
+  eq(patchStyle(POSITRON, false).sources.sb_landmarks.data.features, [], 'before they load: an empty source the map can fill');
+  eq(landmarkGeoJSON(null).features, []);
+  eq(campusFilter([]).length, 3, 'no landmarks: the plain campus filter');
+});
 
 test('patchStyle: dark keeps motorway names, recolors place labels', () => {
   const s = patchStyle(DARK, true);

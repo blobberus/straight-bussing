@@ -32,7 +32,7 @@ export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "ale
 const OPTIONAL_VIEWS = new Set(["settings"]);
 const RENDER_TICK_MS = 15000;
 const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "setSelectedStop", "setUser",
-  "highlightStops", "drawPlan", "drawFavorites", "setTrip", "inView", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove", "onMapTap"];
+  "highlightStops", "drawPlan", "drawFavorites", "setTrip", "inView", "setLandmarks", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove", "onMapTap"];
 const VIS_KEYS = ["hiddenRoutes", "routeFilter", "view", "routeId", "routeOrder", "journey", "activeCustom", "customRoutes"];
 const NET_KEYS = ["routes", "shapes", "routeStops", "stopRoutes", "stops", "theme", ...VIS_KEYS];
 const BUS_KEYS = ["buses", "feedTs", "routes", ...VIS_KEYS];
@@ -95,6 +95,7 @@ function syncMap(s, changed) {
   if (has("favStops") || has("stops")) mapCall("drawFavorites",
     (s.favStops || []).map((id) => (s.stops && s.stops[id] ? { id: String(id), ...s.stops[id] } : null)).filter(Boolean));
   if (has("user")) mapCall("setUser", s.user || null);
+  if (has("landmarks")) mapCall("setLandmarks", s.landmarks || []);
 }
 
 /* ---------------- geolocation ---------------- */

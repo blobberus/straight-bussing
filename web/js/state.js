@@ -88,6 +88,7 @@ export function initialState() {
     routes: {}, stops: {}, shapes: {},
     routeStops: {}, stopRoutes: {}, addresses: {},
     service: {},                                               // data/service.json (schedule summary), {} if missing
+    landmarks: [],                                             // data/landmarks.json: map labels [{name, lat, lon, tier, kind, osm}]
     staticLoaded: false,
     // live (data/live.js fills every 10 s)
     buses: [], trips: [], alerts: [],

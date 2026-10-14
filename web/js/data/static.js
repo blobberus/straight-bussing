@@ -10,6 +10,7 @@ export const STATIC_FILES = Object.freeze([
   ['routeStops', 'route_stops.json', true],
   ['addresses', 'stop_addresses.json', false],
   ['service', 'service.json', false],
+  ['landmarks', 'landmarks.json', false],   // map labels (tools/build_landmarks.py): an array, see cleanLandmarks
 ]);
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -88,6 +89,23 @@ function cleanServiceRoutes(v) {
 }
 
 /**
+ * landmarks.json ({l: [[label, lat, lon, tier, kind, osm], ...]}) as [{name, lat, lon, tier, kind, osm}]; bad rows dropped.
+ * @param {any} v parsed JSON
+ * @returns {Array<{name:string, lat:number, lon:number, tier:number, kind:string, osm:string}>}
+ */
+export function cleanLandmarks(v) {
+  const rows = isObj(v) && Array.isArray(v.l) ? v.l : [];
+  const out = [];
+  for (const r of rows) {
+    if (!Array.isArray(r) || !r[0]) continue;
+    const lat = num(r[1]), lon = num(r[2]), tier = num(r[3]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || ![1, 2, 3].includes(tier)) continue;
+    out.push({ name: String(r[0]), lat, lon, tier, kind: String(r[4] || ''), osm: String(r[5] || r[0]) });
+  }
+  return out;
+}
+
+/**
  * Derive stopId -> [routeId] from routeId -> [stopId] (each route listed once per stop).
  * @param {{[rid:string]: string[]}} routeStops
  * @returns {{[stopId:string]: string[]}}
@@ -114,9 +132,9 @@ export async function loadStatic(store, opts = {}) {
   const patch = {}, failed = [];
   results.forEach((res, i) => {
     const [key, file, req] = STATIC_FILES[i];
-    if (res.status === 'fulfilled' && isObj(res.value)) patch[key] = cleanSlice(key, res.value);
+    if (res.status === 'fulfilled' && isObj(res.value)) patch[key] = key === 'landmarks' ? cleanLandmarks(res.value) : cleanSlice(key, res.value);
     else {
-      patch[key] = {};
+      patch[key] = key === 'landmarks' ? [] : {};
       failed.push(file);
       if (req) console.warn('static data failed:', file, res.status === 'rejected' ? res.reason : 'not an object');
     }

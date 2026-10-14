@@ -43,7 +43,7 @@ function planSig(o) {
  * Create the map inside element `elId`.
  * @param {string} elId
  * @returns {object} MapApi: setTheme, setBottomInset, drawNetwork, drawBuses, setSelectedStop, drawFavorites,
- *   setUser, highlightStops, drawPlan, setTrip, inView, fitTo, flyTo, onStopTap, onBusTap, onUserMove, onMapTap
+ *   setUser, highlightStops, drawPlan, setTrip, inView, setLandmarks, fitTo, flyTo, onStopTap, onBusTap, onUserMove, onMapTap
  *   (+ `leaflet` escape hatch)
  */
 export function createMap(elId) {
@@ -225,6 +225,12 @@ export function createMap(elId) {
     drawFavorites(stops) {
       if (favs.draw(stops)) renderSel();
     },
+
+    /**
+     * Building and place names shown by default (web/data/landmarks.json via store.landmarks; owner 2026-10-13):
+     * drawn by the vector basemap with its collision handling, tier 1 from zoom 14.5. @param {Array<object>} list
+     */
+    setLandmarks(list) { basemap.setLandmarks?.(list); },
 
     /** Blue location dot (+ accuracy circle when pos.accuracy is given). @param {{lat, lon, accuracy?}|null} pos */
     setUser(pos) {

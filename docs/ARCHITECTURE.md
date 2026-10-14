@@ -219,6 +219,7 @@ Lead already landed: new state fields (state.js), `core/visibility.js`, `core/cu
 ### New state (state.js)
 ```js
 service: {}                 // data/service.json, {} when missing (static)
+landmarks: []               // data/landmarks.json map labels [{name, lat, lon, tier, kind, osm}], [] when missing (static, 2026-10-13)
 routeOrder: [rid]           // persisted. Map draw priority, first = drawn on top. May be partial/empty.
 customRoutes: [{id, name, rids:[rid], highlight:[rid]}]   // persisted. My Routes sets.
 activeCustom: id|null       // persisted. Applied custom route (its complement is in hiddenRoutes).
@@ -297,6 +298,9 @@ dueAlerts(state, fired, nowS, {tripOn, polling})   // 2026-10-13: nothing while 
 tripAlerts(p, state, fired, nowS, {polling}): {alerts:[{key, kind:'board2'|'board1'|'boardMin'|'off2'|'off1'|'delayed', title, body}], fired}
 tripAlertsOn(p, state): boolean   // a started trip (not arrived) with notify.trip on
 ```
+
+### Map labels: building and place names (2026-10-13, owner: "the buildings on the maps should also have their names like Google maps. Not every building, but highly trafficked ones and prominent off campus locations relevant to the bus coverage", "UChicago dorm buildings")
+Curated in `tools/landmarks.json` (label, tier, kind; order = priority): the buildings the stops are named after, the UChicago dorms, libraries, dining commons, the medical campus, the busiest academic buildings, and the off-campus places the shuttles serve (Harper Court, Hyde Park Shopping Center, the groceries, the Metra and Green Line stations, the Museum of Science and Industry, the Obama Center, Gleacher Center ...). `tools/build_landmarks.py` resolves each to its OpenStreetMap feature (never a typed-in coordinate: the exact OSM name in places.json, or an explicit OSM object) and checks it (within 800 m of a stop, no dashes, no duplicates) into `web/data/landmarks.json` (`l = [label, lat, lon, tier, kind, osm]`, ~7 KB, precached). `data/static.js` loads it (optional) as `store.landmarks`; `MapApi.setLandmarks` hands it to the vector basemap (`map/style.js`: GeoJSON source `sb_landmarks`, layers `sb_landmarks_1/2/3` from zoom 14.5 / 15.5 / 16.5, so tier 1 shows when the app opens at 15; MapLibre's collision handling thins them, tier 1 first, list order within a tier; major street names win over them, they win over minor street names). The basemap's own campus names (`sb_poi_campus`) start at 16 and skip any name a landmark shows. Text only, bold, the campus-name color (>= 7:1 on its halo). The raster fallback shows OSM's own names. iOS: the same file, drawn in MapScreen (ios/README.md).
 
 ### Beta feedback (2026-10-13, owner)
 `ui/feedback.js`: `FEEDBACK_URL` (the only place the Google Form address appears), `feedbackLinkHTML()` (a real `<a target="_blank" rel="noopener">`, never window.open after an await), the welcome popup (native `<dialog>` like ui/confirm.js: Cancel focused first, Escape / outside tap close, 350 ms double-tap guard) once per browser session (`sessionStorage`; blocked storage = once per page load), opened by main.js after the first painted render (`welcomeAfterPaint`). Settings starts with "Beta feedback" (`views/settings.js feedbackHTML`). Browser tests set the session flag before booting the app (e2e.js, e2e-demo.js).

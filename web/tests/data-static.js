@@ -1,6 +1,6 @@
 import { test, eq, ok } from './lib.js';
 import { createStore } from '../js/core/store.js';
-import { loadStatic, deriveStopRoutes, cleanSlice } from '../js/data/static.js';
+import { loadStatic, deriveStopRoutes, cleanSlice, cleanLandmarks } from '../js/data/static.js';
 import { res, stubFetch } from './data-helpers.js';
 
 const FILES = {
@@ -12,6 +12,7 @@ const FILES = {
   'service.json': { generated: 'x', feed: { start: '2026-10-07', end: '2026-11-07' }, routes: {
     r1: { days: { mon: { first: '07:00', last: '19:00', trips: 3, buses: [] }, sat: 'bad' }, exceptions: [{ date: '2026-11-26', type: 'removed', hours: null }, 5] },
     r2: 'bad' } },
+  'landmarks.json': { v: 1, l: [['Regenstein Library', 41.792, -87.6, 1, 'library', 'Joseph Regenstein Library'], ['bad', 'x', 1, 1], ['No tier', 41.79, -87.6, 7]] },
 };
 const fileOf = (url) => url.split('/').pop();
 const okFetch = (overrides = {}) => stubFetch((url) => {
@@ -99,10 +100,19 @@ test('static: bad JSON, thrown fetch and non-object bodies never reject', async 
 test('static: everything failing still sets staticLoaded with empty slices', async () => {
   const store = createStore({});
   const out = await loadStatic(store, { fetch: async () => { throw new TypeError('offline'); } });
-  eq(out.failed.length, 6);
+  eq(out.failed.length, 7);
   const s = store.get();
   eq([s.routes, s.stops, s.shapes, s.routeStops, s.stopRoutes, s.addresses, s.service], [{}, {}, {}, {}, {}, {}, {}]);
+  eq(s.landmarks, [], 'map labels: an empty list');
   eq(s.staticLoaded, true);
+});
+
+test('static: landmarks (map labels) load as a list, bad rows dropped', async () => {
+  const store = createStore({});
+  await loadStatic(store, { base: 'data/', fetch: okFetch() });
+  eq(store.get().landmarks, [{ name: 'Regenstein Library', lat: 41.792, lon: -87.6, tier: 1, kind: 'library', osm: 'Joseph Regenstein Library' }]);
+  eq(cleanLandmarks(null), []); eq(cleanLandmarks({ l: 'x' }), []);
+  eq(cleanLandmarks({ l: [['A', '41.8', '-87.6', '2']] })[0], { name: 'A', lat: 41.8, lon: -87.6, tier: 2, kind: '', osm: 'A' });
 });
 
 test('static: deriveStopRoutes / cleanSlice edge cases', () => {

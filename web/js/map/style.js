@@ -18,12 +18,17 @@
  *   untouched:  motorway names (highway_name_motorway), railways, aeroways, boundaries
  *   added:      sb_minor_casing (below highway_minor: road/land contrast),
  *               sb_housenumber (source-layer housenumber, z>=17),
- *               sb_poi_campus (source-layer poi, z>=15: college/school/library/hospital/museum/... names
- *               only, no icons; every other POI stays hidden),
+ *               sb_poi_campus (source-layer poi, z>=16: college/school/library/hospital/museum/... names
+ *               only, no icons; every other POI stays hidden; a name the landmarks below already show is skipped),
  *               sb_name_path (z>=16), sb_name_minor (z>=14), sb_name_major (z>=12.5): street names,
- *               no uppercase, 2 px halo in the land color, majors bold. Added symbol layers sit in that
- *               order where the first original street-name layer was, so street names (on top) win
- *               label collisions over campus names, which win over house numbers.
+ *               no uppercase, 2 px halo in the land color, majors bold,
+ *               sb_landmarks_3 / _2 / _1 (GeoJSON source sb_landmarks = web/data/landmarks.json, owner 2026-10-13:
+ *               the names of the busiest buildings, UChicago dorms and prominent places the shuttles serve, shown
+ *               by default like Google Maps; tier 1 from z14.5 (the app opens at 15), 2 from z15.5, 3 from z16.5;
+ *               text only, bold, the campus-name color; list order = priority). Added symbol layers sit in this
+ *               order where the first original street-name layer was: major street names (on top) win label
+ *               collisions over landmarks (tier 1 over 2 over 3), which win over minor street and path names,
+ *               campus names and house numbers.
  */
 
 const BASE = 'https://tiles.openfreemap.org/styles/';
@@ -58,6 +63,46 @@ const MAJOR = ['primary', 'secondary', 'tertiary', 'trunk'];
 const CAMPUS_POI = ['college', 'school', 'library', 'hospital', 'museum', 'theatre', 'stadium'];
 const STREET_NAME_IDS = /^(highway-name-(path|minor|major)|highway_name_other)$/;
 
+/** First zoom of each landmark tier (web/data/landmarks.json "t"). */
+export const LANDMARK_Z = Object.freeze({ 1: 14.5, 2: 15.5, 3: 16.5 });
+const EMPTY_FC = Object.freeze({ type: 'FeatureCollection', features: [] });
+
+/**
+ * Landmarks (store.landmarks: [{name, lat, lon, tier, kind, osm}]) as the GeoJSON the label layers read. Bad rows
+ * are dropped; r = priority (list order).
+ * @param {Array<object>} list
+ * @returns {{type:'FeatureCollection', features:Array<object>}}
+ */
+export function landmarkGeoJSON(list) {
+  const features = [];
+  (Array.isArray(list) ? list : []).forEach((x, r) => {
+    const lat = Number(x && x.lat), lon = Number(x && x.lon), t = Number(x && x.tier);
+    if (!x || !x.name || !Number.isFinite(lat) || !Number.isFinite(lon) || !LANDMARK_Z[t]) return;
+    features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] },
+      properties: { name: String(x.name), t, k: String(x.kind || ''), r } });
+  });
+  return { type: 'FeatureCollection', features };
+}
+
+/** The campus-name filter, skipping the OSM names a landmark label already shows (no name twice). */
+export function campusFilter(list) {
+  const names = [...new Set((Array.isArray(list) ? list : []).map((x) => x && x.osm).filter(Boolean).map(String))];
+  const base = ['all', ['has', 'name'], ['match', ['get', 'class'], CAMPUS_POI, true, false]];
+  return names.length ? [...base, ['!', ['in', ['get', 'name'], ['literal', names]]]] : base;
+}
+
+function landmarkLayers(P) {
+  return [3, 2, 1].map((t) => {
+    const z = LANDMARK_Z[t];
+    return { id: `sb_landmarks_${t}`, type: 'symbol', source: 'sb_landmarks', minzoom: z, filter: ['==', ['get', 't'], t],
+      layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Bold'],
+        'text-size': zoomed(t === 1 ? [z, 11.5, 16, 12.5, 18, 14.5] : [z, 11, 17, 12.5, 19, 14]),
+        'text-max-width': 8, 'text-line-height': 1.1, 'text-padding': 3, 'symbol-sort-key': ['get', 'r'],
+        'text-variable-anchor': ['center', 'top', 'bottom'], 'text-radial-offset': 0.6 },
+      paint: { 'text-color': P.poi, 'text-halo-color': P.halo, 'text-halo-width': 1.8, 'text-halo-blur': 0.25 } };
+  });
+}
+
 const zoomed = (stops) => ['interpolate', ['linear'], ['zoom'], ...stops];
 const widen = (stops) => ['interpolate', ['exponential', 1.5], ['zoom'], ...stops];
 const paint = (l, o) => { l.paint = Object.assign(l.paint || {}, o); };
@@ -74,33 +119,35 @@ function nameLayer(id, P, { filter, minzoom, sizes, bold, color }) {
 }
 
 /** Symbol layers we add, in bottom-to-top order (top wins label collisions). */
-function addedSymbols(P) {
+function addedSymbols(P, landmarks) {
   return [
     { id: 'sb_housenumber', type: 'symbol', source: 'openmaptiles', 'source-layer': 'housenumber', minzoom: 17,
       layout: { 'text-field': ['get', 'housenumber'], 'text-font': ['Noto Sans Regular'],
         'text-size': zoomed([17, 10.5, 18, 12, 20, 14]), 'text-padding': 2, 'text-max-width': 5 },
       paint: { 'text-color': P.hn, 'text-halo-color': P.halo, 'text-halo-width': 1.6, 'text-halo-blur': 0.25 } },
-    { id: 'sb_poi_campus', type: 'symbol', source: 'openmaptiles', 'source-layer': 'poi', minzoom: 15,
-      filter: ['all', ['has', 'name'], ['match', ['get', 'class'], CAMPUS_POI, true, false]],
+    { id: 'sb_poi_campus', type: 'symbol', source: 'openmaptiles', 'source-layer': 'poi', minzoom: 16,
+      filter: campusFilter(landmarks),
       layout: { 'text-field': NAME, 'text-font': ['Noto Sans Bold'], 'text-size': zoomed([15, 11, 17, 12.5, 19, 14]),
         'text-max-width': 7, 'text-padding': 4, 'text-optional': true, 'symbol-sort-key': ['coalesce', ['get', 'rank'], 99] },
       paint: { 'text-color': P.poi, 'text-halo-color': P.halo, 'text-halo-width': 1.8, 'text-halo-blur': 0.25 } },
     nameLayer('sb_name_path', P, { minzoom: 16, filter: ['==', ['get', 'class'], 'path'], sizes: [16, 10.5, 18, 12.5, 20, 14], color: P.textMinor }),
     nameLayer('sb_name_minor', P, { minzoom: 14, filter: ['all', LINES, ['match', ['get', 'class'], ['minor', 'service', 'track'], true, false]],
       sizes: [14, 10.5, 16, 12.5, 18, 14.5, 20, 16], color: P.textMinor }),
+    ...landmarkLayers(P),
     nameLayer('sb_name_major', P, { minzoom: 12.5, filter: ['match', ['get', 'class'], MAJOR, true, false],
       sizes: [12.5, 11, 15, 12.5, 17, 14.5, 19, 16.5], bold: true, color: P.text }),
   ];
 }
 
 /**
- * Patch an OpenFreeMap positron/dark style for legible streets, house numbers and campus names.
+ * Patch an OpenFreeMap positron/dark style for legible streets, house numbers, campus names and landmarks.
  * Pure: never mutates the input. See the header comment for every layer id touched.
  * @param {object} styleJson MapLibre style (version 8)
  * @param {boolean} isDark
+ * @param {Array<object>} [landmarks] store.landmarks (the sb_landmarks source; empty until they load)
  * @returns {object} patched deep copy
  */
-export function patchStyle(styleJson, isDark) {
+export function patchStyle(styleJson, isDark, landmarks = []) {
   const s = JSON.parse(JSON.stringify(styleJson || { version: 8, sources: {}, layers: [] }));
   const P = isDark ? PALETTE.dark : PALETTE.light;
   const out = [];
@@ -142,8 +189,9 @@ export function patchStyle(styleJson, isDark) {
     }
     out.push(l);
   }
-  out.splice(namesAt < 0 ? out.length : namesAt, 0, ...addedSymbols(P));
+  out.splice(namesAt < 0 ? out.length : namesAt, 0, ...addedSymbols(P, landmarks));
   s.layers = out;
+  s.sources = { ...(s.sources || {}), sb_landmarks: { type: 'geojson', data: landmarkGeoJSON(landmarks) } };
   // source credits carry "&copy;" too; nothing shows them today (the GL map has no attribution
   // control), but keep them sign-free so no copyright sign can surface
   for (const src of Object.values(s.sources || {})) {
@@ -184,11 +232,13 @@ function hasWebGL() {
  * Create and add the basemap layer to a Leaflet map.
  * @param {L.Map} map
  * @param {boolean} isDark
- * @returns {{kind:'vector'|'raster', layer:L.Layer, attribution:string, setDark(isDark:boolean):void}} attribution: credit markup
+ * @returns {{kind:'vector'|'raster', layer:L.Layer, attribution:string, setDark(isDark:boolean):void,
+ *   setLandmarks(list:Array<object>):void}} attribution: credit markup; setLandmarks: the map's building and place
+ *   labels (store.landmarks; the raster fallback has its own OSM labels)
  */
 export function createBasemap(map, isDark) {
   const L = window.L;
-  let dark = !!isDark;
+  let dark = !!isDark, marks = [];
   if (window.maplibregl && L.maplibreGL && hasWebGL()) {
     try {
       // the plugin reads attribution from options.attributionControl.customAttribution (getAttribution())
@@ -204,7 +254,7 @@ export function createBasemap(map, isDark) {
         clearTimeout(retry);
         loadBase(want ? 'dark' : 'positron').then((base) => {
           const gl = layer.getMaplibreMap?.();
-          if (my === token && gl) { gl.setStyle(patchStyle(base, want)); tries = 0; loaded = true; }
+          if (my === token && gl) { gl.setStyle(patchStyle(base, want, marks)); tries = 0; loaded = true; }
         }).catch(() => {   // a failed download used to leave a blank map until the next 'online' event: retry
           if (my === token && tries < RETRY_S.length) retry = setTimeout(apply, RETRY_S[tries++] * 1000);
         });
@@ -236,10 +286,21 @@ export function createBasemap(map, isDark) {
         if (contextLost()) checkGl(); else if (!loaded) { tries = 0; apply(); }
       });
       return { kind: 'vector', get layer() { return layer; }, attribution: ATTRIBUTION,
-        setDark(d) { if (!!d === dark) return; dark = !!d; tries = 0; apply(); } };
+        setDark(d) { if (!!d === dark) return; dark = !!d; tries = 0; apply(); },
+        setLandmarks(list) {
+          marks = Array.isArray(list) ? list : [];
+          const gl = layer.getMaplibreMap?.();
+          try {
+            const src = gl?.getSource?.('sb_landmarks');
+            if (!src) return;   // the style is not in yet: apply() passes them in
+            src.setData(landmarkGeoJSON(marks));
+            if (gl.getLayer?.('sb_poi_campus')) gl.setFilter('sb_poi_campus', campusFilter(marks));
+          } catch (e) { /* style mid-swap: the next apply() includes them */ }
+        } };
     } catch (e) { /* fall through to raster */ }
   }
   const layer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: RASTER_ATTRIBUTION, className: 'sb-raster' });
   layer.addTo(map);
-  return { kind: 'raster', layer, attribution: RASTER_ATTRIBUTION, setDark(d) { dark = !!d; /* .sb-dark .sb-raster in map.css inverts */ } };
+  return { kind: 'raster', layer, attribution: RASTER_ATTRIBUTION, setDark(d) { dark = !!d; /* .sb-dark .sb-raster in map.css inverts */ },
+    setLandmarks() { /* OSM raster tiles carry their own building and place names */ } };
 }
