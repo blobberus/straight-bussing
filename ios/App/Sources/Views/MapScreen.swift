@@ -261,8 +261,8 @@ struct BusMarker: View {
                 .overlay(RoundedRectangle(cornerRadius: Radius.badge, style: .continuous).stroke(.white, lineWidth: 2))
                 .shadow(color: Palette.shadow.opacity(0.3), radius: 2, y: 1)
         }
-        .opacity(stale && youText == nil ? 0.5 : 1)
-        .accessibilityLabel(youText ?? "\(route?.displayName ?? "Shuttle") bus\(stale ? ", location may be old" : "")")
+        .opacity(stale ? 0.5 : 1)
+        .accessibilityLabel((youText ?? "\(route?.displayName ?? "Shuttle") bus") + (stale ? ", location may be old" : ""))
     }
 }
 
