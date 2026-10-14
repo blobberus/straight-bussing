@@ -61,7 +61,7 @@ struct MapScreen: View {
         MapReader { proxy in
         Map(position: $camera.position) {
             // building and place names first: stops, buses, the trip and you are drawn over them, and they never take a tap
-            ForEach(placed) { p in
+            ForEach(placed, id: \.drawKey) { p in
                 Annotation("", coordinate: p.landmark.coord.cl, anchor: p.anchor.unitPoint) {
                     LandmarkLabel(label: p).equatable()
                 }
@@ -158,7 +158,7 @@ struct MapScreen: View {
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
         .mapControls { MapCompass() }
         // the names are laid out when the camera stops, not on every frame of a pan or zoom
-        .onMapCameraChange(frequency: .onEnd) { _ in layoutLabels(proxy, scale: labelScale) }
+        .onMapCameraChange(frequency: .onEnd) { _ in model.mapLabels.layoutSoon { layoutLabels(proxy, scale: labelScale) } }
         // a tap on empty map lowers the sheet to peek (web onMapTap). Simultaneous, so it never blocks the stop / bus
         // buttons; `mapTapped` ignores a tap that also hit one of them.
         .simultaneousGesture(TapGesture().onEnded { model.mapTapped() })
@@ -277,8 +277,10 @@ extension MapScreen {
     }
 }
 
-/// The map labels' triggers besides the camera's end: a resized visible map (the sheet settled, the chrome changed),
-/// new landmarks, what they avoid, the text size. Its own view, so only this empty view re-runs when they change.
+/// The map labels' triggers besides the camera's end: a camera moved by the app (fit, fly to, the follow frame), a
+/// resized visible map (the sheet settled, the chrome changed), new landmarks, what they avoid, the text size; each
+/// lays out now and once the move has settled (`MapLabelModel.layoutSoon`). Its own view, so only this empty view
+/// re-runs when they change.
 struct LabelWatcher: View {
     let camera: MapCameraModel
     let labels: MapLabelModel
@@ -289,11 +291,12 @@ struct LabelWatcher: View {
         Color.clear
             .allowsHitTesting(false)
             .accessibilityHidden(true)
-            .onAppear(perform: layout)
-            .onChange(of: camera.visibleRect) { _, _ in layout() }
-            .onChange(of: labels.version) { _, _ in layout() }
-            .onChange(of: signature) { _, _ in layout() }
-            .onChange(of: scale) { _, _ in layout() }
+            .onAppear { labels.layoutSoon(layout) }
+            .onChange(of: camera.position) { _, _ in labels.layoutSoon(now: false, layout) }
+            .onChange(of: camera.visibleRect) { _, _ in labels.layoutSoon(layout) }
+            .onChange(of: labels.version) { _, _ in labels.layoutSoon(layout) }
+            .onChange(of: signature) { _, _ in labels.layoutSoon(layout) }
+            .onChange(of: scale) { _, _ in labels.layoutSoon(layout) }
     }
 }
 

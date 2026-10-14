@@ -161,10 +161,14 @@ web (web/js/map/landmarks.js, docs/ARCHITECTURE.md "Map labels"):
 - **Drawing** (`Views/MapScreen.swift` `LandmarkLabel`): text-only `Annotation`s declared first, so stops, buses, the
   trip and you are drawn over them; never take a tap (`allowsHitTesting(false)`), hidden from VoiceOver (stops and
   buses keep their labels); never animated. Laid out on camera END (`onMapCameraChange(frequency: .onEnd)`), when the
-  visible map changes size, when the stops / trip labels / destination change, when the landmarks load and on a text
-  size change (`LabelWatcher`), never per frame or per bus move; the result lives in `AppModel.mapLabels`
-  (`MapLabelModel`) and is assigned only when it changes. Apple's own points of interest stay off
-  (`pointsOfInterest: .excludingAll`), so no place is named twice.
+  app moves the camera (fit, fly to, the follow frame), when the visible map changes size, when the stops / trip
+  labels / destination change, when the landmarks load and on a text size change (`LabelWatcher`), each time again
+  0.5 s and 1.2 s later (`MapLabelModel.layoutSoon`: in the CI simulator the camera-end callback did not lay out after
+  the app's 0.6 s camera glides, so names stayed where the camera had been); never per frame or per bus move. The
+  result lives in `AppModel.mapLabels` (`MapLabelModel`) and is assigned only when it changes; a name that changes side
+  or size is a new annotation (`drawKey`). Apple's own points of interest stay off (`pointsOfInterest: .excludingAll`),
+  so no place is named twice. CI shots: 36-map (opening camera), 37-map-near (`-screen near`), 38-trip-map, and the UI
+  test's 39-map-zoomed / 40-map-panned.
 
 ### Live Activity times (owner decision 2026-10-11)
 

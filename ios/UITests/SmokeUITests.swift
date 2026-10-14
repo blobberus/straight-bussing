@@ -253,4 +253,24 @@ final class SmokeUITests: XCTestCase {
         XCTAssertLessThanOrEqual(search2.frame.maxY, app.buttons["tab.current"].frame.minY, "both visible above the tab bar")
         XCTAssertFalse(app.descendants(matching: .any)["nextBusBlock"].exists)
     }
+
+    /// Building and place names follow the rider's own zoom and pan (laid out again when the camera stops): shots for
+    /// the gallery; the names are decorative and hidden from VoiceOver, so they are checked by eye there.
+    func testMapNamesFollowZoomAndPan() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["sheetTitle"].waitForExistence(timeout: 30))
+        XCTAssertEqual(sheetState(app), "Collapsed", "the map in view")
+        sleep(3)
+        let map = app.maps.firstMatch.exists ? app.maps.firstMatch : app.windows.firstMatch
+        map.pinch(withScale: 2.5, velocity: 1.5)
+        sleep(3)
+        save(app, "39-map-zoomed-light")
+        let c = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+        c.press(forDuration: 0.1, thenDragTo: c.withOffset(CGVector(dx: -120, dy: 160)))
+        sleep(3)
+        save(app, "40-map-panned-light")
+        XCTAssertTrue(app.buttons["searchBar"].exists, "the app is still on the map screen")
+    }
 }

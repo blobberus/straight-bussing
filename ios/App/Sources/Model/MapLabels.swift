@@ -1,3 +1,4 @@
+import Observation
 import SwiftUI
 import StraightBussingKit
 
@@ -13,10 +14,29 @@ final class MapLabelModel {
     private(set) var version = 0
     /// The labels drawn now (assigned only when they change).
     private(set) var placed: [PlacedLandmark] = []
+    @ObservationIgnored private var pending: Task<Void, Never>?
 
     func setLandmarks(_ list: [Landmark]) {
         landmarks = list
         version += 1
+    }
+
+    /// Lay out now, then again 0.5 s and 1.2 s later (an earlier series is cancelled). A screen that moves the map
+    /// (fit, fly to, the trip's follow frame) glides it for 0.6 s, and MapKit's camera-end callback did not lay out
+    /// after those glides in the CI simulator (the names stayed where the camera had been), so the last layout always
+    /// runs on the settled camera. Cheap: a layout is about a millisecond and redraws only when its result changes.
+    /// - Parameter now: also lay out at once (not for a camera the app just started to glide: that would place the names
+    ///   for where the map was).
+    func layoutSoon(now: Bool = true, _ layout: @escaping @MainActor () -> Void) {
+        if now { layout() }
+        pending?.cancel()
+        pending = Task { @MainActor in
+            for ms in [500, 700] as [UInt64] {
+                try? await Task.sleep(nanoseconds: ms * 1_000_000)
+                if Task.isCancelled { return }
+                layout()
+            }
+        }
     }
 
     /// Show these labels. Never animated (Reduce Motion or not): names appear and step aside at once.
@@ -37,6 +57,12 @@ final class MapLabelModel {
         default: return 1.25
         }
     }
+}
+
+extension PlacedLandmark {
+    /// The annotation's identity: a name that moves to another side (or size) is a new annotation, so MapKit never
+    /// keeps an old anchor for new content.
+    var drawKey: String { "\(landmark.rank)|\(anchor.rawValue)|\(gap)|\(size)|\(lines.count)" }
 }
 
 extension LabelAnchor {

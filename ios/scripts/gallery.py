@@ -47,6 +47,8 @@ CAPTIONS = {
     "36-map": "The map at the opening camera, sheet collapsed: names of the busiest buildings, dorms and places (tier 1)",
     "37-map-near": "Show my location: closer in, more building names (tiers 1 and 2), placed around the stops",
     "38-trip-map": "Trip on the map, sheet collapsed: building names around the trip's stops and labels, never over them",
+    "39-map-zoomed": "Building names after a pinch zoom: laid out again for the closer view, more tiers (UI test)",
+    "40-map-panned": "Building names after a pan (UI test)",
 }
 
 STORE_CAPTIONS = {
