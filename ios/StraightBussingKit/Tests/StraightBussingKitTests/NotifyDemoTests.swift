@@ -6,9 +6,9 @@ final class LiveTripSnapshotTests: XCTestCase {
     func testShortNamesAndCompactText() {
         XCTAssertEqual(LiveTripSnapshot.shortName("55th Street & University Avenue"), "55th St & University Ave")
         let s = LiveTripSnapshot(routeShort: "LP", routeName: "Loop", routeColor: "#FF0000", routeTextColor: "#FFFFFF", boardName: "A",
-                                 alightName: "B", phase: "on-bus", headline: "1 stop to B", stopsAway: nil, stopsLeft: 1, target: 1_000_300,
+                                 alightName: "B", phase: "on-bus", headline: "Get off at the next stop: B", stopsAway: nil, stopsLeft: 1, target: 1_000_300,
                                  stopNames: ["A", "B"], busPosition: 0.5, boardIndex: 0, alightIndex: 1, live: true, asOf: 1_000_000)
-        XCTAssertEqual(s.compactText(now: 1_000_000), "1 left · 5 min")
+        XCTAssertEqual(s.compactText(now: 1_000_000), "Next stop · 5 min", "stopsLeft 1 = your stop is the next stop (the timeline's count)")
         var t = s; t.target += 15
         XCTAssertTrue(s.sameContent(as: t), "a prediction moving 15 s is not worth an update")
         t.target += 30
@@ -68,7 +68,8 @@ final class NotifyTests: XCTestCase, PlannerFixture {
         XCTAssertTrue(due.alerts[0].body.contains("about 6 min (est.)"))
         XCTAssertEqual(Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: due.fired, now: T).alerts, [], "fired once")
         l.failed = true
-        XCTAssertEqual(Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: [], now: T).alerts, [], "no alerts on bad data")
+        XCTAssertEqual(Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: [], now: T).alerts.map(\.kind), [.delayed],
+                       "bad data: no bus alert, the one 'Live data delayed' alert")
     }
 
     /// Like the web's `||`: an empty stop name falls back to "your station" / the stop id.
@@ -85,8 +86,9 @@ final class NotifyTests: XCTestCase, PlannerFixture {
                        ["Bus b1 to your station. Next stop: L1. Arrives in about 6 min (est.)."])
     }
 
-    /// Rider safety (web settings-notify.js): out-of-date data never alerts; delayed data says so.
-    func testOldDataSilencesAlertsAndLateDataIsLabeled() {
+    /// Rider safety (web settings-notify.js): out-of-date data never gives a bus alert but ONE "Live data delayed"
+    /// alert per outage (not before data was ever reached, not while the feed is paused); delayed data says so.
+    func testOldDataGivesOneDelayedAlertAndLateDataIsLabeled() {
         let S = StaticData(routes: ["LOOP": Route(id: "LOOP", long: "Loop")], stops: stops, routeStops: ["LOOP": routeStops["LOOP"]!])
         var l = LiveState()
         l.buses = [.on("LOOP", id: "b1", trip: "t1", ts: T, stopId: "L2")]
@@ -94,7 +96,20 @@ final class NotifyTests: XCTestCase, PlannerFixture {
         l.lastOk = T
         var prefs = NotifyPrefs(); prefs.stopId = "L3"
         l.feedTs = T - 400
-        XCTAssertEqual(Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: [], now: T).alerts, [])
+        let down = Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: [], now: T)
+        XCTAssertEqual(down.alerts.map(\.kind), [.delayed])
+        XCTAssertEqual(down.alerts.map(\.title), ["Live data delayed"])
+        XCTAssertEqual(down.alerts.map(\.body), ["Bus alerts are paused: bus positions may be off. Check the official app or call 773.702.8181."])
+        XCTAssertEqual(down.alerts.map(\.key), ["L3|delayed"])
+        XCTAssertEqual(Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: down.fired, now: T + 20).alerts, [], "once per outage")
+        XCTAssertEqual(Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: [], now: T, polling: false).alerts, [],
+                       "the feed is paused (app not in front): old data is not an outage")
+        var never = l; never.lastOk = 0
+        XCTAssertEqual(Notify.dueAlerts(prefs: prefs, staticData: S, live: never, hidden: [], fired: [], now: T).alerts, [], "never reached yet: nothing")
+        var fresh = l; fresh.feedTs = T - 5
+        let back = Notify.dueAlerts(prefs: prefs, staticData: S, live: fresh, hidden: [], fired: down.fired, now: T)
+        XCTAssertFalse(back.fired.contains("L3|delayed"), "fresh again: a later outage alerts again")
+        XCTAssertEqual(Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: back.fired, now: T + 60).alerts.map(\.kind), [.delayed])
         l.feedTs = T - 150
         let a = Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: [], now: T).alerts
         XCTAssertEqual(a.map(\.title), ["Loop: 1 stop away"])

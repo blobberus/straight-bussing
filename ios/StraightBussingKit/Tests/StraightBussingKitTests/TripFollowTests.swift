@@ -600,7 +600,7 @@ final class TripTextTests: XCTestCase {
     }
 
     func testOnBusArrivedSchedule() {
-        XCTAssertEqual(card("onbus").prim, "2 stops to Medical Center")
+        XCTAssertEqual(card("onbus").prim, "Get off in 2 stops: Medical Center", "the same words as the map and the trip alerts")
         XCTAssertTrue(card("onbus").sec[0].hasPrefix("Get off at Medical Center about "))
         let ar = TripFix.follow(TripFix.scene("arrived"))
         XCTAssertEqual(card("arrived").prim, "Walk 3 min to Medical Center Cafe")
@@ -645,7 +645,7 @@ final class TripTextTests: XCTestCase {
         XCTAssertEqual(walk.compactText(now: NOW), "3 stops · 7 min")
         XCTAssertTrue(walk.live)
         let on = try XCTUnwrap(TripFix.follow(TripFix.scene("onbus")).snapshot(staticData: TripFix.S, now: NOW))
-        XCTAssertEqual(on.stopsLeft, 2); XCTAssertEqual(on.target, NOW + 200); XCTAssertEqual(on.headline, "2 stops to Medical Center")
+        XCTAssertEqual(on.stopsLeft, 2); XCTAssertEqual(on.target, NOW + 200); XCTAssertEqual(on.headline, "Get off in 2 stops: Medical Center")
         XCTAssertEqual(on.busPosition ?? 9, 1.4, accuracy: 0.05)
         let sc = try XCTUnwrap(TripFix.follow(TripFix.scene("schedule")).snapshot(staticData: TripFix.S, now: NOW))
         XCTAssertEqual(sc.headlineLead, "Next RL at Ratner Center", "the widget adds a ticking timer to this")

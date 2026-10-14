@@ -181,12 +181,8 @@ struct TripProgressBar: View {
         .accessibilityLabel(Self.spoken(state))
     }
 
-    static func spoken(_ s: LiveTripSnapshot) -> String {
-        var t = "\(s.routeName). "
-        if let a = s.stopsAway { t += a == 0 ? "Bus arriving at \(s.boardName). " : "Bus \(a) stops from \(s.boardName). " }
-        if let l = s.stopsLeft { t += l == 0 ? "Get off at the next stop, \(s.alightName). " : "\(l) stops to \(s.alightName). " }
-        return t + "Times are estimates."
-    }
+    /// Kit `LiveTripSnapshot.spokenProgress`: the trip card's words for the same counts (unit-tested there).
+    static func spoken(_ s: LiveTripSnapshot) -> String { s.spokenProgress }
 }
 
 /// The footer line of the Lock Screen card and the expanded Dynamic Island: what the times rest on.

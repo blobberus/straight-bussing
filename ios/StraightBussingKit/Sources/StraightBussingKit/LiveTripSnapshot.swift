@@ -79,19 +79,29 @@ public struct LiveTripSnapshot: Codable, Hashable, Sendable {
         return (m < 1 ? "Now" : "\(m) min") + " as of " + TimeFmt.clock(asOf)
     }
 
-    /// Compact Dynamic Island text: "3 stops · 4 min" / "Next stop" / "2 left · 6 min".
+    /// Compact Dynamic Island text: "3 stops · 4 min" / "Next stop · 2 min" / "2 left · 6 min".
     public func compactText(now: Double) -> String {
         let m = minutes(now: now)
         let p = compactPrefix
         return p.isEmpty ? "\(m) min" : p + " · \(m) min"
     }
 
-    /// The stop part of the compact text ("3 stops", "Arriving", "2 left", "Next stop"; "" when unknown). The
-    /// Dynamic Island shows it next to a self-ticking timer instead of baked-in minutes.
+    /// The stop part of the compact text ("3 stops", "Arriving", "Get off", "Next stop", "2 left"; "" when unknown).
+    /// Same counts as the timeline, the map and the trip alerts (TripFollow: stopsLeft 0 = the bus is at your stop,
+    /// 1 = your stop is next). The Dynamic Island shows it next to a self-ticking timer instead of baked-in minutes.
     public var compactPrefix: String {
         if let a = stopsAway { return a == 0 ? "Arriving" : "\(a) stop\(a == 1 ? "" : "s")" }
-        if let l = stopsLeft { return l == 0 ? "Next stop" : "\(l) left" }
+        if let l = stopsLeft { return l <= 0 ? "Get off" : l == 1 ? "Next stop" : "\(l) left" }
         return ""
+    }
+
+    /// What VoiceOver reads for the progress bar ("Red Line. Bus 2 stops from Ratner Center. Times are estimates.",
+    /// "Red Line. Get off at the next stop: Medical Center. Times are estimates."), the trip card's words.
+    public var spokenProgress: String {
+        var t = "\(routeName). "
+        if let a = stopsAway { t += a == 0 ? "Bus arriving at \(boardName). " : "Bus \(a) stop\(a == 1 ? "" : "s") from \(boardName). " }
+        if let l = stopsLeft { t += TripText.offText(l, alightName) + ". " }
+        return t + "Times are estimates."
     }
 
     /// True when `other` shows the same thing: every field equal except `asOf`, and countdown targets within

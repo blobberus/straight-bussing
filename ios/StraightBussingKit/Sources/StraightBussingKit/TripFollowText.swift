@@ -25,6 +25,19 @@ public enum TripText {
         return m < 1 ? "now" : "in \(plural(m, "minute"))"
     }
 
+    /// The one sentence for the stops left on board (web core/tripyou.js offText), shared by the trip card, the map's
+    /// "You" marker, the trip alerts and the Live Activity: 0 = the bus is AT your stop, 1 = your stop is its next
+    /// stop, n = n stops to go counting yours (TripFollow `stopsLeft`).
+    public static func offText(_ stopsLeft: Int, _ alight: String) -> String {
+        stopsLeft <= 0 ? "Get off here: \(alight)" : stopsLeft == 1 ? "Get off at the next stop: \(alight)" : "Get off in \(stopsLeft) stops: \(alight)"
+    }
+
+    /// Short form for the map label at the alighting stop ("Get off in 2 stops"; no count: "Get off here").
+    public static func offShort(_ stopsLeft: Int?) -> String {
+        guard let n = stopsLeft else { return "Get off here" }
+        return n <= 0 ? "Get off here" : n == 1 ? "Get off next stop" : "Get off in \(n) stops"
+    }
+
     /// Where the followed bus is, in words ("Bus 101 is 3 stops away", "Bus 101 is between A and B").
     public static func busWords(_ leg: TripFollow.BusStep, now: Double) -> (status: String, location: String) {
         guard let v = leg.vehicle else { return ("", "") }
@@ -33,7 +46,7 @@ public enum TripText {
         if let s = leg.stopsAway {
             status = s == 0 ? (v.at ? "\(who) is at \(b)" : "\(who) is approaching \(b)") : "\(who) is \(plural(s, "stop")) away"
         } else if let l = leg.stopsLeft {
-            status = l == 0 ? "Get off here: \(a)" : l == 1 ? "Get off at the next stop: \(a)" : "\(plural(l, "stop")) to \(a)"
+            status = offText(l, a)
         }
         var whereText = v.at ? "\(who) is at \(v.nextName)"
             : v.prevName.map { "\(who) is between \($0) and \(v.nextName)" } ?? "\(who) is heading to \(v.nextName)"
