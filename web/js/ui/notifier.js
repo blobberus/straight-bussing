@@ -8,12 +8,18 @@
  * (data/live.js keepAlive, background()), so the notification can actually come; browsers may throttle it.
  * Nothing runs once the page is closed (iOS Safari has no Notification API outside installed web apps); the
  * iPhone app does lock-screen alerts and a Live Activity with the same core/notify.js logic.
+ * Trip alerts (2026-10-13): during a started trip, core/notify.js tripAlerts on the SAME trip evaluation the
+ * Current trip card and the map use (core/tripprogress.js tripNow): "Bus 101 is 2 stops away", "Get off in 2
+ * stops: X", "Get off at the next stop: X"; station alerts pause meanwhile. System notifications end with
+ * "Unofficial." (requirement: every notification says so).
  */
 import { bus } from "../core/events.js";
 import { nowS } from "../core/time.js";
-import { dueAlerts } from "../core/notify.js";
+import { dueAlerts, tripAlerts, tripAlertsOn } from "../core/notify.js";
+import { tripNow } from "../core/tripprogress.js";
 
-const WATCH = ["buses", "trips", "feedTs", "lastOk", "failed", "notify", "hiddenRoutes", "journey", "staticLoaded"];
+const WATCH = ["buses", "trips", "feedTs", "lastOk", "failed", "notify", "hiddenRoutes", "journey", "staticLoaded", "user"];
+const UNOFFICIAL = " Unofficial.";
 
 /**
  * Browser notification support: 'unsupported' | 'default' | 'granted' | 'denied'.
@@ -72,13 +78,14 @@ function systemNotify(a) {
 }
 
 /**
- * Start watching. Fires alerts for the station in store.notify while the page is open.
+ * Start watching. Fires alerts for the station in store.notify and for a started trip while the page is open.
  * @param {{get():object, subscribe(fn:(s:object, changed:Set<string>)=>void):()=>void}} store
- * @param {{toast?:(text:string)=>void, now?:()=>number, notify?:(a:object)=>boolean, front?:()=>boolean, perm?:()=>string}} [opts]
+ * @param {{toast?:(text:string)=>void, now?:()=>number, notify?:(a:object)=>boolean, front?:()=>boolean, perm?:()=>string, polling?:()=>boolean}} [opts]
  *   toast defaults to the app bus 'toast' event; now / notify (returns false when it could not show) / front /
- *   perm (notificationSupport) are test seams
+ *   perm (notificationSupport) / polling (the live feed is being polled: page visible, or kept alive) are test seams
  * @returns {{stop():void, check():Array, fired():Set<string>, background():boolean}} background(): an alert
- *   station is set and system notifications are allowed (main.js keeps polling in a background tab then)
+ *   station is set or a trip with trip alerts is in progress, and system notifications are allowed (main.js keeps
+ *   polling in a background tab then)
  */
 export function startNotifier(store, opts = {}) {
   const toast = typeof opts.toast === "function" ? opts.toast : (text) => bus.emit("toast", { text });
@@ -86,29 +93,41 @@ export function startNotifier(store, opts = {}) {
   const sys = typeof opts.notify === "function" ? opts.notify : systemNotify;
   const front = typeof opts.front === "function" ? opts.front : inFront;
   const perm = typeof opts.perm === "function" ? opts.perm : notificationSupport;
-  let fired = new Set(), station = null;
+  let fired = new Set(), station = null, tFired = new Set(), tripK = null;
+  const planOf = (s) => (s && s.journey && s.journey.kind === "plan" ? s.journey : null);
+  const tripOn = (s) => { try { return !!planOf(s) && tripAlertsOn(tripNow(s, now()), s); } catch (e) { return false; } };
+  const background = () => { const s = store.get(); return !!(s.notify?.stopId || tripOn(s)) && perm() === "granted"; };
+  const polling = typeof opts.polling === "function" ? opts.polling
+    : () => { try { return document.visibilityState !== "hidden" || background(); } catch (e) { return true; } };
 
   function check() {
     const s = store.get();
-    const sid = s.notify && s.notify.stopId;
+    const sid = s.notify && s.notify.stopId, j = planOf(s);
     if (sid !== station) { station = sid; fired = new Set(); }   // new station: start fresh
-    if (!sid || !s.staticLoaded) return [];
-    let res;
-    try { res = dueAlerts(s, fired, now()); } catch (e) { console.error("notifier", e); return []; }
-    fired = res.fired;
+    const jk = j ? `${j.t0 ?? ""}|${j.label || ""}` : null;
+    if (jk !== tripK) { tripK = jk; tFired = new Set(); }        // new trip: start fresh
+    if (!s.staticLoaded || !s.notify || (!sid && !j)) return [];
+    let alerts;
+    try {
+      const t = now(), poll = polling(), p = j ? tripNow(s, t) : null;
+      const tr = tripAlerts(p, s, tFired, t, { polling: poll });
+      tFired = tr.fired;
+      const st = sid ? dueAlerts(s, fired, t, { tripOn: tripAlertsOn(p, s), polling: poll }) : { alerts: [], fired };
+      fired = st.fired;
+      alerts = [...tr.alerts, ...st.alerts];
+    } catch (e) { console.error("notifier", e); return []; }
     const inApp = s.notify.inApp !== false;
-    for (const a of res.alerts) {
+    for (const a of alerts) {
       const how = deliveryFor({ front: front(), perm: perm(), inApp });
-      if (how === "system" && sys(a)) continue;                      // shown by the system: no banner too
+      if (how === "system" && sys({ ...a, body: a.body + UNOFFICIAL })) continue;   // shown by the system (and said unofficial there): no banner too
       if (how !== "none" && inApp) toast(`${a.title}. ${a.body}`);   // the banner, or the fallback when the system one failed
     }
-    return res.alerts;
+    return alerts;
   }
 
   const off = store.subscribe((s, changed) => {
     if (!changed || WATCH.some((k) => changed.has(k))) check();
   });
   check();
-  return { stop: () => off && off(), check, fired: () => new Set(fired),
-    background: () => !!store.get().notify?.stopId && perm() === "granted" };
+  return { stop: () => off && off(), check, fired: () => new Set([...fired, ...tFired]), background };
 }

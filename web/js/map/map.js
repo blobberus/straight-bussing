@@ -12,7 +12,8 @@ import { createNetworkLayer, createBusLayer, sig } from './layers.js';
 import { createFavoritesLayer } from './favorites.js';
 import { createCredits } from './credits.js';
 import { alongShape, normLatLngs, toLatLng } from './geometry.js';
-import { safeColor } from '../core/esc.js';
+import { safeColor, esc } from '../core/esc.js';
+import { offShort } from '../core/tripyou.js';
 
 const CAMPUS = [41.7897, -87.5997];
 const PAD = 24;           // side padding for fits
@@ -42,7 +43,8 @@ function planSig(o) {
  * Create the map inside element `elId`.
  * @param {string} elId
  * @returns {object} MapApi: setTheme, setBottomInset, drawNetwork, drawBuses, setSelectedStop, drawFavorites,
- *   setUser, highlightStops, drawPlan, fitTo, flyTo, onStopTap, onBusTap, onUserMove, onMapTap (+ `leaflet` escape hatch)
+ *   setUser, highlightStops, drawPlan, setTrip, inView, fitTo, flyTo, onStopTap, onBusTap, onUserMove, onMapTap
+ *   (+ `leaflet` escape hatch)
  */
 export function createMap(elId) {
   const L = window.L;
@@ -61,7 +63,45 @@ export function createMap(elId) {
   const buses = createBusLayer(map, { onBusTap: (info) => busTap.emit(info) });
   const favs = createFavoritesLayer(map, { onStopTap: (id) => stopTap.emit(id) });
   const selG = L.layerGroup().addTo(map), hlG = L.layerGroup().addTo(map), planG = L.layerGroup().addTo(map);
+  const labG = L.layerGroup().addTo(map);
   let selSig = '', selStop = null, hlSig = '', planS = null, planPts = [], hlPick = null, me = null, meAcc = null;
+  let you = null, youMk = null, youS = '', labS = '';
+
+  /**
+   * You on the trip (setTrip): on the bus = ring + "You" on its marker (the GPS dot steps back: same place, or
+   * worse); a bus not drawn (another route in focus) or the boarding stop as a guess = a marker of its own; GPS =
+   * the normal dot. Labels on your stops: "Board here" before boarding, the get-off count on board.
+   */
+  function renderYou() {
+    const y = you, ll = y ? toLatLng(y) : null;
+    const onBus = !!(y && y.onBus && ll);
+    const busDrawn = buses.setYou(onBus ? y.vehicleId : null);
+    el.classList.toggle('sb-you-onbus', onBus);
+    const kind = !ll || y.source === 'gps' || (onBus && busDrawn) ? '' : y.source === 'stop' ? 'stop' : 'bus';
+    const s = kind ? sig(kind, ll[0], ll[1], y.text) : '';
+    if (s !== youS) {
+      youS = s;
+      youMk?.remove(); youMk = null;
+      if (kind) {
+        const pill = kind === 'stop' ? 'You (est.)' : 'You';
+        youMk = L.marker(ll, { icon: L.divIcon({ className: 'sb-youicon', iconSize: [20, 20], iconAnchor: [10, 10],
+          html: `<div class="sb-you sb-you--${kind}" title="${esc(y.text)}"><span class="sb-you-dot"></span><span class="sb-you-pill">${esc(pill)}</span></div>` }),
+        interactive: false, keyboard: false, zIndexOffset: 650 }).addTo(map);
+      }
+    }
+    const labs = [];
+    const before = y && (y.phase === 'walk-to-stop' || y.phase === 'waiting');
+    if (before && y.board && y.board.lat != null) labs.push({ p: y.board, t: 'Board here', k: 'board' });
+    if (y && y.phase !== 'arrived' && y.alight && y.alight.lat != null) labs.push({ p: y.alight, t: y.phase === 'on-bus' ? offShort(y.stopsLeft) : 'Get off here', k: 'off' });
+    const ls = labs.map((x) => sig(x.k, x.p.lat, x.p.lon, x.t)).join(';');
+    if (ls === labS) return;
+    labS = ls;
+    labG.clearLayers();
+    for (const x of labs) {
+      L.marker([x.p.lat, x.p.lon], { icon: L.divIcon({ className: 'sb-tlabelicon', iconSize: [0, 0], iconAnchor: [0, 0],
+        html: `<span class="sb-tlabel sb-tlabel--${x.k}">${esc(x.t)}</span>` }), interactive: false, keyboard: false, zIndexOffset: 300 }).addTo(labG);
+    }
+  }
 
   /** (Re)draw the selection ring; a favorite gets a wider, unfilled ring around its star badge. */
   function renderSel() {
@@ -142,7 +182,30 @@ export function createMap(elId) {
      * @param {Array} list store.buses
      * @param {{routes, hidden?:string[], focus?:string[]|null, nowS?:number}} o
      */
-    drawBuses(list, o = {}) { buses.draw(list, o); },
+    drawBuses(list, o = {}) { buses.draw(list, o); if (you) renderYou(); },
+
+    /**
+     * You on the started trip (core/tripyou.js tripYou; null clears): the "You" marker and the labels on your
+     * boarding / alighting stops, with the same stop count as the Current trip card and the trip alerts.
+     * Cheap to call on every store change (redraws only what changed).
+     * @param {object|null} y tripYou result
+     */
+    setTrip(y) {
+      you = y && typeof y === 'object' ? y : null;
+      renderYou();
+    },
+
+    /**
+     * Are all these points inside the visible map (above the sheet, inside the padding fits use)?
+     * @param {Array} points [[lat, lon]] or [{lat, lon}]
+     * @returns {boolean|null} null when the sheet covers almost all of the map (nothing to keep in view)
+     */
+    inView(points) {
+      const pts = flatPoints(points), size = map.getSize();
+      if (size.y - inset - TOP_PAD < 200) return null;
+      const maxX = size.x - PAD, maxY = size.y - inset - PAD;
+      return pts.every((p) => { const c = map.latLngToContainerPoint(p); return c.x >= PAD && c.x <= maxX && c.y >= TOP_PAD && c.y <= maxY; });
+    },
 
     /**
      * Accent ring (+ name label when given) on the selected stop. On a favorite the ring widens to

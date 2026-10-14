@@ -85,6 +85,14 @@ if (q.get('plan') !== '0') {
   if (focus && shapes[focus[0]]) api.fitTo(shapes[focus[0]].flat(), { maxZoom: 16, animate: false });
   else api.flyTo(st(seq[4]), 16);
 }
+// &trip=1: you on the bus (MapApi.setTrip): ring + "You" on its marker, the get-off count on your stop; &trip=wait: before boarding
+if (q.get('trip')) {
+  const a = st(seq[4]), b = st(seq[5]), lat = (a.lat + b.lat) / 2, lon = (a.lon + b.lon) / 2;
+  buses.push({ vehicle: { id: 'mine', label: '101' }, trip: { route_id: rid }, position: { latitude: lat, longitude: lon, bearing: bearingDeg([a.lat, a.lon], [b.lat, b.lon]) }, timestamp: now - 5 });
+  api.drawBuses(buses, { routes, hidden: [], focus, nowS: now });
+  if (q.get('trip') === 'wait') api.setTrip({ phase: 'waiting', active: 1, source: 'stop', onBus: false, vehicleId: 'mine', label: '101', stopsAway: 2, stopsLeft: null, board, alight, lat: board.lat, lon: board.lon, text: 'Waiting at ' + board.name + '.', frame: [] });
+  else api.setTrip({ phase: 'on-bus', active: 1, source: 'bus', onBus: true, vehicleId: 'mine', label: '101', stopsAway: null, stopsLeft: 3, board, alight, lat, lon, text: 'You are on Bus 101. Get off in 3 stops: ' + alight.name, frame: [] });
+}
 // diagnostics for headless runs: style layer count + maplibre errors end up in the title
 const diag = { layers: 0, errors: [] };
 api.leaflet.eachLayer((l) => {

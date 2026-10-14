@@ -56,13 +56,18 @@ export function journeyLegs(o, toLabel) {
  * `legs` (journeyLegs). Not persisted.
  * @param {object|null} o planner Option
  * @param {string} [toLabel] destination name
- * @returns {{rids:string[], label:string, kind:'plan', to:string, t0:number|null, legs:Array<object>}|null}
+ * @returns {{rids:string[], label:string, kind:'plan', to:string, t0:number|null, legs:Array<object>, dest?:{lat:number, lon:number}}|null}
+ *   dest: the destination point (core/tripyou.js frames it on the map after the last bus)
  */
 export function planJourney(o, toLabel) {
   const rids = optionRids(o);
   if (!rids.length) return null;
   const to = toLabel || "destination";
-  return { rids, label: "To " + to, kind: "plan", to, t0: numOr(o && o.t0), legs: journeyLegs(o, to) };
+  const j = { rids, label: "To " + to, kind: "plan", to, t0: numOr(o && o.t0), legs: journeyLegs(o, to) };
+  const legs = (o && o.legs) || [], last = legs[legs.length - 1];
+  const d = (last && (last.type === "walk" ? last.to : last.alight)) || (o && o.to) || null;
+  if (d && numOr(Number(d.lat)) != null && numOr(Number(d.lon)) != null && d.lat !== null && d.lon !== null) j.dest = { lat: Number(d.lat), lon: Number(d.lon) };
+  return j;
 }
 
 /**

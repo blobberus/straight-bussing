@@ -236,6 +236,35 @@ export function createBusLayer(map, cb) {
   const L = window.L;
   const group = L.layerGroup().addTo(map);
   const markers = new Map(); // vehicle id -> {rid, color, label, mk, s, ll}
+  let youId = null;          // the bus you ride (Current trip): ring + "You" pill on its marker
+
+  /** Mark (or unmark) a bus marker as the one you are on: it moves with the bus, glide included. */
+  function markYou(m, on) {
+    const el = m.mk.getElement()?.firstElementChild;
+    m.mk.setZIndexOffset(on ? 700 : 500);
+    if (!el) return;
+    el.classList.toggle('is-you', on);
+    const ring = el.querySelector('.sb-you-ring');
+    if (on && !ring) {
+      const r = document.createElement('span'); r.className = 'sb-you-ring'; r.setAttribute('aria-hidden', 'true');
+      const t = document.createElement('span'); t.className = 'sb-you-pill'; t.textContent = 'You';
+      el.append(r, t);
+    } else if (!on && ring) { ring.remove(); el.querySelector('.sb-you-pill')?.remove(); }
+    m.mk.getElement()?.setAttribute('title', on ? `You are on this Route ${m.label} bus` : `Route ${m.label} bus`);
+  }
+
+  /** The bus you are on (vehicle id) or null. @returns {boolean} that bus is drawn */
+  function setYou(id) {
+    const k = id == null ? null : String(id);
+    if (k !== youId) {
+      const old = youId != null ? markers.get(youId) : null;
+      if (old) markYou(old, false);
+      youId = k;
+      const m = k != null ? markers.get(k) : null;
+      if (m) markYou(m, true);
+    }
+    return k != null && markers.has(k);
+  }
 
   function draw(buses, o = {}) {
     const now = o.nowS ?? Date.now() / 1000;
@@ -268,6 +297,7 @@ export function createBusLayer(map, cb) {
         mk.addTo(group);
         m = { rid, color, label, mk, s: '', ll: [lat, lon], brg: NaN };
         markers.set(key, m);
+        if (key === youId) markYou(m, true);
       } else if (m.ll[0] !== lat || m.ll[1] !== lon) {
         const icon = m.mk.getElement();
         const jump = map.distance(m.ll, [lat, lon]) > SNAP_M;
@@ -292,5 +322,5 @@ export function createBusLayer(map, cb) {
     }
     return changed;
   }
-  return { draw };
+  return { draw, setYou };
 }

@@ -24,6 +24,7 @@ import { createPill } from "./ui/pill.js";
 import { registerContextActions, mountContextBar } from "./ui/contextbar.js";
 import { initFrame } from "./ui/frame.js";
 import { isSettingsOpen, closeSettingsOverlay } from "./ui/settings-overlay.js";
+import { startTripMap } from "./ui/tripmap.js";
 
 /** Every view module; each calls registerView() at import time. */
 export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes", "settings"]);
@@ -31,7 +32,7 @@ export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "ale
 const OPTIONAL_VIEWS = new Set(["settings"]);
 const RENDER_TICK_MS = 15000;
 const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "setSelectedStop", "setUser",
-  "highlightStops", "drawPlan", "drawFavorites", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove", "onMapTap"];
+  "highlightStops", "drawPlan", "drawFavorites", "setTrip", "inView", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove", "onMapTap"];
 const VIS_KEYS = ["hiddenRoutes", "routeFilter", "view", "routeId", "routeOrder", "journey", "activeCustom", "customRoutes"];
 const NET_KEYS = ["routes", "shapes", "routeStops", "stopRoutes", "stops", "theme", ...VIS_KEYS];
 const BUS_KEYS = ["buses", "feedTs", "routes", ...VIS_KEYS];
@@ -43,7 +44,7 @@ const el = {
   pill: $("pill"), pillText: $("pillText"), pillRetry: $("pillRetry"), dlg: $("dlg"), toast: $("toast"), locate: $("locateBtn"),
 };
 const bootS = nowS();
-let map = null, sheet = null, live = null, ctx = null, notifier = null;
+let map = null, sheet = null, live = null, ctx = null, notifier = null, tripMap = null;
 const pill = createPill({ pill: el.pill, text: el.pillText, retry: el.pillRetry, app: el.app }, { bootS, demo: DEMO });
 
 /* ---------------- toast + global errors ---------------- */
@@ -156,6 +157,12 @@ function locate() {
   return locating;
 }
 async function onLocateFab() {
+  if (tripMap?.active?.()) {   // during a trip: show you in the trip again (follow), asking for the location if unknown
+    tripMap.recenter();
+    const s = store.get();
+    if (!s.user && s.locState !== "denied") { el.locate.setAttribute("aria-busy", "true"); const okv = await locate(); el.locate.removeAttribute("aria-busy"); if (okv) tripMap.recenter(); }
+    return;
+  }
   el.locate.setAttribute("aria-busy", "true");
   const okv = await locate();
   el.locate.removeAttribute("aria-busy");
@@ -363,6 +370,7 @@ async function boot() {
   store.subscribe((s, changed) => { syncMap(s, changed); scheduleRender(); syncHistory(); });
   render();
   syncMap(store.get(), null);
+  tripMap = startTripMap(store, map);   // you in the started trip + follow camera (same evaluation as the card and alerts)
   if (!DEMO) import("./ui/notifier.js").then((m) => { notifier = m.startNotifier?.(store, { toast }) || null; }).catch(() => {});   // bus-near alerts while the page is open
 
   setInterval(() => {
@@ -370,6 +378,7 @@ async function boot() {
     render();
     if (cur.def && cur.def.mount && typeof cur.def.refresh === "function") safe(() => cur.def.refresh(), null);
     syncMap(store.get(), new Set(["buses"]));
+    tripMap?.sync();
   }, RENDER_TICK_MS);
 
   try {

@@ -16,7 +16,8 @@
  */
 import { esc, safeColor, textOn } from "../../core/esc.js";
 import { nowS, clock, minsUntil, ago } from "../../core/time.js";
-import { tripProgress } from "../../core/tripprogress.js";
+import { tripNow } from "../../core/tripprogress.js";
+import { tripYou, legStatus, busName } from "../../core/tripyou.js";
 import { routeChip, etaBlock, officialLinks } from "../components.js";
 import { isPlanJourney, tripBarHTML } from "./journey.js";
 import { WALK_IC, tag, walkMins, catchNote } from "./tripinfo.js";
@@ -37,7 +38,6 @@ function slideFrom(key, top, now) {
 export function resetTripMotion() { motion.clear(); }
 
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
-const busName = (v) => (v && v.label ? `Bus ${v.label}` : "The bus");
 /** "4 min" / "Now" (with "~" while live data is delayed), like the route detail timeline. */
 export function etaText(t, now, late) {
   if (!t) return "";
@@ -55,10 +55,8 @@ const inMin = (t, now) => { const m = minsUntil(t, now); return m < 1 ? "now" : 
 export function busWords(leg, now) {
   const v = leg.vehicle;
   if (!v) return { status: "", where: "" };
-  const who = busName(v), b = leg.board.name, a = leg.alight.name;
-  let status = "";
-  if (leg.stopsAway != null) status = leg.stopsAway === 0 ? (v.at ? `${who} is at ${b}` : `${who} is approaching ${b}`) : `${who} is ${plural(leg.stopsAway, "stop")} away`;
-  else if (leg.stopsLeft != null) status = leg.stopsLeft === 0 ? `Get off here: ${a}` : leg.stopsLeft === 1 ? `Get off at the next stop: ${a}` : `${plural(leg.stopsLeft, "stop")} to ${a}`;
+  const who = busName(v);
+  const status = legStatus(leg);   // the same words as the map label and the trip alerts (core/tripyou.js)
   let where = v.at ? `${who} is at ${v.nextName}` : v.prevName ? `${who} is between ${v.prevName} and ${v.nextName}` : `${who} is heading to ${v.nextName}`;
   if (v.stale && v.seen) where += `, location from ${ago(v.seen, now)}`;
   return { status, where };
@@ -68,7 +66,7 @@ export function busWords(leg, now) {
 const missedNote = (leg) => (leg.vehicle ? "Your planned bus has left. Showing the next one." : "Your planned bus has left.");
 
 /** One-glance status card for the current phase. */
-function nowCard(p, state, now) {
+function nowCard(p, state, now, you) {
   const leg = p.legs[p.active], late = !!p.stale;
   let ic = "", prim = "", sec = [], right = "";
   if (p.phase === "arrived") {
@@ -91,8 +89,11 @@ function nowCard(p, state, now) {
       if (leg.missed) sec.push(missedNote(leg));
     } else {
       prim = w.status || `Riding to ${leg.alight.name}`;
-      sec.push(`Get off at ${leg.alight.name}${leg.alightEta ? ` about ${clock(leg.alightEta)}${leg.alightLive ? "" : ", est."}` : ""}`);
+      const when = leg.alightEta ? ` about ${clock(leg.alightEta)}${leg.alightLive ? "" : ", est."}` : "";
+      if (w.status) { if (when) sec.push(`Reach ${leg.alight.name}${when}`); }
+      else sec.push(`Get off at ${leg.alight.name}${when}`);
     }
+    if (you && you.far) sec.push(you.text);   // you may not be on the bus the counts follow (rider safety)
     if (!leg.live) sec.push(leg.byTime ? "No live bus data: following the plan's times (estimate)." : "No live bus position right now.");
     const t = p.phase === "on-bus" ? leg.alightEta : leg.boardEta;
     const live = p.phase === "on-bus" ? leg.alightLive : leg.boardLive;
@@ -193,7 +194,7 @@ export function tripProgressHTML(state, now = nowS(), opts = {}) {
   if (!isPlanJourney(state)) return "";
   const steps = '<button type="button" class="v-btn v-btn--secondary tp-steps-btn" data-action="nav" data-view="directions">Trip steps</button>'
     + (typeof opts.actionsHTML === "string" ? opts.actionsHTML : "");
-  const p = tripProgress(state.journey, state, now);
+  const p = tripNow(state, now);   // the same evaluation as the map's You marker and the trip alerts
   if (!p) return tripBarHTML(state) + `<div class="tp-acts">${steps}</div>`;
   const left = p.arriveT ? Math.max(0, Math.round((p.arriveT - now) / 60)) : null;
   const arrive = p.arriveT ? `Arrive about ${esc(clock(p.arriveT))}${left != null && p.phase !== "arrived" ? ` · ${left < 1 ? "under a minute" : left + " min"}` : ""} ${tag("est.")}` : "Arrival time unknown";
@@ -201,7 +202,7 @@ export function tripProgressHTML(state, now = nowS(), opts = {}) {
     + `<div class="tp-head"><span class="v-grow"><span class="tp-title" tabindex="-1">${esc("Trip to " + p.to)}</span><span class="v-sec tp-arrive">${arrive}</span></span>`
     + `<button type="button" class="v-btn v-btn--secondary tp-end" data-action="journey:end">End trip</button></div>`;
   if (p.stale === "old" || p.stale === "err") h += '<p class="v-stale" role="status">Live data delayed. Bus position and times may be off.</p>';
-  h += nowCard(p, state, now);
+  h += nowCard(p, state, now, tripYou(p, state));
   h += '<ol class="tp-steps" aria-label="Trip timeline">';
   p.legs.forEach((l, i) => { h += l.type === "walk" ? walkHTML(l, p.legs, i, now) : busHTML(l, i, p, state, now); });
   h += `<li class="tp-step tp-dest${p.phase === "arrived" ? " is-active" : ""}">${PIN}<span class="v-grow"><span class="tp-wt">${esc(p.to)}</span>`

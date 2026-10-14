@@ -38,6 +38,8 @@ import { matchStations, ICONS } from "./pick.js";
 import { noBusHelpHTML } from "./alerts.js";   // the operator's own words + who to call when no bus reports (rider safety)
 import { createPlaceSearch, assumeNoteHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
 import { planJourney, sameRids, isPlanJourney, tripBarHTML } from "./journey.js";
+import { notificationSupport, requestPermission } from "../notifier.js";
+import { DEMO } from "../../core/demo.js";
 import { WALK_IC, tag, mins, walkMins, walkTotal, optionLines, stepsHTML as stepsFor } from "./tripinfo.js";
 
 /** The required estimate note under the options. */
@@ -251,6 +253,9 @@ export function startTrip() {
   const j = planJourney(D.result?.options?.[D.sel], D.to?.label);
   if (!j || !ctxRef?.store) return false;
   ctxRef.store.set({ journey: j });
+  // trip alerts (2026-10-13): Start is when to ask (conversion to appstore.md section 7), only if never answered,
+  // straight from the tap (browsers ask only for a user gesture); without it alerts are an in-app banner
+  if (!DEMO && ctxRef.store.get().notify?.trip !== false && notificationSupport() === "default") requestPermission().catch(() => {});
   drawSel(true);
   let moved = false;
   try { moved = ctxRef.navigate?.("nearby", { detent: "full" }) === true; } catch (e) { moved = false; }

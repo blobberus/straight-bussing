@@ -293,7 +293,44 @@ State (state.js, persisted): `notify: {stopId|null, rids:[] /* empty = any visib
 stopsAway(state, stopId, rid?): [{rid, tripId, vehicleId, stopsAway:int, etaS:unixS|null, nextStopId, nextStopName}]  // from buses + trips + routeStops; loops wrap
 dueAlerts(state, prevFired:Set<string>, nowS): {alerts:[{key, kind:'twoStops'|'oneStop'|'minutes', title, body}], fired:Set}   // dedup per trip+kind
 liveStatus(state, nowS): {title, minutes, nextStop, stopsAway}|null   // what a lock-screen Live Activity would show
+dueAlerts(state, fired, nowS, {tripOn, polling})   // 2026-10-13: nothing while tripOn; data down -> ONE {kind:'delayed'} per outage
+tripAlerts(p, state, fired, nowS, {polling}): {alerts:[{key, kind:'board2'|'board1'|'boardMin'|'off2'|'off1'|'delayed', title, body}], fired}
+tripAlertsOn(p, state): boolean   // a started trip (not arrived) with notify.trip on
 ```
+
+### You on the trip map + trip alerts (2026-10-13, owner: "the Current Trip map should show the user's location in the current trip's location (especially for bus routes). Make this sync to the notification center's get off in X stops")
+ONE evaluation of the followed trip per data change, `core/tripprogress.js tripNow(state, nowS)` (memo: same journey,
+buses, trips, user, stops, routeStops, feed fields and `now` within `TRIP.MEMO_S` 10 s), feeds the Current trip card
+and timeline (ui/views/tripprogress.js), the map (ui/tripmap.js) and the alerts (ui/notifier.js): they can never show
+different stop counts. One wording, `core/tripyou.js`: `offText(stopsLeft, alight)` "Get off here: X" / "Get off at the
+next stop: X" / "Get off in N stops: X" (card, alert title, Settings line), `offShort` for the map label, `legStatus(leg)`
+(before boarding "Bus 101 is 2 stops away" / "is approaching X" / "is at X"; on board offText).
+```js
+// core/tripyou.js (pure; iOS Kit TripYou.swift ports it 1:1)
+YOU = {FAR_M:300, GPS_ACC_M:100, NEAR_BUS_STOPS:3}
+tripYou(p, state): null | {phase, active, lat, lon /* null = unknown, no marker */, source:'bus'|'gps'|'stop'|null, onBus, far,
+  vehicleId, label, busLat, busLon, stopsAway, stopsLeft, board, alight, target:{id, name, lat, lon, role:'board'|'alight'|'dest'}|null,
+  frame:[[lat, lon]...], text}
+// on the bus: the bus position (onBus), unless your accurate GPS is > FAR_M (+ accuracy) from it: your GPS, far:true
+// ("Your location is not near Bus 101. Stop counts follow the bus." on the card); walking: your GPS; waiting: GPS, else
+// the boarding stop (source 'stop', drawn dashed "You (est.)"); arrived: GPS; target = boarding / alighting stop /
+// journey.dest (planJourney writes it)
+```
+Map (`MapApi.setTrip(you)`, `MapApi.inView(points)` -> true/false, null when the sheet covers the map): on the bus an
+accent ring + "You" pill on the bus marker itself (it glides with the bus) and the GPS dot steps back (`.sb-you-onbus`);
+a marker of its own when the bus is not drawn or for the boarding-stop guess; labels "Board here" (under the stop)
+and the get-off count `offShort` (above the alighting stop). `ui/tripmap.js startTripMap(store, map)`: follow camera
+on at Start and via the locate button during a trip (`recenter`), off when the rider drags or zooms; frames
+`you.frame` on a phase / leg change or when a framed point leaves the view (not within 2 s of the last fit), waits
+while the sheet covers the map and frames on the next `sheet:inset`.
+Alerts: `notify.trip` (default true, Settings > Bus alerts "Trip alerts"); the 2 stops / 1 stop / minutes / in-app choices
+time station and trip alerts alike and show without a station. Keys: board kinds per (trip, leg, followed vehicle),
+off kinds per (trip, leg) (a trip id roll never repeats them). Station alerts pause while `tripAlertsOn` (Settings
+status "Paused during your trip: alerts follow your trip's bus."). Live data down (err / old) after data was reached
+and while the page polls: one "Live data delayed" alert per outage (requirement conversion to appstore.md section 7).
+System notifications end with " Unofficial."; Start asks for notification permission once (`Notification.permission`
+'default', from the tap). Polling stays on in a background tab when a station or a trip with trip alerts is armed and
+notifications are allowed (`startNotifier().background()`).
 Web: `ui/notifier.js` (SETTINGS) watches the store while the page is open and delivers ONE alert per trip + kind (2026-10-10, `deliveryFor({front, perm, inApp})`): the in-app banner (bus 'toast') while the page is visible and focused, a silent browser Notification (service-worker `showNotification` fallback) while it is in the background and the user allowed them; a notification that cannot show falls back to the banner; the "In-app alerts while open" switch turns the banner off. `startNotifier(...).background()` (station set + permission granted) makes main.js keep polling in a background tab (`startLive` keepAlive). Settings wording follows iOS (permission lines "Alerts show as a banner while you use the app, and as a notification while it is open in the background." / "Notifications are off" + why; footer "Alerts work only while Straight Bussing is open; ..."); it never claims to work once the page is closed. Settings is a modal overlay (`ui/settings-overlay.js`, SETTINGS) opened and toggled by the top-right gear (action `settings:open`): it lifts the sheet to "full" and covers the WHOLE sheet (grab, title, tabs: owner wants nothing of Plan Trip to look like part of Settings), a scrim (`.sto-scrim`) dims what is still visible behind it and closes Settings on tap, the sheet header and content are inert; "Done" top right; also covers the bottom navigation (`#tabs` inert, `navBottom` in `overlayBox`); closes on Escape / navigation / the sheet leaving full, traps focus and restores the previous detent. View id `settings` is a compatibility shim only.
 | SETTINGS | ui/views/settings.js, ui/settings-overlay.js, ui/notifier.js, core/notify.js, css/settings.css, tests/settings-* + settings.test.html |
 | IPHONE | `conversion to appstore.md`, docs/IOS.md, docs/APPSTORE.md |

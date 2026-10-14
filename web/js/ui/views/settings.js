@@ -5,6 +5,8 @@
  * appearance (ui/theme.js mount), service alerts inline, bus alerts ("notify me when my bus is near
  * <station>": station, routes, 2 stops / 1 stop / N min; ONE alert each, a banner while the app is in front or a
  * system notification in the background when allowed, ui/notifier.js deliveryFor; wording as iOS SettingsView),
+ * trip alerts (2026-10-13: during a started trip, before the bus comes and before you get off, with the count
+ * the Current trip card and the map show; the 2 stops / 1 stop / minutes choices apply to both),
  * the iPhone-only Live Activity preference, and About. Owns its DOM after mount (regions patched in
  * place, focus kept) so the station search field and checkboxes never lose a tap or keystroke.
  * The router view id "settings" is kept only as a compatibility shim: navigating to it goes back and
@@ -18,7 +20,9 @@ import { nowS, clock, shortDate, sameDay } from "../../core/time.js";
 import { nearestStops } from "../../core/geo.js";
 import { activeAlerts, alertText, staleLevel } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
-import { liveStatus, watchedRoutes, minutesText, stopsAway } from "../../core/notify.js";
+import { liveStatus, watchedRoutes, minutesText, stopsAway, tripAlertsOn } from "../../core/notify.js";
+import { tripNow } from "../../core/tripprogress.js";
+import { legStatus } from "../../core/tripyou.js";
 import { cleanNotify } from "../../state.js";
 import { DEMO } from "../../core/demo.js";
 import { routeChip, officialLinks } from "../components.js";
@@ -181,17 +185,46 @@ export function stationHTML(state, u = ui) {
  */
 export function optsHTML(state) {
   const n = N(state);
-  if (!n.stopId || !state.stops?.[n.stopId]) return "";
+  if (!n.stopId || !state.stops?.[n.stopId]) return kindsHTML(n);   // trip alerts use the same choices
   const serve = (state.stopRoutes?.[n.stopId] || []).map(String);
   const hidden = new Set(effectiveHidden(state)), watched = new Set(watchedRoutes(state));
   let h = `<fieldset class="v-card st-routes"><legend class="v-sec st-label">Routes${n.rids.length ? "" : " (any visible route)"}</legend>`;
   h += serve.map((r) => `<label class="st-check"><input type="checkbox" data-st-in="rid" data-id="${esc(r)}" data-key="rid-${esc(r)}"${watched.has(r) ? " checked" : ""}>${routeChip(r, state.routes)}<span class="v-grow v-prim">${esc(state.routes?.[r]?.long || state.routes?.[r]?.short || r)}</span>${hidden.has(r) ? '<span class="v-sec">hidden</span>' : ""}</label>`).join("");
   if (n.rids.length) h += '<button type="button" class="v-btn v-btn--quiet" data-st="anyroute" data-key="anyroute">Use any visible route</button>';
   h += "</fieldset>";
-  h += '<div class="v-card st-kinds">' + sw("twoStops", "2 stops away", "", n.twoStops) + sw("oneStop", "1 stop away", "Also when your stop is next", n.oneStop);
+  return h + kindsHTML(n);
+}
+
+/** When to alert (station and trip alerts alike). @param {object} n notify settings */
+function kindsHTML(n) {
+  let h = '<div class="v-card st-kinds">' + sw("twoStops", "2 stops away", TWO_SUB, n.twoStops) + sw("oneStop", "1 stop away", ONE_SUB, n.oneStop);
   h += `<label class="st-sel"><span class="v-grow v-prim">When the bus is</span><select data-st-in="minutes" data-key="in-minutes">${MINUTES.map((m) => `<option value="${m}"${n.minutes === m ? " selected" : ""}>${m ? `${m} min away` : "Off"}</option>`).join("")}</select></label>`;
-  h += sw("inApp", "In-app alerts while open", "A banner at the top of the app", n.inApp) + "</div>";
-  return h;
+  return h + sw("inApp", "In-app alerts while open", "A banner at the top of the app", n.inApp) + "</div>";
+}
+
+/** Switch sub-lines: the same choices time the trip alerts (iOS SettingsView uses the same words). */
+export const TWO_SUB = "On a trip, also 2 stops before you get off";
+export const ONE_SUB = "Also when your stop is next. On a trip, also 1 stop before you get off";
+export const TRIP_SUB = "Before your bus comes and before you get off, while a trip is in progress.";
+export const TRIP_PAUSED = "Paused during your trip: alerts follow your trip's bus.";
+
+/**
+ * Trip alerts switch and, during a trip, what they follow right now (the Current trip card's words).
+ * @param {object} state
+ * @param {number} now
+ * @returns {string}
+ */
+export function tripHTML(state, now) {
+  const n = N(state);
+  let h = `<div class="v-card st-trip">${sw("trip", "Trip alerts", TRIP_SUB, n.trip)}`;
+  const p = state.journey && state.journey.kind === "plan" ? tripNow(state, now) : null;
+  if (n.trip && tripAlertsOn(p, state)) {
+    const leg = p.legs[p.active], level = staleLevel(state, now);
+    const what = level === "err" || level === "old" ? "Live data is unavailable, so trip alerts wait for it."
+      : (leg && leg.type === "bus" && legStatus(leg)) || "Waiting for a live position of your bus.";
+    h += `<p class="v-sec st-pad st-tripnow" role="status">During your trip: ${esc(what)}</p>`;
+  }
+  return h + "</div>";
 }
 
 /**
@@ -203,6 +236,8 @@ export function optsHTML(state) {
 export function statusHTML(state, now) {
   const n = N(state);
   if (!n.stopId || !state.stops?.[n.stopId]) return "";
+  const p = state.journey && state.journey.kind === "plan" ? tripNow(state, now) : null;
+  if (tripAlertsOn(p, state)) return `<p class="v-sec st-pad" role="status">${esc(TRIP_PAUSED)}</p>`;
   const level = staleLevel(state, now);
   if (level === "err" || level === "old") return '<p class="v-foot v-foot--warn" role="status">Live data is unavailable, so bus alerts are paused.</p>';
   const s = liveStatus(state, now);
@@ -242,7 +277,8 @@ export function renderSettings(state, now = nowS()) {
 <h3 class="v-h">Appearance</h3><div class="st-theme" data-region="theme"></div>
 <h3 class="v-h">Location</h3><div data-region="loc">${locHTML(state)}</div>
 <h3 class="v-h">Service alerts${nAlerts ? ` <span class="st-count">${nAlerts} active</span>` : ""}</h3><div data-region="alerts">${alertsHTML(state, now)}</div>
-<h3 class="v-h">Bus alerts</h3><p class="v-sec st-intro">Notify me when my bus is near a station. Times are estimates from live predictions.</p>${DEMO ? '<p class="v-foot v-foot--warn" role="note">Bus alerts are off in demo mode: the buses are simulated.</p>' : ""}
+<h3 class="v-h">Bus alerts</h3><p class="v-sec st-intro">Notify me when my bus is near a station, and on a trip before my bus comes and before I get off. Times are estimates from live predictions.</p>${DEMO ? '<p class="v-foot v-foot--warn" role="note">Bus alerts are off in demo mode: the buses are simulated.</p>' : ""}
+<div data-region="trip">${tripHTML(state, now)}</div>
 <div data-region="station">${stationHTML(state)}</div><div data-region="opts">${optsHTML(state)}</div><div data-region="status">${statusHTML(state, now)}</div>
 <div data-region="perm">${DEMO ? "" : permHTML()}</div>
 <p class="v-sec st-note">${esc(ALERTS_NOTE)}</p>
@@ -351,7 +387,8 @@ export function mountSettings(root, ctx) {
     const typing = document.activeElement?.id === "st-q" && root.contains(document.activeElement);
     if (has("notify", "favStops", "user", "stops", "stopRoutes", "addresses") && !typing) patch(root, "station", stationHTML(s));
     if (has("notify", "stopRoutes", "routes", "hiddenRoutes", "journey")) patch(root, "opts", optsHTML(s));
-    if (has("notify", "buses", "trips", "feedTs", "lastOk", "failed", "hiddenRoutes", "journey")) patch(root, "status", statusHTML(s, now));
+    if (has("notify", "buses", "trips", "feedTs", "lastOk", "failed", "hiddenRoutes", "journey", "user")) patch(root, "status", statusHTML(s, now));
+    if (has("notify", "buses", "trips", "feedTs", "lastOk", "failed", "journey", "user")) patch(root, "trip", tripHTML(s, now));
   });
 }
 
@@ -360,6 +397,7 @@ export function refreshSettings() {
   if (!live || !live.root.isConnected) return;
   const s = live.ctx.store.get(), now = typeof live.ctx.now === "function" ? live.ctx.now() : nowS();
   patch(live.root, "status", statusHTML(s, now));
+  patch(live.root, "trip", tripHTML(s, now));
   patch(live.root, "alerts", alertsHTML(s, now));
 }
 

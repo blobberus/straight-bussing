@@ -61,7 +61,8 @@ test("settings: picker lists favorites + nearest; chosen station shows Change / 
 });
 
 test("settings: options list serving routes (hidden marked), switches and minutes", () => {
-  eq(optsHTML(fixture(base())), "");
+  const k = optsHTML(fixture(base()));
+  ok(k.includes('data-st-in="twoStops"') && !k.includes("st-routes"), "no station: only when to alert (trip alerts use it too)");
   const h = optsHTML(fixture(base({ notify: cleanNotify({ stopId: "S3" }), hiddenRoutes: ["R3"] })));
   ok(h.includes('data-id="R1"') && h.includes('data-id="R2"') && h.includes(">hidden<"));
   ok(h.includes('role="switch"') && h.includes("2 stops away") && h.includes("1 stop away") && h.includes("10 min away"));

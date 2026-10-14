@@ -69,9 +69,9 @@ test("trip view: waiting (2 stops away, passed stop says so, bus pill heading to
 
 test("trip view: on the bus (stops left, before-stops gone), arrived (final walk), no live data", () => {
   const on = html("onbus");
-  ok(on.includes("2 stops to Medical Center"));
+  ok(on.includes("Get off in 2 stops: Medical Center"), "the same words as the map label and the trip alert");
   ok(!on.includes("Regenstein Library"), "stops before the boarding stop dropped once on board");
-  ok(on.includes("Get off at Medical Center about"));
+  ok(on.includes("Reach Medical Center about"));
   const ar = html("arrived");
   ok(ar.includes("Walk 3 min to Medical Center Cafe") && ar.includes("tp-dest is-active"));
   ok(ar.includes("Walked to Ratner Center"), "first walk done");
