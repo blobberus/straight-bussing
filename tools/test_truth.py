@@ -557,6 +557,78 @@ def updates_without_a_vehicle_id_count_only_for_the_only_bus_on_the_trip():
 
 
 @test
+def a_lead_passio_showed_under_the_bus_s_re_matched_trip_id_is_kept():
+    """2026-10-14 (20-min row but no 10-min row; Central 48% at 10 min vs 54% at 20): Passio re-matched bus 4325 from
+    trip 501720 (vehiclePositions, kept to the arrival) to 501728/501730 for ten minutes, and the stop's prediction
+    went with it. That is still THIS bus's time for the stop on a rider's screen, so the leads the own trip id left
+    empty take it; never another bus's, never one without a vehicle id; the own-trip rows and arrivals.csv's
+    column stay as they were."""
+    tr = Tracker(fake_static())
+    arr = T0 + 5000
+    tr.add_prediction("T1", "C", arr - 1300, arr - 60, 3, "V1", seen=arr - 1300, last=arr - 800)   # own trip id
+    tr.add_prediction("T9", "B", arr - 650, arr - 200, 2, "V1", seen=arr - 650, last=arr - 200)    # re-matched run:
+    tr.add_prediction("T9", "C", arr - 650, arr - 30, 3, "V1", seen=arr - 650, last=arr)           # B, C, D ahead
+    tr.add_prediction("T9", "D", arr - 650, arr + 60, 4, "V1", seen=arr - 650, last=arr)
+    tr.add_prediction("T9", "C", arr - 640, arr + 400, 3, "V2", seen=arr - 640, last=arr)          # another bus
+    tr.add_prediction("T9", "C", arr - 640, arr + 500, 3, None, seen=arr - 640, last=arr)          # no vehicle id
+    got = tr.preds_at("T1", "C", arr, veh="V1", idx=2)
+    own, re = (arr - 60, arr - 1300, arr - 1300), (arr - 30, arr - 650, arr - 650)
+    assert got == {1200: own, 900: own, 600: re, 300: re, 180: re, 120: re, 60: re}, got
+    assert tr.pred_for("T1", "C", arr, veh="V1") == (arr - 60, 1300)               # arrivals.csv: unchanged
+    assert tr.preds_at("T1", "C", arr, veh="V3") == {}                             # a bus with no predictions
+    tr.add_prediction("T1", "C", arr - 400, arr - 20, 3, "V1", seen=arr - 400, last=arr)   # own trip id back
+    got = tr.preds_at("T1", "C", arr, veh="V1", idx=2)
+    assert got[600] == re and got[300] == got[60] == (arr - 20, arr - 400, arr - 400), got  # own first, else T9
+    # end to end: the arrival event carries them (the detector passes the bus and its stop to preds_at)
+    st = fake_static()
+    reps, truth = simulate(st, ["A", "B", "C", "D"])
+    a = int(truth[2])
+    tr = Tracker(st)
+    tr.add_prediction("T1", "C", a - 1300, a - 60, 3, "V1", seen=a - 1300, last=a - 800)
+    tr.add_prediction("T9", "C", a - 650, a - 30, 3, "V1", seen=a - 650, last=a)
+    tr.add_prediction("T9", "D", a - 650, a + 60, 4, "V1", seen=a - 650, last=a)
+    at_c = next(e for e in run(tr, reps) if e["idx"] == 2)
+    assert at_c["preds"][600] == (a - 30, a - 650, a - 650) and at_c["preds"][1200] == (a - 60, a - 1300, a - 1300), at_c
+    tr.drain(a + 5 * L.STATE_TTL)                                                  # old predictions expire with
+    assert not tr.bus_keys and not tr.preds                                       # their index
+
+
+@test
+def the_bus_s_next_lap_or_an_earlier_visit_never_fills_a_lead():
+    """The other-trip rule takes only a trip update about the run the bus is on: not the bus's next trip (its first
+    stop still ahead: that time for the stop is a lap later; Passio rolls a bus over minutes early), not one that
+    has the bus past the stop, not one about the bus's previous visit, not at a loop stop, and only below a lead
+    the own trip id filled (so the stop was still ahead of the bus)."""
+    tr = Tracker(fake_static())
+    arr = T0 + 5000
+    tr.add_prediction("T1", "C", arr - 1300, arr - 60, 3, "V1", seen=arr - 1300, last=arr - 300)
+    tr.add_prediction("T2", "A", arr - 250, arr + 400, 1, "V1", seen=arr - 250, last=arr)           # next trip:
+    tr.add_prediction("T2", "C", arr - 250, arr + 1500, 3, "V1", seen=arr - 250, last=arr)          # C a lap later
+    tr.add_prediction("T8", "D", arr - 250, arr - 100, 4, "V1", seen=arr - 250, last=arr)           # bus past C in
+    tr.add_prediction("T8", "C", arr - 250, arr + 1700, 3, "V1", seen=arr - 250, last=arr)          # T8's view
+    got = tr.preds_at("T1", "C", arr, veh="V1", idx=2)
+    assert sorted(got) == [300, 600, 900, 1200], got                               # the own trip id only
+    # the previous visit: an update seen before the bus was last at C, or still predicting that visit
+    tr = Tracker(fake_static())
+    tr.visits[("V1", "C")] = (arr - 1000, "T0", 2)                               # a lap ago, on another trip id
+    tr.add_prediction("T1", "C", arr - 1250, arr - 60, 3, "V1", seen=arr - 1250, last=arr - 1100)
+    tr.add_prediction("T9", "C", arr - 1100, arr - 30, 3, "V1", seen=arr - 1100, last=arr)         # seen before it
+    tr.add_prediction("T7", "C", arr - 950, arr - 900, 3, "V1", seen=arr - 950, last=arr)          # still about it
+    got = tr.preds_at("T1", "C", arr, veh="V1", idx=2)
+    assert got == {1200: (arr - 60, arr - 1250, arr - 1250)}, got
+    tr.add_prediction("T6", "C", arr - 650, arr - 40, 3, "V1", seen=arr - 650, last=arr)           # after it: kept
+    got = tr.preds_at("T1", "C", arr, veh="V1", idx=2)
+    assert sorted(got) == [60, 120, 180, 300, 600, 1200] and got[600] == (arr - 40, arr - 650, arr - 650), got
+    # no own-trip row at a longer lead, or a loop stop (A is the route's first and last stop): nothing borrowed
+    tr = Tracker(fake_static())
+    tr.add_prediction("T9", "C", arr - 650, arr - 30, 3, "V1", seen=arr - 650, last=arr)
+    assert tr.preds_at("T1", "C", arr, veh="V1", idx=2) == {}
+    tr.add_prediction("T1", "A", arr - 1300, arr - 60, 5, "V1", seen=arr - 1300, last=arr - 800)
+    tr.add_prediction("T9", "A", arr - 650, arr - 30, 5, "V1", seen=arr - 650, last=arr)
+    assert sorted(tr.preds_at("T1", "A", arr, veh="V1", idx=4, loop_stop=True)) == [900, 1200]
+
+
+@test
 def chicago_dst_rule():
     cases = {datetime(2026, 7, 1, 12, tzinfo=timezone.utc): "2026-07-01 07:00",
              datetime(2026, 1, 15, 12, tzinfo=timezone.utc): "2026-01-15 06:00",

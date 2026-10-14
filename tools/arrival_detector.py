@@ -7,8 +7,8 @@ import math
 from collections import defaultdict, deque
 
 from arrivals_lib import (DEPART_SPEED, HIST, MAX_GAP, MAX_LINK_S, MAX_SKIP, MIN_PRED_AGE, NEAR_M, PASS_MIN_MOVE_M,
-                          PRED_LEADS, PREV_VISIT_GAP_S, RADIUS_M, SAME_VISIT_S, SHOW_GRACE_S, STATE_TTL, STOP_SPEED,
-                          hav_m)
+                          PRED_LEADS, PREV_VISIT_GAP_S, RADIUS_M, SAME_VISIT_S, SHOW_GRACE_S, SHOWN_PAST_S, STATE_TTL,
+                          STOP_SPEED, hav_m)
 
 
 class Tracker:
@@ -19,6 +19,7 @@ class Tracker:
         self.st = st
         self.v = {}                                            # (veh, trip) -> state
         self.preds = defaultdict(lambda: deque(maxlen=400))    # key -> (made, predicted, seq, seen, last seen)
+        self.bus_keys = defaultdict(set)                       # veh -> {(trip, stop_id)} it has predictions under
         self._logged = {}                                      # key -> last 'last seen' written to the pred log
         self.trip_seq = {}                                     # trip -> {stop_id: {stop_sequence}}
         self.last_arr = {}                                     # veh -> (stop_id, epoch, prev dict) of last arrival
@@ -53,6 +54,8 @@ class Tracker:
                     self.on_pred(key[0], trip, stop_id, made, predicted, seq, d[-1][3], last)
             return
         d.append((made, predicted, seq, seen, last))
+        if key[0] is not None:
+            self.bus_keys[key[0]].add((trip, stop_id))
         if self.on_pred is not None:                     # the run's prediction log (truth_logger --pred-log)
             self._logged[key] = last
             self.on_pred(key[0], trip, stop_id, made, predicted, seq, seen, last)
@@ -106,13 +109,78 @@ class Tracker:
     def preds_at(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False, leads=PRED_LEADS):
         """For each target lead L, the prediction on display L s before epoch: the newest one made and first seen
         by then, if a poll still showed it within SHOW_GRACE_S of that moment -> {L: (pred_epoch, made, seen)}
-        (predictions.csv). No row for L = no prediction on display then (none yet, or Passio had withdrawn it)."""
+        (predictions.csv). No row for L = no prediction on display then (none yet, or Passio had withdrawn it).
+        A lead shorter than one this trip id filled may instead take the bus's prediction under the trip id
+        Passio re-matched it to meanwhile (_other_trip_preds)."""
         newest = {}
         for made, pred, seen, last in self._candidates(trip, stop_id, epoch, veh, idx, loop_stop):
             for lt in leads:
                 if seen <= epoch - lt:
                     newest[lt] = (pred, made, seen, last)
-        return {lt: v[:3] for lt, v in newest.items() if v[3] >= epoch - lt - SHOW_GRACE_S}
+        out = {lt: v[:3] for lt, v in newest.items() if v[3] >= epoch - lt - SHOW_GRACE_S}
+        gaps = [lt for lt in leads if out and lt < max(out) and lt not in out]
+        if gaps and not loop_stop:
+            out.update(self._other_trip_preds(trip, stop_id, epoch, veh, gaps))
+        return out
+
+    @staticmethod
+    def _shown(d, t, seq=False):
+        """The update of one (veh, trip, stop) on display at t: the newest first seen by t, if a poll still showed
+        it within SHOW_GRACE_S of t (entries are in the order first seen) -> entry | None. seq: only entries with
+        this stop_sequence (a loop terminal is in one trip update twice, as stop 1 and stop N)."""
+        for x in reversed(d or ()):
+            if x[3] <= t and (seq is False or x[2] == seq):
+                return x if x[4] >= t - SHOW_GRACE_S else None
+        return None
+
+    def _other_trip_preds(self, trip, stop_id, epoch, veh, leads):
+        """Passio re-matches a running bus to other timetable trips and back: its trip update moves between two or
+        three trip ids within minutes while vehiclePositions keeps one (Central, Apostolic/Drexel; on 2026-10-13
+        86 of the 144 arrivals with a 20-min but no 10-min row). A screen lists the stop's time from every trip
+        update with the bus's number, whatever the trip id. preds_at asks only for leads shorter than one the own
+        trip id filled: the stop was still ahead of the bus then, so this arrival was its next visit. Such a lead
+        takes the earliest time THIS bus (same vehicle id: never another bus, never an update without one) showed
+        for the stop under another trip id, by the same display rule and no more than SHOWN_PAST_S past (a screen
+        drops it then), within 3600 s of the arrival, from a trip update that is about the run the bus was on:
+        - its first stop (stop_sequence 1) is not on display (else it is a trip that has not started: the bus's
+          next trip, shown a lap ahead or rolled over early, so its time for this stop is the next lap's),
+        - no later stop of it (higher stop_sequence) is predicted earlier (else Passio has the bus past the stop),
+        - first seen after the bus's previous visit to the stop, predicting PREV_VISIT_GAP_S or more past it.
+        Not at loop stops (in the route twice). -> {L: (pred_epoch, made, seen)} for the leads it fills."""
+        me = self._veh(veh)
+        keys = self.bus_keys.get(me) if me is not None else None
+        trips = sorted({tr2 for tr2, s2 in keys if s2 == stop_id and tr2 != trip}) if keys else ()
+        if not trips:
+            return {}
+        pv = self.visits.get((me, stop_id))
+        if pv is not None and not 0 < epoch - pv[0] <= 2 * STATE_TTL:
+            pv = None
+        out = {}
+        for lt in leads:
+            t = epoch - lt
+            for tr2 in trips:
+                x = self._shown(self.preds.get((me, tr2, stop_id)), t)
+                if x is None or x[2] is None or x[1] < t - SHOWN_PAST_S or abs(x[1] - epoch) >= 3600:
+                    continue
+                made, pred, seq, seen, last = x
+                if pv is not None and (seen <= pv[0] or pred < pv[0] + PREV_VISIT_GAP_S):
+                    continue
+                if (lt not in out or pred < out[lt][0]) and self._mid_run(me, tr2, t, seq, pred):
+                    out[lt] = (pred, made, seen)
+        return out
+
+    def _mid_run(self, veh, trip, t, seq, pred):
+        """The bus's trip update `trip`, as shown at t, is about the run it is on, seen from a stop with
+        stop_sequence seq predicted at pred: its first stop is not on display and no later stop predicted earlier."""
+        for tr3, s2 in self.bus_keys.get(veh, ()):
+            if tr3 != trip:
+                continue
+            d = self.preds.get((veh, trip, s2))
+            for q in {e[2] for e in d or ()}:
+                y = self._shown(d, t, q)
+                if y is not None and q is not None and (q == 1 or (q > seq and y[1] < pred)):
+                    return False
+        return True
 
     # ---- resume from CSV tail ----
     def seed(self, rows, now):
@@ -523,6 +591,11 @@ class Tracker:
                 del self.v[key]
         for k in [k for k, d in self.preds.items() if d and d[-1][0] < now - 2 * STATE_TTL]:
             del self.preds[k]
+            bk = self.bus_keys.get(k[0])
+            if bk is not None:
+                bk.discard(k[1:])
+                if not bk:
+                    del self.bus_keys[k[0]]
         for k in [k for k, t in self.visits.items() if t[0] < now - 2 * STATE_TTL]:
             del self.visits[k]
         return out
