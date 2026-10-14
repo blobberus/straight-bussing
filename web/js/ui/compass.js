@@ -47,15 +47,17 @@ export function screenAngle(w = globalThis) {
  * counterclockwise, hence 360 - alpha. Not yet checked on a real phone in landscape.
  * @param {{type?:string, webkitCompassHeading?:number, webkitCompassAccuracy?:number, alpha?:number|null, absolute?:boolean}} e
  * @param {number} [angle] screen angle (screenAngle())
- * @returns {{deg:number, acc:number|null}|null} acc: compass accuracy in deg (iOS only; < 0 = not calibrated)
+ * @returns {{deg:number, acc:number|null}|null} acc: the compass's stated error in deg (iOS only). iOS passes on
+ *   CoreLocation's heading, where a negative accuracy means no heading could be determined: no reading then.
  */
 export function headingFromEvent(e, angle = 0) {
   if (!e) return null;
   const wk = e.webkitCompassHeading;
   let raw = null, acc = null;
   if (typeof wk === "number" && Number.isFinite(wk) && wk >= 0) {
-    raw = wk;
     acc = Number.isFinite(e.webkitCompassAccuracy) ? e.webkitCompassAccuracy : null;
+    if (acc !== null && acc < 0) return null;   // CoreLocation could not determine a heading
+    raw = wk;
   } else if ((e.type === "deviceorientationabsolute" || e.absolute === true) && typeof e.alpha === "number" && Number.isFinite(e.alpha)) {
     raw = 360 - e.alpha;   // a relative alpha (absolute false: 0 = wherever the page loaded) is not a direction
   }
@@ -65,7 +67,8 @@ export function headingFromEvent(e, angle = 0) {
 
 /**
  * Cone width (deg) for a compass accuracy: twice the stated error (+/- acc), never so narrow it claims more than the
- * sensor knows, wide open when the compass says it is not calibrated (acc < 0).
+ * sensor knows, and never wider than SPREAD_MAX (a worse compass is still drawn wide open; acc < 0 too, though
+ * headingFromEvent already drops those). Same rule on the iPhone: Kit HeadingCone.spread.
  * @param {number|null|undefined} acc
  */
 export function spreadFor(acc) {

@@ -52,6 +52,9 @@ struct MapScreen: View {
             return nil
         }
         let hideDot = you?.onBus == true   // on the bus: the GPS dot steps back (same place, or worse)
+        // the heading cone (owner 2026-10-14): only `active` is read here (it flips rarely); the dot reads the rotation
+        let heading = model.location.heading
+        let coned = heading.active
         let walk = walkOnly
         // the map labels: drawn from the last layout; laid out again on camera end or when what they avoid changes
         let placed = model.mapLabels.placed
@@ -145,14 +148,19 @@ struct MapScreen: View {
                 }
                 .annotationTitles(.hidden)
             }
-            // Demo mode: a fixed simulated position. Real location: MapKit's own user dot. Both step back while you
-            // are drawn on the bus.
+            // Demo mode: a fixed simulated position (no cone: the compass would point a place you are not). Real
+            // location: MapKit's own user dot, or, while the compass reads and the fix is good (`UserHeading`), the same
+            // dot drawn by the app with the heading cone, still placed by MapKit (its own fine fixes, not the 30 m
+            // filtered `model.user`). Both step back while you are drawn on the bus.
             if model.config.demo, !hideDot, let u = model.user {
                 Annotation("My location", coordinate: u.cl, anchor: .center) { UserDot() }
                     .annotationTitles(.hidden)
             }
-            if !model.config.demo && !hideDot {
+            if !model.config.demo && !hideDot && !coned {
                 UserAnnotation()
+            }
+            if !model.config.demo && !hideDot && coned {
+                UserAnnotation(anchor: .center) { _ in UserDot(heading: heading) }
             }
         }
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
@@ -160,7 +168,10 @@ struct MapScreen: View {
         // the names are laid out when the camera stops, not on every frame of a pan or zoom: each frame only notes the
         // time, the layout runs once the camera has been still for 0.3 s (with .onEnd alone, the names stayed where an
         // earlier camera had put them after the app's own camera glides in the CI simulator)
-        .onMapCameraChange(frequency: .continuous) { _ in model.mapLabels.cameraMoved { layoutLabels(proxy, scale: labelScale) } }
+        .onMapCameraChange(frequency: .continuous) { ctx in
+            heading.mapTurned(ctx.camera.heading)   // the cone keeps pointing the real way on a rotated map
+            model.mapLabels.cameraMoved { layoutLabels(proxy, scale: labelScale) }
+        }
         // a tap on empty map lowers the sheet to peek (web onMapTap). Simultaneous, so it never blocks the stop / bus
         // buttons; `mapTapped` ignores a tap that also hit one of them.
         .simultaneousGesture(TapGesture().onEnded { model.mapTapped() })
@@ -489,12 +500,49 @@ struct TripStopLabel: View {
     }
 }
 
+/// Your location: a blue dot with a soft halo; with `heading` (the real location while the compass reads), the
+/// heading cone behind it (web css .sb-mecone): a blue wedge fading outward, `UserHeading.spread` wide, pointing the
+/// way the phone faces. Annotations stay upright on a rotated map, so the cone turns by the compass minus the map's
+/// rotation; the turn animates the short way (Kit `HeadingCone.unwrap`), not at all under Reduce Motion.
 struct UserDot: View {
+    var heading: UserHeading? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         ZStack {
+            if let h = heading, h.active {
+                HeadingWedge(spread: h.spread)
+                    .fill(RadialGradient(colors: [Color.blue.opacity(0.5), Color.blue.opacity(0.22), Color.blue.opacity(0)],
+                                         center: .center, startRadius: 6, endRadius: 46))
+                    .frame(width: 92, height: 92)
+                    .rotationEffect(.degrees(h.turn - h.mapTurn))
+                    .animation(reduceMotion ? nil : .linear(duration: 0.15), value: h.turn - h.mapTurn)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
             Circle().fill(.blue.opacity(0.18)).frame(width: 34, height: 34)
             Circle().fill(.blue).frame(width: 14, height: 14).overlay(Circle().stroke(.white, lineWidth: 3))
         }
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("My location")
+    }
+}
+
+/// A wedge from the center to the edge, `spread` degrees wide, pointing up (north on an unrotated map). Built from
+/// points (not `addArc`, whose clockwise flag reads backwards in SwiftUI's flipped coordinates).
+struct HeadingWedge: Shape {
+    var spread: Double
+
+    func path(in rect: CGRect) -> Path {
+        let c = CGPoint(x: rect.midX, y: rect.midY), r = min(rect.width, rect.height) / 2
+        var p = Path()
+        p.move(to: c)
+        let steps = 24
+        for i in 0...steps {
+            let a = (-spread / 2 + spread * Double(i) / Double(steps)) * .pi / 180   // 0 = up, clockwise
+            p.addLine(to: CGPoint(x: c.x + r * sin(a), y: c.y - r * cos(a)))
+        }
+        p.closeSubpath()
+        return p
     }
 }

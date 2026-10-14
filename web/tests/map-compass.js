@@ -17,7 +17,7 @@ test('compass: norm, turn, screenAngle', () => {
 test('compass: headingFromEvent (iOS webkitCompassHeading, Android absolute alpha, relative ignored)', () => {
   eq(headingFromEvent({ type: 'deviceorientation', webkitCompassHeading: 45, webkitCompassAccuracy: 15, alpha: 200 }),
     { deg: 45, acc: 15 }, 'iOS: compass heading wins over alpha');
-  eq(headingFromEvent({ type: 'deviceorientation', webkitCompassHeading: 45, webkitCompassAccuracy: -1 }).acc, -1, 'not calibrated kept');
+  eq(headingFromEvent({ type: 'deviceorientation', webkitCompassHeading: 45, webkitCompassAccuracy: -1 }), null, 'negative accuracy = no heading (CoreLocation)');
   eq(headingFromEvent({ type: 'deviceorientationabsolute', alpha: 90, absolute: true }), { deg: 270, acc: null }, 'alpha counts counterclockwise');
   eq(headingFromEvent({ type: 'deviceorientation', alpha: 30, absolute: true }), { deg: 330, acc: null }, 'absolute deviceorientation (Firefox)');
   eq(headingFromEvent({ type: 'deviceorientation', alpha: 30, absolute: false }), null, 'relative alpha is not a direction');
@@ -32,7 +32,7 @@ test('compass: headingFromEvent (iOS webkitCompassHeading, Android absolute alph
 
 test('compass: spreadFor (no invented precision) and changed', () => {
   eq(spreadFor(null), SPREAD_DEFAULT); eq(spreadFor(undefined), SPREAD_DEFAULT); eq(spreadFor(NaN), SPREAD_DEFAULT);
-  eq(spreadFor(-1), SPREAD_MAX, 'not calibrated: wide open');
+  eq(spreadFor(-1), SPREAD_MAX, 'negative: wide open');
   eq(spreadFor(5), SPREAD_MIN, 'never narrower than the minimum');
   eq(spreadFor(25), 50); eq(spreadFor(90), SPREAD_MAX);
   ok(changed(null, { deg: 0, spread: 60 }) && changed({ deg: 0, spread: 60 }, null), 'appear / go');

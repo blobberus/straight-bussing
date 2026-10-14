@@ -354,8 +354,8 @@ inside a tap: `compass.request()` runs synchronously in `locate()` (every tap th
 button, never at launch (`locate({auto: true})`), and never again once readings come. On while location sharing is on
 (`start` after a fix, `stop` in `stopLocation`), listener off while the page is hidden. Readings never enter the store:
 coalesced to one per animation frame, passed on only on a turn >= 2 deg or a width change, straight to
-`MapApi.setHeading(deg, spread)`. Width = 2 x the compass's stated error, 40..120 deg (120 when it says it is not
-calibrated, 60 when the source gives no accuracy). The map turns the cone the short way round (`geometry.unwrapDeg`,
+`MapApi.setHeading(deg, spread)`. Width = 2 x the compass's stated error, 40..120 deg (60 when the source gives no
+accuracy; a negative accuracy means no heading, as in CoreLocation, whose values iOS Safari passes on). The map turns the cone the short way round (`geometry.unwrapDeg`,
 0.15 s, none with reduced motion); the cone hides with the dot (on the bus, no location). Nothing is stored or sent
 (privacy.html "The way you face"). iOS: ios/README.md "Heading cone".
 
