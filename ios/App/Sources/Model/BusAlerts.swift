@@ -3,17 +3,24 @@ import UIKit
 import UserNotifications
 import StraightBussingKit
 
-/// "Notify me when my bus is near my station" while the app is open (the web's ui/notifier.js). After every
-/// poll and every settings change, `Notify.dueAlerts` (Kit port of core/notify.js) returns the alerts due now,
-/// each trip + kind once per station; AppModel delivers them as local notifications (shown as banners even
-/// in the foreground) or, when notifications are not allowed, as an in-app banner. Nothing runs in the
-/// background: lock-screen alerts need the push server (conversion to appstore.md section 7).
+/// Bus alerts while the app is open (the web's ui/notifier.js): "notify me when my bus is near my station" and,
+/// during a started trip, trip alerts ("Red Line: Bus 101 is 2 stops away", "Get off in 2 stops: Medical Center").
+/// After every poll and every settings change, `Notify.dueAlerts` returns the station alerts due now (each trip +
+/// kind once per station; paused during a trip with trip alerts on); after every trip refresh, `Notify.tripAlerts`
+/// returns the trip alerts from the SAME `TripFollow` the timeline, the map and the Live Activity show. AppModel
+/// delivers them as local notifications (shown as banners even in the foreground, threads "trip" / "bus-alerts",
+/// the body ends with " Unofficial.") or, when notifications are not allowed, as an in-app banner. When live data
+/// goes down: one "Live data delayed" alert per outage. Nothing runs in the background: lock-screen alerts need
+/// the push server (conversion to appstore.md section 7).
 @MainActor
 final class BusAlerter {
     enum Permission: Equatable { case unknown, granted, denied }
 
     private var fired: [String] = []
     private var station: String?
+    private var tripFired: [String] = []
+    /// When the followed trip was started: a new trip starts with no fired keys.
+    private var tripStart: Double?
     private let presenter = ForegroundPresenter()
 
     private var center: UNUserNotificationCenter { UNUserNotificationCenter.current() }
@@ -38,22 +45,35 @@ final class BusAlerter {
         return await permission()
     }
 
-    /// Alerts due now. Choosing another station starts fresh, like the web notifier.
-    func due(prefs: NotifyPrefs, staticData: StaticData, live: LiveState, hidden: [String], now: Double) -> [BusAlert] {
+    /// Station alerts due now. Choosing another station starts fresh, like the web notifier.
+    func due(prefs: NotifyPrefs, staticData: StaticData, live: LiveState, hidden: [String], now: Double, tripOn: Bool,
+             polling: Bool) -> [BusAlert] {
         if prefs.stopId != station { station = prefs.stopId; fired = [] }
         guard prefs.stopId != nil, !staticData.isEmpty else { return [] }
-        let r = Notify.dueAlerts(prefs: prefs, staticData: staticData, live: live, hidden: hidden, fired: fired, now: now)
+        let r = Notify.dueAlerts(prefs: prefs, staticData: staticData, live: live, hidden: hidden, fired: fired, now: now,
+                                 tripOn: tripOn, polling: polling)
         fired = r.fired
         return r.alerts
     }
 
-    /// Deliver now as a silent local notification (the web's are silent too). The identifier is the alert key,
-    /// so a repeat replaces the old one instead of stacking.
-    func deliver(_ a: BusAlert) {
+    /// Trip alerts due now for `p` (computed for `now` from `live`). A new started trip starts fresh.
+    func dueTrip(_ p: TripFollow?, prefs: NotifyPrefs, staticData: StaticData, live: LiveState, startedAt: Double?, now: Double,
+                 polling: Bool) -> [BusAlert] {
+        if startedAt != tripStart { tripStart = startedAt; tripFired = [] }
+        guard p != nil, !staticData.isEmpty else { return [] }
+        let r = Notify.tripAlerts(p, prefs: prefs, staticData: staticData, live: live, t0: startedAt, fired: tripFired, now: now, polling: polling)
+        tripFired = r.fired
+        return r.alerts
+    }
+
+    /// Deliver now as a silent local notification (the web's are silent too). The identifier is the alert key, so
+    /// a repeat replaces the old one instead of stacking. Every notification says it is unofficial (requirement:
+    /// it is read outside the app, on the Lock Screen and in Notification Center).
+    func deliver(_ a: BusAlert, thread: String) {
         let c = UNMutableNotificationContent()
         c.title = a.title
-        c.body = a.body
-        c.threadIdentifier = "bus-alerts"
+        c.body = a.body + " Unofficial."
+        c.threadIdentifier = thread
         center.add(UNNotificationRequest(identifier: a.key, content: c, trigger: nil), withCompletionHandler: nil)
     }
 }
@@ -89,14 +109,19 @@ extension AppModel {
         }
     }
 
-    /// Ask iOS for permission (alerts turned on, or "Allow notifications" tapped), then check right away.
+    /// Ask iOS for permission (a station chosen, a trip started with trip alerts on, trip alerts turned on during a
+    /// trip, or "Allow notifications" tapped), then check right away. Alerts wait while the prompt is up, so none is
+    /// spent on an in-app banner hidden behind it.
     func requestNotifPermission() {
-        guard !config.demo else { return }
+        guard !config.demo, !notifAsking else { return }
+        notifAsking = true
         Task { [weak self] in
             guard let self else { return }
             let p = await self.busAlerter.requestPermission()
             if self.notifPermission != p { self.notifPermission = p }
+            self.notifAsking = false
             self.checkBusAlerts()
+            self.checkTripAlerts(self.tripFollow, now: self.tripFollowNow)
         }
     }
 
@@ -110,17 +135,44 @@ extension AppModel {
         if id != nil && notifPermission == .unknown { requestNotifPermission() } else { checkBusAlerts() }
     }
 
-    /// Deliver the alerts due now: local notifications when allowed, else the in-app banner (unless in-app
-    /// alerts are off). Called after every poll and every bus-alert settings change.
+    /// A started trip with trip alerts on is in progress: station alerts pause (Settings says so).
+    var tripAlertsRunning: Bool { activeTrip != nil && Notify.tripAlertsOn(tripFollow, prefs: notify) }
+
+    /// Deliver the station alerts due now. Called after every poll and every bus-alert settings change.
     func checkBusAlerts() {
-        guard !feedSimulated else { return }   // never notify about a simulated bus
+        guard !feedSimulated, !notifAsking else { return }   // never notify about a simulated bus
         let due = busAlerter.due(prefs: notify, staticData: staticData, live: liveState, hidden: hidden,
-                                 now: Date().timeIntervalSince1970)
+                                 now: Date().timeIntervalSince1970, tripOn: tripAlertsRunning, polling: feedPolling)
+        deliver(due, thread: "bus-alerts")
+    }
+
+    /// Deliver the trip alerts due now from `p`, the trip evaluation `refreshTrip` just made for `now` (the same
+    /// value the timeline, the map and the Live Activity show: never a second computation).
+    func checkTripAlerts(_ p: TripFollow?, now t: Double) {
+        guard !feedSimulated, !notifAsking, let trip = activeTrip else { return }
+        let due = busAlerter.dueTrip(p, prefs: notify, staticData: staticData, live: liveState, startedAt: trip.startedAt, now: t,
+                                     polling: feedPolling)
+        deliver(due, thread: "trip")
+    }
+
+    /// Local notifications when allowed, else the in-app banner (unless in-app alerts are off).
+    func deliver(_ due: [BusAlert], thread: String) {
         guard !due.isEmpty else { return }
         if notifPermission == .granted {
-            for a in due { busAlerter.deliver(a) }
+            for a in due { busAlerter.deliver(a, thread: thread) }
         } else if notify.inApp {
             showToast(due.map { "\($0.title). \($0.body)" }.joined(separator: "\n"))
+        }
+    }
+
+    /// Settings > Bus alerts > Trip alerts. Turned on during a trip: that is when iOS is asked (if never asked).
+    func setTripAlerts(_ on: Bool) {
+        if on && activeTrip != nil && notifPermission == .unknown && !config.demo {
+            notify.trip = on
+            savePrefs()
+            requestNotifPermission()   // the check runs once iOS has the answer
+        } else {
+            updateNotify { $0.trip = on }
         }
     }
 

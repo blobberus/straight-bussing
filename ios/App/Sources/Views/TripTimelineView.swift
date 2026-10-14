@@ -97,7 +97,8 @@ struct NowCardView: View {
     @Environment(AppModel.self) private var model
     let progress: TripFollow
     var body: some View {
-        let c = TripText.nowCard(progress, routes: model.staticData.routes, now: model.now)
+        // `tripYou` comes from the same evaluation: far from the bus the counts follow, the card says so
+        let c = TripText.nowCard(progress, routes: model.staticData.routes, now: model.now, you: model.tripYou)
         Card {
             HStack(alignment: .top, spacing: 12) {
                 switch c.icon {

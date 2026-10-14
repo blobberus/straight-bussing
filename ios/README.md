@@ -56,8 +56,9 @@ data-geocode.js) so the Swift port provably behaves the same.
 | core/walk.js (`walkRoute`), directions.js replan (async half) | WalkRouting.swift | `WalkRouteCache` actor around any router: 4-decimal endpoints, plausibility, 3 s timeout, estimate fallback (retried after 60 s), shared in-flight requests, <= 6 at once; `Planner.refinePlan` refines + re-ranks the shown options and the walk-only line |
 | map/geometry.js (`alongShape`) | Geometry.swift | bus legs drawn along the route's road shape between board and alight (`BusLeg.roadPath`); tests mirror web/tests/map-geometry.js plus a golden file of the JavaScript's own paths on 4 real routes |
 | core/rank.js | Rank.swift | least walking > earliest arrival > shortest wait > criteria met; `criteriaText` labels |
-| core/notify.js | Notify.swift | stopsAway, watchedRoutes, dueAlerts, minutesText |
-| core/tripprogress.js, ui/views/journey.js planJourney | TripFollow.swift (`TripFollow`, `TripJourney`) | follow a started trip: planned trip AND vehicle (Passio reuses trip ids), a bus you can still walk to, missed bus from your location, previous-lap loops, plan clock without live data |
+| core/notify.js | Notify.swift | stopsAway, watchedRoutes, dueAlerts (paused while `tripOn`, one 'delayed' alert per outage), minutesText; since 2026-10-13 tripAlerts (board2 / board1 / boardMin, off2 / off1, delayed), tripAlertsOn, the outage rule (feed evidence only), DELAYED_TITLE / bodies, Settings' "During your trip" line (`tripStatusLine`, web settings.js tripHTML); `NotifyPrefs.trip` with a decoder that keeps old stored prefs |
+| core/tripyou.js (2026-10-13) | TripYou.swift (`TripYou`), TripFollowText.swift (`TripText.offText` / `offShort`) | where you are on a started trip: on the bus (its live position) unless your accurate GPS is > 300 m + accuracy from it (`far`), your GPS, the boarding stop as a guess while waiting; target, frame, VoiceOver text; the map's stop labels; tests port web/tests/core-tripyou.js |
+| core/tripprogress.js, ui/views/journey.js planJourney | TripFollow.swift (`TripFollow`, `TripJourney`) | follow a started trip: planned trip AND vehicle (Passio reuses trip ids), a bus you can still walk to, missed bus from your location, previous-lap loops, plan clock without live data. The web's `tripNow` memo is not needed: `AppModel.refreshTrip` computes ONE value per refresh and everything reads it |
 | ui/views/tripprogress.js (words) | TripFollowText.swift (`TripText`), LiveTripSnapshot.swift | now card, walk rows, "Passed", "Bus 101 heading here", lead row, footnote; the Live Activity content from the same followed bus |
 | ui/views/tripinfo.js, ui/components.js liveLabel, main.js pill, stop.js / alerts.js / route.js / pick.js / routes.js helpers | Wording.swift (`TripInfo`, `LiveText`, `StationSearch`, `RouteText`, `Custom.defaultName`) | leave guidance, option lines, step list, status pill, live labels, freshness, alert windows, station matching, bus sentences |
 | data/live.js | LiveModels.swift, FeedClient.swift | tolerant GTFS-rt JSON decoding, async/await URLSession (injectable `HTTPDataLoader`), `LiveState.applying` = the web's poll merge |
@@ -80,7 +81,7 @@ routes ("Checking sidewalk routes…"; walk steps say "sidewalk route" or "estim
 When a trip is started (Directions > option > Start), the Current trip tab shows the web's Google-Maps-style
 timeline (`Views/TripTimelineView.swift`, data from `TripFollow.compute`, a port of web core/tripprogress.js, words
 from `TripText`): "Trip to X" with the arrival estimate and End trip, a status card for the phase (walk N min to the
-stop + "Leave in N min, est." / bus N stops away / N stops to your stop / walk to the destination), walk rows, each
+stop + "Leave in N min, est." / bus N stops away / "Get off in N stops: X" / walk to the destination), walk rows, each
 bus leg with up to 3 stops before the boarding stop while the bus is coming, "Board here" / "Get off here",
 "Passed" on passed stops, "Bus 101 heading here", the bus chip on the line between the right stops, live ETAs from
 that bus's own prediction, then the destination, "Trip steps" and an honesty footnote. The planned VEHICLE is
@@ -90,8 +91,43 @@ followed and said so. Picking another card in Directions during a trip makes the
 endpoint ends the trip. The same data feeds the Live Activity (`TripFollow.snapshot` -> `LiveTripSnapshot` = the
 ActivityKit ContentState): Lock Screen card with the
 arrival in whole minutes (see "Live Activity times" below), the next stops as a progress bar with the bus, "est." and
-"Unofficial" labels; Dynamic Island compact "53RD | 3 stops 4 min" (iOS 17: "53RD | 6:37 PM"), expanded progress bar
-+ boarding/alighting names, minimal route dot.
+"Unofficial" labels; Dynamic Island compact "53RD | 3 stops 4 min" (on board "2 left" / "Next stop" / "Get off",
+the timeline's count; iOS 17: "53RD | 6:37 PM"), expanded progress bar + boarding/alighting names, minimal route dot.
+
+### You on the trip map, trip alerts in step with it (owner request 2026-10-13)
+
+"The Current Trip map should show the user's location in the current trip's location (especially for bus routes).
+Make this sync to the notification center's get off in X stops." Same spec and strings as the web (trip-you-web,
+web/js/core/tripyou.js, core/notify.js tripAlerts, ui/tripmap.js). `AppModel.refreshTrip` makes ONE `TripFollow` per
+refresh (poll, clock tick, location fix, return to the app) and everything reads that value with the same `now`: the
+timeline (`tripFollow`), the map (`tripYou`, Kit `TripYou.compute`), the Live Activity (`snapshot`) and the trip
+alerts (`checkTripAlerts`, Kit `Notify.tripAlerts`). So the card, the map label, the alert and the Dynamic Island say
+the same count: "Get off in 2 stops: Medical Center" (`TripText.offText`; stopsLeft 0 = the bus is at your stop, 1 =
+your stop is next).
+- **Map** (`Views/MapScreen.swift`): on the bus you ride, an accent ring and a "You" pill on its marker (they glide
+  with it; MapKit's user dot steps back); while waiting without GPS a dashed ring at the boarding stop with
+  "You (est.)"; otherwise the normal user dot. If your accurate GPS (<= 100 m) is more than 300 m + its accuracy from
+  the bus, your GPS is shown and the card adds "Your location is not near Bus 101. Stop counts follow the bus."
+  Labels: "Board here" under the boarding stop before boarding, the get-off count ("Get off in 2 stops" / "Get off
+  next stop" / "Get off here") above the alighting stop until arrived. VoiceOver reads the You marker's sentence.
+- **Follow camera** (`Model/AppModel+Follow.swift`): on at Start and by the locate button during a trip (it then
+  reads "Show me on my trip", asks for location the first time); off when the rider drags or zooms
+  (`MapCameraPosition.positionedByUser`) or another screen moves the map. While on it frames `TripYou.frame` (you,
+  what you head for, the coming bus when <= 3 stops away) on a phase or leg change, or when a framed point leaves the
+  visible map (below the floating chrome, above the sheet: RootView measures it, `MapProxy.convert` checks it), at
+  most zoom 17 (16 for one point), not again within 2 s of a frame; never on a poll where everything is in view.
+  The expanded sheet hides the map: it frames once the sheet comes down. Reduce Motion: no animation.
+- **Trip alerts** (`Model/BusAlerts.swift`): before boarding "Red Line: Bus 101 is 2 stops away" / "... is
+  approaching Ratner Center" (body "Board at X. Arrives in about 4 min (est.)." + "You may not make it on foot."),
+  "arriving at X in about 7 min (est.)" with the minutes choice; on board "Get off in 2 stops: X" then "Get off at the
+  next stop: X" (body "Red Line, Bus 101. Your stop in about 3 min (est.)."), once per ride. The 2 stops / 1 stop /
+  minutes / in-app choices apply to station and trip alerts alike. Station alerts pause during a trip with trip alerts
+  on ("Paused during your trip: alerts follow your trip's bus."). Live data down: ONE "Live data delayed" alert per
+  outage (trip and station), only on the feed's own evidence (a failed poll, or a fresh poll of an old feed): never
+  for data that only aged in the background. Notifications: thread "trip" / "bus-alerts", the body ends with
+  " Unofficial.", the in-app banner when not allowed. Permission: asked at Start when trip alerts are on and it was
+  never asked (or when a station is chosen); never at launch, never in `-demo`; alerts wait for the answer. Simulated
+  buses never alert.
 
 ### Live Activity times (owner decision 2026-10-11)
 
@@ -160,8 +196,10 @@ gallery "28-livestates", "29-livestates-end") draws the card in all four states 
 - My Routes: custom routes (tap = show on the map; `.swipeActions` and a long-press menu with Details / Edit /
   Delete, `allowsFullSwipe: false`; Delete confirms in a dialog), favorites (Edit = reorder / remove), Service
   alerts, About, Settings; custom route detail with Highlight; editor grouped by live status.
-- Stop detail, Settings (theme, service alerts, bus alerts with routes, in-app switch, status and the notification
-  permission state, Live Activity switch + preview, Simulated buses (demo), privacy + Privacy policy link), About
+- Stop detail, Settings (theme, service alerts, bus alerts: Trip alerts switch + "During your trip: ..." line, station
+  with routes, the 2 stops / 1 stop / minutes / in-app choices for both, status and the notification permission
+  state; Live Activity switch + preview, Simulated buses (demo), privacy + Privacy policy link, Feedback: "Give
+  feedback" opens the beta feedback form in Safari), About
   (unofficial notice, Call 773.702.8181, official page, appearance, privacy incl. Photon, Apple walking
   directions and the daily schedule check, Privacy policy and Contact support links, credits "OpenFreeMap · OpenMapTiles · OpenStreetMap"
   without the copyright sign, plus Apple Maps), Live Activity preview screen. Bus alerts arrive as local
@@ -378,6 +416,11 @@ actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 | Trip timeline (now card, walk rows, stop rail, "Passed", bus chip, lead row, destination, Trip steps, footnote) | done | `TripFollow` + `TripText` port; before: an independent simpler timeline |
 | Follow the planned bus by VEHICLE, not trip id (web b924f89) | done | Arrival / BusLeg `vehicleId`; notify alert keys; operating predictions |
 | Follow a bus you can catch; missed-bus switch from your location; no instant "arrived" on a vehicle's next trip | done | `TripFollow` tests mirror web core-tripprogress.js |
+| You on the trip map (core/tripyou.js, ui/tripmap.js, map.js setTrip / inView, 2026-10-13): on the bus = ring + "You" on its marker, GPS dot hidden; "You (est.)" at the boarding stop without GPS; far GPS = your dot + the card's "Your location is not near Bus N. Stop counts follow the bus."; "Board here" / offShort labels; follow camera (Start, locate button = recenter, off on a pan / zoom, frames on phase / leg change or a point out of view, 2 s settle, zoom 17 / 16) | done (2026-10-13) | Kit `TripYou` (web tests ported 1:1 in `TripYouTests`), `Model/AppModel+Follow.swift`, `Views/MapScreen.swift`; MapKit's `positionedByUser` stands in for Leaflet's user-move event, `MapProxy.convert` for `inView`; the locate button reads "Show me on my trip" |
+| Trip alerts (core/notify.js tripAlerts / tripAlertsOn, ui/notifier.js, 2026-10-13): board2 / board1 / boardMin, off2 / off1 from the same evaluation as the card; station alerts pause during a trip; one "Live data delayed" per outage on the feed's own evidence; " Unofficial." on notifications; permission at Start | done (2026-10-13) | Kit `Notify.tripAlerts` / `dueAlerts(tripOn:polling:)`; app `checkTripAlerts` runs inside `refreshTrip` with its `now`; threads "trip" / "bus-alerts"; `polling` = the app is in front and has polled since it came back |
+| Settings: "Trip alerts" switch ("Before your bus comes and before you get off, while a trip is in progress."), "During your trip: Get off in 2 stops: X" / "... Live data is unavailable, so trip alerts wait for it." / "... Waiting for a live position of your bus.", 2 stops / 1 stop subs "On a trip, also ...", choices without a station, station status "Paused during your trip: alerts follow your trip's bus." | done (2026-10-13) | `Views/SettingsView.swift`; `NotifyPrefs.trip` (default on) decodes old stored prefs without losing them (tested) |
+| One get-off wording (offText) for the card, the map, the alerts and the Live Activity; the card's second line "Reach X about 4:12 PM" | done (2026-10-13) | fixed an iOS off-by-one: the Dynamic Island said "Next stop" at stopsLeft 0 and "1 left" at 1 (now "Get off" / "Next stop" / "2 left"), VoiceOver "Get off at the next stop" at 0 and "1 stops to" (now offText, "1 stop") |
+| Settings > Feedback: "Give feedback" (beta Google Form) | done (2026-10-13, owner) | `SiteLinks.feedback`; opens in Safari, nothing sent by the app; the support link is unchanged |
 | Directions: Start / Destination, swap, My location default | done (before) | "My location" asks for location when needed; "Location is off…" hint |
 | Directions suggestions: whole-word stations, strong local places, partial stations, other places; "Shuttle stop · RL, GL" | done | `AppModel.suggestions` (web computeSugs) |
 | Place search: on-device index, nicknames, spelling fix + "Showing results for X" / "Search for “x” instead" / "Did you mean X?" | done | Kit `Spell`, `PlaceIndex.find`; 94 UChicago queries verified in Kit tests |

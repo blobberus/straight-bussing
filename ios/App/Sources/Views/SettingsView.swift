@@ -57,6 +57,17 @@ struct SettingsView: View {
                         .accessibilityHint("Opens the support form in Safari")
                         .accessibilityIdentifier("supportContactLink")
                     }
+                    Section {
+                        Link(destination: SiteLinks.feedback) {
+                            Label("Give feedback", systemImage: "text.bubble")
+                        }
+                        .accessibilityHint("Opens the feedback form in Safari")
+                        .accessibilityIdentifier("feedbackLink")
+                    } header: {
+                        ListHeader("Feedback")
+                    } footer: {
+                        Text("This is a beta. Tell us what works and what does not.").foregroundStyle(Palette.text2)
+                    }
                 }
                 .tint(Palette.accent)
                 .task {
@@ -182,10 +193,32 @@ struct SettingsView: View {
 
     // MARK: Bus alerts
 
+    /// Switch sub-lines (web settings.js TWO_SUB / ONE_SUB / TRIP_SUB): the same choices time the trip alerts.
+    static let twoSub = "On a trip, also 2 stops before you get off"
+    static let oneSub = "Also when your stop is next. On a trip, also 1 stop before you get off"
+    static let tripSub = "Before your bus comes and before you get off, while a trip is in progress."
+    static let busAlertsIntro = "Notify me when my bus is near a station, and on a trip before my bus comes and before I get off. Times are estimates from live predictions."
+
     var busAlerts: some View {
         let n = model.notify
         let stop = n.stopId.flatMap { model.staticData.stops[$0] }
         return Section {
+            Text(Self.busAlertsIntro).font(.subheadline).foregroundStyle(Palette.text2)
+            Toggle(isOn: Binding(get: { model.notify.trip }, set: { model.setTripAlerts($0) })) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Trip alerts")
+                    Text(Self.tripSub).font(.caption).foregroundStyle(Palette.text2)
+                }
+            }
+            .accessibilityIdentifier("tripAlerts")
+            if model.feedSimulated && model.activeTrip != nil && n.trip {
+                Label("Bus alerts are paused while simulated buses are on.", systemImage: "pause.circle")
+                    .font(.caption).foregroundStyle(Palette.text2)
+            } else if let line = Notify.tripStatusLine(model.activeTrip != nil ? model.tripFollow : nil, prefs: n, live: model.live, now: model.now) {
+                Text(line).font(.caption).foregroundStyle(Palette.text2)
+                    .accessibilityAddTraits(.updatesFrequently)
+                    .accessibilityIdentifier("tripAlertsNow")
+            }
             NavigationLink {
                 StationPicker()
             } label: {
@@ -201,26 +234,32 @@ struct SettingsView: View {
                 }
             }
             .accessibilityHint(stop == nil ? "Choose a station" : "Change the station")
-            if let id = n.stopId, stop != nil {
-                routesRows(id)
-                Toggle("2 stops away", isOn: Binding(get: { model.notify.twoStops }, set: { v in model.updateNotify { $0.twoStops = v } }))
-                Toggle(isOn: Binding(get: { model.notify.oneStop }, set: { v in model.updateNotify { $0.oneStop = v } })) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("1 stop away")
-                        Text("Also when your stop is next").font(.caption).foregroundStyle(Palette.text2)
-                    }
+            if let id = n.stopId, stop != nil { routesRows(id) }
+            // when to alert: the station's alerts and the trip alerts alike, so they show without a station too
+            Toggle(isOn: Binding(get: { model.notify.twoStops }, set: { v in model.updateNotify { $0.twoStops = v } })) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("2 stops away")
+                    Text(Self.twoSub).font(.caption).foregroundStyle(Palette.text2)
                 }
-                Picker("When the bus is", selection: Binding(get: { model.notify.minutes }, set: { v in model.updateNotify { $0.minutes = v } })) {
-                    ForEach(Self.minuteChoices, id: \.self) { m in Text(m == 0 ? "Off" : "\(m) min away").tag(m) }
+            }
+            Toggle(isOn: Binding(get: { model.notify.oneStop }, set: { v in model.updateNotify { $0.oneStop = v } })) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("1 stop away")
+                    Text(Self.oneSub).font(.caption).foregroundStyle(Palette.text2)
                 }
-                Toggle(isOn: Binding(get: { model.notify.inApp }, set: { v in model.updateNotify { $0.inApp = v } })) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("In-app alerts while open")
-                        Text("A banner at the top of the app").font(.caption).foregroundStyle(Palette.text2)
-                    }
+            }
+            Picker("When the bus is", selection: Binding(get: { model.notify.minutes }, set: { v in model.updateNotify { $0.minutes = v } })) {
+                ForEach(Self.minuteChoices, id: \.self) { m in Text(m == 0 ? "Off" : "\(m) min away").tag(m) }
+            }
+            Toggle(isOn: Binding(get: { model.notify.inApp }, set: { v in model.updateNotify { $0.inApp = v } })) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("In-app alerts while open")
+                    Text("A banner at the top of the app").font(.caption).foregroundStyle(Palette.text2)
                 }
-                status(id)
-                permissionRow
+            }
+            if let id = n.stopId, stop != nil { status(id) }
+            if n.trip || stop != nil { permissionRow }
+            if stop != nil {
                 // the system destructive red is 3.6:1 on the row; the token red passes in both themes
                 Button("Turn off bus alerts") { model.turnOffBusAlerts() }
                     .tint(Palette.danger)
@@ -229,7 +268,7 @@ struct SettingsView: View {
         } header: {
             ListHeader("Bus alerts")
         } footer: {
-            Text("Notify me when my bus is near a station. Times are estimates from live predictions. Alerts work only while the app is open; lock-screen alerts need a push server (planned).")
+            Text("If live data goes down, you get one \u{201C}Live data delayed\u{201D} alert instead of silence. Alerts work only while the app is open; lock-screen alerts need a push server (planned).")
                 .foregroundStyle(Palette.text2)
         }
     }
@@ -259,6 +298,10 @@ struct SettingsView: View {
         if model.simulating {
             Label("Bus alerts are paused while simulated buses are on.", systemImage: "pause.circle")
                 .font(.caption).foregroundStyle(Palette.text2)
+        } else if model.tripAlertsRunning {
+            Label(Notify.tripPausedText, systemImage: "pause.circle")
+                .font(.caption).foregroundStyle(Palette.text2)
+                .accessibilityIdentifier("stationPausedForTrip")
         } else if model.liveLoaded && (model.staleLevel == .err || model.staleLevel == .old) {
             Label("Live data is unavailable, so bus alerts are paused.", systemImage: "exclamationmark.triangle")
                 .font(.caption).foregroundStyle(Palette.warn)

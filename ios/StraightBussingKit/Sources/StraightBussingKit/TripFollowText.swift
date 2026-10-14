@@ -12,6 +12,12 @@ public enum TripText {
         return "Bus \(v.label)"
     }
 
+    /// The same inside a sentence: "Bus 101" / "the bus" (web core/tripyou.js busMid).
+    public static func busMid(_ v: TripFollow.Vehicle?) -> String {
+        guard let v, !v.label.isEmpty else { return "the bus" }
+        return "Bus \(v.label)"
+    }
+
     /// "4 min" / "Now" (with "~" while live data is delayed), like the route detail timeline.
     public static func etaText(_ t: Double?, now: Double, late: Bool) -> String {
         guard let t, t != 0 else { return "" }
@@ -25,6 +31,19 @@ public enum TripText {
         return m < 1 ? "now" : "in \(plural(m, "minute"))"
     }
 
+    /// The one sentence for the stops left on board (web core/tripyou.js offText), shared by the trip card, the map's
+    /// "You" marker, the trip alerts and the Live Activity: 0 = the bus is AT your stop, 1 = your stop is its next
+    /// stop, n = n stops to go counting yours (TripFollow `stopsLeft`).
+    public static func offText(_ stopsLeft: Int, _ alight: String) -> String {
+        stopsLeft <= 0 ? "Get off here: \(alight)" : stopsLeft == 1 ? "Get off at the next stop: \(alight)" : "Get off in \(stopsLeft) stops: \(alight)"
+    }
+
+    /// Short form for the map label at the alighting stop ("Get off in 2 stops"; no count: "Get off here").
+    public static func offShort(_ stopsLeft: Int?) -> String {
+        guard let n = stopsLeft else { return "Get off here" }
+        return n <= 0 ? "Get off here" : n == 1 ? "Get off next stop" : "Get off in \(n) stops"
+    }
+
     /// Where the followed bus is, in words ("Bus 101 is 3 stops away", "Bus 101 is between A and B").
     public static func busWords(_ leg: TripFollow.BusStep, now: Double) -> (status: String, location: String) {
         guard let v = leg.vehicle else { return ("", "") }
@@ -33,7 +52,7 @@ public enum TripText {
         if let s = leg.stopsAway {
             status = s == 0 ? (v.at ? "\(who) is at \(b)" : "\(who) is approaching \(b)") : "\(who) is \(plural(s, "stop")) away"
         } else if let l = leg.stopsLeft {
-            status = l == 0 ? "Get off here: \(a)" : l == 1 ? "Get off at the next stop: \(a)" : "\(plural(l, "stop")) to \(a)"
+            status = offText(l, a)
         }
         var whereText = v.at ? "\(who) is at \(v.nextName)"
             : v.prevName.map { "\(who) is between \($0) and \(v.nextName)" } ?? "\(who) is heading to \(v.nextName)"
@@ -58,7 +77,8 @@ public enum TripText {
         leg.vehicle != nil ? "Your planned bus has left. Showing the next one." : "Your planned bus has left."
     }
 
-    public static func nowCard(_ p: TripFollow, routes: [String: Route], now: Double) -> NowCard {
+    /// `you` (TripYou of the same `p`): when your location is far from the bus the counts follow, the card says so.
+    public static func nowCard(_ p: TripFollow, routes: [String: Route], now: Double, you: TripYou? = nil) -> NowCard {
         let late = p.stale != .fresh
         if p.phase == .arrived {
             let fin = p.legs.indices.contains(p.active) ? p.legs[p.active].walk : nil
@@ -87,8 +107,12 @@ public enum TripText {
             if leg.missed { sec.append(missedNote(leg)) }
         default:
             prim = !w.status.isEmpty ? w.status : "Riding to \(leg.alightName)"
-            sec.append("Get off at \(leg.alightName)\(leg.alightEta.map { " about \(TimeFmt.clock($0))\(leg.alightLive ? "" : ", est.")" } ?? "")")
+            let when = leg.alightEta.map { " about \(TimeFmt.clock($0))\(leg.alightLive ? "" : ", est.")" } ?? ""
+            // the headline already says "Get off in 2 stops: X": the line under it says when you get there
+            if !w.status.isEmpty { if !when.isEmpty { sec.append("Reach \(leg.alightName)\(when)") } }
+            else { sec.append("Get off at \(leg.alightName)\(when)") }
         }
+        if let you, you.far { sec.append(you.text) }   // you may not be on the bus the counts follow (rider safety)
         if !leg.live { sec.append(leg.byTime ? "No live bus data: following the plan's times (estimate)." : "No live bus position right now.") }
         let onBus = p.phase == .onBus
         let t = onBus ? leg.alightEta : leg.boardEta

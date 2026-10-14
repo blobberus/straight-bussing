@@ -42,10 +42,10 @@ extension AppModel {
     func finishBoot() {
         predictor = SchedulePredictor(segments: staticData.segments, routeStops: staticData.routeStops)
         loadPrefs()
-        location.onUpdate = { [weak self] p, st in
+        location.onUpdate = { [weak self] p, acc, st in
             guard let self, !self.config.demo else { return }
             if self.locState != st { self.locState = st }
-            if let p { self.user = p; self.userMoved(p) }
+            if let p { self.userAccuracy = acc; self.user = p; self.userMoved(p) }
             if st == .denied, self.pendingMe != nil { self.pendingMe = nil; self.dirMeDenied = true }
         }
         if config.demo {
@@ -99,6 +99,7 @@ extension AppModel {
     /// fresh while the first new poll is on its way), then polling, the clock tick, permissions, schedule check.
     func didBecomeActive() {
         inForeground = true
+        pollsSinceActive = 0   // data from before the break is old because nothing polled: not an outage
         now = Date().timeIntervalSince1970
         refreshStatus()
         refreshTrip()   // the trip timeline and the Live Activity say "delayed" too, not only the pill
@@ -136,7 +137,8 @@ extension AppModel {
         let t = Date().timeIntervalSince1970
         applyLive(liveState.applying(poll, staticData: staticData, now: t), now: t)
         failures = liveState.failed ? failures + 1 : 0
-        refreshTrip()
+        pollsSinceActive += 1
+        refreshTrip()   // the trip alerts go out from the same evaluation (BusAlerts.swift checkTripAlerts)
         refreshDirections()
         checkBusAlerts()
         if pendingStatic != nil { applyPendingSchedule() }
@@ -231,6 +233,10 @@ extension AppModel {
     }
 
     // MARK: Location
+
+    /// The feed is really being polled now (the app is in front and has polled since it came back): only then is
+    /// old data an outage worth one "Live data delayed" alert.
+    var feedPolling: Bool { inForeground && pollTask != nil && pollsSinceActive > 0 }
 
     func locate() {
         if config.demo { user = DemoConfig.origin; locState = .granted; flyTo(user, span: 0.012); return }
@@ -560,7 +566,10 @@ extension AppModel {
     // MARK: Trip
 
     /// Start the selected option: only its routes on the map ("Only showing routes for: To X"), Current trip shows
-    /// the progress timeline following the planned bus, and the Live Activity starts (if enabled).
+    /// the progress timeline following the planned bus, the map follows the trip (You marker, stop labels), trip
+    /// alerts are armed and the Live Activity starts (if enabled). With trip alerts on and notifications never asked
+    /// for, this is when iOS asks (the documented flow: at the first armed alert or at Start, never at launch); the
+    /// first alerts wait for the answer.
     func startTrip(_ o: TripOption, label: String) {
         guard let j = TripJourney.plan(o, to: label) else { return }
         activeTrip = ActiveTrip(option: o, label: label, startedAt: now, journey: j)
@@ -569,29 +578,45 @@ extension AppModel {
         tab = .current
         detent = .full       // Start opens Current trip expanded (owner 2026-10-12)
         location.setTripMode(true)
+        if notify.trip && notifPermission == .unknown { requestNotifPermission() }   // never in -demo
+        mapCamera.follow = true
+        mapCamera.followKey = nil
+        mapCamera.lastFramed = []
         refreshTrip()
         if notify.liveActivity, let snap = tripFollow?.snapshot(staticData: staticData, now: now) {
             // labeled "Simulated (demo)" only for the Settings switch; `-demo` screenshots look like real use
             liveActivity.start(title: "To \(label)", state: snap, simulated: simulating)
             lastActivityPush = (snap: snap, at: Date().timeIntervalSince1970)
         }
-        fit(planPoints(o))
+        // the expanded sheet hides the map: show the whole plan under it; the follow camera frames you on the trip
+        // once the map shows (MapScreen)
+        if mapCamera.visibleRect.height < Self.followMinVisibleH { fit(planPoints(o), keepFollow: true) }
     }
 
     func endTrip() {
         if let snap = tripFollow?.snapshot(staticData: staticData, now: now) { liveActivity.end(final: snap) } else { liveActivity.end() }
         activeTrip = nil
         tripFollow = nil
+        tripYou = nil
         lastActivityPush = nil
+        mapCamera.follow = false
+        mapCamera.followKey = nil
         if routeState.journey?.kind == .plan { routeState.journey = nil }
         location.setTripMode(false)
     }
 
+    /// ONE evaluation of the started trip for `now`: the timeline (`tripFollow`), the map (`tripYou`), the Live
+    /// Activity and the trip alerts all read this value, so they never disagree on a stop count.
     func refreshTrip(forceActivity: Bool = false) {
         guard let trip = activeTrip else { return }
-        let p = TripFollow.compute(trip.journey, staticData: staticData, live: liveState, user: user, now: now)
+        let t = now
+        let p = TripFollow.compute(trip.journey, staticData: staticData, live: liveState, user: user, now: t)
         if tripFollow != p { tripFollow = p }
-        if let snap = p?.snapshot(staticData: staticData, now: now) { pushLiveActivity(snap, force: forceActivity) }
+        tripFollowNow = t
+        let y = TripYou.compute(p, user: user, accuracy: userAccuracy, staticData: staticData, dest: trip.dest)
+        if tripYou != y { tripYou = y }
+        if let snap = p?.snapshot(staticData: staticData, now: t) { pushLiveActivity(snap, force: forceActivity) }
+        checkTripAlerts(p, now: t)
     }
 
     /// The Live Activity refresh interval when nothing visible changed (it marks itself stale 120 s after the

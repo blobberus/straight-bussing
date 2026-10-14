@@ -33,6 +33,7 @@ struct RootView: View {
             let topReserved: CGFloat = chromeH > 1 ? chromeH + 14 : 8
             let tabH: CGFloat = keyboardUp ? 0 : Self.tabBarHeight
             let available = max(200, geo.size.height - tabH - topReserved)
+            let mapRects = MapRects.of(geo, chromeH: chromeH, sheetH: settledSheetH, tabH: tabH)
             ZStack(alignment: .bottom) {
                 // The inset is applied here, not passed in: MapScreen has no inputs, so a settled sheet only
                 // relayouts the map instead of re-running its body.
@@ -77,6 +78,12 @@ struct RootView: View {
             }
             // Above the sheet in both states, like a system banner.
             .overlay(alignment: .top) { ToastBanner().padding(.horizontal, 12).padding(.top, 4) }
+            // the trip's follow camera keeps its frame inside what the rider can see of the map
+            .onChange(of: mapRects, initial: true) { _, r in
+                let cam = model.mapCamera
+                cam.safeRect = r.safe
+                if cam.visibleRect != r.visible { cam.visibleRect = r.visible }
+            }
         }
         .environment(dirUI)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
@@ -287,20 +294,27 @@ struct ToastBanner: View {
     }
 }
 
+/// Show my location; during a started trip: show you in the trip again (the follow camera back on, web
+/// onLocateFab + tripmap recenter). The symbol says the state (filled = following / located), not color alone.
 struct LocateButton: View {
     @Environment(AppModel.self) private var model
     var body: some View {
+        let trip = model.activeTrip != nil
+        let following = trip && model.mapCamera.follow
         Button {
+            if trip { model.recenterTrip(); return }
             if model.locState == .denied && !model.config.demo { model.showLocationOff = true; return }
             model.locate()
         } label: {
-            Image(systemName: model.user == nil ? "location" : "location.fill")
+            Image(systemName: trip ? (following ? "location.north.line.fill" : "location.north.line") : model.user == nil ? "location" : "location.fill")
                 .font(.title3)
                 .frame(width: 44, height: 44)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
                 .shadow(color: Palette.shadow.opacity(0.15), radius: 6, y: 2)
         }
-        .accessibilityLabel("Show my location")
+        .accessibilityLabel(trip ? "Show me on my trip" : "Show my location")
+        .accessibilityValue(trip ? (following ? "Following the trip" : "Not following") : "")
+        .accessibilityIdentifier("locateButton")
     }
 }
 
