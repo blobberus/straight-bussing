@@ -363,6 +363,8 @@ async function boot() {
   store.subscribe((s, changed) => { syncMap(s, changed); scheduleRender(); syncHistory(); });
   render();
   syncMap(store.get(), null);
+  // beta welcome popup, once per browser session, after this first real render is painted (owner 2026-10-13)
+  import("./ui/feedback.js").then((m) => m.welcomeAfterPaint()).catch((e) => console.warn("welcome popup", e));
   if (!DEMO) import("./ui/notifier.js").then((m) => { notifier = m.startNotifier?.(store, { toast }) || null; }).catch(() => {});   // bus-near alerts while the page is open
 
   setInterval(() => {

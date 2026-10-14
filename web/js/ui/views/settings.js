@@ -2,7 +2,8 @@
  * @module ui/views/settings
  * Settings content, shown in its own modal overlay (ui/settings-overlay.js), NOT in the sheet. The
  * top-right gear runs action `settings:open`, which opens (or closes) the overlay:
- * appearance (ui/theme.js mount), service alerts inline, bus alerts ("notify me when my bus is near
+ * Beta feedback first (a link to the form, ui/feedback.js), appearance (ui/theme.js mount), service alerts inline,
+ * bus alerts ("notify me when my bus is near
  * <station>": station, routes, 2 stops / 1 stop / N min; ONE alert each, a banner while the app is in front or a
  * system notification in the background when allowed, ui/notifier.js deliveryFor; wording as iOS SettingsView),
  * the iPhone-only Live Activity preference, and About. Owns its DOM after mount (regions patched in
@@ -26,6 +27,17 @@ import { alertBodyHTML } from "./alerts.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen } from "../settings-overlay.js";
 import { locPlatform, locEnv, LOC_STEPS, LOC_ORDER, locResultText } from "../../core/lochelp.js";
+import { feedbackLinkHTML } from "../feedback.js";
+
+/** Settings > Beta feedback, first in Settings (the welcome popup says the link is in the settings menu). */
+export const FEEDBACK_LINE = "This is a beta. Tell us what works and what does not.";
+export const FEEDBACK_NOTE = "Opens a Google Form in a new tab. What you type is sent only when you press Submit there.";
+/** @returns {string} */
+export function feedbackHTML() {
+  return `<h3 class="v-h">Beta feedback</h3><div class="st-feedback"><p class="v-sec st-intro">${esc(FEEDBACK_LINE)}</p>`
+    + feedbackLinkHTML("Give feedback", { cls: "v-btn v-btn--secondary v-btn--block st-fbbtn", attrs: 'data-key="feedback"', icon: true })
+    + `<p class="v-fine">${esc(FEEDBACK_NOTE)}</p></div>`;
+}
 
 /** The location promise in Settings (owner 2026-10-12: "no user location data will be collected"); matches privacy.html. */
 export const LOC_DISCLAIMER = "Straight Bussing does not collect your location. It stays on your device to find the stops and buses near you; for walking directions only a rounded start and end point goes to a routing service (OSRM or Valhalla), and nothing is stored.";
@@ -239,6 +251,7 @@ export function permHTML(perm = notificationSupport()) {
 export function renderSettings(state, now = nowS()) {
   const n = N(state), nAlerts = state.liveLoaded ? activeAlerts(state, now).length : 0;
   return `<div class="st">
+${feedbackHTML()}
 <h3 class="v-h">Appearance</h3><div class="st-theme" data-region="theme"></div>
 <h3 class="v-h">Location</h3><div data-region="loc">${locHTML(state)}</div>
 <h3 class="v-h">Service alerts${nAlerts ? ` <span class="st-count">${nAlerts} active</span>` : ""}</h3><div data-region="alerts">${alertsHTML(state, now)}</div>

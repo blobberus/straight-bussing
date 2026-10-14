@@ -6,6 +6,7 @@
  * Tests share one app instance.
  */
 import { test, eq, ok, holdRun, run } from "./lib.js";
+import { WELCOME_KEY } from "../js/ui/feedback.js";
 
 holdRun();
 let F = null, W = null, D = null;
@@ -38,6 +39,7 @@ const dialog = () => D.querySelector("dialog.v-confirm[open]");
 
 async function boot() {
   localStorage.setItem("sb:hiddenRoutes", JSON.stringify([]));
+  sessionStorage.setItem(WELCOME_KEY, "1");   // test seam: the beta welcome popup counts as seen (feedback.test.html covers it)
   F = document.createElement("iframe");
   F.style.cssText = "width:500px;height:900px;border:0";
   F.src = "../index.html?demo=1";

@@ -7,6 +7,7 @@
 import { test, eq, ok, near, holdRun, run } from "./lib.js";
 import { shellE2E } from "./ui-shell-e2e.js";
 import { currentTripE2E } from "./e2e-current.js";
+import { WELCOME_KEY } from "../js/ui/feedback.js";
 
 holdRun();
 
@@ -57,6 +58,9 @@ async function pageHTML() {
 }
 /** Load the app into a new iframe (optionally sized, e.g. a desktop window). */
 async function openApp(style) {
+  // test seam: the beta welcome popup (ui/feedback.js) counts as seen in this session (same-origin iframes share
+  // sessionStorage with this page), so it never covers the flows; feedback.test.html covers the popup
+  try { sessionStorage.setItem(WELCOME_KEY, "1"); } catch (e) { /* blocked storage: the popup would show */ }
   const frame = document.createElement("iframe");
   frame.title = "app under test";
   if (style) frame.style.cssText = style;

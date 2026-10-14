@@ -127,3 +127,15 @@
 .st-other { margin: 0 0 var(--s3); }
 .st-other summary { min-height: var(--tap); display: flex; align-items: center; cursor: pointer; color: var(--accent); font-weight: 600; }
 .st-tried { margin: var(--s2) 0 0; }
+
+/* Beta feedback (owner 2026-10-13, ui/feedback.js): the Settings link and the once-per-session welcome popup */
+.st-feedback .st-intro { margin: 0; }
+.st-fbbtn { margin-bottom: 0; }
+.st-fbbtn .fb-ext { width: 18px; height: 18px; }
+/* the popup: as wide as the confirm popup; scaled with the desktop phone frame (--frame-k, ui/frame.js) so it
+   never spills over a shrunken frame (native dialogs center on the window, outside the frame's transform) */
+.v-welcome { width: min(calc(100vw - 48px), 340px); scale: var(--frame-k, 1); }
+.v-welcome-b { margin: var(--s2) 0 0; }
+.v-welcome-acts { flex-wrap: wrap; margin: var(--s5) 0 0; }
+.v-welcome-acts .v-btn { flex: 1 1 auto; }   /* sized by their words: with larger text they stack instead of wrapping a label */
+@media (forced-colors: active) { .v-welcome { border: 1px solid CanvasText; } }
