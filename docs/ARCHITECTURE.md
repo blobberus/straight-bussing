@@ -162,6 +162,8 @@ drawNetwork({routes, shapes, routeStops, stopRoutes, stops, hidden:[], focus:[]|
 drawBuses(buses, {routes, hidden, focus, nowS})   // rounded-square badge in route color, heading triangle, pulse ring, stale (>60 s) dimmed; smooth glide; recreate marker only if route changes
 setSelectedStop(stop|null)       // {id,lat,lon}
 setUser(pos|null)                // blue dot
+setHeading(deg|null, spread?)    // heading cone on the dot (2026-10-14): accent wedge, deg clockwise from north, spread = width (default 60, 20..160);
+                                 // fed by ui/compass.js straight from main.js (never the store), DOM written only on a change; null hides it
 highlightStops(items|null, {onPick})   // items [{id,lat,lon}] ring highlights; null clears
 drawFavorites(stops|null)        // [{id,name?,lat,lon}] gold star badges (map/favorites.js), pane z422 (above stops, below highlights/selection/buses), all zooms (smaller <z14), taps -> onStopTap; selected favorite gets a wider unfilled ring; faded while a plan is drawn
 drawPlan(option|null, {routes, shapes, routeStops})  // bus legs follow road shapes (geometry.alongShape); walk legs dashed along leg.coords else straight; start/end pins
@@ -342,6 +344,20 @@ notifications are allowed (`startNotifier().background()`).
 Web: `ui/notifier.js` (SETTINGS) watches the store while the page is open and delivers ONE alert per trip + kind (2026-10-10, `deliveryFor({front, perm, inApp})`): the in-app banner (bus 'toast') while the page is visible and focused, a silent browser Notification (service-worker `showNotification` fallback) while it is in the background and the user allowed them; a notification that cannot show falls back to the banner; the "In-app alerts while open" switch turns the banner off. `startNotifier(...).background()` (station set + permission granted) makes main.js keep polling in a background tab (`startLive` keepAlive). Settings wording follows iOS (permission lines "Alerts show as a banner while you use the app, and as a notification while it is open in the background." / "Notifications are off" + why; footer "Alerts work only while Straight Bussing is open; ..."); it never claims to work once the page is closed. Settings is a modal overlay (`ui/settings-overlay.js`, SETTINGS) opened and toggled by the top-right gear (action `settings:open`): it lifts the sheet to "full" and covers the WHOLE sheet (grab, title, tabs: owner wants nothing of Plan Trip to look like part of Settings), a scrim (`.sto-scrim`) dims what is still visible behind it and closes Settings on tap, the sheet header and content are inert; "Done" top right; also covers the bottom navigation (`#tabs` inert, `navBottom` in `overlayBox`); closes on Escape / navigation / the sheet leaving full, traps focus and restores the previous detent. View id `settings` is a compatibility shim only.
 | SETTINGS | ui/views/settings.js, ui/settings-overlay.js, ui/notifier.js, core/notify.js, css/settings.css, tests/settings-* + settings.test.html |
 | IPHONE | `conversion to appstore.md`, docs/IOS.md, docs/APPSTORE.md |
+
+### Heading cone on the location dot (2026-10-14, owner: "the tracking dot should have a direction based on the user's heading")
+`ui/compass.js createCompass({onHeading})` (main.js owns it; tests `tests/map-compass.js` in map.test.html). Sources, best
+first: the compass (iOS Safari `deviceorientation` + `webkitCompassHeading`, Chrome / Android `deviceorientationabsolute`
+= 360 - alpha; a relative alpha is ignored), + the screen angle in landscape; else the GPS course (`coords.heading`) while
+moving >= 1 m/s; else no cone (the plain dot). iOS 13+ shows the compass only after `DeviceOrientationEvent.requestPermission()`
+inside a tap: `compass.request()` runs synchronously in `locate()` (every tap that asks for the location) and the locate
+button, never at launch (`locate({auto: true})`), and never again once readings come. On while location sharing is on
+(`start` after a fix, `stop` in `stopLocation`), listener off while the page is hidden. Readings never enter the store:
+coalesced to one per animation frame, passed on only on a turn >= 2 deg or a width change, straight to
+`MapApi.setHeading(deg, spread)`. Width = 2 x the compass's stated error, 40..120 deg (120 when it says it is not
+calibrated, 60 when the source gives no accuracy). The map turns the cone the short way round (`geometry.unwrapDeg`,
+0.15 s, none with reduced motion); the cone hides with the dot (on the bus, no location). Nothing is stored or sent
+(privacy.html "The way you face"). iOS: ios/README.md "Heading cone".
 
 ### Custom routes interaction (2026-10-08)
 Tap a custom route row = show it on the map / stop showing (`mr:toggle`, no navigation). Swipe left (or the row's "More" button,

@@ -92,8 +92,19 @@
 .sb-map.sb-zooming .sb-lm{visibility:hidden}   /* re-placed at zoomend; a zoom never shows them overlapping */
 
 /* user location */
-.sb-me{box-sizing:border-box;width:20px;height:20px;border-radius:50%;background:var(--sb-accent);border:3px solid #fff;
+.sb-me{position:relative;box-sizing:border-box;width:20px;height:20px;border-radius:50%;background:var(--sb-accent);border:3px solid #fff;
   box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow)}
+/* heading cone (map.js setHeading, ui/compass.js; owner 2026-10-14): where the phone faces, an accent wedge behind the
+   dot fading outward, --sb-spread wide (wider = the compass is less sure), turned by --sb-head. Hidden with the dot
+   (on the bus the whole icon steps back, below). */
+.sb-mecone{position:absolute;left:50%;top:50%;width:92px;height:92px;margin:-46px 0 0 -46px;display:none;pointer-events:none;
+  background:conic-gradient(from calc(var(--sb-spread,60deg) / -2),var(--sb-accent) 0 var(--sb-spread,60deg),transparent 0);
+  -webkit-mask:radial-gradient(closest-side,#000 18%,rgba(0,0,0,.5) 58%,transparent 100%);
+  mask:radial-gradient(closest-side,#000 18%,rgba(0,0,0,.5) 58%,transparent 100%);
+  opacity:.55;transform:rotate(var(--sb-head,0deg));transition:transform .15s linear}
+.sb-me-head .sb-mecone{display:block}
+.sb-dark .sb-mecone{opacity:.7}
+@media (prefers-reduced-motion:reduce){.sb-mecone{transition:none}}
 
 /* you on a started trip (map.js setTrip, 2026-10-13): on the bus = an accent ring + "You" pill on its marker (the
    GPS dot steps back); otherwise a marker of its own (dashed when it is a guess: the boarding stop without GPS).

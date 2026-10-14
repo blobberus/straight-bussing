@@ -113,7 +113,7 @@ test('MapApi: theme, network diff, plan, highlights, flyTo offset by inset', asy
   box('t-api');
   const api = createMap('t-api');
   const m = api.leaflet, el = m.getContainer();
-  for (const k of ['setTheme', 'setBottomInset', 'drawNetwork', 'drawBuses', 'setSelectedStop', 'setUser', 'highlightStops',
+  for (const k of ['setTheme', 'setBottomInset', 'drawNetwork', 'drawBuses', 'setSelectedStop', 'setUser', 'setHeading', 'highlightStops',
     'drawPlan', 'fitTo', 'flyTo', 'onStopTap', 'onBusTap', 'onUserMove']) eq(typeof api[k], 'function', k);
   api.drawNetwork(net());
   const before = paths(m.getPane('sbLines'));

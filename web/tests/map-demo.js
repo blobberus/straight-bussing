@@ -70,6 +70,8 @@ if (q.get('fav') !== '0') api.drawFavorites([st(seq[4]), st(seq[6]), st(seq[Math
 
 const board = st(seq[2]), alight = st(seq[7]);
 api.setUser({ lat: board.lat - 0.0016, lon: board.lon - 0.0012, accuracy: 35 });
+// &head=deg[&spread=deg]: the heading cone on the dot (ui/compass.js -> MapApi.setHeading)
+if (q.has('head')) api.setHeading(+q.get('head'), q.has('spread') ? +q.get('spread') : undefined);
 if (q.get('plan') !== '0') {
   const from = { lat: board.lat - 0.0016, lon: board.lon - 0.0012, name: 'Start' };
   const to = { lat: alight.lat + 0.0011, lon: alight.lon + 0.0014, name: 'Destination' };
