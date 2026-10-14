@@ -7,8 +7,8 @@ name: Collect ground truth
 # 2 collect runs at once; a run dispatches at most once, only while it is the only queued/in-progress
 # collect run. Kill switches: repo variable COLLECT_CHAIN=off, or "Disable workflow" in the Actions tab.
 # Each run writes only its own rows, then merges them into data/ground_truth/arrivals.csv on the orphan
-# 'data' branch (tools/merge_arrivals.py drops the duplicates from the overlap) and refreshes
-# web/data/learned.json there. Nothing is ever pushed to main, so this never triggers a Pages deploy.
+# 'data' branch (tools/merge_arrivals.py drops the duplicates from the overlap; predictions.csv and the
+# service alert versions in alerts.csv sit next to it) and refreshes web/data/learned.json there. Nothing is ever pushed to main, so this never triggers a Pages deploy.
 # Docs: docs/DATA.md, monitoring.md
 on:
   schedule:
@@ -68,10 +68,13 @@ jobs:
         run: |
           date +%s > "$RUNNER_TEMP/log.t0"
           # --pred-out: Passio's prediction 1 to 30 min ahead of each arrival (predictions.csv, the 10% rule);
-          # --pred-log: every prediction update Passio published (artifact below, for re-analysis)
+          # --pred-log: every prediction update Passio published (artifact below, for re-analysis);
+          # --alerts-out: Passio's service alerts at start and every 5 min, one row per alert version (own thread,
+          # never delays the 10 s loop; merged into data/ground_truth/alerts.csv below)
           python tools/truth_logger.py --duration 4200 --seed "$RUNNER_TEMP/seed.csv" --out "$RUNNER_TEMP/run.csv" \
             --status-file "$RUNNER_TEMP/logger.json" --raw-out "$RUNNER_TEMP/raw/raw-polls.jsonl" \
-            --pred-out "$RUNNER_TEMP/run_pred.csv" --pred-log "$RUNNER_TEMP/pred/pred-updates.jsonl"
+            --pred-out "$RUNNER_TEMP/run_pred.csv" --pred-log "$RUNNER_TEMP/pred/pred-updates.jsonl" \
+            --alerts-out "$RUNNER_TEMP/run_alerts.csv"
       - name: Keep the raw position polls (RouteKnower E03; artifact, 90 days, never on the data branch)
         if: always()
         continue-on-error: true
@@ -119,12 +122,21 @@ jobs:
                   warn.append(f"{s['fetch_errors']} of {2 * s['polls']} feed fetches failed (Passio outage?)")
           line = f"logger: {ran:.0f} min" + (f", {s['polls']} polls, {s['rows']} rows, {s['errors']} errors, "
                                              f"{s['fetch_errors']} failed fetches" if s else ", no status")
+          alert_warn = []                    # service alerts: own counters, never part of the degraded verdict
+          if s and "alert_polls" in s:
+              ap = s.get("alert_polls") or 0
+              af = (s.get("alert_fetch_errors") or 0) + (s.get("alert_errors") or 0)
+              line += f"; alerts: {s.get('alert_versions') or 0} versions, {af} of {ap} polls failed"
+              if ap == 0 or af > ap / 2:
+                  alert_warn.append(f"service alerts: {af} of {ap} polls failed; last error: {s.get('alert_last_error')}")
           print(line)
           esc = lambda m: m.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
           for w in warn:
               print(f"::warning title=Collector run degraded::{esc(w)} (rows found so far are still merged)")
+          for w in alert_warn:
+              print(f"::warning title=Service alerts not collected::{esc(w)} (arrivals are not affected)")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-              f.write(f"**{line}**\n\n" + "".join(f"- warning: {w}\n" for w in warn) + "\n")
+              f.write(f"**{line}**\n\n" + "".join(f"- warning: {w}\n" for w in warn + alert_warn) + "\n")
           EOF
       - name: Merge into the data branch and push
         if: always()
@@ -154,6 +166,11 @@ jobs:
             if [ -s "$RUNNER_TEMP/run_pred.csv" ]; then
               python tools/merge_predictions.py --into databranch/data/ground_truth/predictions.csv \
                 --add "$RUNNER_TEMP/run_pred.csv" --rotate-mb 40
+            fi
+            if [ -s "$RUNNER_TEMP/run_alerts.csv" ]; then
+              # one row per alert version (min first_seen, max last_seen); a failure never stops the arrivals push
+              python tools/merge_alerts.py --into databranch/data/ground_truth/alerts.csv \
+                --add "$RUNNER_TEMP/run_alerts.csv" || echo "::warning title=Alerts merge failed::arrivals are still committed"
             fi
             python tools/refresh_model.py --data databranch/data/ground_truth/arrivals.csv \
               --out databranch/web/data/learned.json || echo "refresh_model failed; arrivals are still committed"

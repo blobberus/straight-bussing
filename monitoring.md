@@ -15,6 +15,10 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   Since 2026-10-12 each run also writes Passio's prediction 1 to 30 min before every arrival and merges it into
   `data/ground_truth/predictions.csv` (`tools/merge_predictions.py`; the arrivals file is unchanged), and keeps every
   prediction update as the artifact `pred-updates-<run>` (90 days) next to `raw-polls-<run>`.
+  Since 2026-10-14 each run also polls Passio's **serviceAlerts** (at start, then every 5 min, own thread: never delays
+  the arrival loop) and merges one row per alert version into `data/ground_truth/alerts.csv` (`tools/merge_alerts.py`;
+  the local fallback does the same); the run summary ends `alerts: N versions, F of P polls failed`, and a
+  `Service alerts not collected` warning means the alerts feed failed that run (arrivals unaffected).
 - **Daily archive** `.github/workflows/archive.yml` (about 5:40 AM Chicago, catches up the last 10 days): turns the
   90-day artifacts into one file per service day (`pred-updates`, `raw-polls`, the 10%-rule table `eta-<day>.csv.gz`,
   the GTFS zip) on the GitHub Release `data-archive-YYYY-MM`, and merges the day's pass rates into
@@ -26,7 +30,8 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   `data/monitor/predlog/`; prediction logs and position polls (`data/monitor/raw/`) are kept 14 days for the archive).
   Safe to run next to CI. State lives in `data/monitor/` (git-ignored).
   After a collector code change, restart it (`python tools/monitor.py stop`, then `resume`) so it runs the new code.
-- No rows overnight is normal: no shuttles run, so nothing is committed.
+- No rows overnight is normal: no shuttles run, so only alerts.csv's `last_seen` times change (still a commit per run
+  while an alert is in the feed).
 
 ## Run it
 1. `cd /c/Users/NK/Documents/straight-bussing && python tools/monitor.py status` (exit 0 HEALTHY, 1 DEGRADED, 2 DOWN).
@@ -129,8 +134,8 @@ State: `data/monitor/state.json` (totals, last push, last error), `monitor.log`,
 
 ## Update the collector
 Pushing to main is outward-facing: confirm with Nathan first unless he asked for the update.
-1. Edit on `v2-rewrite`: `.github/workflows/collect.yml`, `tools/{truth_logger,arrival_detector,arrivals_lib,merge_arrivals,refresh_model,model_core,model_segments,model_quantile,model_kalman,backtest,monitor,collect_chain}.py`, `docs/DATA.md`.
-2. Test: `python tools/test_truth.py && python tools/test_merge.py && python tools/test_models.py && python tools/test_monitor.py && python tools/test_chain.py && python tools/truth_logger.py --once`.
+1. Edit on `v2-rewrite`: `.github/workflows/collect.yml`, `tools/{truth_logger,arrival_detector,arrivals_lib,merge_arrivals,merge_predictions,alerts_lib,merge_alerts,refresh_model,model_core,model_segments,model_quantile,model_kalman,backtest,monitor,collect_chain}.py`, `docs/DATA.md`.
+2. Test: `python tools/test_truth.py && python tools/test_merge.py && python tools/test_alerts.py && python tools/test_models.py && python tools/test_monitor.py && python tools/test_chain.py && python tools/truth_logger.py --once`.
 3. Commit only those paths on v2-rewrite (`git commit --only -m "..." -- <paths>`; Nathan may have other uncommitted work), then `git push origin v2-rewrite`.
 4. Bring the same files to main through a worktree (the method used in commit `a466886`):
    ```

@@ -10,17 +10,24 @@ per true bus arrival at a stop (schema in arrivals_lib.COLUMNS, docs in docs/DAT
   python tools/truth_logger.py ... --raw-out raw.jsonl              # also keep every position poll (E03)
   python tools/truth_logger.py ... --pred-out run_pred.csv          # Passio's prediction 1-30 min ahead per arrival
   python tools/truth_logger.py ... --pred-log p.jsonl --pred-seed old.jsonl   # keep / reload prediction updates
+  python tools/truth_logger.py ... --alerts-out run_alerts.csv     # Passio's service alerts, one row per version
 A failed fetch, bad JSON or a malformed feed entry only skips that feed or entry for one poll; it is
-counted (status line, final 'done:' line, --status-file) and the run keeps going.
+counted (status line, final 'done:' line, --status-file) and the run keeps going. Service alerts are polled
+in their own thread (AlertLog) with their own counters, so they can never delay or stop the arrival loop.
 No rider data exists in these feeds; nothing personal is collected.
 """
-import argparse, gzip, json, sys, time, traceback, urllib.request, zlib
+import argparse, gzip, json, sys, threading, time, traceback, urllib.request, zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arrivals_lib as L
 from arrival_detector import Tracker
+try:
+    import alerts_lib as AL
+    AL_ERROR = ""
+except Exception as _ex:                         # alerts are optional: a broken module never stops arrival logging
+    AL, AL_ERROR = None, f"{type(_ex).__name__}: {_ex}"
 
 BASE = "https://passio3.com/chicago/passioTransit/gtfs/realtime/"
 UA = "StraightBussing-collector (student project)"
@@ -270,6 +277,80 @@ class PredLog:
         self.buf = []
 
 
+class AlertLog:
+    """Passio serviceAlerts as alert versions (alerts_lib): polled at start and then every `every` s in a daemon
+    thread; after each good poll the whole run file is rewritten (one row per version this run saw, last_seen
+    moved on). merge_alerts.py merges it into data/ground_truth/alerts.csv.
+    Isolation from the 10 s arrival loop: own thread, own timeout (in `get`), own counters (fetch_errors, errors,
+    last_error); poll() never raises. Why a thread and not an inline fetch every 30th poll: urllib's timeout bounds
+    each socket read, not the whole request, and the DNS lookup has none, so an inline fetch could still hold the
+    arrival loop far past its timeout. The thread shares nothing with the detector."""
+
+    def __init__(self, path, get, every=300.0, route_name=None, out=None):
+        self.path, self.get, self.every, self.route_name, self.out = Path(path), get, float(every), route_name, out
+        self.rows, self.lock, self.halt, self.thread = {}, threading.Lock(), threading.Event(), None
+        self.polls = self.ok = self.fetch_errors = self.errors = self.in_feed = 0
+        self.last_error = ""
+        AL.write_csv(self.path, [])                  # header only: this run is collecting alerts
+
+    def _note(self, kind, ex):
+        self.last_error = f"{kind}: {type(ex).__name__}: {ex}"[:300]
+        n = self.fetch_errors + self.errors
+        if n <= 20 or n % 100 == 0:
+            print(f"{datetime.now():%H:%M:%S} alerts {kind}: {type(ex).__name__}: {ex}",
+                  file=self.out or sys.stderr, flush=True)
+
+    def poll(self, now=None):
+        """One fetch + record. Never raises. -> True if the feed was read and the file written."""
+        self.polls += 1
+        t = int(time.time() if now is None else now)
+        try:
+            feed = self.get()
+        except Exception as ex:
+            self.fetch_errors += 1
+            self._note("fetch", ex)
+            return False
+        try:
+            rows = AL.versions(feed, t, self.route_name)
+            with self.lock:
+                for r in rows:
+                    AL.absorb(self.rows, r)
+                self.in_feed = len(rows)
+                AL.write_csv(self.path, list(self.rows.values()))
+            self.ok += 1
+            return True
+        except Exception as ex:
+            self.errors += 1
+            self._note("error", ex)
+            return False
+
+    def _loop(self):
+        while True:
+            try:
+                self.poll()
+            except Exception as ex:                  # poll() never raises; belt and braces for the thread
+                self.errors += 1
+                self._note("error", ex)
+            if self.halt.wait(self.every):
+                return
+
+    def start(self):
+        self.thread = threading.Thread(target=self._loop, name="serviceAlerts", daemon=True)
+        self.thread.start()
+        return self
+
+    def stop(self, wait=10.0):
+        """Ends the thread, waiting up to `wait` s for a fetch in flight (daemon: a hung one never blocks exit)."""
+        self.halt.set()
+        if self.thread is not None:
+            self.thread.join(wait)
+
+    def status(self):
+        return {"alert_polls": self.polls, "alert_ok": self.ok, "alert_fetch_errors": self.fetch_errors,
+                "alert_errors": self.errors, "alert_last_error": self.last_error, "alert_versions": len(self.rows),
+                "alert_in_feed": self.in_feed}
+
+
 def seed_predictions(tr, paths, now, max_age=L.PRED_SEED_S):
     """Reload prediction updates made in the last max_age s from PredLog files -> how many were added."""
     n = 0
@@ -323,6 +404,11 @@ def main():
     ap.add_argument("--pred-out", help="also write predictions.csv rows here (Passio's prediction 1-30 min ahead)")
     ap.add_argument("--pred-log", help="append every new Passio prediction update here as JSON lines (PredLog)")
     ap.add_argument("--pred-seed", nargs="*", default=[], help="PredLog files to reload the last hour from")
+    ap.add_argument("--alerts-out", help="Passio's service alerts as version rows (CSV, alerts_lib.COLUMNS), "
+                                         "rewritten after each alerts poll (AlertLog)")
+    ap.add_argument("--alerts-every", type=float, default=300, help="seconds between serviceAlerts polls (min 30; "
+                                                                     "the first is at start)")
+    ap.add_argument("--alerts-timeout", type=float, default=8, help="serviceAlerts request timeout, seconds")
     a = ap.parse_args()
     a.interval = max(5.0, a.interval)
     st = L.Static()
@@ -353,6 +439,18 @@ def main():
         tr.seed(L.read_tail(a.seed or a.out), int(time.time()))
     except Exception as ex:                      # a bad seed only costs duplicate protection (merge dedupes too)
         err("seed", ex)
+    alerts, alerts_setup = None, ""
+    if a.alerts_out:                             # own thread + counters: never part of err / the arrival loop
+        try:
+            if AL is None:
+                raise ImportError(AL_ERROR)
+            # route_names only for GTFS route ids: Passio's alerts can name its own ids (North = 38734, GTFS 1075)
+            alerts = AlertLog(a.alerts_out, lambda: fetch("serviceAlerts", timeout=a.alerts_timeout),
+                              every=max(30.0, a.alerts_every),
+                              route_name=lambda rid: st.route_name(rid) if rid in st.routes else "").start()
+        except Exception as ex:
+            alerts, alerts_setup = None, f"setup: {type(ex).__name__}: {ex}"[:300]
+            print(f"alerts off for this run ({alerts_setup})", file=sys.stderr, flush=True)
     end = time.time() + a.duration if a.duration else None
     started, polls, summary = time.time(), 0, {}
     try:
@@ -370,6 +468,9 @@ def main():
             if polls % 6 == 0:
                 feed_txt = " ".join(f"{k}={v}" for k, v in summary.items())
                 bad = (f" errors={err.proc}" if err.proc else "") + (f" fetch_errors={err.fetch}" if err.fetch else "")
+                if alerts is not None:
+                    bad += f" alerts={alerts.in_feed}" + (f" alert_fails={alerts.fetch_errors + alerts.errors}"
+                                                          if alerts.fetch_errors + alerts.errors else "")
                 print(f"{datetime.now():%H:%M:%S} polls={polls} rows={w.n} {feed_txt}{bad}".rstrip(), flush=True)
             if a.once or (end and time.time() + a.interval > end):
                 break
@@ -381,18 +482,32 @@ def main():
             w.write(tr.drain(int(time.time()), final=True))
         except Exception as ex:
             err("final drain", ex)
+        al = None
+        if alerts is not None:
+            try:
+                alerts.stop(wait=a.alerts_timeout + 2)
+                al = alerts.status()
+            except Exception as ex:
+                al = {"alert_polls": alerts.polls, "alert_last_error": f"stop: {type(ex).__name__}: {ex}"[:300]}
+        elif alerts_setup:
+            al = {"alert_polls": 0, "alert_last_error": alerts_setup}
         if a.status_file:
             try:
                 Path(a.status_file).write_text(json.dumps(
                     {"started": int(started), "ended": int(time.time()), "duration": a.duration, "polls": polls,
                      "rows": w.n, "errors": err.proc, "fetch_errors": err.fetch, "first_error": err.first,
                      "raw_polls": raw.n if raw else None, "pred_rows": w.np if a.pred_out else None,
-                     "pred_updates": plog.n if plog else None}),
+                     "pred_updates": plog.n if plog else None, **(al or {})}),
                     encoding="utf-8")
             except OSError as ex:
                 print(f"could not write {a.status_file}: {ex}", file=sys.stderr)
+    al_txt = ""
+    if al is not None:
+        al_txt = (f"; alerts: {al.get('alert_versions', 0)} versions to {a.alerts_out}, {al.get('alert_ok', 0)} of "
+                  f"{al.get('alert_polls', 0)} polls ok" + (f" (last error {al['alert_last_error']})"
+                                                            if al.get("alert_last_error") else ""))
     print(f"done: {w.n} rows appended to {a.out}; polls={polls} errors={err.proc} fetch_errors={err.fetch}"
-          + (f"; {w.np} prediction rows to {a.pred_out}" if a.pred_out else ""))
+          + (f"; {w.np} prediction rows to {a.pred_out}" if a.pred_out else "") + al_txt)
 
 
 if __name__ == "__main__":

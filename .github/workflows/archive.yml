@@ -43,6 +43,8 @@ jobs:
           args=(--catch-up 10 --work "$RUNNER_TEMP/work" --arrivals databranch/data/ground_truth/arrivals.csv)
           for f in databranch/data/ground_truth/archive/arrivals-*.csv; do [ -f "$f" ] && args+=("$f"); done
           [ -f "$RUNNER_TEMP/gtfs.zip" ] && args+=(--gtfs "$RUNNER_TEMP/gtfs.zip")
+          # service alert versions of the day (alerts-<day>.csv.gz; optional, skipped if the file is missing)
+          args+=(--alerts databranch/data/ground_truth/alerts.csv)
           [ -n "$DAY" ] && args+=(--day "$DAY")
           [ "$REPLACE" = "true" ] && args+=(--replace)
           python tools/archive_day.py "${args[@]}"
