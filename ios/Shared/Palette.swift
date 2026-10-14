@@ -55,6 +55,11 @@ enum Palette {
     static let card = dynamic(0xFCFCFD, 0x2C2C2E)
     /// Shadows are tinted cool slate, never pure black (the web's --shadow-rgb).
     static let shadow = Color(red: 30 / 255, green: 32 / 255, blue: 45 / 255)
+    /// Building and place names on the map (web css/map.css --sb-lm): 9.2:1 on their light halo, 11:1 on the dark one.
+    static let mapLabel = dynamic(0x2C4A66, 0xBCD0E2, highLight: 0x1D3550, highDark: 0xD8E6F2)
+    /// Their halo and, at 50%, the faint plate behind them (web --sb-lm-halo / --sb-lm-plate): a route line or a street
+    /// under a letter never cuts it.
+    static let mapLabelHalo = dynamic(0xFFFFFF, 0x18181B)
 }
 
 /// The one radius scale (docs/DESIGN.md "Radius scale"); never a literal radius in a component.

@@ -12,8 +12,13 @@ import StraightBussingKit
 /// change), bus staleness is computed at poll time, the camera lives in its own observable, the real user
 /// location is MapKit's `UserAnnotation` (no redraw per location update) and the bottom inset is applied by
 /// the caller, so this body only re-runs when buses, the trip/plan or the visible routes change.
+///
+/// Building and place names (owner 2026-10-13, web map/style.js sb_landmarks): text-only annotations under everything
+/// else, laid out by the Kit's declutter (`Landmarks.place`) when the camera stops moving (`layoutLabels`), kept in
+/// `AppModel.mapLabels`; Apple's own points of interest stay off (they would name places twice).
 struct MapScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     /// The trip drawn on the map: the started one, else the selected Directions option.
     var plan: TripOption? {
@@ -47,8 +52,21 @@ struct MapScreen: View {
             return nil
         }
         let hideDot = you?.onBus == true   // on the bus: the GPS dot steps back (same place, or worse)
+        let walk = walkOnly
+        // the map labels: drawn from the last layout; laid out again on camera end or when what they avoid changes
+        let placed = model.mapLabels.placed
+        let labelScale = MapLabelModel.scale(typeSize)
+        let labelSig = labelSignature(layers, ring: ring, tripLabels: labels, youGuess: youMark.flatMap { $0.guess ? $0.at : nil },
+                                      plan: drawn, walkEnd: walk?.last)
         MapReader { proxy in
         Map(position: $camera.position) {
+            // building and place names first: stops, buses, the trip and you are drawn over them, and they never take a tap
+            ForEach(placed) { p in
+                Annotation("", coordinate: p.landmark.coord.cl, anchor: p.anchor.unitPoint) {
+                    LandmarkLabel(label: p).equatable()
+                }
+                .annotationTitles(.hidden)
+            }
             ForEach(layers.lines) { l in
                 MapPolyline(coordinates: l.coords)
                     .stroke(l.color, style: StrokeStyle(lineWidth: l.width, lineCap: .round, lineJoin: .round))
@@ -68,7 +86,7 @@ struct MapScreen: View {
                     Marker("Destination", systemImage: "mappin", coordinate: end.cl).tint(.red)
                 }
             }
-            if let w = walkOnly, let end = w.last {
+            if let w = walk, let end = w.last {
                 MapPolyline(coordinates: w.map(\.cl))
                     .stroke(.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [2, 7]))
                 Marker("Destination", systemImage: "mappin", coordinate: end.cl).tint(.red)
@@ -139,6 +157,8 @@ struct MapScreen: View {
         }
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
         .mapControls { MapCompass() }
+        // the names are laid out when the camera stops, not on every frame of a pan or zoom
+        .onMapCameraChange(frequency: .onEnd) { _ in layoutLabels(proxy, scale: labelScale) }
         // a tap on empty map lowers the sheet to peek (web onMapTap). Simultaneous, so it never blocks the stop / bus
         // buttons; `mapTapped` ignores a tap that also hit one of them.
         .simultaneousGesture(TapGesture().onEnded { model.mapTapped() })
@@ -146,6 +166,11 @@ struct MapScreen: View {
         // follow camera (AppModel+Follow.swift), watched by a child view so this body does not re-run on a pan or a
         // settled sheet
         .background { FollowWatcher(camera: model.mapCamera, you: you) { followCheck(proxy) } }
+        .background {
+            LabelWatcher(camera: model.mapCamera, labels: model.mapLabels, signature: labelSig, scale: labelScale) {
+                layoutLabels(proxy, scale: labelScale)
+            }
+        }
         }
     }
 
@@ -167,6 +192,145 @@ struct MapScreen: View {
         if !model.pickHighlights.isEmpty { return Set(model.pickHighlights) }
         if case .stop(let id)? = model.page { return [id] }
         return []
+    }
+}
+
+// MARK: Map labels (building and place names)
+
+extension MapScreen {
+    /// Lay the names out for the camera now (web map/landmarks.js refresh): the zoom from the ground scale at the center
+    /// of the visible map (the web's zoom; a rotated map keeps it), the names shown at that zoom inside the visible box,
+    /// projected by MapKit, then the Kit's placement inside the visible map (below the floating chrome, above the
+    /// sheet). Called on camera end, a resized visible map, new obstacles, new landmarks or a new text size; it reads
+    /// the model outside any view body, so only a changed result redraws the map.
+    func layoutLabels(_ proxy: MapProxy, scale: Double) {
+        let labels = model.mapLabels
+        let view = model.mapCamera.visibleRect
+        // the expanded sheet covers the map: no names under it
+        guard !labels.landmarks.isEmpty, view.width >= 80, view.height >= 60 else { labels.show([]); return }
+        let mid = CGPoint(x: view.midX, y: view.midY)
+        guard let a = proxy.convert(CGPoint(x: mid.x - 50, y: mid.y), from: .global),
+              let b = proxy.convert(CGPoint(x: mid.x + 50, y: mid.y), from: .global) else { return }
+        let la = LatLon(lat: a.latitude, lon: a.longitude), lb = LatLon(lat: b.latitude, lon: b.longitude)
+        guard la.isValid, lb.isValid else { return }
+        let zoom = Landmarks.zoom(metersPerPoint: Geo.hav(la, lb) / 100, latitude: (la.lat + lb.lat) / 2)
+        let corners = [CGPoint(x: view.minX, y: view.minY), CGPoint(x: view.maxX, y: view.minY),
+                       CGPoint(x: view.minX, y: view.maxY), CGPoint(x: view.maxX, y: view.maxY)]
+        let geo = corners.compactMap { proxy.convert($0, from: .global) }.map { LatLon(lat: $0.latitude, lon: $0.longitude) }
+        guard geo.count >= 2, let box = GeoBox(geo) else { return }
+        var cands: [Landmarks.Candidate] = []
+        for m in Landmarks.visible(labels.landmarks, zoom: zoom, in: box) {
+            if let p = proxy.convert(m.coord.cl, to: .global) { cands.append(.init(landmark: m, x: Double(p.x), y: Double(p.y))) }
+        }
+        let placed = cands.isEmpty ? [] : Landmarks.place(cands, zoom: zoom, scale: scale, viewport: LabelRect(view),
+                                                          obstacles: labelObstacles(proxy, view: view))
+        labels.show(placed)
+    }
+
+    /// Screen boxes no name may cover: every stop (the web's 13 pt square; favorite stars and rings larger) and, on the
+    /// iPhone also, the trip's stop labels, you at the boarding stop, the destination marker, your location and the
+    /// locate button. Buses are left out on purpose, as on the web: they move every poll, so names would blink in and
+    /// out as buses pass (and the CI screenshots would depend on where the simulated buses happen to be); buses are
+    /// drawn over the names.
+    func labelObstacles(_ proxy: MapProxy, view: CGRect) -> [LabelRect] {
+        var out: [LabelRect] = []
+        let area = view.insetBy(dx: -40, dy: -40)
+        func at(_ p: LatLon, _ w: Double, _ h: Double, dy: Double = 0) {
+            guard p.isValid, let s = proxy.convert(p.cl, to: .global), area.contains(s) else { return }
+            out.append(LabelRect(centerX: Double(s.x), centerY: Double(s.y) + dy, width: w, height: h))
+        }
+        let ring = ringed
+        for s in model.mapLayers.stops {
+            // StopDot: ring 26 + its 3 pt stroke, star 18, dot 9 + its border (the web's stop circle: 2 x LABEL.STOP_R)
+            let d: Double = ring.contains(s.id) ? 30 : s.isFav ? 20 : 2 * Landmarks.stopR
+            at(s.stop.coord, d, d)
+        }
+        if model.activeTrip != nil, let y = model.tripYou {
+            // "Board here" / the get-off count: 12 pt bold in a tag, 12 pt under its stop (TripStopLabel)
+            for l in y.stopLabels { at(l.point, Landmarks.textWidth(l.text, size: 12) + 20, 24, dy: 12 + 12) }
+            // "You (est.)" at the boarding stop: the 44 pt marker with its pill above
+            if let p = y.point, y.source == .stop { at(p, 90, 70, dy: -12) }
+        }
+        // the destination balloon above its point, with its title under it
+        if let o = plan, let last = o.legs.last, let end = last.walk?.to.coord ?? last.bus?.alight.coord { at(end, 84, 64, dy: -12) }
+        if let w = walkOnly, let end = w.last { at(end, 84, 64, dy: -12) }
+        if let u = model.user { at(u, 30, 30) }
+        if model.detent != .full {   // the locate button, right under the floating chrome (RootView)
+            out.append(LabelRect(minX: Double(view.maxX) - 52, minY: Double(view.minY) - 4, maxX: Double(view.maxX) + 8, maxY: Double(view.minY) + 48))
+        }
+        return out
+    }
+
+    /// What the names avoid besides the camera, as one value for `LabelWatcher`: a change lays them out again (a route
+    /// shown or hidden, a favorite, a ring, the trip's stop labels, you at the boarding stop, a plan's destination).
+    func labelSignature(_ layers: MapLayers, ring: Set<String>, tripLabels: [TripYou.StopLabel], youGuess: LatLon?,
+                        plan: TripOption?, walkEnd: LatLon?) -> Int {
+        var h = Hasher()
+        h.combine(layers.stops.count)
+        for s in layers.stops { h.combine(s.id); h.combine(s.isFav) }
+        h.combine(ring)
+        h.combine(tripLabels)
+        h.combine(youGuess)
+        if let last = plan?.legs.last { h.combine(last.walk?.to.coord ?? last.bus?.alight.coord) }
+        h.combine(walkEnd)
+        return h.finalize()
+    }
+}
+
+/// The map labels' triggers besides the camera's end: a resized visible map (the sheet settled, the chrome changed),
+/// new landmarks, what they avoid, the text size. Its own view, so only this empty view re-runs when they change.
+struct LabelWatcher: View {
+    let camera: MapCameraModel
+    let labels: MapLabelModel
+    let signature: Int
+    let scale: Double
+    let layout: () -> Void
+    var body: some View {
+        Color.clear
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onAppear(perform: layout)
+            .onChange(of: camera.visibleRect) { _, _ in layout() }
+            .onChange(of: labels.version) { _, _ in layout() }
+            .onChange(of: signature) { _, _ in layout() }
+            .onChange(of: scale) { _, _ in layout() }
+    }
+}
+
+/// A building or place name on the map (web .sb-lm): bold slate-blue text with a halo in the map's background color (8
+/// offset copies: SwiftUI has no text stroke) on a faint plate (the halo color at 50%, corner radius 5), in exactly the
+/// line breaks and the box the Kit placed (each line 1.12 em tall), padded on the side facing its building by the
+/// placement's gap. Decorative: never takes a tap (the stops and buses near it keep theirs) and hidden from VoiceOver
+/// (stops and buses keep their own labels). Equatable, so a map redraw for a bus move does not redraw the names.
+struct LandmarkLabel: View, Equatable {
+    let label: PlacedLandmark
+
+    static let haloOffsets: [CGSize] = (0..<8).map { i in
+        let a = Double(i) * .pi / 4
+        return CGSize(width: cos(a) * Landmarks.halo, height: sin(a) * Landmarks.halo)
+    }
+
+    var body: some View {
+        let size = CGFloat(label.size), lineH = CGFloat(label.size * Landmarks.lineHeightEm)
+        let lines = VStack(spacing: 0) {
+            ForEach(Array(label.lines.enumerated()), id: \.offset) { item in
+                Text(item.element).font(.system(size: size, weight: .bold)).lineLimit(1).fixedSize().frame(height: lineH)
+            }
+        }
+        ZStack {
+            ForEach(0..<Self.haloOffsets.count, id: \.self) { i in
+                lines.foregroundStyle(Palette.mapLabelHalo).offset(Self.haloOffsets[i])
+            }
+            lines.foregroundStyle(Palette.mapLabel)
+        }
+        .frame(width: CGFloat(label.plateWidth), height: CGFloat(label.plateHeight))
+        .background(Palette.mapLabelHalo.opacity(0.5), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .padding(.top, CGFloat(label.padTop))
+        .padding(.bottom, CGFloat(label.padBottom))
+        .padding(.leading, CGFloat(label.padLeading))
+        .padding(.trailing, CGFloat(label.padTrailing))
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

@@ -141,6 +141,8 @@ final class AppModel {
     @ObservationIgnored let location = LocationProvider()
     @ObservationIgnored let liveActivity = LiveActivityController()
     @ObservationIgnored let mapCamera = MapCameraModel()
+    /// Building and place names on the map (bundled web/data/landmarks.json), in their own observable like the camera.
+    @ObservationIgnored let mapLabels = MapLabelModel()
     @ObservationIgnored let busAlerter = BusAlerter()
     /// Sidewalk routes (Apple Maps walking directions) behind the Kit's cache; nil in `-demo` (deterministic CI).
     @ObservationIgnored let walkCache: WalkRouteCache?
