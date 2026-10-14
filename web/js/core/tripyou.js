@@ -28,6 +28,8 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 /** "Bus 101" / "The bus". @param {{label?:string}|null} v */
 export function busName(v) { return v && v.label ? `Bus ${v.label}` : "The bus"; }
+/** The same inside a sentence: "Bus 101" / "the bus". @param {{label?:string}|null} v */
+export function busMid(v) { return v && v.label ? `Bus ${v.label}` : "the bus"; }
 
 /**
  * The get-off count in words (card, timeline, map, alerts, Live Activity alike).
@@ -103,7 +105,7 @@ export function tripYou(p, state) {
   };
   const board = leg ? stopOf(leg.board) : null, alight = leg ? stopOf(leg.alight) : null;
   const tgt = (s, role) => (s && s.lat != null ? { id: s.id, name: s.name, lat: s.lat, lon: s.lon, role } : null);
-  const who = busName(v);
+  const who = busMid(v);
   let you = null, source = null, onBus = false, far = false, target = null, text = "";
   if (p.phase === "on-bus" && leg) {
     target = tgt(alight, "alight");

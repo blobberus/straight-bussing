@@ -40,6 +40,18 @@ test("tripYou on the bus: drawn at the bus, with the get-off count the card show
   eq(you({ ...st, user: { ...at("A0"), accuracy: 900 } }).source, "bus", "inaccurate fix");
 });
 
+test("a bus without a number: 'the bus' inside a sentence, and alerts do not name it", () => {
+  const nolabel = (s) => ({ ...s, buses: s.buses.map((b) => ({ ...b, vehicle: { id: b.vehicle.id, label: "" } })), trips: s.trips.map((t) => ({ ...t, vehicle: { id: t.vehicle.id, label: "" } })) });   // an empty label (a missing one falls back to the vehicle id)
+  const st = nolabel(scene("onbus"));
+  eq(you(st).text, "You are on the bus. Get off in 2 stops: Medical Center");
+  eq(you({ ...st, user: at("A0", 0, 10) }).text, "Your location is not near the bus. Stop counts follow the bus.");
+  const r = tripAlerts(prog(st), st, new Set(), NOW);
+  eq(r.alerts[0].body, "Red Line. Your stop in about 3 min (est.).");
+  const w = nolabel(scene("walk", { notify: cleanNotify({ minutes: 10 }) }));
+  eq(tripAlerts(prog(w), w, new Set(), NOW).alerts[0].body, "Next stop: 56th & Ellis.");
+  eq(legStatus(prog(nolabel(scene("waiting"))).legs[1]), "The bus is 2 stops away", "a sentence start stays capitalized");
+});
+
 test("tripYou on the bus but your accurate GPS is far from it: your GPS, and it says so", () => {
   const st = scene("onbus", { user: at("A0", 0, 15) }), y = you(st);
   eq([y.source, y.onBus, y.far], ["gps", false, true]);

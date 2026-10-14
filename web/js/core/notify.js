@@ -238,7 +238,8 @@ export function tripAlerts(p, state, prevFired, now, opts = {}) {
   fired.delete(`${tk}|delayed`);
   const v = leg.vehicle;
   if (leg.state !== "active" || !v) return { alerts, fired };
-  const route = routeName(state, leg.rid), who = busName(v), late = level === "late" ? " Live data is delayed." : "";
+  const route = routeName(state, leg.rid), late = level === "late" ? " Live data is delayed." : "";
+  const bus = v.label ? `${busName(v)}. ` : "";   // a bus without a number is just not named
   const add = (key, kind, title, body) => {
     if (fired.has(key)) return;
     fired.add(key);
@@ -252,10 +253,10 @@ export function tripAlerts(p, state, prevFired, now, opts = {}) {
     if (n.oneStop && leg.stopsAway <= 1) add(`${vk}|board1`, "board1", head, body);
     else if (n.twoStops && leg.stopsAway === 2 && !fired.has(`${vk}|board1`)) add(`${vk}|board2`, "board2", head, body);
     if (n.minutes > 0 && leg.boardLive && leg.boardEta && leg.boardEta - now <= n.minutes * 60) {
-      add(`${vk}|boardMin`, "boardMin", `${route}: arriving at ${leg.board.name} in ${minutesText(leg.boardEta, now)}`, `${who}. Next stop: ${v.nextName}.`);
+      add(`${vk}|boardMin`, "boardMin", `${route}: arriving at ${leg.board.name} in ${minutesText(leg.boardEta, now)}`, `${bus}Next stop: ${v.nextName}.`);
     }
   } else if (p.phase === "on-bus" && leg.stopsLeft != null) {
-    const body = `${route}, ${who}.` + (leg.alightLive && leg.alightEta ? ` Your stop in ${minutesText(leg.alightEta, now)}.` : "");
+    const body = (v.label ? `${route}, ${busName(v)}.` : `${route}.`) + (leg.alightLive && leg.alightEta ? ` Your stop in ${minutesText(leg.alightEta, now)}.` : "");
     if (n.oneStop && leg.stopsLeft <= 1) add(`${tk}|off1`, "off1", offText(leg.stopsLeft, leg.alight.name), body);
     else if (n.twoStops && leg.stopsLeft === 2 && !fired.has(`${tk}|off1`)) add(`${tk}|off2`, "off2", offText(2, leg.alight.name), body);
   }
