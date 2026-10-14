@@ -601,7 +601,7 @@ final class TripTextTests: XCTestCase {
 
     func testOnBusArrivedSchedule() {
         XCTAssertEqual(card("onbus").prim, "Get off in 2 stops: Medical Center", "the same words as the map and the trip alerts")
-        XCTAssertTrue(card("onbus").sec[0].hasPrefix("Get off at Medical Center about "))
+        XCTAssertTrue(card("onbus").sec[0].hasPrefix("Reach Medical Center about "), "the headline says where to get off")
         let ar = TripFix.follow(TripFix.scene("arrived"))
         XCTAssertEqual(card("arrived").prim, "Walk 3 min to Medical Center Cafe")
         XCTAssertEqual(TripText.walkRow(ar, 0, now: NOW).head, "Walked to Ratner Center")

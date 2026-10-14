@@ -220,6 +220,9 @@ struct EmptyStateView: View {
 enum SiteLinks {
     static let privacy = URL(string: "https://blobberus.github.io/straight-bussing/privacy.html")!
     static let support = URL(string: "https://blobberus.github.io/straight-bussing/support.html")!
+    /// Beta feedback form (owner 2026-10-13, Google Forms): opened in Safari from Settings > Feedback; nothing is
+    /// sent by the app, only the rider's own Submit there.
+    static let feedback = URL(string: "https://forms.gle/zK4hi2UfYsrXURR97")!
 }
 
 /// Official service contact (shown in About and empty/error states). Where no bus reports and the operator's live

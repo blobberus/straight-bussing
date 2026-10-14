@@ -111,7 +111,36 @@ final class TripYouTests: XCTestCase {
         at7.live = TripFix.live([TripFix.bus("v101", "101", "R", "tR1", "A6", "A7", 0.995)], [tR1([("A7", 10), ("A8", 120)])])
         let y = you(at7)
         XCTAssertEqual(y.stopLabels.map(\.text), ["Get off here"]); XCTAssertEqual(y.text, "You are on Bus 101. Get off here: Medical Center")
-        XCTAssertEqual(you(scene("arrived")).stopLabels.map(\.text), ["Get off here"])
+        XCTAssertEqual(you(scene("arrived")).stopLabels, [], "off the bus: no labels")
+    }
+
+    /// The card says so when your location is far from the bus the counts follow (web trip-alerts.js "trip card").
+    func testCardSaysWhenYouAreFarFromTheBus() {
+        var far = scene("onbus"); far.user = at("A0")
+        let p = prog(far), y = TripYou.compute(p, user: far.user, accuracy: 10, staticData: S, dest: nil)
+        let c = TripText.nowCard(p, routes: TripFix.routes, now: NOW, you: y)
+        XCTAssertEqual(c.prim, "Get off in 2 stops: Medical Center")
+        XCTAssertTrue(c.sec.contains("Your location is not near Bus 101. Stop counts follow the bus."))
+        let near = TripText.nowCard(prog(scene("onbus")), routes: TripFix.routes, now: NOW, you: you(scene("onbus")))
+        XCTAssertFalse(near.sec.contains { $0.contains("not near") })
+        XCTAssertTrue(near.sec[0].hasPrefix("Reach Medical Center about "))
+    }
+
+    /// Settings > Bus alerts > Trip alerts during a trip (web settings.js tripHTML).
+    func testSettingsTripStatusLine() {
+        let st = scene("onbus")
+        XCTAssertEqual(Notify.tripStatusLine(prog(st), prefs: NotifyPrefs(), live: st.live, now: NOW), "During your trip: Get off in 2 stops: Medical Center")
+        var off = NotifyPrefs(); off.trip = false
+        XCTAssertNil(Notify.tripStatusLine(prog(st), prefs: off, live: st.live, now: NOW))
+        XCTAssertNil(Notify.tripStatusLine(nil, prefs: NotifyPrefs(), live: st.live, now: NOW))
+        XCTAssertNil(Notify.tripStatusLine(prog(scene("arrived")), prefs: NotifyPrefs(), live: st.live, now: NOW))
+        var down = st; down.live.failed = true
+        XCTAssertEqual(Notify.tripStatusLine(prog(down), prefs: NotifyPrefs(), live: down.live, now: NOW),
+                       "During your trip: Live data is unavailable, so trip alerts wait for it.")
+        let sc = scene("schedule")
+        XCTAssertEqual(Notify.tripStatusLine(prog(sc), prefs: NotifyPrefs(), live: sc.live, now: NOW),
+                       "During your trip: Waiting for a live position of your bus.")
+        XCTAssertEqual(Notify.tripPausedText, "Paused during your trip: alerts follow your trip's bus.")
     }
 
     // MARK: Trip alerts
@@ -186,6 +215,8 @@ final class TripYouTests: XCTestCase {
         XCTAssertEqual(r.alerts.map(\.kind), [.off2], "fresh again: the normal alerts")
         XCTAssertEqual(alerts(down, fired: r.fired, at: NOW + 60).alerts.map(\.kind), [.delayed], "a new outage alerts again")
         XCTAssertEqual(alerts(down, polling: false).alerts, [], "paused feed (app not in front): not an outage")
+        var aged = scene("onbus"); aged.live.lastOk = NOW - 400; aged.live.feedTs = NOW - 400
+        XCTAssertEqual(alerts(aged).alerts, [], "data only aged (polling paused, back from the background): no alert")
         var never = scene("onbus"); never.live.lastOk = 0
         XCTAssertEqual(alerts(never).alerts, [], "before the first good poll: nothing")
         XCTAssertEqual(alerts(scene("stale")).alerts.map(\.kind), [.delayed], "feed 7 min old")

@@ -8,7 +8,8 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     enum State: String { case unknown, asking, granted, denied }
 
     private let manager = CLLocationManager()
-    var onUpdate: ((LatLon?, State) -> Void)?
+    /// A new fix (with its horizontal accuracy in meters, nil when unknown) or a permission change (nil fix).
+    var onUpdate: ((LatLon?, Double?, State) -> Void)?
 
     override init() {
         super.init()
@@ -38,12 +39,12 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     func request() {
         switch manager.authorizationStatus {
         case .notDetermined:
-            onUpdate?(nil, .asking)
+            onUpdate?(nil, nil, .asking)
             manager.requestWhenInUseAuthorization()
         case .authorizedAlways, .authorizedWhenInUse:
             manager.startUpdatingLocation()
         default:
-            onUpdate?(nil, .denied)
+            onUpdate?(nil, nil, .denied)
         }
     }
 
@@ -57,17 +58,19 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
             switch self.state {
-            case .granted: self.manager.startUpdatingLocation(); self.onUpdate?(nil, .granted)
-            case .denied: self.onUpdate?(nil, .denied)
+            case .granted: self.manager.startUpdatingLocation(); self.onUpdate?(nil, nil, .granted)
+            case .denied: self.onUpdate?(nil, nil, .denied)
             default: break
             }
         }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let c = locations.last?.coordinate else { return }
-        let p = LatLon(lat: c.latitude, lon: c.longitude)
-        Task { @MainActor in self.onUpdate?(p, .granted) }
+        guard let l = locations.last else { return }
+        let p = LatLon(lat: l.coordinate.latitude, lon: l.coordinate.longitude)
+        // negative = invalid (CoreLocation); the trip map trusts a fix over the bus position only when it is accurate
+        let acc: Double? = l.horizontalAccuracy >= 0 ? l.horizontalAccuracy : nil
+        Task { @MainActor in self.onUpdate?(p, acc, .granted) }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}

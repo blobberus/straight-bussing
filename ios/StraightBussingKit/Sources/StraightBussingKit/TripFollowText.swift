@@ -71,7 +71,8 @@ public enum TripText {
         leg.vehicle != nil ? "Your planned bus has left. Showing the next one." : "Your planned bus has left."
     }
 
-    public static func nowCard(_ p: TripFollow, routes: [String: Route], now: Double) -> NowCard {
+    /// `you` (TripYou of the same `p`): when your location is far from the bus the counts follow, the card says so.
+    public static func nowCard(_ p: TripFollow, routes: [String: Route], now: Double, you: TripYou? = nil) -> NowCard {
         let late = p.stale != .fresh
         if p.phase == .arrived {
             let fin = p.legs.indices.contains(p.active) ? p.legs[p.active].walk : nil
@@ -100,8 +101,12 @@ public enum TripText {
             if leg.missed { sec.append(missedNote(leg)) }
         default:
             prim = !w.status.isEmpty ? w.status : "Riding to \(leg.alightName)"
-            sec.append("Get off at \(leg.alightName)\(leg.alightEta.map { " about \(TimeFmt.clock($0))\(leg.alightLive ? "" : ", est.")" } ?? "")")
+            let when = leg.alightEta.map { " about \(TimeFmt.clock($0))\(leg.alightLive ? "" : ", est.")" } ?? ""
+            // the headline already says "Get off in 2 stops: X": the line under it says when you get there
+            if !w.status.isEmpty { if !when.isEmpty { sec.append("Reach \(leg.alightName)\(when)") } }
+            else { sec.append("Get off at \(leg.alightName)\(when)") }
         }
+        if let you, you.far { sec.append(you.text) }   // you may not be on the bus the counts follow (rider safety)
         if !leg.live { sec.append(leg.byTime ? "No live bus data: following the plan's times (estimate)." : "No live bus position right now.") }
         let onBus = p.phase == .onBus
         let t = onBus ? leg.alightEta : leg.boardEta

@@ -154,13 +154,14 @@ public struct TripYou: Hashable, Sendable {
         public var text: String
     }
 
-    /// The trip's stop labels, same numbers as the card and the alerts: before boarding the boarding stop says
-    /// "Board here"; on board the alighting stop says offShort(stopsLeft); otherwise it says "Get off here".
+    /// The trip's stop labels (web map.js renderYou), same numbers as the card and the alerts: before boarding the
+    /// boarding stop says "Board here" (drawn under the stop); until arrived the alighting stop says
+    /// offShort(stopsLeft) on board, else "Get off here" (drawn above it).
     public var stopLabels: [StopLabel] {
         var out: [StopLabel] = []
         let before = phase == .walkToStop || phase == .waiting
         if before, let b = board, let pt = b.point { out.append(StopLabel(stopId: b.id, stopName: b.name, point: pt, text: "Board here")) }
-        if let a = alight, let pt = a.point {
+        if phase != .arrived, let a = alight, let pt = a.point {
             let t = phase == .onBus ? TripText.offShort(stopsLeft) : "Get off here"
             out.append(StopLabel(stopId: a.id, stopName: a.name, point: pt, text: t))
         }

@@ -79,6 +79,18 @@ final class MapCameraModel {
     static let campus = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 41.7920, longitude: -87.5960),
                                            span: MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03))
     var position: MapCameraPosition = .region(MapCameraModel.campus)
+    /// The follow camera of a started trip (web spec 2026-10-13): on at Start and by the re-center button, off as soon
+    /// as the rider drags or zooms the map (or another screen moves it). While on, the map keeps `TripYou.frame` in view.
+    var follow = false
+    /// The part of the map the rider can see, in global points: below the floating chrome, above the sheet (RootView
+    /// writes it when the chrome or the settled sheet changes; the follow check runs again then).
+    var visibleRect: CGRect = .zero
+    /// The rect MapKit fits a `.region` into, in global points (the map minus its bottom padding).
+    @ObservationIgnored var safeRect: CGRect = .zero
+    /// Phase and leg of the last follow frame ("on-bus|1"): a new one frames again.
+    @ObservationIgnored var followKey: String?
+    /// The points of the last follow frame (re-framing for points that barely moved would only jitter).
+    @ObservationIgnored var lastFramed: [LatLon] = []
 }
 
 /// A route polyline ready for MapKit (coordinates converted and color parsed once per visibility change).
@@ -153,6 +165,16 @@ final class AppModel {
     /// The app is on screen (scene active or inactive, not background): polling may run.
     @ObservationIgnored var inForeground = true
     @ObservationIgnored var lastAlertsPoll: Double = 0
+    /// Polls applied since the app came to the front: before the first one, data from before the break is old
+    /// because nothing polled, which is not an outage (no "Live data delayed" alert for it).
+    @ObservationIgnored var pollsSinceActive = 0
+    /// The notification prompt is up: alerts wait for the answer (never spent on a banner hidden behind it).
+    @ObservationIgnored var notifAsking = false
+    /// Horizontal accuracy (m) of the last location fix, nil when unknown (TripYou trusts an accurate fix over the
+    /// followed bus position).
+    @ObservationIgnored var userAccuracy: Double?
+    /// The `now` the current `tripFollow` was computed for (trip alerts re-checked later use the same moment).
+    @ObservationIgnored var tripFollowNow: Double = 0
     /// Last content sent to the Live Activity (ActivityKit updates are throttled; see `pushLiveActivity`).
     @ObservationIgnored var lastActivityPush: (snap: LiveTripSnapshot, at: Double)?
     /// The merged feed state (`LiveState.applying` works on it). Views read the observed slices below.
@@ -235,8 +257,12 @@ final class AppModel {
     // Directions + trip
     var dir = DirectionsState()
     var activeTrip: ActiveTrip?
-    /// The started trip followed against live data (Kit `TripFollow`, web core/tripprogress.js).
+    /// The started trip followed against live data (Kit `TripFollow`, web core/tripprogress.js): ONE evaluation per
+    /// refresh feeds the timeline, the map's You marker (`tripYou`), the trip alerts and the Live Activity.
     var tripFollow: TripFollow?
+    /// Where you are on the trip (Kit `TripYou`, web core/tripyou.js), from the same `tripFollow`: the map's You
+    /// marker, its stop labels and the follow camera's frame.
+    var tripYou: TripYou?
     // Clock for countdowns
     var now = Date().timeIntervalSince1970
 
@@ -283,10 +309,13 @@ final class AppModel {
         savePrefs()
     }
 
+    /// A bus-alert setting changed: save, then check the station and the trip alerts with it (the 2 stops / 1 stop /
+    /// minutes / in-app choices apply to both).
     func updateNotify(_ change: (inout NotifyPrefs) -> Void) {
         change(&notify)
         savePrefs()
         checkBusAlerts()
+        checkTripAlerts(tripFollow, now: tripFollowNow)
     }
 
     func setTheme(_ t: String) {
@@ -364,10 +393,13 @@ final class AppModel {
         fit(pts.isEmpty ? (staticData.routeStops[rid] ?? []).compactMap { staticData.stops[$0]?.coord } : pts)
     }
 
-    func fit(_ pts: [LatLon]) {
+    /// Frame points on the map. Any move other than the trip's own follow framing turns the follow camera off
+    /// (the rider went to look at something else; the re-center button turns it back on).
+    func fit(_ pts: [LatLon], keepFollow: Bool = false) {
         let ok = pts.filter(\.isValid)
         guard let minLat = ok.map(\.lat).min(), let maxLat = ok.map(\.lat).max(),
               let minLon = ok.map(\.lon).min(), let maxLon = ok.map(\.lon).max() else { return }
+        if !keepFollow && mapCamera.follow { mapCamera.follow = false }
         let span = MKCoordinateSpan(latitudeDelta: max(0.006, (maxLat - minLat) * 1.35), longitudeDelta: max(0.006, (maxLon - minLon) * 1.35))
         withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.6)) {
             mapCamera.position = .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2), span: span))
@@ -376,6 +408,7 @@ final class AppModel {
 
     func flyTo(_ p: LatLon?, span: Double = 0.008) {
         guard let p, p.isValid else { return }
+        if mapCamera.follow { mapCamera.follow = false }
         withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.6)) {
             mapCamera.position = .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon),
                                                             span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)))

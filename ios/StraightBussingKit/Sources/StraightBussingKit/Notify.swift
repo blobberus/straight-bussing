@@ -166,6 +166,14 @@ public enum Notify {
 
     static func capped(_ fired: [String]) -> [String] { fired.count > firedMax ? Array(fired.suffix(firedMax)) : fired }
 
+    /// Live data is down by the feed's own evidence (web notify.js outage): a poll failed, or a fresh poll returned
+    /// an old feed. Not when data merely aged because polling paused (the app was in the background) or the first
+    /// poll after coming back is still on its way, and never before data was reached once.
+    static func outage(_ live: LiveState, now: Double, level: StaleLevel, polling: Bool) -> Bool {
+        guard level == .err || level == .old, live.lastOk != 0, polling else { return false }
+        return live.failed || (level == .old && now - live.lastOk <= Arrivals.errAfterS)
+    }
+
     /// Station alerts that should fire now (each trip + kind once). While live data is down or old: one 'delayed'
     /// alert per outage (only after data was reached once, and only while the app polls), nothing else.
     /// - tripOn: a started trip with trip alerts on is in progress (`tripAlertsOn`): station alerts pause, the
@@ -179,7 +187,7 @@ public enum Notify {
         guard let sid = prefs.stopId, !tripOn else { return ([], fired) }
         let level = live.staleLevel(now: now), dk = "\(sid)|delayed"
         if level == .err || level == .old {
-            if live.lastOk == 0 || !polling || fired.contains(dk) { return ([], fired) }
+            if !outage(live, now: now, level: level, polling: polling) || fired.contains(dk) { return ([], fired) }
             fired.append(dk)
             return ([BusAlert(key: dk, kind: .delayed, title: delayedTitle, body: stationDelayedBody)], capped(fired))
         }
@@ -238,7 +246,7 @@ public enum Notify {
         var alerts: [BusAlert] = []
         if level == .err || level == .old {
             let dk = "\(tk)|delayed"
-            if live.lastOk != 0 && polling && !fired.contains(dk) {
+            if outage(live, now: now, level: level, polling: polling) && !fired.contains(dk) {
                 fired.append(dk)
                 alerts.append(BusAlert(key: dk, kind: .delayed, title: delayedTitle, body: tripDelayedBody))
             }
@@ -274,5 +282,21 @@ public enum Notify {
     public static func tripAlertsOn(_ p: TripFollow?, prefs: NotifyPrefs) -> Bool {
         guard let p else { return false }
         return p.phase != .arrived && prefs.trip
+    }
+
+    /// Settings > Bus alerts, the station's status while `tripAlertsOn` (web settings.js TRIP_PAUSED).
+    public static let tripPausedText = "Paused during your trip: alerts follow your trip's bus."
+
+    /// Settings > Bus alerts > Trip alerts during a trip: what the trip alerts follow right now, in the Current trip
+    /// card's words (web settings.js tripHTML): "During your trip: Get off in 2 stops: Medical Center". nil when no
+    /// trip with trip alerts is in progress.
+    public static func tripStatusLine(_ p: TripFollow?, prefs: NotifyPrefs, live: LiveState, now: Double) -> String? {
+        guard let p, prefs.trip, tripAlertsOn(p, prefs: prefs) else { return nil }
+        let level = live.staleLevel(now: now)
+        let leg = p.legs.indices.contains(p.active) ? p.legs[p.active].bus : nil
+        let status = leg.map { TripText.busWords($0, now: now).status } ?? ""
+        let what = level == .err || level == .old ? "Live data is unavailable, so trip alerts wait for it."
+            : !status.isEmpty ? status : "Waiting for a live position of your bus."
+        return "During your trip: " + what
     }
 }
