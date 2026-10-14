@@ -17,15 +17,26 @@ final class LandmarksTests: XCTestCase {
 
     func testRealBundledFile() {
         let l = Self.real
-        XCTAssertEqual(l.count, 87)
-        XCTAssertEqual(l.filter { $0.tier == 1 }.count, 27)
+        XCTAssertEqual(l.count, 89)        // 2026-10-14: + Vue53 (tier 1) and Chipotle on 53rd (tier 3, an easter egg's place)
+        XCTAssertEqual(l.filter { $0.tier == 1 }.count, 28)
         XCTAssertEqual(l.filter { $0.tier == 2 }.count, 33)
-        XCTAssertEqual(l.filter { $0.tier == 3 }.count, 27)
-        XCTAssertEqual(l.map(\.rank), Array(0..<87))
+        XCTAssertEqual(l.filter { $0.tier == 3 }.count, 28)
+        XCTAssertEqual(l.map(\.rank), Array(0..<89))
         XCTAssertEqual(l.map(\.tier), l.map(\.tier).sorted(), "the file is sorted by tier")
         XCTAssertEqual(l.first?.name, "Regenstein Library")
         XCTAssertEqual(l.first?.osm, "Joseph Regenstein Library")
-        XCTAssertEqual(Set(l.map(\.name)).count, 87, "no name twice")
+        XCTAssertEqual(Set(l.map(\.name)).count, 89, "no name twice")
+        // owner 2026-10-14: Burton-Judson, International House and Vue53 named from the opening camera; Burton-Judson
+        // ahead of Granville-Grossman (the two names sit 100 m apart and only one fits at zoom 15 to 15.5)
+        for n in ["Burton-Judson Courts", "International House", "Vue53"] { XCTAssertEqual(l.first { $0.name == n }?.tier, 1, n) }
+        XCTAssertLessThan(l.firstIndex { $0.name == "Burton-Judson Courts" } ?? 99, l.firstIndex { $0.name == "Granville-Grossman Commons" } ?? 0)
+        // easter eggs (easter-eggs.json): nicknames only close in, never dashes, on a zoom the map reaches
+        let eggs = l.filter { $0.egg != nil }
+        XCTAssertFalse(eggs.isEmpty)
+        for m in eggs {
+            XCTAssertGreaterThanOrEqual(m.eggZoom ?? 0, 16, m.name)
+            XCTAssertFalse(m.egg!.contains("\u{2013}") || m.egg!.contains("\u{2014}"), m.egg!)
+        }
         // every UChicago dorm is named (owner: "Other locations that need naming is UChicago dorm buildings")
         let dorms = l.filter { $0.kind == "dorm" }
         XCTAssertGreaterThanOrEqual(dorms.count, 10)
@@ -45,6 +56,37 @@ final class LandmarksTests: XCTestCase {
             // the network: campus to the Gleacher Center downtown (11 km)
             XCTAssertLessThan(Geo.hav(m.coord, LatLon(lat: 41.7915, lon: -87.599)), 15_000, m.name)
         }
+    }
+
+    func testEasterEggNicknames() {
+        // by the row's index in the file (a bad row before it drops but keeps the index), only with a numeric egg_zoom
+        let json = """
+        {"v": 1, "l": [["bad", "x", -87.6, 1], ["Regenstein Library", 41.792, -87.6, 1], ["Cobb Hall", 41.789, -87.6, 2]],
+         "eggs": [[1, " The Reg "], [2, ""], ["2", "string index"], [9, "no such row"], "junk"], "egg_zoom": 17.5}
+        """
+        let l = Landmarks.parse(Data(json.utf8))
+        XCTAssertEqual(l.map(\.name), ["Regenstein Library", "Cobb Hall"])
+        XCTAssertEqual(l[0].egg, "The Reg")
+        XCTAssertEqual(l[0].eggZoom, 17.5)
+        XCTAssertNil(l[1].egg)
+        XCTAssertNil(l[1].eggZoom, "no nickname, no nickname zoom")
+        XCTAssertEqual(Landmarks.text(l[0], zoom: 17.25), "Regenstein Library")
+        XCTAssertEqual(Landmarks.text(l[0], zoom: 17.5), "The Reg")
+        XCTAssertEqual(Landmarks.text(l[0], zoom: 19), "The Reg", "the iPhone zooms in past the web's 18")
+        XCTAssertEqual(Landmarks.text(l[1], zoom: 19), "Cobb Hall")
+        let noZoom = Landmarks.parse(Data(#"{"l": [["A", 41.79, -87.6, 1]], "eggs": [[0, "B"]]}"#.utf8))
+        XCTAssertEqual(noZoom.count, 1)
+        XCTAssertNil(noZoom.first?.egg)
+        let badEggs = Landmarks.parse(Data(#"{"l": [["A", 41.79, -87.6, 1]], "eggs": "x", "egg_zoom": {"no": 1}}"#.utf8))
+        XCTAssertEqual(badEggs.map(\.name), ["A"], "bad eggs never cost the labels")
+        // the placed text is the nickname close in (what MapLabels draws)
+        let reg = Landmark(name: "Regenstein Library", coord: LatLon(lat: 41.7922, lon: -87.5999), tier: 1, rank: 0,
+                           egg: "The Reg", eggZoom: 17.5)
+        let view = LabelRect(x: 0, y: 0, width: 400, height: 800)
+        let far = Landmarks.place([.init(landmark: reg, x: 200, y: 400)], zoom: 17, viewport: view)
+        let near = Landmarks.place([.init(landmark: reg, x: 200, y: 400)], zoom: 17.5, viewport: view)
+        XCTAssertEqual(far.first?.lines.joined(separator: " "), "Regenstein Library")
+        XCTAssertEqual(near.first?.text, "The Reg")
     }
 
     func testBadRowsDropped() {

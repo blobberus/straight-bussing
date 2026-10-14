@@ -35,6 +35,17 @@ export function labelSize(tier, zoom) {
 }
 
 /**
+ * The text a label shows at a zoom: the owner's easter-egg nickname (easter-eggs.json, owner 2026-10-14) once you zoom
+ * in to its eggZ, else its name.
+ * @param {{name:string, egg?:string, eggZ?:number}} x
+ * @param {number} zoom
+ * @returns {string}
+ */
+export function labelText(x, zoom) {
+  return x.egg && zoom >= x.eggZ ? x.egg : x.name;
+}
+
+/**
  * Greedy word wrap.
  * @param {string} text
  * @param {number} maxPx
@@ -137,7 +148,7 @@ export function createLandmarkLayer(map, o = {}) {
     list.forEach((x, r) => {
       if (z < (LANDMARK_Z[x.tier] ?? 99) || (x.until != null && z >= x.until) || !b.contains([x.lat, x.lon])) return;
       const px = labelSize(x.tier, z), width = measurer(FONT(px));
-      const lines = wrapLines(x.name, px * LABEL.MAX_EM, width);
+      const lines = wrapLines(labelText(x, z), px * LABEL.MAX_EM, width);
       const p = map.latLngToContainerPoint([x.lat, x.lon]);
       cands.push({ id: r, tier: x.tier, x: p.x, y: p.y, w: Math.ceil(Math.max(...lines.map(width))), h: Math.ceil(lines.length * px * LABEL.LINE), px, lines });
     });

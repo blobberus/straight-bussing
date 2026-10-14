@@ -55,7 +55,7 @@ data-geocode.js) so the Swift port provably behaves the same.
 | core/planner.js | Planner.swift, PlannerRefine.swift | walk at both ends (800 m, widened to 1600 m), transfers <= 150 m, live waits, refineWalking |
 | core/walk.js (`walkRoute`), directions.js replan (async half) | WalkRouting.swift | `WalkRouteCache` actor around any router: 4-decimal endpoints, plausibility, 3 s timeout, estimate fallback (retried after 60 s), shared in-flight requests, <= 6 at once; `Planner.refinePlan` refines + re-ranks the shown options and the walk-only line |
 | map/geometry.js (`alongShape`) | Geometry.swift | bus legs drawn along the route's road shape between board and alight (`BusLeg.roadPath`); tests mirror web/tests/map-geometry.js plus a golden file of the JavaScript's own paths on 4 real routes |
-| map/landmarks.js, data/static.js cleanLandmarks (2026-10-13) | Landmarks.swift (`Landmark`, `Landmarks`, `StaticLoader.loadLandmarks`) | building and place names: decoding (bad rows dropped, optional `until`), tiers by zoom, `labelSize`, greedy wrap, the 17-spot placement (`placeBoxes` = web placeLabels); tests port web/tests/map-landmarks.js; see "Map labels" below |
+| map/landmarks.js, data/static.js cleanLandmarks (2026-10-13) | Landmarks.swift (`Landmark`, `Landmarks`, `StaticLoader.loadLandmarks`) | building and place names: decoding (bad rows dropped, optional `until`, easter-egg nicknames `egg` / `eggZoom` by row index, 2026-10-14), `Landmarks.text` (= labelText), tiers by zoom, `labelSize`, greedy wrap, the 17-spot placement (`placeBoxes` = web placeLabels); tests port web/tests/map-landmarks.js; see "Map labels" below |
 | core/rank.js | Rank.swift | least walking > earliest arrival > shortest wait > criteria met; `criteriaText` labels |
 | core/notify.js | Notify.swift | stopsAway, watchedRoutes, dueAlerts (paused while `tripOn`, one 'delayed' alert per outage), minutesText; since 2026-10-13 tripAlerts (board2 / board1 / boardMin, off2 / off1, delayed), tripAlertsOn, the outage rule (feed evidence only), DELAYED_TITLE / bodies, Settings' "During your trip" line (`tripStatusLine`, web settings.js tripHTML); `NotifyPrefs.trip` with a decoder that keeps old stored prefs |
 | core/tripyou.js (2026-10-13) | TripYou.swift (`TripYou`), TripFollowText.swift (`TripText.offText` / `offShort`) | where you are on a started trip: on the bus (its live position) unless your accurate GPS is > 300 m + accuracy from it (`far`), your GPS, the boarding stop as a guess while waiting; target, frame, VoiceOver text; the map's stop labels; tests port web/tests/core-tripyou.js |
@@ -136,7 +136,10 @@ your stop is next).
 trafficked ones and promanent off campus locations relevant to the bus coverage should have names on the map
 displayed by default", and "Other locations that need naming is UChicago dorm buildings". Same data and rules as the
 web (web/js/map/landmarks.js, docs/ARCHITECTURE.md "Map labels"):
-- **Data:** the bundled `web/data/landmarks.json` (87 names: tier 1 = the busiest hubs, every UChicago dorm, the stop
+- **Easter eggs (2026-10-14, owner):** a label with an `egg` nickname (easter-eggs.json, built into landmarks.json
+  as `eggs` / `egg_zoom`) draws it from `eggZoom` (17.5) on: `Landmarks.text`, used by `Landmarks.place`; the iPhone
+  zooms past the web's 18, the nickname stays. Bundled, so a new nickname ships with the next app build.
+- **Data:** the bundled `web/data/landmarks.json` (89 names since 2026-10-14: tier 1 = the busiest hubs, every UChicago dorm, the stop
   namesakes, groceries, Metra / Green Line stations, MSI, the Obama Center, Gleacher Center; then 2 and 3), decoded by
   Kit `Landmarks.parse` (missing or bad file = no names, bad rows dropped, optional `until`). Bundled only: the names
   are curated, so they are not part of the daily schedule download (`ScheduleUpdater.files` is unchanged).

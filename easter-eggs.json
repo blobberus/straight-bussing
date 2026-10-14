@@ -1,0 +1,16 @@
+{
+  "how to use": [
+    "Each line under names is  \"address\": \"the name to show\".",
+    "The map shows the place's normal name, and this name instead once you zoom in to at least the zoom below (the map goes up to 18).",
+    "Write the address as the place search shows it (1522 E 53rd St). If two places share an address, put the place's name first: \"Joseph Regenstein Library, 1100 E 57th St\".",
+    "A place that has no name on the map yet gets one, shown only close in (from zoom 17).",
+    "Keep the quotes and the commas between lines; the last line has no comma. No en or em dashes in names.",
+    "After a change: commit it. The site rebuilds the map names when it deploys; tools/build_landmarks.py does the same on a PC and reports a typo or an address it cannot find. The iPhone app takes the names with its next build."
+  ],
+  "zoom": 17.5,
+  "names": {
+    "1522 E 53rd St": "Burrito Embassy",
+    "1101 E 56th St": "Max P",
+    "Joseph Regenstein Library, 1100 E 57th St": "The Reg"
+  }
+}
