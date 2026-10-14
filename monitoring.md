@@ -33,7 +33,9 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
 2. HEALTHY: go to **Report back**.
 3. DEGRADED / DOWN: for each `[warn]` / `[DOWN]` line, apply the matching row of the fix table.
 4. If it is DOWN and not fixed within ~10 min, **take over locally** (below), and tell Nathan.
-5. Run `status` again and report.
+5. Run `status` again.
+6. Log it in `docs/DATA-COLLECTION-LOG.md`: one Checkups line (verdict, coverage, rows), and a `DC-NNN` entry for
+   every error found (what, impact on the rows, cause, fix or status). Commit it with the fixes, then report.
 
 Git Bash gotcha: it rewrites `rev:path` arguments (`git show origin/data:data/...`); prefix such commands with `MSYS_NO_PATHCONV=1`.
 
@@ -147,3 +149,4 @@ Pushing to main is outward-facing: confirm with Nathan first unless he asked for
 - Coverage % and the biggest gap since the reported start; `arrivals.csv` rows and newest arrival.
 - What you did (dispatch, local takeover started and how to stop it, fixes pushed).
 - What needs him: enabling the workflow, a token for dispatch, the reboot watchdog.
+- New or still-open `DC-NNN` entries from `docs/DATA-COLLECTION-LOG.md`.

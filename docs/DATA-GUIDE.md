@@ -20,7 +20,7 @@ up to **Tuesday, October 13, 2026, 4:20 PM** (collection started Thursday, Octob
 
 **Where it comes from:** the shuttles' public live tracking feed (Passio, the same data the official app uses).
 A collector checks it every 10 seconds, around the clock (GitHub, with a backup on the owner's PC), and writes a
-row each time a bus reaches a stop. The files update about every 30 minutes. They hold bus positions and times
+row each time a bus reaches a stop. The files update about every 40 minutes (the browsing copies every 30). They hold bus positions and times
 only: nothing about riders.
 
 ## How much, and is every station and line collected?

@@ -177,6 +177,22 @@ def log_window(run_id, token, now):
     return None
 
 
+def last_start(runs, now, window_of):
+    """Newest real logging start. A run that waited in its concurrency slot keeps its creation time as
+    run_started_at, so on 2026-10-14 the newest run read 79 min old while it had started logging 12 min before
+    (a false 'no run started'). When the newest start looks late (> 50 min), the in-progress runs' 'Log arrivals'
+    steps decide (window_of(run) -> (start, end) or None; at most 4 API calls, only then). Sets r["log_window"]."""
+    last = epoch(runs[0].get("run_started_at") or runs[0]["created_at"])
+    if now - last <= 50 * 60:
+        return last
+    for r in [r for r in runs[:4] if r["status"] == "in_progress"]:
+        w = r.get("log_window") or window_of(r)
+        if w:
+            r["log_window"] = w
+            last = max(last, w[0])
+    return last
+
+
 def coverage(runs, now, complete, window=86400):
     """-> (window_start, fraction covered, [(gap_start, gap_end)]) from successful/in-progress runs.
     A run with r["log_window"] = (start, end) (from log_window(), set for parked runs) uses it as is."""
@@ -264,8 +280,8 @@ def status(ctx, a):
             print(f"runs      none yet (workflow registered {age(now - reg)} ago)")
             issues.append((lvl, "no scheduled run has fired yet", DISPATCH))
         else:
-            last = epoch(runs[0].get("run_started_at") or runs[0]["created_at"])
-            print(f"runs      {total} total, newest started {age(now - last)} ago")
+            last = last_start(runs, now, lambda r: log_window(r["id"], token, now))
+            print(f"runs      {total} total, newest started logging {age(now - last)} ago")
             for r in runs[:a.n]:
                 s = epoch(r.get("run_started_at") or r["created_at"])
                 print(f"  {ts(s)[:16]}  {r['event']:<17} {r['status']:<11} {r['conclusion'] or '':<9} {r['html_url']}")
@@ -279,7 +295,8 @@ def status(ctx, a):
                 issues.append((2, "the last 3 runs failed", "read the failing step log (see monitoring.md 'Runs failing')"))
             elif any(r["conclusion"] == "failure" and now - epoch(r["created_at"]) < 86400 for r in done):
                 issues.append((1, "a run failed in the last 24 h", "read its log (monitoring.md 'Runs failing')"))
-            for r in [r for r in runs if now - epoch(r["created_at"]) < 86400 + 2 * RUN_S and parked(r, now)][:12]:
+            for r in [r for r in runs if now - epoch(r["created_at"]) < 86400 + 2 * RUN_S and parked(r, now)
+                      and not r.get("log_window")][:12]:
                 r["log_window"] = log_window(r["id"], token, now)   # a few per day; bounded API use
             start, frac, gaps = coverage(runs, now, total <= len(runs))
             print(f"coverage  {frac:.0%} of the time since {ts(start)[:16]} (approx; successful + running runs)")

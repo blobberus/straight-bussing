@@ -139,6 +139,27 @@ def test_coverage_math():
     assert abs(frac - 4200 / 9000) < 1e-6 and gaps == [(now - 9000, now - 5400), (now - 1200, now)], (frac, gaps)
 
 
+def test_last_start_queued_run():
+    """2026-10-14: the newest run was created 79 min ago but waited in its slot and began logging 12 min ago."""
+    m = load_monitor(TOOLS.parent)
+    iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+    now = 1_800_000_000
+    mk = lambda c, st: dict(id=c, run_started_at=iso(now - c), created_at=iso(now - c), updated_at=iso(now), status=st, conclusion=None)
+    queued, older = mk(79 * 60, "in_progress"), mk(101 * 60, "in_progress")
+    calls = []
+    def win(r):
+        calls.append(r["id"])
+        return {queued["id"]: (now - 12 * 60, now), older["id"]: (now - 52 * 60, now)}[r["id"]]
+    assert m.last_start([queued, older], now, win) == now - 12 * 60
+    assert queued["log_window"] == (now - 12 * 60, now) and calls == [queued["id"], older["id"]]
+    # a fresh newest run needs no API call; a genuinely stalled chain still reads old
+    fresh = mk(10 * 60, "in_progress")
+    assert m.last_start([fresh, queued], now, lambda r: 1 / 0) == now - 600
+    done = dict(mk(90 * 60, "completed"), conclusion="success")
+    assert m.last_start([done], now, lambda r: 1 / 0) == now - 90 * 60
+    assert m.last_start([mk(95 * 60, "in_progress")], now, lambda r: None) == now - 95 * 60
+
+
 def test_local_end_to_end():
     d, bare, repo = make_env()
     r = monitor(repo, "local", "--hours", "0.005", "--chunk-min", "0.1")
