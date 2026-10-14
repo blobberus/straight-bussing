@@ -89,8 +89,10 @@ final class MapCameraModel {
     @ObservationIgnored var safeRect: CGRect = .zero
     /// Phase and leg of the last follow frame ("on-bus|1"): a new one frames again.
     @ObservationIgnored var followKey: String?
-    /// The points of the last follow frame (re-framing for points that barely moved would only jitter).
+    /// The points and visible map of the last follow frame, and when it was made.
     @ObservationIgnored var lastFramed: [LatLon] = []
+    @ObservationIgnored var lastFramedRect: CGRect = .zero
+    @ObservationIgnored var lastFrameAt: Double = 0
 }
 
 /// A route polyline ready for MapKit (coordinates converted and color parsed once per visibility change).

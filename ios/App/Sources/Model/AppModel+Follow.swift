@@ -34,32 +34,34 @@ struct MapRects: Equatable {
 /// framed when the phase or the active leg changes, or when one of its points leaves the visible map; a poll where
 /// everything is still in view never moves the map (no jitter). Reduce Motion: no animation.
 extension AppModel {
-    /// Below this visible map height (the sheet is expanded) nothing is framed; it frames once the map shows.
-    static let followMinVisibleH: CGFloat = 140
-    /// Out-of-view points that moved less than this (m) since the last frame are not framed again.
-    static let followMovedM = 25.0
-    /// Closest zoom of a follow frame: about MapKit / web zoom 17 (0.89 m per point at Chicago's latitude).
-    static let followMinDegPerPt = 8.0e-6
+    /// Below this visible map height (the sheet is expanded) nothing is framed; it frames once the map shows (web
+    /// inView null under 200 px of map above the sheet).
+    static let followMinVisibleH: CGFloat = 160
+    /// No out-of-view re-frame this soon (s) after a frame: its glide is still running (web SETTLE_MS).
+    static let followSettleS = 2.0
 
     /// MapScreen's check after each `tripYou` change, map resize or follow switch.
     func followTrip(_ y: TripYou?, outOfView: Bool) {
         let cam = mapCamera
         guard cam.follow, activeTrip != nil, let y, !y.frame.isEmpty else { return }
         let key = "\(y.phase.rawValue)|\(y.active)"
-        let changed = key != cam.followKey
-        guard changed || (outOfView && Self.moved(y.frame, since: cam.lastFramed)) else { return }
+        let t = Date().timeIntervalSince1970
+        // a new phase or leg (or nothing framed yet: started, re-centered, the map was covered) frames at once
+        if key == cam.followKey {
+            guard outOfView, t - cam.lastFrameAt >= Self.followSettleS else { return }
+            // the same points into the same visible map were framed already: again would not help (no loop)
+            if cam.lastFramed == y.frame && cam.lastFramedRect == cam.visibleRect { return }
+        }
         // the expanded sheet covers the map: frame when it shows again
         guard cam.visibleRect.height >= Self.followMinVisibleH, cam.safeRect.height > 0 else { cam.followKey = nil; return }
         cam.followKey = key
         cam.lastFramed = y.frame
+        cam.lastFramedRect = cam.visibleRect
+        cam.lastFrameAt = t
         guard let r = Self.frameRegion(y.frame, safe: cam.safeRect, visible: cam.visibleRect) else { return }
         withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.6)) {
             cam.position = .region(r)
         }
-    }
-
-    static func moved(_ a: [LatLon], since b: [LatLon]) -> Bool {
-        a.count != b.count || zip(a, b).contains { Geo.hav($0, $1) > followMovedM }
     }
 
     /// The locate button during a trip: follow the trip again and frame it now (asks for location the first time).
@@ -73,7 +75,8 @@ extension AppModel {
 
     /// The region that shows `pts` inside `visible` when MapKit fits it into `safe` (both in the same points): the
     /// points' box with 30% room at a scale that fits the visible part, centered on the visible part (the floating
-    /// chrome covers the top of the map), at most zoom 17. nil without a valid point.
+    /// chrome covers the top of the map), at most zoom 17 (16 for a single point, like the web). nil without a valid
+    /// point.
     static func frameRegion(_ pts: [LatLon], safe: CGRect, visible: CGRect) -> MKCoordinateRegion? {
         let ok = pts.filter(\.isValid)
         guard let minLat = ok.map(\.lat).min(), let maxLat = ok.map(\.lat).max(),
@@ -82,8 +85,9 @@ extension AppModel {
         let vh = Double(max(40, v.height)), vw = Double(max(40, v.width))
         let midLat = (minLat + maxLat) / 2, midLon = (minLon + maxLon) / 2
         let k = max(0.2, cos(midLat * .pi / 180))   // degrees of longitude are this much shorter than latitude
-        // latitude degrees per point
-        let s = max((maxLat - minLat) * 1.3 / vh, (maxLon - minLon) * k * 1.3 / vw, followMinDegPerPt)
+        // latitude degrees per point; zoom 17 is about 0.89 m (8e-6 degrees) per point at Chicago's latitude
+        let closest = ok.count > 1 ? 8.0e-6 : 1.6e-5
+        let s = max((maxLat - minLat) * 1.3 / vh, (maxLon - minLon) * k * 1.3 / vw, closest)
         let dy = Double(v.midY - safe.midY), dx = Double(v.midX - safe.midX)
         return MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: midLat + dy * s, longitude: midLon - dx * s / k),
                                   span: MKCoordinateSpan(latitudeDelta: s * Double(safe.height), longitudeDelta: s * Double(safe.width) / k))
