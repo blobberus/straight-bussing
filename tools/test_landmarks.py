@@ -58,7 +58,7 @@ def the_real_easter_eggs_resolve_with_no_problem():
     rows, _ = B.build()
     rows2, eggs, zoom, problems = B.build_eggs(rows)
     assert problems == [], problems
-    assert 16 <= zoom <= 18 and eggs, (zoom, eggs)
+    assert not eggs or 16 <= zoom <= 18, (zoom, eggs)    # the owner may add or remove nicknames
     assert [r[3] for r in rows2] == sorted(r[3] for r in rows2), "an added label keeps the file sorted by tier"
     assert all(0 <= i < len(rows2) and n for i, n in eggs)
 
@@ -73,6 +73,11 @@ def an_easter_egg_key_is_an_address_a_name_or_name_comma_address():
     assert f("Mansueto, 1100 E 57th St")[0][0] == "Joe and Rika Mansueto Library", "part of the name"
     p, why = f("1100 E 57th St")
     assert p is None and "2 places" in why and "Place name, 1100 E 57th St" in why, why
+    reg = {"joseph regenstein library"}
+    assert B.find_place("1100 E 57th St", EGG_PLACES, reg)[0][0] == "Joseph Regenstein Library", "shared address: the one on the map"
+    assert B.find_place("Mansueto, 1100 E 57th St", EGG_PLACES, reg)[0][0] == "Joe and Rika Mansueto Library", "a name still picks"
+    p, why = B.find_place("1100 E 57th St", EGG_PLACES, reg | {"joe and rika mansueto library"})
+    assert p is None and "2 places" in why, "both on the map: still ask for the name"
     p, why = f("Chipotle")
     assert p is None and "address" in why, why
     p, why = f("1 Nowhere Rd")
@@ -88,11 +93,22 @@ def easter_eggs_rename_every_label_of_the_place_or_add_one():
     assert eggs == [[0, "The Reg"], [1, "Max P"], [2, "Max P"], [3, "Burrito Embassy"]], eggs
     assert rows[3] == ["Chipotle", 41.79971, -87.58802, 3, "dining", "Chipotle"], rows[3]
     assert len(EGG_ROWS) == 3, "the input rows are not changed"
+    # owner 2026-10-15: "1330 E 53rd St" (Vue53 and its garage) means the labeled Vue53
+    rows, eggs, _, p = B.resolve_eggs({"names": {"1100 E 57th St": "The Reg"}}, EGG_ROWS, EGG_PLACES, EGG_STOPS)
+    assert p == [] and eggs == [[0, "The Reg"]] and len(rows) == 3, (p, eggs)
+
+
+@test
+def the_build_time_alone_is_not_a_change():
+    a = {"v": 1, "generated": "2026-10-15T17:00Z", "l": [["A", 41.79, -87.6, 1, "dorm", "A"]], "eggs": [[0, "B"]]}
+    assert B.same_names(a, dict(a, generated="2026-10-16T09:00Z"))
+    assert not B.same_names(a, dict(a, eggs=[[0, "C"]])), "a nickname changed"
+    assert not B.same_names(a, {}), "no committed copy yet"
 
 
 @test
 def a_bad_easter_egg_is_skipped_and_reported():
-    bad = {"zoom": 21, "names": {"1101 E 56th St": "Max – P", "1 Nowhere Rd": "X", "1100 E 57th St": "Y",
+    bad = {"zoom": 21, "names": {"1101 E 56th St": "Max – P", "1 Nowhere Rd": "X", "Chipotle": "Y",
                                   "Joseph Regenstein Library": "", "Joe and Rika Mansueto Library": "The Toaster"}}
     rows, eggs, zoom, p = B.resolve_eggs(bad, EGG_ROWS, EGG_PLACES, EGG_STOPS)
     assert zoom == 17.5 and len(p) == 5, p

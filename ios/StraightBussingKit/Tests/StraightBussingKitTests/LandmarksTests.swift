@@ -17,23 +17,22 @@ final class LandmarksTests: XCTestCase {
 
     func testRealBundledFile() {
         let l = Self.real
-        XCTAssertEqual(l.count, 89)        // 2026-10-14: + Vue53 (tier 1) and Chipotle on 53rd (tier 3, an easter egg's place)
+        // 88 curated (2026-10-14: + Vue53 at tier 1) plus a tier 3 name for each easter egg on a place without one
+        // (easter-eggs.json is the owner's to edit, so that part is not a fixed number; Chipotle on 53rd in 2026-10)
         XCTAssertEqual(l.filter { $0.tier == 1 }.count, 28)
         XCTAssertEqual(l.filter { $0.tier == 2 }.count, 33)
-        XCTAssertEqual(l.filter { $0.tier == 3 }.count, 28)
-        XCTAssertEqual(l.map(\.rank), Array(0..<89))
+        XCTAssertGreaterThanOrEqual(l.filter { $0.tier == 3 }.count, 27)
+        XCTAssertEqual(l.map(\.rank), Array(0..<l.count))
         XCTAssertEqual(l.map(\.tier), l.map(\.tier).sorted(), "the file is sorted by tier")
         XCTAssertEqual(l.first?.name, "Regenstein Library")
         XCTAssertEqual(l.first?.osm, "Joseph Regenstein Library")
-        XCTAssertEqual(Set(l.map(\.name)).count, 89, "no name twice")
+        XCTAssertEqual(Set(l.map(\.name)).count, l.count, "no name twice")
         // owner 2026-10-14: Burton-Judson, International House and Vue53 named from the opening camera; Burton-Judson
         // ahead of Granville-Grossman (the two names sit 100 m apart and only one fits at zoom 15 to 15.5)
         for n in ["Burton-Judson Courts", "International House", "Vue53"] { XCTAssertEqual(l.first { $0.name == n }?.tier, 1, n) }
         XCTAssertLessThan(l.firstIndex { $0.name == "Burton-Judson Courts" } ?? 99, l.firstIndex { $0.name == "Granville-Grossman Commons" } ?? 0)
         // easter eggs (easter-eggs.json): nicknames only close in, never dashes, on a zoom the map reaches
-        let eggs = l.filter { $0.egg != nil }
-        XCTAssertFalse(eggs.isEmpty)
-        for m in eggs {
+        for m in l.filter({ $0.egg != nil }) {
             XCTAssertGreaterThanOrEqual(m.eggZoom ?? 0, 16, m.name)
             XCTAssertFalse(m.egg!.contains("\u{2013}") || m.egg!.contains("\u{2014}"), m.egg!)
         }

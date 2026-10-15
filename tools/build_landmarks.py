@@ -5,6 +5,7 @@ ones and prominent off campus locations relevant to the bus coverage", and "UChi
 
   python tools/build_landmarks.py            # resolve tools/landmarks.json and write web/data/landmarks.json
   python tools/build_landmarks.py --check    # resolve and validate only (exit 1 on a problem), write nothing
+  python tools/build_landmarks.py --differs  # exit 0 if the written file shows other names than the committed one
 
 The list is curated in tools/landmarks.json (label, tier, kind; order = priority within a tier). Coordinates are never
 typed in by hand: each entry names its OpenStreetMap feature ("osm" = the exact name in web/data/places.json, which
@@ -20,8 +21,10 @@ name such as "Max Palevsky Commons" that splits into its buildings, a higher tie
 
 Easter eggs (owner 2026-10-14): easter-eggs.json at the repo root maps an address (or "place name, address") to a
 nickname the map shows instead of the label once you zoom in to its "zoom". Output "eggs": [[row index, nickname], ...]
-and "egg_zoom". A place with no label yet gets a tier 3 one (its OSM name) at the end. A bad egg is reported and
-skipped (the labels are still written; --check fails), so a typo in that file never costs the map its names.
+and "egg_zoom". A place with no label yet gets a tier 3 one (its OSM name) at the end. A bare address shared by
+several places means the one already labeled (1330 E 53rd St = Vue53 Apartments, not its garage). A bad egg is
+reported and skipped (the labels are still written; --check fails), so a typo in that file never costs the map its
+names. The Map names workflow (.github/workflows/landmarks.yml) rebuilds and commits the file when either list changes.
 """
 import argparse, json, math, re, sys
 from datetime import datetime, timezone
@@ -123,9 +126,11 @@ def load_place_rows(path=WEB_DATA / "places.json"):
     return [(str(p[0]), str(p[1]), str(p[2]), float(p[3]), float(p[4])) for p in d.get("p", [])]
 
 
-def find_place(key, places):
+def find_place(key, places, labeled=()):
     """An easter egg's key -> (place, None) or (None, why). key = an address, a place name, or "place name, address"
-    (two places at one address); place = (name, kind, address, lat, lon)."""
+    (two places at one address); place = (name, kind, address, lat, lon). labeled = lowercased OSM names that
+    already have a map label: a bare address shared by several places means the one of them on the map
+    (1330 E 53rd St = Vue53 Apartments, not its garage)."""
     k = str(key).strip()
     named = [p for p in places if p[0].lower() == k.lower()]
     if len(named) == 1:
@@ -135,6 +140,10 @@ def find_place(key, places):
         hits = [p for p in places if norm_addr(p[2]) == norm_addr(at)]
         if want:
             hits = [p for p in hits if want.lower() in p[0].lower()]
+        elif len(hits) > 1:
+            on_map = [p for p in hits if p[0].lower() in labeled]
+            if len(on_map) == 1:
+                return on_map[0], None
         if len(hits) == 1:
             return hits[0], None
         if len(hits) > 1:
@@ -158,6 +167,7 @@ def resolve_eggs(doc, rows, places, stops):
     if not isinstance(names, dict):
         return rows, [], None, problems + ['easter-eggs.json: names must be "address": "name" lines inside { }']
     rows, eggs = [list(r) for r in rows], {}
+    labeled = {r[5].lower() for r in rows}
     for key, nick in names.items():
         where = f"easter egg {key!r}"
         nick = nick.strip() if isinstance(nick, str) else ""
@@ -165,7 +175,7 @@ def resolve_eggs(doc, rows, places, stops):
             problems.append(f"{where}: needs a name in quotes"); continue
         if any(ch in nick for ch in DASHES) or len(nick) > EGG_MAX:
             problems.append(f"{where}: {nick!r} has a dash character or is over {EGG_MAX} characters"); continue
-        place, why = find_place(key, places)
+        place, why = find_place(key, places, labeled)
         if not place:
             problems.append(f"{where}: {why}"); continue
         pname, kind, _, lat, lon = place
@@ -200,16 +210,37 @@ def build_eggs(rows, eggs_path=EGGS, places_path=WEB_DATA / "places.json", stops
     return resolve_eggs(doc, rows, load_place_rows(places_path), load_stops(stops_path))
 
 
+def same_names(a, b):
+    """Two landmarks.json documents show the same names (the "generated" build time aside)."""
+    strip = lambda d: {k: v for k, v in d.items() if k != "generated"} if isinstance(d, dict) else d
+    return strip(a) == strip(b)
+
+
+def differs_from_head():
+    """0 if web/data/landmarks.json on disk shows other names than the committed copy, else 1 (Map names workflow)."""
+    import subprocess
+    head = subprocess.run(["git", "show", "HEAD:web/data/landmarks.json"], cwd=ROOT, capture_output=True,
+                          text=True, encoding="utf-8")
+    old = json.loads(head.stdout) if head.returncode == 0 and head.stdout.strip() else {}
+    return 1 if same_names(json.loads(OUT.read_text(encoding="utf-8")), old) else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--check", action="store_true", help="validate only, write nothing")
+    ap.add_argument("--differs", action="store_true",
+                    help="exit 0 if the written web/data/landmarks.json has other names than the committed one, else 1")
     a = ap.parse_args(argv)
+    if a.differs:
+        return differs_from_head()
     rows, problems = build()
     for p in problems:
         print("problem:", p)
     if problems:
         return 1
     rows, eggs, egg_zoom, egg_problems = build_eggs(rows)
+    for i, nick in eggs:
+        print(f"easter egg: {rows[i][0]} -> {nick}")
     for p in egg_problems:
         print("easter egg problem (skipped):", p)
     tiers = {t: sum(1 for r in rows if r[3] == t) for t in (1, 2, 3)}

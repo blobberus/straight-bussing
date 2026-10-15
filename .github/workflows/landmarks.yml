@@ -1,0 +1,54 @@
+name: Map names
+# Rebuilds web/data/landmarks.json when the map names or the easter-egg nicknames change (also edits made on
+# github.com) and saves it to main, so the iPhone app (bundles the committed copy) and the tests see the same names
+# as the site (pages.yml rebuilds them for every deploy on its own). The summary lists every nickname used and every
+# one skipped, with the reason. A push made here does not start other workflows (GITHUB_TOKEN), so no loop.
+on:
+  push:
+    branches: [main]
+    paths: ["easter-eggs.json", "tools/landmarks.json", "tools/build_landmarks.py"]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: { group: landmarks, cancel-in-progress: false }   # queue: each run builds from the newest main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Build the map names
+        id: b
+        run: |
+          set +e
+          python tools/build_landmarks.py > "$RUNNER_TEMP/landmarks.log" 2>&1; rc=$?
+          cat "$RUNNER_TEMP/landmarks.log"
+          {
+            echo "## Map names"
+            if [ $rc -ne 0 ]; then echo "**Not rebuilt**: a problem in tools/landmarks.json (below); the committed names stay."; fi
+            echo '```'; cat "$RUNNER_TEMP/landmarks.log"; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep "easter egg problem" "$RUNNER_TEMP/landmarks.log" | sed 's/^/::warning title=Easter egg skipped::/'
+          if [ $rc -ne 0 ]; then echo "::warning title=Map names not rebuilt::see the run summary"; git checkout -- web/data/landmarks.json; fi
+          exit 0
+      - name: Save web/data/landmarks.json to main (only when a name changed, not just the build time)
+        run: |
+          # the names differ from the committed copy (the "generated" build time alone does not count)
+          names_changed() { python tools/build_landmarks.py --differs; }
+          msg="Map names: rebuilt web/data/landmarks.json (easter-eggs.json / tools/landmarks.json changed)"
+          if ! names_changed; then git checkout -- web/data/landmarks.json; echo "names unchanged: nothing to save"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/data/landmarks.json && git commit -q -m "$msg"
+          for i in 1 2 3 4 5; do
+            if git push -q origin HEAD:main; then echo "saved"; exit 0; fi
+            echo "push rejected (attempt $i): main moved; rebuilding on top of it"
+            sleep $((i * 5))
+            git fetch -q origin main && git reset -q --hard origin/main
+            python tools/build_landmarks.py > /dev/null 2>&1 || { echo "build failed on the newer main"; exit 1; }
+            if ! names_changed; then echo "the newer main already has these names"; exit 0; fi
+            git add web/data/landmarks.json && git commit -q -m "$msg"
+          done
+          echo "push failed after 5 attempts"; exit 1

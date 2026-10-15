@@ -105,10 +105,9 @@ test('landmarks: an easter-egg nickname replaces the name only close in (owner 2
   m.remove();
 });
 
-test('landmarks: the real easter eggs resolve to labels (Regenstein, Max Palevsky, Chipotle on 53rd)', async () => {
+test('landmarks: the real easter eggs resolve to labels (easter-eggs.json, the owner edits it)', async () => {
   const list = cleanLandmarks(await (await fetch('../data/landmarks.json')).json());
   const eggs = list.filter((x) => x.egg);
-  ok(eggs.length >= 1, eggs.length + ' nicknames');
   ok(eggs.every((x) => x.eggZ >= 16 && x.eggZ <= 18 && !/[\u2013\u2014]/.test(x.egg)), 'zoom the map reaches, no dash characters');
   for (const n of ['Burton-Judson Courts', 'International House', 'Vue53']) ok(list.some((x) => x.name === n && x.tier === 1), n + ' at tier 1 (owner 2026-10-14)');
 });

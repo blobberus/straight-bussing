@@ -138,7 +138,8 @@ displayed by default", and "Other locations that need naming is UChicago dorm bu
 web (web/js/map/landmarks.js, docs/ARCHITECTURE.md "Map labels"):
 - **Easter eggs (2026-10-14, owner):** a label with an `egg` nickname (easter-eggs.json, built into landmarks.json
   as `eggs` / `egg_zoom`) draws it from `eggZoom` (17.5) on: `Landmarks.text`, used by `Landmarks.place`; the iPhone
-  zooms past the web's 18, the nickname stays. Bundled, so a new nickname ships with the next app build.
+  zooms past the web's 18, the nickname stays. Bundled, so a new nickname ships with the next app build (the Map names
+  workflow commits the rebuilt web/data/landmarks.json after every easter-eggs.json edit, 2026-10-15).
 - **Data:** the bundled `web/data/landmarks.json` (89 names since 2026-10-14: tier 1 = the busiest hubs, every UChicago dorm, the stop
   namesakes, groceries, Metra / Green Line stations, MSI, the Obama Center, Gleacher Center; then 2 and 3), decoded by
   Kit `Landmarks.parse` (missing or bad file = no names, bad rows dropped, optional `until`). Bundled only: the names
