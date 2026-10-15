@@ -274,6 +274,19 @@ export function marksAlong(px, spacing, o = {}) {
 }
 
 /**
+ * The rotation to show for a new compass heading, continuing from the last one the shortest way round, so an
+ * animated turn across north never spins the long way (350 -> 10 gives 370, not 10).
+ * @param {number} prev last rotation shown (any number, NaN for none)
+ * @param {number} deg new heading (deg)
+ * @returns {number}
+ */
+export function unwrapDeg(prev, deg) {
+  const n = (x) => ((x % 360) + 360) % 360;
+  if (!Number.isFinite(prev)) return n(deg);
+  return prev + (180 - n(180 - (deg - prev)));
+}
+
+/**
  * The three points of a chevron ("V" pointing along `angle`) centered on the mark.
  * @param {{x:number, y:number, angle:number}} m
  * @param {number} size arm length in pixels

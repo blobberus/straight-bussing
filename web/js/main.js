@@ -2,7 +2,8 @@
  * @module main
  * Wiring + boot (D1). Order: theme -> map -> sheet -> router/actions -> views -> loadStatic -> startLive.
  * Owns the render loop (header, status pill via ui/pill.js, content), the map context bar, map sync on store
- * changes, geolocation (ctx.locate), Escape/back + browser history, toasts and the global error handler.
+ * changes, geolocation (ctx.locate) + the heading cone (ui/compass.js), Escape/back + browser history, toasts and the
+ * global error handler.
  * Demo mode (core/demo.js, `?demo=1` only): the simulated feed replaces the live one (ui/demo.js startDemo); the
  * status pill says "Simulated buses" (no banner, 2026-10-11); no service worker, no bus alerts, nothing stored.
  */
@@ -25,13 +26,14 @@ import { registerContextActions, mountContextBar } from "./ui/contextbar.js";
 import { initFrame } from "./ui/frame.js";
 import { isSettingsOpen, closeSettingsOverlay } from "./ui/settings-overlay.js";
 import { startTripMap } from "./ui/tripmap.js";
+import { createCompass } from "./ui/compass.js";
 
 /** Every view module; each calls registerView() at import time. */
 export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes", "settings"]);
 /** Views that may not be deployed yet: a failed import is a warning, not an error. */
 const OPTIONAL_VIEWS = new Set(["settings"]);
 const RENDER_TICK_MS = 15000;
-const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "setSelectedStop", "setUser",
+const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "setSelectedStop", "setUser", "setHeading",
   "highlightStops", "drawPlan", "drawFavorites", "setTrip", "inView", "setLandmarks", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove", "onMapTap"];
 const VIS_KEYS = ["hiddenRoutes", "routeFilter", "view", "routeId", "routeOrder", "journey", "activeCustom", "customRoutes"];
 const NET_KEYS = ["routes", "shapes", "routeStops", "stopRoutes", "stops", "theme", ...VIS_KEYS];
@@ -100,12 +102,15 @@ function syncMap(s, changed) {
 
 /* ---------------- geolocation ---------------- */
 let locating = null, watchId = null;
+// the way the rider faces, straight to the map (never the store: up to 60 readings a second); on while sharing is on
+const compass = createCompass({ onHeading: (deg, spread) => mapCall("setHeading", deg, spread) });
 const LOC_OFF = "sb-loc-off";   // the rider chose Stop sharing in Settings: no automatic location at the next launch
 const locOptOut = () => { try { return localStorage.getItem(LOC_OFF) === "1"; } catch (e) { return false; } };
 /** Settings > Stop sharing: forget the position, stop watching, remember the choice. */
 function stopLocation() {
   try { if (watchId !== null) navigator.geolocation.clearWatch(watchId); } catch (e) { /* */ }
   watchId = null;
+  compass.stop();
   try { localStorage.setItem(LOC_OFF, "1"); } catch (e) { /* private mode */ }
   store.set({ user: null, locState: "off" });
 }
@@ -113,6 +118,7 @@ function startWatch() {
   if (watchId !== null || !navigator.geolocation || !navigator.geolocation.watchPosition) return;
   try {
     watchId = navigator.geolocation.watchPosition((p) => {
+      compass.course(p.coords);   // the GPS course, when no compass reads (walking or riding)
       const u = { lat: p.coords.latitude, lon: p.coords.longitude, accuracy: p.coords.accuracy };
       const cur = store.get().user;
       if (!cur || hav(cur, u) > 15) store.set({ user: u, locState: "granted" });
@@ -120,10 +126,13 @@ function startWatch() {
   } catch (e) { watchId = null; }
 }
 /**
- * Ask for the device location. Sets store.user / store.locState. Never throws.
+ * Ask for the device location. Sets store.user / store.locState. Never throws. A tap (every caller but the launch,
+ * which passes {auto: true}) also asks for the compass (iOS shows it only after a permission asked inside a tap).
+ * @param {{auto?:boolean}} [opts]
  * @returns {Promise<boolean>} true when a position was obtained
  */
-function locate() {
+function locate(opts) {
+  if (!(opts && opts.auto)) compass.request();
   if (locating) return locating;
   locating = new Promise((resolve) => {
     const prev = store.get().locState;
@@ -145,6 +154,8 @@ function locate() {
       navigator.geolocation.getCurrentPosition((p) => {
         clearTimeout(guard);
         finish(true, { user: { lat: p.coords.latitude, lon: p.coords.longitude, accuracy: p.coords.accuracy }, locState: "granted", locErr: null });
+        compass.start();
+        compass.course(p.coords);
         startWatch();
       }, (err) => {
         clearTimeout(guard);
@@ -158,6 +169,7 @@ function locate() {
   return locating;
 }
 async function onLocateFab() {
+  compass.request();   // inside the tap, before any await (a trip with a known position never calls locate)
   if (tripMap?.active?.()) {   // during a trip: show you in the trip again (follow), asking for the location if unknown
     tripMap.recenter();
     const s = store.get();
@@ -387,7 +399,7 @@ async function boot() {
   try {
     if (navigator.permissions && navigator.permissions.query) {
       const p = await navigator.permissions.query({ name: "geolocation" });
-      if (p.state === "granted" && !locOptOut()) locate();
+      if (p.state === "granted" && !locOptOut()) locate({ auto: true });
       else if (p.state === "denied") store.set({ locState: "denied" });
     }
   } catch (e) { /* permissions API unsupported */ }

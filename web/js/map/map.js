@@ -12,7 +12,7 @@ import { createNetworkLayer, createBusLayer, sig } from './layers.js';
 import { createFavoritesLayer } from './favorites.js';
 import { createCredits } from './credits.js';
 import { createLandmarkLayer } from './landmarks.js';
-import { alongShape, normLatLngs, toLatLng } from './geometry.js';
+import { alongShape, normLatLngs, toLatLng, unwrapDeg } from './geometry.js';
 import { safeColor, esc } from '../core/esc.js';
 import { offShort } from '../core/tripyou.js';
 
@@ -44,7 +44,7 @@ function planSig(o) {
  * Create the map inside element `elId`.
  * @param {string} elId
  * @returns {object} MapApi: setTheme, setBottomInset, drawNetwork, drawBuses, setSelectedStop, drawFavorites,
- *   setUser, highlightStops, drawPlan, setTrip, inView, setLandmarks, fitTo, flyTo, onStopTap, onBusTap, onUserMove, onMapTap
+ *   setUser, setHeading, highlightStops, drawPlan, setTrip, inView, setLandmarks, fitTo, flyTo, onStopTap, onBusTap, onUserMove, onMapTap
  *   (+ `leaflet` escape hatch)
  */
 export function createMap(elId) {
@@ -69,6 +69,7 @@ export function createMap(elId) {
   const labG = L.layerGroup().addTo(map);
   let selSig = '', selStop = null, hlSig = '', planS = null, planPts = [], hlPick = null, me = null, meAcc = null;
   let you = null, youMk = null, youS = '', labS = '';
+  let head = null, headTurn = NaN, headS = '';   // heading cone: {deg, spread}; the rotation shown (unwrapped); last written
 
   /**
    * You on the trip (setTrip): on the bus = ring + "You" on its marker (the GPS dot steps back: same place, or
@@ -104,6 +105,21 @@ export function createMap(elId) {
       L.marker([x.p.lat, x.p.lon], { icon: L.divIcon({ className: 'sb-tlabelicon', iconSize: [0, 0], iconAnchor: [0, 0],
         html: `<span class="sb-tlabel sb-tlabel--${x.k}">${esc(x.t)}</span>` }), interactive: false, keyboard: false, zIndexOffset: 300 }).addTo(labG);
     }
+  }
+
+  /** Show / turn / hide the heading cone inside the location dot's marker (setHeading). */
+  function renderHeading() {
+    const icon = me && me.getElement ? me.getElement() : null;
+    if (!icon) return;
+    if (head) headTurn = unwrapDeg(headTurn, head.deg);
+    const s = head ? sig(Math.round(headTurn), head.spread) : '';
+    if (s === headS) return;
+    headS = s;
+    icon.classList.toggle('sb-me-head', !!head);
+    const cone = icon.querySelector('.sb-mecone');
+    if (!cone || !head) return;
+    cone.style.setProperty('--sb-head', Math.round(headTurn) + 'deg');
+    cone.style.setProperty('--sb-spread', Math.round(head.spread) + 'deg');
   }
 
   /** (Re)draw the selection ring; a favorite gets a wider, unfilled ring around its star badge. */
@@ -239,16 +255,31 @@ export function createMap(elId) {
     /** Blue location dot (+ accuracy circle when pos.accuracy is given). @param {{lat, lon, accuracy?}|null} pos */
     setUser(pos) {
       const ll = toLatLng(pos);
-      if (!ll) { me?.remove(); meAcc?.remove(); me = meAcc = null; return; }
+      if (!ll) { me?.remove(); meAcc?.remove(); me = meAcc = null; headTurn = NaN; headS = ''; return; }
       if (!me) {
-        me = L.marker(ll, { icon: L.divIcon({ className: 'sb-meicon', html: '<div class="sb-me"></div>', iconSize: [20, 20], iconAnchor: [10, 10] }),
-          interactive: false, keyboard: false, zIndexOffset: 400 }).addTo(map);
+        me = L.marker(ll, { icon: L.divIcon({ className: 'sb-meicon', html: '<div class="sb-mecone"></div><div class="sb-me"></div>',
+          iconSize: [20, 20], iconAnchor: [10, 10] }), interactive: false, keyboard: false, zIndexOffset: 400 }).addTo(map);
+        renderHeading();
       } else if (!me.getLatLng().equals(ll)) me.setLatLng(ll);
       const acc = +pos.accuracy;
       if (Number.isFinite(acc) && acc > 15 && acc < 2000) {
         if (!meAcc) meAcc = L.circle(ll, { radius: acc, pane: 'sbStops', className: 'sb-acc', weight: 1, interactive: false }).addTo(map);
         else { meAcc.setLatLng(ll); meAcc.setRadius(acc); }
       } else { meAcc?.remove(); meAcc = null; }
+    },
+
+    /**
+     * Heading cone on the location dot (ui/compass.js; owner 2026-10-14): an accent wedge fading outward, pointing
+     * where the phone faces, `spread` degrees wide (wider = the compass is less sure). null hides it. Cheap to call
+     * per sensor reading: the DOM is written only when the rounded rotation or the width changes; the turn
+     * continues the shortest way round (unwrapDeg). Kept across setUser(null) and a new dot.
+     * @param {number|null} deg compass heading, degrees clockwise from north
+     * @param {number} [spread] cone width in degrees (default 60, clamped 20..160)
+     */
+    setHeading(deg, spread) {
+      const d = deg === null || deg === undefined ? NaN : +deg, w = +spread;
+      head = Number.isFinite(d) ? { deg: d, spread: Number.isFinite(w) ? Math.max(20, Math.min(160, w)) : 60 } : null;
+      renderHeading();
     },
 
     /**

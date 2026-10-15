@@ -173,6 +173,30 @@ web (web/js/map/landmarks.js, docs/ARCHITECTURE.md "Map labels"):
   so no place is named twice. CI shots: 36-map (opening camera), 37-map-near (`-screen near`), 38-trip-map, and the UI
   test's 39-map-zoomed / 40-map-panned.
 
+### Heading cone on your location dot (owner request 2026-10-14)
+
+"The tracking dot should have a direction based on the user's heading." Web: `web/js/ui/compass.js` + `MapApi.setHeading`
+(docs/ARCHITECTURE.md "Heading cone"). iPhone:
+- **Source:** CoreLocation heading updates (`LocationProvider`: `headingFilter` 3 deg, started and stopped with the location
+  updates, so only while the app is open and location is allowed; no extra permission; the figure-eight calibration
+  screen is never shown). The true heading when CoreLocation knows it, else the magnetic one; a negative accuracy = no
+  reading (Kit `HeadingCone.reading`, the web drops the same readings). Compass only, no GPS course fallback (every
+  iPhone has a compass; the web falls back to the course for browsers without one). The simulator has no compass, so
+  CI shots never show a cone.
+- **Width:** twice the stated error, 40 to 120 deg (Kit `HeadingCone.spread` = web `spreadFor`; `HeadingConeTests` use the
+  web test's numbers).
+- **Drawing:** while a reading exists and the last fix is within 100 m (`UserHeading.active`), the map draws the user
+  location as `UserAnnotation(anchor:content:)` with the app's `UserDot(heading:)` (the demo dot plus a blue wedge fading
+  outward, 92 pt), still placed by MapKit's own fixes (not the 30 m filtered `model.user`). Otherwise MapKit's own dot
+  as before. Trade-off: while the cone shows, MapKit's accuracy halo is not drawn (the app's dot has the demo's fixed
+  34 pt halo); a fix worse than 100 m brings MapKit's dot and its halo back.
+- **Rotation:** annotations stay upright on a rotated map, so the cone turns by the compass minus the map camera's heading
+  (`onMapCameraChange` -> `UserHeading.mapTurned`, sub-degree changes ignored); both unwrapped (Kit `HeadingCone.unwrap` =
+  web `unwrapDeg`), so a turn across north animates the short way (0.15 s linear, none under Reduce Motion).
+- **Redraws:** `UserHeading` is its own observable: MapScreen's body reads only `active`; a turn of the phone redraws
+  the dot alone. Hidden with the dot (on the bus) and in demo mode (the simulated position).
+- Not yet seen on a real iPhone (direction, smoothness, battery).
+
 ### Live Activity times (owner decision 2026-10-11)
 
 Never seconds for an estimated arrival (ship checklist item 2, no invented precision), and right while the app is not
@@ -437,6 +461,7 @@ actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 |---|---|---|
 | Live map: route lines in route color, stops, buses with heading, your location | done (before) | MapKit; draw order + dimming by focus (`mapLayers`) |
 | Building and place names on the map (web/js/map/landmarks.js placeLabels / labelSize / wrapLines, data/static.js cleanLandmarks, css .sb-lm; 2026-10-13) | done (2026-10-13) | Kit `Landmarks.swift` + `Views/MapScreen.swift` (`layoutLabels`, `LandmarkLabel`), `Model/MapLabels.swift`; same data, tiers, `until`, sizes, 17 spots, stop obstacles; tier 1 from 13.75 (the iPhone opens wider), the visible map as the view, more obstacles, no basemap-text rule ("Map labels" above) |
+| Heading cone on the location dot (ui/compass.js, MapApi.setHeading, geometry.unwrapDeg; 2026-10-14) | done (2026-10-14) | Kit `HeadingCone.swift` (`HeadingConeTests` = the web's numbers), `Model/UserHeading.swift`, `LocationProvider` heading updates, `MapScreen` `UserDot(heading:)` / `HeadingWedge`; compass only (no GPS course fallback), true heading, turns with the map's rotation, MapKit's dot (with its accuracy halo) when the fix is worse than 100 m ("Heading cone" above); not yet seen on an iPhone |
 | Non-operating buses hidden everywhere (ghost, unknown route, out of service) | done (before) | Kit `Operating`; shared trip ids now matched by vehicle too |
 | Bus markers glide to their new position | done | 1 s ease, still under Reduce Motion |
 | Bus tap opens its route without moving the map; stop tap keeps the map view | done | `busTapped` / `stopTapped` |
