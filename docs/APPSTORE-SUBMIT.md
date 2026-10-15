@@ -385,7 +385,7 @@ Claude can adapt:
       own settings; the widget extension uses none, and no file-timestamp, boot-time, disk-space or keyboard APIs are
       used).
 18. **[N] Version page "1.0 Prepare for Submission"** (Claude drafted; Nathan pastes):
-    - Screenshots: step 19. App icon: taken from the build (the 1024 px opaque PNG `make_icon.py` renders).
+    - Screenshots: step 19. App icon: taken from the build (the 1024 px opaque PNG `make_icon.py` makes from `straight-bussing-icon-LARGE.png`).
     - **Promotional Text** (170 max, 145 used):
       ```
       Live shuttle arrivals, trip directions and a Lock Screen countdown for your ride. Free, no account, no tracking. Unofficial: times are estimates.

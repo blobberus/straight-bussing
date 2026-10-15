@@ -71,8 +71,11 @@ Optional teaser (small, playful, never reveal names): "Zoom all the way in. Some
 **Feel:** Apple Maps / Citymapper. Calm, lots of white space, one accent color, the map is the hero. No gradients,
 no glow, no emoji, no stock photos of buses. Route colors are the only bright colors, and only as map data.
 
-**App icon:** a white bus front on a solid blue square (#0A84FF). Nathan must give you the files:
-`web/icons/icon.svg` (vector, use this for print) and `web/icons/icon-512.png` (512 px). Do not redraw or recolor it.
+**App icon:** a white bird riding a white bus on a solid teal square (#00A894). Nathan must give you the file:
+`straight-bussing-icon-LARGE.png` (1000 x 1000 px, the master; about 8.5 cm / 3.3 in wide at 300 dpi, so ask Nathan
+for a larger or vector original before printing it bigger). Do not redraw or recolor it. The icon's teal may be the
+poster's brand color (a teal band or the icon tile); keep it apart from the "Live" green below, which it resembles, so
+riders never read teal as "live".
 
 **Colors** (from the app's design tokens, `web/css/tokens.css`):
 
@@ -83,7 +86,7 @@ no glow, no emoji, no stock photos of buses. Route colors are the only bright co
 | Text | #111114 | #F5F5F7 |
 | Secondary text | #5C5C63 | #A1A1A8 |
 | Accent (actions, links, location dot) | #0066D6 text, #0071E3 fills | #409CFF |
-| Icon blue | #0A84FF | #0A84FF |
+| Icon teal (the icon only, not a UI accent) | #00A894 | #00A894 |
 | Live (green) | #1E9E4A fills, #17803B text | #32D74B |
 
 **The one-accent rule:** blue is the only accent. Green means *live data and nothing else*. On the poster, use
@@ -135,7 +138,7 @@ as an illustration, but no caption may say the times are exact.
   consider campus bulletin boards and bus shelters, each with their own approval.
 - [ ] Keep the safety number 773.702.8181 off the poster unless Transportation asks for it; the app already shows
   it and links to the official app wherever no bus reports.
-- [ ] Provide the designer: `web/icons/icon.svg`, `web/icons/icon-512.png`, and 1 or 2 real screenshots of the live
+- [ ] Provide the designer: `straight-bussing-icon-LARGE.png` (the app icon), and 1 or 2 real screenshots of the live
   site (light mode reads best in print; demo mode `?demo=1` shows simulated buses when none run, but a poster
   screenshot from demo mode must not be passed off as a real moment).
 - [ ] Before printing: check that nothing on the poster claims better arrival accuracy (the accuracy work is not

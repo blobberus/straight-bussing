@@ -33,8 +33,8 @@ ios/
 
 `web/data/*.json` is bundled into the app at build time through a folder reference in `project.yml` (`../web/data`,
 copied as `data/` in the app bundle). It is never duplicated in `ios/`; the daily GTFS refresh flows into the next
-build, and between builds the app downloads newer files from the web app's site (see "Schedule updates" below). The app icon is rendered from `web/icons/icon.svg` by `scripts/make_icon.py` (fallback: `sips` upscales
-`web/icons/icon-512.png`).
+build, and between builds the app downloads newer files from the web app's site (see "Schedule updates" below). The app icon is made from the owner's `straight-bussing-icon-LARGE.png` (repo root, 2026-10-15) by
+`scripts/make_icon.py` (1024 px, opaque; fallback: `sips` upscales `web/icons/icon-512.png`, made from the same file).
 
 ## How the Kit maps to the web modules
 
