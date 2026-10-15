@@ -89,21 +89,28 @@ function cleanServiceRoutes(v) {
 }
 
 /**
- * landmarks.json ({l: [[label, lat, lon, tier, kind, osm, until?], ...]}) as [{name, lat, lon, tier, kind, osm, until}]; bad rows
- * dropped; until (the zoom from which it hides) is null when absent.
+ * landmarks.json ({l: [[label, lat, lon, tier, kind, osm, until?], ...], eggs?: [[index in l, nickname]], egg_zoom?}) as
+ * [{name, lat, lon, tier, kind, osm, until, egg?, eggZ?}]; bad rows dropped; until (the zoom from which it hides) is null
+ * when absent. egg = the owner's easter-egg nickname (easter-eggs.json), shown instead of name from zoom eggZ on.
  * @param {any} v parsed JSON
- * @returns {Array<{name:string, lat:number, lon:number, tier:number, kind:string, osm:string, until:number|null}>}
+ * @returns {Array<{name:string, lat:number, lon:number, tier:number, kind:string, osm:string, until:number|null, egg?:string, eggZ?:number}>}
  */
 export function cleanLandmarks(v) {
   const rows = isObj(v) && Array.isArray(v.l) ? v.l : [];
-  const out = [];
-  for (const r of rows) {
-    if (!Array.isArray(r) || !r[0]) continue;
-    const lat = num(r[1]), lon = num(r[2]), tier = num(r[3]);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon) || ![1, 2, 3].includes(tier)) continue;
-    const until = r[6] == null ? NaN : num(r[6]);
-    out.push({ name: String(r[0]), lat, lon, tier, kind: String(r[4] || ''), osm: String(r[5] || r[0]), until: Number.isFinite(until) ? until : null });
+  const eggZ = isObj(v) ? num(v.egg_zoom) : NaN, eggs = new Map();
+  if (Number.isFinite(eggZ) && Array.isArray(v.eggs)) {
+    for (const e of v.eggs) if (Array.isArray(e) && Number.isInteger(e[0]) && typeof e[1] === 'string' && e[1].trim()) eggs.set(e[0], e[1].trim());
   }
+  const out = [];
+  rows.forEach((r, i) => {
+    if (!Array.isArray(r) || !r[0]) return;
+    const lat = num(r[1]), lon = num(r[2]), tier = num(r[3]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || ![1, 2, 3].includes(tier)) return;
+    const until = r[6] == null ? NaN : num(r[6]);
+    const x = { name: String(r[0]), lat, lon, tier, kind: String(r[4] || ''), osm: String(r[5] || r[0]), until: Number.isFinite(until) ? until : null };
+    if (eggs.has(i)) { x.egg = eggs.get(i); x.eggZ = eggZ; }   // by the row's index in the file, before bad rows drop
+    out.push(x);
+  });
   return out;
 }
 

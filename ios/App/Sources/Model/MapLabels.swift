@@ -84,7 +84,7 @@ final class MapLabelModel {
 extension PlacedLandmark {
     /// The annotation's identity: a name that moves to another side (or size) is a new annotation, so MapKit never
     /// keeps an old anchor for new content.
-    var drawKey: String { "\(landmark.rank)|\(anchor.rawValue)|\(gap)|\(size)|\(lines.count)" }
+    var drawKey: String { "\(landmark.rank)|\(anchor.rawValue)|\(gap)|\(size)|\(lines.count)|\(text)" }   // text: an easter-egg nickname swap is new content
 }
 
 extension LabelAnchor {

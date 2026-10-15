@@ -1,7 +1,8 @@
 // map/landmarks.js: building and place names (owner request 2026-10-13), placed above the route lines, around stops,
 // each other and the basemap's own street names.
 import { test, eq, ok } from './lib.js';
-import { createLandmarkLayer, placeLabels, wrapLines, labelSize, LANDMARK_Z, LABEL } from '../js/map/landmarks.js';
+import { createLandmarkLayer, placeLabels, wrapLines, labelSize, labelText, LANDMARK_Z, LABEL } from '../js/map/landmarks.js';
+import { cleanLandmarks } from '../js/data/static.js';
 import { createMap } from '../js/map/map.js';
 
 const C = (id, x, y, w = 60, h = 14, tier = 1) => ({ id, x, y, w, h, tier });
@@ -83,6 +84,33 @@ test('landmarks layer: drawn above the route lines, by zoom, escaped, hidden fro
   layer.setStops([[41.7922, -87.5999]]);
   ok(layer.count() >= 1, 'still placed with a stop on its point (moved off it)');
   m.remove();
+});
+
+test('landmarks: an easter-egg nickname replaces the name only close in (owner 2026-10-14, easter-eggs.json)', () => {
+  const reg = { name: 'Regenstein Library', egg: 'The Reg', eggZ: 17.5 };
+  eq([labelText(reg, 15), labelText(reg, 17.25), labelText(reg, 17.5), labelText(reg, 18)], ['Regenstein Library', 'Regenstein Library', 'The Reg', 'The Reg']);
+  eq(labelText({ name: 'Cobb Hall' }, 18), 'Cobb Hall', 'no nickname: the name at every zoom');
+  box('t-lm3');
+  const m = window.L.map('t-lm3', { zoomControl: false, attributionControl: false, zoomSnap: 0.25 }).setView([41.7922, -87.5999], 17);
+  m.createPane('sbLabels');
+  const layer = createLandmarkLayer(m, { pane: 'sbLabels' });
+  layer.setData([{ name: 'Regenstein Library', lat: 41.7922, lon: -87.5999, tier: 1, kind: 'library', egg: 'The <Reg>', eggZ: 17.5 }]);
+  const text = () => [...m.getContainer().querySelectorAll('.sb-lm')].map((x) => x.textContent).join('|');
+  ok(text().startsWith('Regenstein'), 'the normal name at 17: ' + text());
+  m.setZoom(17.5, { animate: false }); layer.refresh();
+  eq(text(), 'The <Reg>', 'the nickname from its zoom on');
+  ok(m.getContainer().innerHTML.includes('The &lt;Reg&gt;'), 'escaped like every name');
+  m.setZoom(16, { animate: false }); layer.refresh();
+  ok(text().startsWith('Regenstein'), 'back to the name when you zoom out');
+  m.remove();
+});
+
+test('landmarks: the real easter eggs resolve to labels (Regenstein, Max Palevsky, Chipotle on 53rd)', async () => {
+  const list = cleanLandmarks(await (await fetch('../data/landmarks.json')).json());
+  const eggs = list.filter((x) => x.egg);
+  ok(eggs.length >= 1, eggs.length + ' nicknames');
+  ok(eggs.every((x) => x.eggZ >= 16 && x.eggZ <= 18 && !/[\u2013\u2014]/.test(x.egg)), 'zoom the map reaches, no dash characters');
+  for (const n of ['Burton-Judson Courts', 'International House', 'Vue53']) ok(list.some((x) => x.name === n && x.tier === 1), n + ' at tier 1 (owner 2026-10-14)');
 });
 
 test('landmarks: the real file loads into the map through MapApi.setLandmarks', async () => {

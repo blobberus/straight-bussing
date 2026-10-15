@@ -114,6 +114,11 @@ test('static: landmarks (map labels) load as a list, bad rows dropped', async ()
   eq(cleanLandmarks(null), []); eq(cleanLandmarks({ l: 'x' }), []);
   eq(cleanLandmarks({ l: [['A', '41.8', '-87.6', '2']] })[0], { name: 'A', lat: 41.8, lon: -87.6, tier: 2, kind: '', osm: 'A', until: null });
   eq(cleanLandmarks({ l: [['G', 41.8, -87.6, 1, 'dorm', 'G', 15.5]] })[0].until, 15.5, 'a group name hides from that zoom');
+  // easter eggs (owner 2026-10-14): nicknames by row index in the file, kept when an earlier bad row drops
+  const eg = cleanLandmarks({ l: [['bad', 'x', 1, 1], ['Reg', 41.8, -87.6, 1], ['Cobb', 41.79, -87.6, 2]], eggs: [[1, ' The Reg '], [2, ''], ['x', 'no'], [9, 'gone']], egg_zoom: 17.5 });
+  eq(eg.map((x) => [x.name, x.egg, x.eggZ]), [['Reg', 'The Reg', 17.5], ['Cobb', undefined, undefined]]);
+  eq(cleanLandmarks({ l: [['Reg', 41.8, -87.6, 1]], eggs: [[0, 'The Reg']] })[0].egg, undefined, 'no egg_zoom: no nicknames');
+  eq(cleanLandmarks({ l: [['Reg', 41.8, -87.6, 1]], eggs: 'x', egg_zoom: 17 })[0].egg, undefined);
 });
 
 test('static: deriveStopRoutes / cleanSlice edge cases', () => {

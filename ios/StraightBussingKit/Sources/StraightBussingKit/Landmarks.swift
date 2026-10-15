@@ -24,11 +24,16 @@ public struct Landmark: Hashable, Sendable, Identifiable {
     public var until: Double?
     /// Position in the cleaned list = priority (the file is sorted by tier, then priority).
     public var rank: Int
+    /// The owner's easter-egg nickname (easter-eggs.json, owner 2026-10-14), drawn instead of `name` from `eggZoom` on
+    /// (`Landmarks.text`); nil = none.
+    public var egg: String?
+    public var eggZoom: Double?
     public var id: Int { rank }
 
-    public init(name: String, coord: LatLon, tier: Int, kind: String = "", osm: String? = nil, until: Double? = nil, rank: Int) {
+    public init(name: String, coord: LatLon, tier: Int, kind: String = "", osm: String? = nil, until: Double? = nil, rank: Int,
+                egg: String? = nil, eggZoom: Double? = nil) {
         self.name = name; self.coord = coord; self.tier = tier; self.kind = kind; self.osm = osm ?? name
-        self.until = until; self.rank = rank
+        self.until = until; self.rank = rank; self.egg = egg; self.eggZoom = egg == nil ? nil : eggZoom
     }
 }
 
@@ -168,15 +173,31 @@ public enum Landmarks {
         var string: String? { if case .string(let s) = self { return s }; return nil }
     }
 
-    struct File: Decodable { var l: [StaticLoader.Lossy<[Cell]>] }
+    struct File: Decodable {
+        var l: [StaticLoader.Lossy<[Cell]>]
+        // optional and lossy: a bad easter egg never costs the map its names
+        var eggs: StaticLoader.Lossy<[StaticLoader.Lossy<[Cell]>]>?
+        var egg_zoom: StaticLoader.Lossy<Cell>?
+    }
 
-    /// landmarks.json ({"l": [[label, lat, lon, tier, kind, osm, until?], ...]}) as landmarks in file order. Missing or
-    /// bad data = an empty list, never a throw; a bad row (no label, a coordinate that is not a number or off the
-    /// globe, a tier other than 1 / 2 / 3) is dropped and a bad `until` is ignored, like the web's cleanLandmarks.
+    /// landmarks.json ({"l": [[label, lat, lon, tier, kind, osm, until?], ...], "eggs": [[index in l, nickname]],
+    /// "egg_zoom"}) as landmarks in file order. Missing or bad data = an empty list, never a throw; a bad row (no label,
+    /// a coordinate that is not a number or off the globe, a tier other than 1 / 2 / 3) is dropped and a bad `until`
+    /// is ignored, like the web's cleanLandmarks. A nickname goes by its row's index in the file (before bad rows
+    /// drop); none without a numeric egg_zoom.
     public static func parse(_ data: Data?) -> [Landmark] {
         guard let data, let f = try? JSONDecoder().decode(File.self, from: data) else { return [] }
+        var eggs: [Int: String] = [:]
+        let eggZoom = f.egg_zoom?.value?.number ?? .nan          // the web's num(): a number or a numeric string
+        if eggZoom.isFinite {
+            for e in f.eggs?.value ?? [] {
+                guard let c = e.value, c.count >= 2, case .number(let i) = c[0], i >= 0, i == i.rounded(), i < 1e6,
+                      let s = c[1].string?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { continue }
+                eggs[Int(i)] = s
+            }
+        }
         var out: [Landmark] = []
-        for row in f.l {
+        for (index, row) in f.l.enumerated() {
             guard let r = row.value, r.count >= 4, let name = r[0].string?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !name.isEmpty else { continue }
             let lat = r[1].number, lon = r[2].number, tier = r[3].number
@@ -185,7 +206,7 @@ public enum Landmarks {
             let osm = r.count > 5 ? r[5].string.flatMap { $0.isEmpty ? nil : $0 } : nil
             let until = r.count > 6 ? r[6].number : .nan
             out.append(Landmark(name: name, coord: LatLon(lat: lat, lon: lon), tier: Int(tier), kind: kind, osm: osm,
-                                until: until.isFinite ? until : nil, rank: out.count))
+                                until: until.isFinite ? until : nil, rank: out.count, egg: eggs[index], eggZoom: eggZoom))
         }
         return out
     }
@@ -205,6 +226,13 @@ public enum Landmarks {
         guard metersPerPoint > 0, metersPerPoint.isFinite, latitude.isFinite else { return 0 }
         let world = 2 * Double.pi * Geo.earthRadius * cos(latitude * Geo.rad)
         return log2(world / (256 * metersPerPoint))
+    }
+
+    /// The text a label shows at a zoom: its easter-egg nickname once you zoom in to `eggZoom` (owner 2026-10-14,
+    /// easter-eggs.json; web landmarks.js labelText), else its name.
+    public static func text(_ l: Landmark, zoom: Double) -> String {
+        if let e = l.egg, let z = l.eggZoom, zoom >= z { return e }
+        return l.name
     }
 
     /// Shown at this zoom: the tier is on (`minZoom`) and the label has not handed over to its buildings (`until`).
@@ -337,7 +365,7 @@ public enum Landmarks {
         struct Sized { var c: Candidate; var size: Double; var lines: [String]; var w: Double; var h: Double }
         let sized: [Sized] = candidates.sorted { priority($0.landmark, $1.landmark) }.compactMap { c -> Sized? in
             let size = Landmarks.fontSize(tier: c.landmark.tier, zoom: zoom) * max(0.5, scale)
-            let ls = Landmarks.lines(c.landmark.name, size: size)
+            let ls = Landmarks.lines(Landmarks.text(c.landmark, zoom: zoom), size: size)
             guard !ls.isEmpty else { return nil }
             let t = Landmarks.textSize(ls, size: size)
             return Sized(c: c, size: size, lines: ls, w: t.width, h: t.height)

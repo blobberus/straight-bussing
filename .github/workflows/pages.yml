@@ -28,6 +28,11 @@ jobs:
       - name: Refresh campus places (OpenStreetMap; daily run only, keeps the committed copy on failure)
         if: github.event_name == 'schedule'
         run: python tools/build_places.py || echo "places refresh failed; using committed web/data/places.json"
+      - name: Map names and easter eggs (tools/landmarks.json + easter-eggs.json; keeps the committed copy on failure)
+        run: |
+          if python tools/build_landmarks.py > "$RUNNER_TEMP/landmarks.log" 2>&1; then cat "$RUNNER_TEMP/landmarks.log"
+          else cat "$RUNNER_TEMP/landmarks.log"; echo "::warning title=Map names not rebuilt::using committed web/data/landmarks.json"; git checkout -- web/data/landmarks.json; fi
+          grep "easter egg problem" "$RUNNER_TEMP/landmarks.log" | sed 's/^/::warning title=Easter egg skipped::/' || true
       - name: Assemble site (web/ without tests)
         run: |
           rm -rf _site
