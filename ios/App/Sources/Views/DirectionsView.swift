@@ -202,7 +202,8 @@ struct DirectionsView: View {
         let settled = q.count >= 2 && ui.itemsQuery == q && ui.places.status == .idle
         // the destination, searched and settled, with no station or place left inside the shuttle area (owner
         // 2026-10-15, web directions.js): say what the app covers instead of "No stations or places match"
-        if f == .to && q.count >= 3 && mine && settled && !model.staticData.isEmpty && !ui.items.contains(where: { !$0.isMe }) {
+        if f == .to && q.count >= 3 && mine && settled && !model.staticData.isEmpty && ui.items.isEmpty
+            && !"my location".hasPrefix(q.lowercased()) {   // typing "my location" is not a miss (web: same rule)
             Hint(Coverage.text)
                 .accessibilityIdentifier("dirCoverage")
                 .onAppear { UIAccessibility.post(notification: .announcement, argument: Coverage.text) }
@@ -214,7 +215,12 @@ struct DirectionsView: View {
     }
 
     @ViewBuilder var results: some View {
-        if model.dir.from == nil || model.dir.to == nil {
+        if let t = model.dir.to, !model.covered(t) {
+            // outside the shuttle area (owner 2026-10-15; set by Swap or My location too, with or without a start, as
+            // web resHTML): no plan, no walk-only line
+            EmptyStateView(title: Coverage.text)
+                .accessibilityIdentifier("dirCoverageResult")
+        } else if model.dir.from == nil || model.dir.to == nil {
             Hint("Choose a start and a destination. Type a station name, a place, or an address.")
             if model.dir.from == nil && model.user == nil {
                 Button { model.useMyLocation(to: false) } label: {
@@ -222,10 +228,6 @@ struct DirectionsView: View {
                 }
                 .secondaryButtonStyle()
             }
-        } else if let t = model.dir.to, !model.covered(t) {
-            // outside the shuttle area (owner 2026-10-15; set by Swap or My location too): no plan, no walk-only line
-            EmptyStateView(title: Coverage.text)
-                .accessibilityIdentifier("dirCoverageResult")
         } else if let r = model.dir.result {
             TripBar()
             if model.staleLevel != .fresh {
