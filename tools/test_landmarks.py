@@ -43,6 +43,42 @@ def the_written_file_matches_the_list():
     assert "OpenStreetMap" in d["license"]
 
 
+@test
+def a_hidden_stop_only_lets_names_near_it_pass_and_reaches_no_app_file():
+    # owner 2026-10-15: Aba (302 N Green St, Fulton Market) through a hidden stop "inaccessible and invisible and not
+    # searchable in the system"
+    far = {"label": "Far Cafe", "osm": "Far Cafe", "ref": "node/1", "lat": 41.887, "lon": -87.6489, "tier": 3, "kind": "dining"}
+    assert "outside the bus coverage" in B.resolve([far], PLACES, STOPS)[1][0], "no hidden stop: refused"
+    rows, p = B.resolve([far], PLACES, STOPS + [("H", 41.8871, -87.6489)])
+    assert p == [] and rows[0][0] == "Far Cafe", p
+    h, p = B.hidden_stops({"hidden_stops": [{"name": "H", "lat": 41.88, "lon": -87.64}, {"name": "bad"}, {"lat": "x"}]})
+    assert h == [("H", 41.88, -87.64)] and len(p) == 2, (h, p)
+    assert B.hidden_stops({}) == ([], [])
+    # the real hidden stops: in no file the website or the iPhone app loads (stops, routes, places, map names)
+    cur = json.loads(B.SRC.read_text(encoding="utf-8"))
+    hidden, p = B.hidden_stops(cur)
+    assert hidden and p == [], p
+    rows, _ = B.build()
+    assert any(r[0] == "Aba Restaurant" and r[5] == "Aba" for r in rows), "Aba is named only thanks to its hidden stop"
+    for f in ("stops.json", "route_stops.json", "places.json", "landmarks.json"):
+        text = (B.WEB_DATA / f).read_text(encoding="utf-8")
+        for name, lat, lon in hidden:
+            assert name not in text and "hidden_stops" not in text, (f, name)
+    stops = json.loads((B.WEB_DATA / "stops.json").read_text(encoding="utf-8"))
+    assert all(B.hav(lat, lon, s["lat"], s["lon"]) > 800 for _, lat, lon in hidden for s in stops.values()), \
+        "a hidden stop is only for places no real stop covers"
+
+
+@test
+def an_easter_egg_finds_a_curated_place_outside_places_json_by_its_address():
+    cur = {"l": [{"label": "Aba Restaurant", "osm": "Aba", "ref": "node/6256520187", "lat": 41.8870188, "lon": -87.6488726,
+                  "address": "302 N Green St", "tier": 3, "kind": "dining"}, {"label": "X", "osm": "X", "tier": 1, "kind": "dining"}]}
+    assert B.ref_places(cur) == [("Aba", "dining", "302 N Green St", 41.8870188, -87.6488726)]
+    rows = [["Aba Restaurant", 41.887019, -87.648873, 3, "dining", "Aba"]]
+    _, eggs, _, p = B.resolve_eggs({"names": {"302 North Green Street": "HQ"}}, rows, B.ref_places(cur), [("H", 41.887, -87.6489)])
+    assert p == [] and eggs == [[0, "HQ"]], (p, eggs)
+
+
 EGG_PLACES = [("Chipotle", "Fast food", "1522 E 53rd St", 41.79971, -87.58802), ("Chipotle", "Fast food", "806 W 63rd St", 41.77998, -87.6451),
               ("Joseph Regenstein Library", "Library", "1100 E 57th St", 41.79216, -87.59994),
               ("Joe and Rika Mansueto Library", "Library", "1100 E 57th St", 41.79196, -87.60084),

@@ -25,6 +25,11 @@ and "egg_zoom". A place with no label yet gets a tier 3 one (its OSM name) at th
 several places means the one already labeled (1330 E 53rd St = Vue53 Apartments, not its garage). A bad egg is
 reported and skipped (the labels are still written; --check fails), so a typo in that file never costs the map its
 names. The Map names workflow (.github/workflows/landmarks.yml) rebuilds and commits the file when either list changes.
+
+Hidden stops (owner 2026-10-15, Aba at 302 N Green St in Fulton Market): tools/landmarks.json "hidden_stops" count as
+stops for the COVER_M checks of the labels and easter eggs ONLY. They are never written out, so they are no stop on
+the map, in search, trip planning, the iPhone app or the collector. A curated "ref" label with an "address" is also
+an easter-egg place (ref_places), for places outside places.json.
 """
 import argparse, json, math, re, sys
 from datetime import datetime, timezone
@@ -66,6 +71,29 @@ def load_places(path=WEB_DATA / "places.json"):
 def load_stops(path=WEB_DATA / "stops.json"):
     d = json.loads(Path(path).read_text(encoding="utf-8"))
     return [(s["name"], float(s["lat"]), float(s["lon"])) for s in d.values()]
+
+
+def hidden_stops(cur):
+    """tools/landmarks.json "hidden_stops" -> ([(name, lat, lon), ...], problems). A hidden stop exists only here:
+    it lets the labels and easter eggs near it pass the COVER_M check (owner 2026-10-15: Aba in Fulton Market) and is
+    never written anywhere the app reads, so it is no stop on the map, in search, trip planning, iOS or the collector."""
+    out, problems = [], []
+    for i, h in enumerate(cur.get("hidden_stops", []) or []):
+        try:
+            name, lat, lon = str(h["name"]), float(h["lat"]), float(h["lon"])
+            if not (name and math.isfinite(lat) and math.isfinite(lon)):
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            problems.append(f"hidden stop #{i + 1}: needs a name, lat and lon"); continue
+        out.append((name, lat, lon))
+    return out, problems
+
+
+def ref_places(cur):
+    """Curated labels outside places.json (a "ref" and an "address") as easter-egg places: (osm name, kind, address,
+    lat, lon), so a nickname can find them by address (302 N Green St = Aba)."""
+    return [(str(e["osm"]), str(e.get("kind", "")), str(e["address"]), float(e["lat"]), float(e["lon"]))
+            for e in cur.get("l", []) if e.get("ref") and e.get("address") and "lat" in e and "lon" in e and e.get("osm")]
 
 
 def resolve(entries, places, stops):
@@ -195,11 +223,14 @@ def resolve_eggs(doc, rows, places, stops):
 
 def build(src=SRC, places_path=WEB_DATA / "places.json", stops_path=WEB_DATA / "stops.json"):
     cur = json.loads(Path(src).read_text(encoding="utf-8"))
-    return resolve(cur.get("l", []), load_places(places_path), load_stops(stops_path))
+    hidden, problems = hidden_stops(cur)
+    rows, more = resolve(cur.get("l", []), load_places(places_path), load_stops(stops_path) + hidden)
+    return rows, problems + more
 
 
-def build_eggs(rows, eggs_path=EGGS, places_path=WEB_DATA / "places.json", stops_path=WEB_DATA / "stops.json"):
-    """-> (rows, eggs, zoom, problems); no easter-eggs.json = no eggs. Bad JSON is one problem (with its line)."""
+def build_eggs(rows, eggs_path=EGGS, places_path=WEB_DATA / "places.json", stops_path=WEB_DATA / "stops.json", src=SRC):
+    """-> (rows, eggs, zoom, problems); no easter-eggs.json = no eggs. Bad JSON is one problem (with its line).
+    The hidden stops and the curated places outside places.json (tools/landmarks.json) count as well."""
     p = Path(eggs_path)
     if not p.exists():
         return rows, [], None, []
@@ -207,7 +238,8 @@ def build_eggs(rows, eggs_path=EGGS, places_path=WEB_DATA / "places.json", stops
         doc = json.loads(p.read_text(encoding="utf-8"))
     except ValueError as e:
         return rows, [], None, [f"{p.name} is not valid JSON ({e}); a missing comma or quote?"]
-    return resolve_eggs(doc, rows, load_place_rows(places_path), load_stops(stops_path))
+    cur = json.loads(Path(src).read_text(encoding="utf-8"))
+    return resolve_eggs(doc, rows, load_place_rows(places_path) + ref_places(cur), load_stops(stops_path) + hidden_stops(cur)[0])
 
 
 def same_names(a, b):
@@ -231,6 +263,8 @@ def main(argv=None):
     ap.add_argument("--differs", action="store_true",
                     help="exit 0 if the written web/data/landmarks.json has other names than the committed one, else 1")
     a = ap.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):   # an emoji nickname must not crash the build on a cp1252 Windows console
+        sys.stdout.reconfigure(errors="replace")
     if a.differs:
         return differs_from_head()
     rows, problems = build()

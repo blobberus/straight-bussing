@@ -90,6 +90,11 @@
     {"label": "Powell's Books", "osm": "Powell's Books Chicago", "tier": 3, "kind": "shop"},
     {"label": "57th Street Books", "osm": "57th Street Books", "tier": 3, "kind": "shop"},
     {"label": "Hyde Park Art Center", "osm": "Hyde Park Art Center", "tier": 3, "kind": "arts"},
-    {"label": "Windermere House", "osm": "Windermere House", "tier": 3, "kind": "landmark"}
+    {"label": "Windermere House", "osm": "Windermere House", "tier": 3, "kind": "landmark"},
+    {"label": "Aba Restaurant", "osm": "Aba", "ref": "node/6256520187", "lat": 41.8870188, "lon": -87.6488726, "address": "302 N Green St", "tier": 3, "kind": "dining", "note": "owner 2026-10-15: for the 302 N Green St easter egg; in range only through the Fulton Market hidden stop"}
+  ],
+  "hidden_stops about": "Used ONLY by tools/build_landmarks.py: a label or easter egg within 800 m of one passes the bus coverage check. Never written anywhere the app reads: not a stop on the map, in search, trip planning, the iPhone app or the data collector. Put it on the place it is for (OpenStreetMap position).",
+  "hidden_stops": [
+    {"name": "Fulton Market (hidden)", "lat": 41.8870188, "lon": -87.6488726, "for": "Aba Restaurant, 302 N Green St (owner 2026-10-15)"}
   ]
 }

@@ -128,3 +128,19 @@ test('landmarks: the real file loads into the map through MapApi.setLandmarks', 
   ok(api.leaflet.getContainer().querySelectorAll('.sb-lm').length >= 5, 'names on campus at the default zoom');
   api.leaflet.remove();
 });
+
+test('landmarks: Aba in Fulton Market is drawn close in, its nickname at the egg zoom (owner 2026-10-15)', async () => {
+  box('t-lm3');
+  const api = createMap('t-lm3');
+  const list = cleanLandmarks(await (await fetch('../data/landmarks.json')).json());
+  const aba = list.find((x) => x.name === 'Aba Restaurant');
+  ok(aba && aba.tier === 3, 'a curated tier 3 label (its hidden stop is build-only)');
+  const flat = (s) => s.replace(/\s+/g, '');   // wrapped lines are joined by <br>, so compare without spaces
+  const texts = () => [...api.leaflet.getContainer().querySelectorAll('.sb-lm')].map((e) => flat(e.textContent));
+  const at = async (z) => { api.leaflet.setView([aba.lat, aba.lon], z, { animate: false }); await new Promise((r) => setTimeout(r, 60)); return texts(); };
+  api.setLandmarks(list);
+  ok(!(await at(16)).includes(flat('Aba Restaurant')), 'not before tier 3 (zoom 17)');
+  ok((await at(17)).includes(flat('Aba Restaurant')), 'its own name at 17');
+  if (aba.egg) ok((await at(Math.max(17, aba.eggZ))).includes(flat(aba.egg)), 'the nickname from the egg zoom');
+  api.leaflet.remove();
+});
