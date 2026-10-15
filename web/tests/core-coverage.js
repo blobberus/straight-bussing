@@ -1,6 +1,6 @@
-// core/coverage.js: destinations are covered within 800 m of a stop a route serves (owner 2026-10-15).
+// core/coverage.js: the shuttle area, 800 m from a stop a route serves (owner 2026-10-15).
 import { test, eq, ok } from "./lib.js";
-import { covered, COVER_M, COVER_TEXT } from "../js/core/coverage.js";
+import { covered, COVER_M, COVER_TEXT, COVER_ADVICE } from "../js/core/coverage.js";
 
 // A served at 41.79 N; O 0.01 deg (about 1.1 km) north and served by no route
 const state = { stops: { A: { name: "A", lat: 41.79, lon: -87.6 }, O: { name: "O", lat: 41.8, lon: -87.6 } }, routeStops: { R: ["A"] } };
@@ -27,7 +27,8 @@ test("coverage: never blocks on missing data or a point without coordinates", ()
   ok(covered(state, { lat: NaN, lon: -87.6 }), "bad coordinates");
 });
 
-test("coverage: the owner's sentence, plain (800 m, no UGo, no en or em dash)", () => {
+test("coverage: the owner's sentences, plain (800 m, no UGo, no en or em dash)", () => {
   eq(COVER_TEXT, "Sorry, Straight Bussing only covers locations within 800 m of the campus shuttle routes.");
-  ok(!/[–—]/.test(COVER_TEXT) && !/UGo/i.test(COVER_TEXT));
+  eq(COVER_ADVICE, "Straight Bussing recommends changing to another mode of transportation after arriving at the closest destination.");
+  for (const s of [COVER_TEXT, COVER_ADVICE]) ok(!/[\u2013\u2014]/.test(s) && !/UGo/i.test(s), s);
 });

@@ -193,18 +193,15 @@ struct SectionTitle: View {
 /// Empty / error state that never dead-ends: always offers the official contact.
 struct EmptyStateView: View {
     let title: String
-    /// Empty = the title alone (Directions' "only covers locations within 800 m", which says it all).
-    var message = ""
+    let message: String
     var showOfficial = false
     /// No bus is reporting (feed down, silent scheduled service, nothing running): the operator's own alerts in
     /// full come next, before our official contact (web operatorAlertsHTML).
     var operatorAlerts = false
     var body: some View {
         VStack(spacing: 6) {
-            Text(title).font(.headline).multilineTextAlignment(.center)
-            if !message.isEmpty {
-                Text(message).font(.subheadline).foregroundStyle(Palette.text2).multilineTextAlignment(.center)
-            }
+            Text(title).font(.headline)
+            Text(message).font(.subheadline).foregroundStyle(Palette.text2).multilineTextAlignment(.center)
             if operatorAlerts && showOfficial {
                 NoBusHelp().padding(.top, 4)   // the operator's number, if its alert gives one, is the primary call
             } else if operatorAlerts {

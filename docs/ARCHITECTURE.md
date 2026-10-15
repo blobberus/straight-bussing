@@ -363,17 +363,20 @@ accuracy; a negative accuracy means no heading, as in CoreLocation, whose values
 0.15 s, none with reduced motion); the cone hides with the dot (on the bus, no location). Nothing is stored or sent
 (privacy.html "The way you face"). iOS: ios/README.md "Heading cone".
 
-### Destinations only within 800 m of a stop (2026-10-15, owner: "If a search query for destination doesn't have a proper stop or address within range, say: Sorry, ...")
+### Destinations farther than 800 m from a stop: a note, then the trips (2026-10-15, owner)
+First "If a search query for destination doesn't have a proper stop or address within range, say: Sorry, ...", then
+the same day "Change the 800m+ distance restriction to telling the user about the constraint, but still giving a method
+to reach the location. Under the notification, state: Straight Bussing recommends changing to another mode of
+transportation after arriving at the closest destination. Then proceed to give the trip methods underneath like before."
 `core/coverage.js` `covered(state, point)`: a stop, or within `COVER_M` = 800 m (straight line) of a stop some route
-serves (`routeStops`); always true before the schedule loads or for a point without coordinates (never block on
-missing data). Directions, destination field only: `computeSugs(state, text, key)` drops uncovered places (stations
-and My location stay); a settled search (3+ characters, not busy or failed, not "my location") with nothing left shows
-`COVER_TEXT` ("Sorry, Straight Bussing only covers locations within 800 m of the campus shuttle routes.", the owner's
-sentence without "UGo", his choice) as a `role="status"` empty state. A destination set any other way (Swap, My location)
-that is uncovered shows the same line in the results and is not planned (no walk-only card). The start is not limited
-(the planner's 1600 m end walk still applies to it and to covered destinations). Current trip's and Routes to station's
-place searches are unchanged (they find stops near a place, not a destination). About a third of places.json (638 of
-1,921: apartments, churches, schools at the edges) is out of range. iOS: Kit `Coverage.swift`.
+serves (`routeStops`); always true before the schedule loads or for a point without coordinates. Directions: search
+and planning are as before (every place is suggested; the planner's 1600 m end walk, else walk the whole way). When the
+destination (set any way: search, Swap, My location) is not covered, the results start with a `role="status"` note
+(`coverNoteHTML`, `.v-note.v-cover`): `COVER_TEXT` ("Sorry, Straight Bussing only covers locations within 800 m of the
+campus shuttle routes.", the owner's sentence without "UGo", his choice) and under it `COVER_ADVICE`, then the trip
+options (after the trip bar and the stale warning). The start never gets the note. Current trip's and Routes to
+station's place searches are unchanged. About a third of places.json (638 of 1,921) is outside. iOS: Kit
+`Coverage.swift` (`text`, `advice`), DirectionsView `coverNote`.
 
 ### Custom routes interaction (2026-10-08)
 Tap a custom route row = show it on the map / stop showing (`mr:toggle`, no navigation). Swipe left (or the row's "More" button,

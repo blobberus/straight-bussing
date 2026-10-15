@@ -1,9 +1,10 @@
 /**
  * @module core/coverage
- * The area Straight Bussing plans trips to (owner 2026-10-15: "If a search query for destination doesn't have a
- * proper stop or address within range, say: Sorry, ..."): within COVER_M, straight line, of a stop that a route
- * serves. A destination outside it gets COVER_TEXT instead of place suggestions or trip options (ui/views/directions.js).
- * Only destinations: a start far away still plans (the planner's 1600 m end walk). Pure, no DOM.
+ * The area the shuttles cover (owner 2026-10-15): within COVER_M, straight line, of a stop that a route serves. A
+ * destination outside it is still searched and planned as usual (the planner's 1600 m end walk, else walk the whole
+ * way), with COVER_TEXT and COVER_ADVICE above the trip options (ui/views/directions.js; owner, later the same day:
+ * "Change the 800m+ distance restriction to telling the user about the constraint, but still giving a method to reach
+ * the location"). Only destinations: a start far away gets no note. Pure, no DOM.
  * iOS: Kit Coverage.swift.
  */
 import { nearestStops } from "./geo.js";
@@ -13,6 +14,9 @@ export const COVER_M = 800;
 
 /** Owner's wording, without "UGo" (the app uses no UChicago or UGo names of its own). */
 export const COVER_TEXT = "Sorry, Straight Bussing only covers locations within 800 m of the campus shuttle routes.";
+
+/** Under COVER_TEXT, then the trip options (owner's words). */
+export const COVER_ADVICE = "Straight Bussing recommends changing to another mode of transportation after arriving at the closest destination.";
 
 /**
  * Whether a destination is in the covered area. A stop always is; so is anything before the schedule has loaded

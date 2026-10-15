@@ -65,6 +65,8 @@ button.v-row:active { transform: scale(.98); opacity: .8; }
 .v-empty b { color: var(--text); font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 600; }
 .v-locoff, .v-note, .v-anchor { display: flex; align-items: center; gap: var(--s3); margin: var(--s2) 0; padding: var(--s3) var(--s4); border-radius: var(--r-card); background: var(--surface); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
 .v-locoff b { color: var(--text); }
+.v-cover .v-grow { display: flex; flex-direction: column; gap: 2px; }
+.v-cover b { color: var(--text); font-weight: 600; }
 .v-locoff .v-ic { color: var(--text-2); }
 .v-anchor .v-prim { font-size: var(--fs-body); }
 .v-stale { margin: var(--s2) 0; padding: var(--s2) var(--s3); border-radius: var(--r-control); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-body); font-weight: 600; }

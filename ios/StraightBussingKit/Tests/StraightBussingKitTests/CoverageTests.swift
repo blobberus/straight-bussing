@@ -57,5 +57,8 @@ final class CoverageTests: XCTestCase {
         XCTAssertTrue(Coverage.text.contains("800 m"))
         XCTAssertFalse(Coverage.text.contains("\u{2013}") || Coverage.text.contains("\u{2014}"), "no en or em dash")
         XCTAssertFalse(Coverage.text.contains("UGo"), "no operator brand in the app's own words")
+        // owner 2026-10-15 (later): the note goes on, then the trip options as usual
+        XCTAssertEqual(Coverage.advice, "Straight Bussing recommends changing to another mode of transportation after arriving at the closest destination.")
+        XCTAssertFalse(Coverage.advice.contains("\u{2013}") || Coverage.advice.contains("\u{2014}"), "no en or em dash")
     }
 }

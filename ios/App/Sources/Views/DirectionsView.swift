@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 import StraightBussingKit
 
 /// Directions' typed text, focused field and suggestions (owner spec 2026-10-12: the Start / Destination fields sit
@@ -151,10 +150,8 @@ struct DirectionsView: View {
         let q = ui.query, user = model.user, S = model.staticData
         // one "use my location" action per screen (web DESIGN "Copy"): with no start yet, the Start field offers it
         let dropMe = ui.focus == .to && model.dir.from == nil && user == nil
-        let destination = ui.focus == .to   // only the destination is held to the shuttle area (Coverage)
         func sugs(_ places: [PlaceHit], _ assumed: SearchAssumption?) -> [Endpoint] {
-            let all = AppModel.suggestions(q, user: user, staticData: S, places: places, assumed: assumed,
-                                           destination: destination)
+            let all = AppModel.suggestions(q, user: user, staticData: S, places: places, assumed: assumed)
             return dropMe ? all.filter { !$0.isMe } : all
         }
         if ui.itemsQuery != nil { try? await Task.sleep(nanoseconds: 60_000_000) }   // typing: coalesce a burst of keystrokes
@@ -199,15 +196,7 @@ struct DirectionsView: View {
             Hint(ui.items.contains { $0.stopId == nil && !$0.isMe } ? "Searching more places\u{2026}" : "Searching places\u{2026}")
         }
         if mine && ui.places.status == .err { Hint("Couldn\u{2019}t search places right now. Station names still work.") }
-        let settled = q.count >= 2 && ui.itemsQuery == q && ui.places.status == .idle
-        // the destination, searched and settled, with no station or place left inside the shuttle area (owner
-        // 2026-10-15, web directions.js): say what the app covers instead of "No stations or places match"
-        if f == .to && q.count >= 3 && mine && settled && !model.staticData.isEmpty && ui.items.isEmpty
-            && !"my location".hasPrefix(q.lowercased()) {   // typing "my location" is not a miss (web: same rule)
-            Hint(Coverage.text)
-                .accessibilityIdentifier("dirCoverage")
-                .onAppear { UIAccessibility.post(notification: .announcement, argument: Coverage.text) }
-        } else if ui.items.isEmpty && settled {
+        if ui.items.isEmpty && (q.count >= 2 && ui.itemsQuery == q) && ui.places.status == .idle {
             Hint("No stations or places match. Try another name or an address.")
         }
         if model.dirMeDenied { Hint("Location is off. Allow it in iOS Settings, or type a start.") }
@@ -215,12 +204,8 @@ struct DirectionsView: View {
     }
 
     @ViewBuilder var results: some View {
-        if let t = model.dir.to, !model.covered(t) {
-            // outside the shuttle area (owner 2026-10-15; set by Swap or My location too, with or without a start, as
-            // web resHTML): no plan, no walk-only line
-            EmptyStateView(title: Coverage.text)
-                .accessibilityIdentifier("dirCoverageResult")
-        } else if model.dir.from == nil || model.dir.to == nil {
+        if model.dir.from == nil || model.dir.to == nil {
+            coverNote
             Hint("Choose a start and a destination. Type a station name, a place, or an address.")
             if model.dir.from == nil && model.user == nil {
                 Button { model.useMyLocation(to: false) } label: {
@@ -233,6 +218,7 @@ struct DirectionsView: View {
             if model.staleLevel != .fresh {
                 Text("Live data delayed. Bus times may be off.").font(.subheadline.weight(.semibold)).foregroundStyle(Palette.warn)
             }
+            coverNote
             if r.options.isEmpty {
                 let running = !model.buses.isEmpty
                 if model.liveOutage {   // a feed outage is not "no shuttles running" (rider safety)
@@ -260,11 +246,28 @@ struct DirectionsView: View {
                     .font(.footnote).foregroundStyle(Palette.text2)
             }
         } else {
+            coverNote
             HStack(spacing: 8) {
                 ProgressView()
                 Text("Finding trips\u{2026}").font(.subheadline).foregroundStyle(Palette.text2)
             }
             .frame(maxWidth: .infinity, minHeight: 44)
+        }
+    }
+
+    /// A destination outside the shuttle area (`Coverage`, web directions.js coverNoteHTML; owner 2026-10-15, set any
+    /// way: search, Swap, My location): the notice, the advice under it, then the trip options as usual.
+    @ViewBuilder var coverNote: some View {
+        if let t = model.dir.to, !model.covered(t) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Coverage.text).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text)
+                Text(Coverage.advice).font(.subheadline).foregroundStyle(Palette.text2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Palette.card, in: RoundedRectangle(cornerRadius: Radius.card))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("dirCoverage")
         }
     }
 

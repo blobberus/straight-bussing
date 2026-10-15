@@ -4,7 +4,7 @@ import { NOW, makeCtx, tick, root, type } from "./views-fixtures.js";
 import { runAction } from "../js/ui/actions.js";
 import { P, placeDeps, renderPick, mountPick, unmountPick, setMode, resetPick, openPickDialog } from "../js/ui/views/pick.js";
 import { D, deps, renderDirections, mountDirections, unmountDirections, NOTE, computeSugs, setEndpoint } from "../js/ui/views/directions.js";
-import { COVER_TEXT } from "../js/core/coverage.js";
+import { COVER_TEXT, COVER_ADVICE } from "../js/core/coverage.js";
 import { plan as realPlan, refineWalking as realRefine } from "../js/core/planner.js";
 import { N, renderNearby, mountNearby, unmountNearby } from "../js/ui/views/nearby.js";
 
@@ -258,47 +258,43 @@ test("directions: one 'use my location' action per screen, never a suggestion an
   unmountDirections(); el.remove(); resetDir();
 });
 
-test("directions: a destination out of range says so, in the suggestions and the results (owner 2026-10-15)", async () => {
+test("directions: a far destination is still found and planned, under the coverage note (owner 2026-10-15)", async () => {
   resetDir();
   let planned = 0;
-  stubDeps(() => { planned++; return { now: NOW, options: [], walkOnly: { m: 100, min: 1 } }; });
+  stubDeps(() => { planned++; return { now: NOW, options: [fakeOption("a", 40, "R1")], walkOnly: { m: 9000, min: 112 } }; });
   const realLocal = placeDeps.local, realSearch = placeDeps.search;
   const far = { label: "Outlet Mall", sub: "Far away", lat: 41.85, lon: -87.7 }, near = { label: "Corner Cafe", sub: "Main St", lat: 41.7902, lon: -87.6 };
-  let items = [far];
+  const items = [far, near];
   placeDeps.local = () => ({ items });
   placeDeps.search = async () => ({ items });
   try {
     const ctx = makeCtx({ view: "directions", user: USER, locState: "granted" });
     const el = mountWith(ctx, renderDirections, mountDirections);
-    const from = el.querySelector('[data-input="dir-from"]'), to = el.querySelector('[data-input="dir-to"]');
+    const to = el.querySelector('[data-input="dir-to"]');
     const sug = () => el.querySelector('[data-region="dir-sug"]').textContent, res = () => el.querySelector('[data-region="dir-res"]').textContent;
-    type(to, "outlet mall");
+    type(to, "mall");
     await tick(400);
-    ok(sug().includes(COVER_TEXT) && !sug().includes("Outlet Mall"), "only places out of range: the sentence, no row");
-    ok(el.querySelector('[data-region="dir-sug"] .v-uncovered[role="status"]')?.textContent === COVER_TEXT, "read out (role=status)");
-    items = [far, near];
-    type(to, "corner cafe");
-    await tick(400);
-    ok(sug().includes("Corner Cafe") && !sug().includes("Outlet Mall") && !sug().includes(COVER_TEXT), "in range listed, the far one left out");
-    type(to, "my lo");
-    await tick(400);
-    ok(!sug().includes(COVER_TEXT), "typing My location is not a miss");
-    items = [far];
-    type(from, "outlet mall");
-    await tick(400);
-    ok(sug().includes("Outlet Mall") && !sug().includes(COVER_TEXT), "the start is not limited");
-    // a far start swapped into the destination: the sentence, no trip planned
-    setEndpoint("from", { lat: far.lat, lon: far.lon, label: far.label });
-    setEndpoint("to", { lat: 41.795, lon: -87.595, label: "Hospital", stop: "S3" });
+    ok(sug().includes("Outlet Mall") && sug().includes("Corner Cafe") && !sug().includes(COVER_TEXT), "far places are suggested again, no note in the list");
+    // a covered destination: no note
+    setEndpoint("to", { lat: near.lat, lon: near.lon, label: near.label });
     await tick(10);
+    ok(planned > 0 && !res().includes(COVER_TEXT), "near: planned, no note");
+    // a far destination: the note, the advice under it, then the trip options as before
     const before = planned;
-    ok(before > 0 && !res().includes(COVER_TEXT), "a stop destination plans");
+    setEndpoint("to", { lat: far.lat, lon: far.lon, label: far.label });
+    await tick(10);
+    ok(planned > before, "far: still planned");
+    const r = res(), note = el.querySelector('[data-region="dir-res"] .v-cover[role="status"]');
+    ok(note && note.textContent.includes(COVER_TEXT) && note.textContent.includes(COVER_ADVICE), "the note says both (role=status)");
+    ok(r.indexOf(COVER_TEXT) < r.indexOf(COVER_ADVICE), "advice under the notice");
+    const opt = el.querySelector('[data-region="dir-res"] .v-opt');
+    ok(opt && note.compareDocumentPosition(opt) & Node.DOCUMENT_POSITION_FOLLOWING, "the trip options come after the note");
+    ok(r.includes(NOTE), "the usual estimate note");
+    // the start is never noted: a far start with a covered destination
     runAction("dir:swap", {}, null, ctx);
     await tick(10);
-    eq(D.to.label, "Outlet Mall");
-    ok(res().includes(COVER_TEXT), "results say it");
-    eq(planned, before, "no plan for an uncovered destination");
-    ok(!el.querySelector('[data-region="dir-res"] .v-opt'), "no walk-only card either");
+    eq(D.from.label, "Outlet Mall");
+    ok(!res().includes(COVER_TEXT), "far start, near destination: no note");
     unmountDirections(); el.remove();
   } finally { placeDeps.local = realLocal; placeDeps.search = realSearch; resetDir(); }
 });

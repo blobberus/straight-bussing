@@ -3,14 +3,18 @@ import Foundation
 /// Where Directions plans trips to (web core/coverage.js; owner 2026-10-15: "If a search query for destination
 /// doesn't have a proper stop or address within range, say: Sorry, Straight Bussing only covers locations 800m within
 /// [the] shuttle routes"): a destination within `meters` (straight line) of a stop that at least one route serves.
-/// Only the Directions destination is checked (never the start, Current trip's place search or Routes to station);
-/// the planner's 1600 m end walk stays for covered destinations. Pure.
+/// Only the Directions destination is checked (never the start, Current trip's place search or Routes to station).
+/// Owner, later the same day: "Change the 800m+ distance restriction to telling the user about the constraint, but
+/// still giving a method to reach the location": a destination outside is still searched and planned as usual (the
+/// planner's 1600 m end walk, else walk the whole way), with `text` and `advice` above the trip options. Pure.
 public enum Coverage {
     /// Straight-line meters from the nearest served stop.
     public static let meters = 800.0
     /// What Directions says for a destination outside it (owner wording; no "UGo": the app uses no operator names
     /// of its own).
     public static let text = "Sorry, Straight Bussing only covers locations within 800 m of the campus shuttle routes."
+    /// Under `text`, then the trip options (owner's words).
+    public static let advice = "Straight Bussing recommends changing to another mode of transportation after arriving at the closest destination."
 
     /// Straight-line meters from `p` to the nearest stop a route serves (`stopRoutes[id]` non-empty; every stop when
     /// `stopRoutes` is empty). nil when there are no stops (or `p` is not a valid point).
