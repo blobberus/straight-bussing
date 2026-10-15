@@ -2,8 +2,9 @@
   "how to use": [
     "Each line under names is  \"address\": \"the name to show\".",
     "The map shows the place's normal name, and this name instead once you zoom in to at least the zoom below (the map goes up to 18).",
-    "Write the address as the place search shows it (1522 E 53rd St). If two places share an address, put the place's name first: \"Joseph Regenstein Library, 1100 E 57th St\".",
-    "A place that has no name on the map yet gets one, shown only close in (from zoom 17).",
+    "Write the address as the place search shows it (1522 E 53rd St). If two places share an address, put the place's name first: \"Joseph Regenstein Library, 1100 E 57th St\". A place's name alone works too when only one place has it (\"Valois\").",
+    "The place must be one the app's place search finds (about 1,900 places within a 30 minute walk of a shuttle stop).",
+    "A place that has no name on the map yet gets one, shown only close in (from zoom 17). A place in the same spot as another map name (within 15 m, e.g. a cafe inside a labeled building) is skipped: nickname the labeled place instead.",
     "Keep the quotes and the commas between lines; the last line has no comma. No en or em dashes in names.",
     "After a change: commit it. The site rebuilds the map names when it deploys; tools/build_landmarks.py does the same on a PC and reports a typo or an address it cannot find. The iPhone app takes the names with its next build."
   ],
