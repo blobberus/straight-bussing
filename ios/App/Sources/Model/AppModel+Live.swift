@@ -358,6 +358,11 @@ extension AppModel {
             if dir.result != nil { dir.result = nil }
             return nil
         }
+        // outside the shuttle area (owner 2026-10-15): DirectionsView shows `Coverage.text`, nothing is planned
+        guard covered(t) else {
+            if dir.result != nil { dir.result = nil }
+            return nil
+        }
         dir.result = nil
         dir.selected = 0
         let task = Task { [weak self] in
@@ -403,7 +408,7 @@ extension AppModel {
     func refreshDirections() {
         // `dir.result` is nil while a new-endpoint plan runs (replan clears it), so this never races it.
         guard page == .directions, let f = dir.from, let t = dir.to, dir.result != nil, !dir.refining,
-              dirRefreshTask == nil, !liveState.failed else { return }
+              dirRefreshTask == nil, !liveState.failed, covered(t) else { return }
         let wall = Date().timeIntervalSince1970
         guard wall - lastDirRefresh >= Self.dirRefreshS else { return }
         lastDirRefresh = wall
@@ -451,9 +456,11 @@ extension AppModel {
     /// Directions suggestions for a field's text (web directions.js computeSugs): My location, then stations whose
     /// name has the whole typed word(s), strong nearby places (on-device, whole-word name match), stations that only
     /// partly match, other places (Photon's merged in). With a spelling assumption, stations are matched with the
-    /// corrected text too. Pure and nonisolated, so it runs off the main thread.
+    /// corrected text too. `destination` (the Destination field): places outside `Coverage` (800 m from a served
+    /// stop, owner 2026-10-15) are dropped; stations and My location always stay. Pure and nonisolated, so it runs
+    /// off the main thread.
     nonisolated static func suggestions(_ q: String, user: LatLon?, staticData S: StaticData, places: [PlaceHit],
-                                        assumed: SearchAssumption?) -> [Endpoint] {
+                                        assumed: SearchAssumption?, destination: Bool = false) -> [Endpoint] {
         let t = q.trimmingCharacters(in: .whitespacesAndNewlines)
         var out: [Endpoint] = []
         if t.isEmpty || "my location".hasPrefix(t.lowercased()) {
@@ -474,10 +481,15 @@ extension AppModel {
             let words = Set(PlaceIndex.norm(m.name).split(separator: " ").map(String.init))
             return (Endpoint(label: m.name, coord: m.coord, stopId: m.id, sub: "Shuttle stop · " + routesText(m.id)), qw.allSatisfy { words.contains($0) })
         }
-        let pl = places.map { (e: Endpoint(label: $0.label, coord: $0.coord, sub: $0.sub.isEmpty ? "Place" : $0.sub), strong: $0.local && $0.score >= 85) }
+        let shown = destination ? places.filter { Coverage.covered($0.coord, in: S) } : places
+        let pl = shown.map { (e: Endpoint(label: $0.label, coord: $0.coord, sub: $0.sub.isEmpty ? "Place" : $0.sub), strong: $0.local && $0.score >= 85) }
         out += stops.filter(\.whole).map(\.e) + pl.filter(\.strong).map(\.e) + stops.filter { !$0.whole }.map(\.e) + pl.filter { !$0.strong }.map(\.e)
         return out
     }
+
+    /// A destination Directions plans to (`Coverage`, web core/coverage.js): a stop, or within 800 m of a stop a
+    /// route serves; true until the schedule loads (never block on it).
+    func covered(_ e: Endpoint) -> Bool { Coverage.covered(e.coord, stopId: e.stopId, in: staticData) }
 
     func placeSubtitle(_ e: Endpoint) -> String {
         if e.isMe { return e.sub ?? "Current location" }
