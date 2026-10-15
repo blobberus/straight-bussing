@@ -362,6 +362,18 @@ accuracy; a negative accuracy means no heading, as in CoreLocation, whose values
 0.15 s, none with reduced motion); the cone hides with the dot (on the bus, no location). Nothing is stored or sent
 (privacy.html "The way you face"). iOS: ios/README.md "Heading cone".
 
+### Destinations only within 800 m of a stop (2026-10-15, owner: "If a search query for destination doesn't have a proper stop or address within range, say: Sorry, ...")
+`core/coverage.js` `covered(state, point)`: a stop, or within `COVER_M` = 800 m (straight line) of a stop some route
+serves (`routeStops`); always true before the schedule loads or for a point without coordinates (never block on
+missing data). Directions, destination field only: `computeSugs(state, text, key)` drops uncovered places (stations
+and My location stay); a settled search (3+ characters, not busy or failed, not "my location") with nothing left shows
+`COVER_TEXT` ("Sorry, Straight Bussing only covers locations within 800 m of the campus shuttle routes.", the owner's
+sentence without "UGo", his choice) as a `role="status"` empty state. A destination set any other way (Swap, My location)
+that is uncovered shows the same line in the results and is not planned (no walk-only card). The start is not limited
+(the planner's 1600 m end walk still applies to it and to covered destinations). Current trip's and Routes to station's
+place searches are unchanged (they find stops near a place, not a destination). About a third of places.json (638 of
+1,921: apartments, churches, schools at the edges) is out of range. iOS: Kit `Coverage.swift`.
+
 ### Custom routes interaction (2026-10-08)
 Tap a custom route row = show it on the map / stop showing (`mr:toggle`, no navigation). Swipe left (or the row's "More" button,
 `mr:swipe`) = action tray Details (`mr:details`, no apply) / Edit / Delete. Every delete goes through `ui/confirm.js`

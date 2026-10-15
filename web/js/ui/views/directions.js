@@ -37,6 +37,7 @@ import { PANEL_MEDIA } from "../sheet.js";
 import { matchStations, ICONS } from "./pick.js";
 import { noBusHelpHTML } from "./alerts.js";   // the operator's own words + who to call when no bus reports (rider safety)
 import { createPlaceSearch, assumeNoteHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
+import { covered, COVER_TEXT } from "../../core/coverage.js";
 import { planJourney, sameRids, isPlanJourney, tripBarHTML } from "./journey.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
 import { DEMO } from "../../core/demo.js";
@@ -78,12 +79,14 @@ const wordsOf = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]
 /**
  * Suggestions for a field's text: My location, matching stations, places (on-device results from the first
  * keystroke, Photon merged in when it answers). When the place search assumed a spelling correction, stations
- * are matched with the corrected text too.
+ * are matched with the corrected text too. For the destination, places outside the covered area are left out
+ * (core/coverage.js; owner 2026-10-15).
  * @param {object} state
  * @param {string} text
+ * @param {'from'|'to'|null} [key] the field (default: the active one)
  * @returns {object[]}
  */
-export function computeSugs(state, text) {
+export function computeSugs(state, text, key = D.active) {
   const q = String(text || "").trim(), out = [], ps = photon.state, mine = q.length >= 2 && ps.q === q;
   if (!q || "my location".startsWith(q.toLowerCase())) out.push({ kind: "me", label: "My location", sub: state.user ? "Use current location" : "Allow location access" });
   // Order: stops whose name has the whole typed word(s), then strong nearby places (local index, whole-word
@@ -94,7 +97,8 @@ export function computeSugs(state, text) {
   const stops = found.map((s) => ({ kind: "stop", id: s.id, lat: s.lat, lon: s.lon, label: s.name,
     sub: "Shuttle stop · " + (state.stopRoutes?.[s.id] || []).map((r) => state.routes?.[r]?.short || state.routes?.[r]?.long || r).join(", "),
     whole: qw.every((w) => wordsOf(s.name).includes(w)) }));
-  const places = mine ? ps.items.map((p) => ({ kind: "place", lat: p.lat, lon: p.lon, label: p.label, sub: p.sub || "Place", strong: !!p.local && p.score >= 85 })) : [];
+  const places = mine ? ps.items.filter((p) => key !== "to" || covered(state, p))
+    .map((p) => ({ kind: "place", lat: p.lat, lon: p.lon, label: p.label, sub: p.sub || "Place", strong: !!p.local && p.score >= 85 })) : [];
   out.push(...stops.filter((s) => s.whole), ...places.filter((p) => p.strong), ...stops.filter((s) => !s.whole), ...places.filter((p) => !p.strong));
   return out;
 }
@@ -107,6 +111,8 @@ function sugHTML() {
   if (D.sugs.length) h += `<div class="v-card v-sugs" role="listbox" aria-label="Suggestions for ${key === "from" ? "start" : "destination"}">` + D.sugs.map((s, i) => `<button type="button" class="v-row" role="option" data-action="dir:sug" data-i="${i}"><span class="v-ic" aria-hidden="true">${s.kind === "me" ? ICONS.loc : s.kind === "stop" ? ICONS.stop : ICONS.place}</span><span class="v-grow"><span class="v-prim">${esc(s.label)}</span><span class="v-sec">${esc(s.sub || "")}</span></span></button>`).join("") + "</div>";
   if (mine && ps.status === "busy") h += D.sugs.some((s) => s.kind === "place") ? '<p class="v-fine v-more" role="status">Searching more places&hellip;</p>' : '<p class="v-hint" role="status">Searching places&hellip;</p>';
   if (mine && ps.status === "err") h += '<p class="v-hint">Couldn&rsquo;t search places right now. Station names still work.</p>';
+  // a settled destination search with no stop or place in range (core/coverage.js)
+  if (key === "to" && mine && q.length >= 3 && !ps.status && cur().staticLoaded && !D.sugs.length && !"my location".startsWith(q.toLowerCase())) h += uncoveredHTML();
   if (D.meDenied) h += '<p class="v-hint">Location is off. Allow it in your browser settings, or type a start.</p>';
   if (q.length >= 2) h += '<p class="v-fine">Places near campus are searched on your device; otherwise only the text you type (or its spelling fix) is sent to photon.komoot.io.</p>';
   return h;
@@ -143,6 +149,7 @@ function optionHTML(o, i, now, state) {
  * @returns {string}
  */
 export function resHTML(state, now = nowS()) {
+  if (D.to && state.staticLoaded && !covered(state, D.to)) return uncoveredHTML();   // any way it was set: Swap, My location
   if (!D.from || !D.to) {   // one "use my location" action per screen (DESIGN-AUDIT 7.1): the button hides while the start's list offers it
     let h = '<p class="v-hint">Choose a start and a destination. Type a station name, a place, or an address.</p>';
     if (!D.from && !state.user && !(D.active === "from" && D.sugs.some((s) => s.kind === "me"))) h +='<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="dir:me" data-key="from">Start from my location</button>';
@@ -165,6 +172,9 @@ export function resHTML(state, now = nowS()) {
   if (D.refining) h += '<p class="v-foot" role="status">Checking sidewalk routes&hellip;</p>';
   return h + `<p class="v-foot v-estnote">${esc(NOTE)}</p>`;
 }
+
+/** The destination is outside the covered area (core/coverage.js, owner's wording). */
+const uncoveredHTML = () => `<div class="v-empty v-uncovered" role="status"><b>${esc(COVER_TEXT)}</b></div>`;
 
 function field(key) {
   const ep = D[key], val = ep ? ep.label : key === "from" ? D.fromText : D.toText;
@@ -223,7 +233,7 @@ function pickSel(fresh) {
  */
 export async function replan({ fresh = false } = {}) {
   const state = cur(), token = ++D.token;
-  if (!D.from || !D.to || !state.staticLoaded) { D.result = null; D.refining = false; patchRes(); try { ctxRef?.map?.drawPlan?.(null); } catch (e) { /* */ } return; }
+  if (!D.from || !D.to || !state.staticLoaded || !covered(state, D.to)) { D.result = null; D.refining = false; patchRes(); try { ctxRef?.map?.drawPlan?.(null); } catch (e) { /* */ } return; }
   const now = nowFn(), from = D.from, to = D.to;
   const data = { stops: state.stops, routes: state.routes, routeStops: state.routeStops, trips: state.trips || [], buses: state.buses || [] };
   let r;
