@@ -56,6 +56,7 @@ data-geocode.js) so the Swift port provably behaves the same.
 | core/walk.js (`walkRoute`), directions.js replan (async half) | WalkRouting.swift | `WalkRouteCache` actor around any router: 4-decimal endpoints, plausibility, 3 s timeout, estimate fallback (retried after 60 s), shared in-flight requests, <= 6 at once; `Planner.refinePlan` refines + re-ranks the shown options and the walk-only line |
 | map/geometry.js (`alongShape`) | Geometry.swift | bus legs drawn along the route's road shape between board and alight (`BusLeg.roadPath`); tests mirror web/tests/map-geometry.js plus a golden file of the JavaScript's own paths on 4 real routes |
 | map/landmarks.js, data/static.js cleanLandmarks (2026-10-13) | Landmarks.swift (`Landmark`, `Landmarks`, `StaticLoader.loadLandmarks`) | building and place names: decoding (bad rows dropped, optional `until`, easter-egg nicknames `egg` / `eggZoom` by row index, 2026-10-14), `Landmarks.text` (= labelText), tiers by zoom, `labelSize`, greedy wrap, the 17-spot placement (`placeBoxes` = web placeLabels); tests port web/tests/map-landmarks.js; see "Map labels" below |
+| core/coverage.js (2026-10-15, owner) | Coverage.swift (`Coverage`) | the Directions destination must lie within 800 m (straight line) of a stop a route serves: other places drop out of the destination suggestions, and a destination outside it (also by Swap or My location) shows `Coverage.text` ("Sorry, Straight Bussing only covers locations within 800 m of the campus shuttle routes.") instead of a plan; never the start, Current trip or Routes to station; true until the schedule loads; `CoverageTests` |
 | core/rank.js | Rank.swift | least walking > earliest arrival > shortest wait > criteria met; `criteriaText` labels |
 | core/notify.js | Notify.swift | stopsAway, watchedRoutes, dueAlerts (paused while `tripOn`, one 'delayed' alert per outage), minutesText; since 2026-10-13 tripAlerts (board2 / board1 / boardMin, off2 / off1, delayed), tripAlertsOn, the outage rule (feed evidence only), DELAYED_TITLE / bodies, Settings' "During your trip" line (`tripStatusLine`, web settings.js tripHTML); `NotifyPrefs.trip` with a decoder that keeps old stored prefs |
 | core/tripyou.js (2026-10-13) | TripYou.swift (`TripYou`), TripFollowText.swift (`TripText.offText` / `offShort`) | where you are on a started trip: on the bus (its live position) unless your accurate GPS is > 300 m + accuracy from it (`far`), your GPS, the boarding stop as a guess while waiting; target, frame, VoiceOver text; the map's stop labels; tests port web/tests/core-tripyou.js |
@@ -260,7 +261,10 @@ gallery "28-livestates", "29-livestates-end") draws the card in all four states 
   location) and a quiet line "No trip in progress. To start one, search for a destination and tap Start." (no card).
   A typed search shows its results right under the field. Header meta "53RD · 4 min".
 - Directions: suggestions (stations, on-device places, Photon when needed, spelling-fix note), swap, up to 4 option
-  cards ("Least walking · Earliest arrival", walk + leave lines), steps with sources, trip bar, Start.
+  cards ("Least walking · Earliest arrival", walk + leave lines), steps with sources, trip bar, Start. Destinations
+  only within 800 m of a served stop (`Coverage`, owner 2026-10-15): farther places are not suggested, and a typed
+  destination with nothing left (or one set by Swap / My location) says "Sorry, Straight Bussing only covers
+  locations within 800 m of the campus shuttle routes."
 - Routes to station (pick), Alerts.
 - Routes: Edit map order (drag, VoiceOver Move up / down, Reset order), custom-route / journey bar, station filter
   chip, Show all / Hide all, Running / Scheduled, no live location / Not running / Hidden with eye toggles, official

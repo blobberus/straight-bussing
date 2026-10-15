@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import StraightBussingKit
 
 /// Directions' typed text, focused field and suggestions (owner spec 2026-10-12: the Start / Destination fields sit
@@ -150,8 +151,10 @@ struct DirectionsView: View {
         let q = ui.query, user = model.user, S = model.staticData
         // one "use my location" action per screen (web DESIGN "Copy"): with no start yet, the Start field offers it
         let dropMe = ui.focus == .to && model.dir.from == nil && user == nil
+        let destination = ui.focus == .to   // only the destination is held to the shuttle area (Coverage)
         func sugs(_ places: [PlaceHit], _ assumed: SearchAssumption?) -> [Endpoint] {
-            let all = AppModel.suggestions(q, user: user, staticData: S, places: places, assumed: assumed)
+            let all = AppModel.suggestions(q, user: user, staticData: S, places: places, assumed: assumed,
+                                           destination: destination)
             return dropMe ? all.filter { !$0.isMe } : all
         }
         if ui.itemsQuery != nil { try? await Task.sleep(nanoseconds: 60_000_000) }   // typing: coalesce a burst of keystrokes
@@ -196,7 +199,14 @@ struct DirectionsView: View {
             Hint(ui.items.contains { $0.stopId == nil && !$0.isMe } ? "Searching more places\u{2026}" : "Searching places\u{2026}")
         }
         if mine && ui.places.status == .err { Hint("Couldn\u{2019}t search places right now. Station names still work.") }
-        if ui.items.isEmpty && (q.count >= 2 && ui.itemsQuery == q) && ui.places.status == .idle {
+        let settled = q.count >= 2 && ui.itemsQuery == q && ui.places.status == .idle
+        // the destination, searched and settled, with no station or place left inside the shuttle area (owner
+        // 2026-10-15, web directions.js): say what the app covers instead of "No stations or places match"
+        if f == .to && q.count >= 3 && mine && settled && !model.staticData.isEmpty && !ui.items.contains(where: { !$0.isMe }) {
+            Hint(Coverage.text)
+                .accessibilityIdentifier("dirCoverage")
+                .onAppear { UIAccessibility.post(notification: .announcement, argument: Coverage.text) }
+        } else if ui.items.isEmpty && settled {
             Hint("No stations or places match. Try another name or an address.")
         }
         if model.dirMeDenied { Hint("Location is off. Allow it in iOS Settings, or type a start.") }
@@ -212,6 +222,10 @@ struct DirectionsView: View {
                 }
                 .secondaryButtonStyle()
             }
+        } else if let t = model.dir.to, !model.covered(t) {
+            // outside the shuttle area (owner 2026-10-15; set by Swap or My location too): no plan, no walk-only line
+            EmptyStateView(title: Coverage.text)
+                .accessibilityIdentifier("dirCoverageResult")
         } else if let r = model.dir.result {
             TripBar()
             if model.staleLevel != .fresh {
