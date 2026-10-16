@@ -56,7 +56,9 @@ export function cleanSlice(key, v) {
       out[id] = { ...x, name: x.name != null ? String(x.name) : 'Stop ' + id, lat, lon };
     } else if (key === 'routes') {
       if (!isObj(x)) continue;
-      out[id] = { ...x, short: String(x.short ?? ''), long: String(x.long ?? ''), color: x.color || '', text_color: x.text_color || '' };
+      const r = { ...x, short: String(x.short ?? ''), long: String(x.long ?? ''), color: x.color || '', text_color: x.text_color || '' };
+      if (Array.isArray(x.alias_ids)) r.alias_ids = x.alias_ids.filter((a) => a != null && a !== '').map(String); else delete r.alias_ids;   // Passio's own ids (alerts)
+      out[id] = r;
     } else if (key === 'shapes') {
       if (Array.isArray(x)) out[id] = x.filter((line) => Array.isArray(line) && line.length);
     } else if (key === 'routeStops') {

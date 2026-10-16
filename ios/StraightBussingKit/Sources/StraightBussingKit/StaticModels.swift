@@ -8,9 +8,14 @@ public struct Route: Codable, Hashable, Sendable, Identifiable {
     /// '#RRGGBB' (may be empty in the data).
     public var color: String
     public var textColor: String
+    /// Other ids Passio uses for this route ("alias_ids": the GTFS shape ids of its trips). Its service alerts can
+    /// name a route by one (the North alert of 2026-10-14 named 38734; DC-009): `Arrivals.alertRouteIds`.
+    public var aliasIds: [String]
 
-    public init(id: String, short: String = "", long: String = "", color: String = "", textColor: String = "") {
+    public init(id: String, short: String = "", long: String = "", color: String = "", textColor: String = "",
+                aliasIds: [String] = []) {
         self.id = id; self.short = short; self.long = long; self.color = color; self.textColor = textColor
+        self.aliasIds = aliasIds
     }
 
     /// Long name, else short name, else the id.

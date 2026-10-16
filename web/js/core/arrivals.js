@@ -104,6 +104,38 @@ export function activeAlerts({ alerts } = {}, nowS) {
 }
 
 /**
+ * Route ids an alert is about: each informed_entity route_id that is a route, or that exactly one route lists in its
+ * alias_ids. Passio names a route in its alerts by its own internal id, which is the GTFS shape id of the route's
+ * trips (the North alert of 2026-10-14 named 38734; North is 1075; tools/build_gtfs.py route_aliases; DC-009). An id
+ * no route knows is left out, so such an alert counts as tied to no route and shows wherever untied alerts do (the
+ * Alerts list shows every alert). Order kept, no repeats. iOS: Kit Arrivals.alertRouteIds.
+ * @param {object} a alert (GTFS-rt)
+ * @param {Object<string, {alias_ids?:string[]}>} [routes] state.routes
+ * @returns {string[]}
+ */
+export function alertRouteIds(a, routes) {
+  const R = routes || {}, own = (k) => Object.prototype.hasOwnProperty.call(R, k), out = [];
+  let alias = null;
+  for (const e of (a && Array.isArray(a.informed_entity) ? a.informed_entity : [])) {
+    if (!e || e.route_id == null || e.route_id === "") continue;
+    const id = String(e.route_id);
+    let rid = own(id) ? id : null;
+    if (!rid) {
+      if (!alias) {   // alias -> route; an alias two routes list names neither
+        alias = new Map();
+        for (const [r, x] of Object.entries(R)) for (const s of Array.isArray(x?.alias_ids) ? x.alias_ids : []) {
+          const k = String(s);
+          alias.set(k, alias.has(k) && alias.get(k) !== r ? null : r);
+        }
+      }
+      rid = alias.get(id) || null;
+    }
+    if (rid && !out.includes(rid)) out.push(rid);
+  }
+  return out;
+}
+
+/**
  * Plain text of a GTFS-rt TranslatedString (or a plain string). '' if missing.
  * Prefers English when several translations exist.
  * @param {*} field e.g. alert.header_text

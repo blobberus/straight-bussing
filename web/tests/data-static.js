@@ -127,6 +127,9 @@ test('static: deriveStopRoutes / cleanSlice edge cases', () => {
   eq(cleanSlice('stops', null), {});
   eq(cleanSlice('routeStops', { a: ['1', null, 2] }), { a: ['1', '2'] });
   eq(cleanSlice('routes', { a: { short: 5 } }).a.short, '5');
+  // Passio's own ids for a route (DC-009): strings, empties dropped; junk = no list
+  eq(cleanSlice('routes', { a: { alias_ids: [38734, '', null, '38809'] } }).a.alias_ids, ['38734', '38809']);
+  eq('alias_ids' in cleanSlice('routes', { a: { alias_ids: 'x' } }).a, false);
 });
 
 test('static: real web/data files load and cross-reference', async () => {
