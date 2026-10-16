@@ -456,6 +456,29 @@ def predictions_about_the_previous_lap_are_skipped():
 
 
 @test
+def a_next_trip_update_listing_the_previous_visit_is_skipped():
+    """DC-011 (2026-10-16): Passio rolls a bus over to its next trip id early and lists the current lap's times
+    under it (Drexel 4325 at Goldblatt on 2026-10-15: trip 501396 said 'in 0.6 min' 20 min before the next lap,
+    and the bus came 0.6 min later on its current lap). A prediction of a time before, or within
+    PREV_VISIT_GAP_S after, the bus's previous visit was about that visit, whatever trip id it had; a later time
+    for the next run, made before that visit, is still kept (a real, if wrong, next-lap prediction)."""
+    arr = T0 + 5000
+    pv = arr - 1200                                                        # the bus was at B 20 min ago, trip E
+    tr = Tracker(fake_static())
+    tr.visits[("V1", "B")] = (pv, "E", 1)
+    tr.add_prediction("G", "B", arr - 1300, pv + 30, veh="V1", last=arr - 1150)    # next trip id, the current lap's time
+    tr.add_prediction("G", "B", arr - 1100, arr + 15, veh="V1", last=arr)          # after the visit: this lap
+    got = tr.preds_at("G", "B", arr, veh="V1")
+    assert 1200 not in got and 1800 not in got, got                       # the earlier lap's time is not this arrival's
+    assert got[900] == (arr + 15, arr - 1100, arr - 1100), got
+    assert tr.pred_for("G", "B", arr, veh="V1") == (arr + 15, 1100)
+    tr = Tracker(fake_static())
+    tr.visits[("V1", "B")] = (pv, "E", 1)
+    tr.add_prediction("G", "B", arr - 1300, pv + L.PREV_VISIT_GAP_S + 180, veh="V1", last=arr - 1150)   # 5 min after it
+    assert tr.preds_at("G", "B", arr, veh="V1")[1200] == (pv + L.PREV_VISIT_GAP_S + 180, arr - 1300, arr - 1300)
+
+
+@test
 def arrivals_record_visits_and_prediction_rows():
     """The detector remembers each bus's visits (seeded from the CSV tail too) and an arrival event carries the
     predictions.csv leads; Writer writes those rows next to the arrivals row."""

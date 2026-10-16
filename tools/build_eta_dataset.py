@@ -14,11 +14,12 @@ the bus came early); rel = error / lead with lead = actual - t, so the 10% rule 
 Passio's prediction at t follows the collector's attribution rules (tools/arrival_detector.py): this bus's own update
 (an update without a vehicle id only if no other bus has the trip id), the loop-stop stop_sequence, first seen by t
 and still shown within SHOW_GRACE_S, and only for the bus's NEXT visit on that trip; an update made before the
-previous visit on the same trip (or predicting a time within 120 s of it) is passio_status previous_lap. When the own
-trip id shows nothing at t but did at an earlier minute for the same arrival (the stop was still ahead of the bus), the
-bus's prediction under a trip id Passio re-matched it to meanwhile counts, as in predictions.csv (DC-010: the
-detector's DC-008 rule, Tracker._other_trip_preds, reused as is; never another bus, never its next trip, never its
-previous visit, not at loop stops).
+previous visit on the same trip, or predicting a time before or within 120 s after the bus's visit to the stop
+before this arrival under any trip id (Passio lists the current lap under the next trip id: DC-011), is passio_status
+previous_lap. When the own trip id shows nothing for this arrival at t (none, or only the previous lap) but did at an
+earlier minute (the stop was still ahead of the bus), the bus's prediction under a trip id Passio re-matched it to
+meanwhile counts, as in predictions.csv (DC-010: the detector's DC-008 rule, Tracker._other_trip_preds, reused as is;
+never another bus, never its next trip, never its previous visit, not at loop stops).
 
 Why two layouts: these query-centric rows are the training table (features at the moment a rider asks); the same
 arrival appears in up to 45 rows, so evaluation takes ONE row per arrival and lead bin (summary(), and the
@@ -298,11 +299,13 @@ def build(day, arrivals, preds, raw=None, timetable=None, st=None, step=STEP_S, 
         regime = ""
     trip_buses = defaultdict(list)           # trip -> [(epoch, veh)] (shared trip ids)
     visits = defaultdict(list)               # (veh, trip, stop) -> sorted arrival epochs
+    stop_visits = defaultdict(list)          # (veh, stop) -> sorted (arrival epoch, stop index), any trip id
     for veh, lst in arrivals.items():
         for ep, trip, rid, sid, idx in lst:
             trip_buses[trip].append((ep, veh))
             visits[(veh, trip, sid)].append(ep)
-    for v in list(trip_buses.values()) + list(visits.values()):
+            stop_visits[(veh, sid)].append((ep, idx))
+    for v in list(trip_buses.values()) + list(visits.values()) + list(stop_visits.values()):
         v.sort()
     live = defaultdict(lambda: defaultdict(set))   # veh -> minute -> {(trip, stop)} Passio could be showing then
     for (veh, trip, sid), lst in preds.items():
@@ -321,8 +324,9 @@ def build(day, arrivals, preds, raw=None, timetable=None, st=None, step=STEP_S, 
             i += 1
         return True
 
-    def shown(veh, trip, sid, t, seq_want, loop):
-        """Passio's update on display at t for this bus's next visit -> (status, entry|None)."""
+    def shown(veh, trip, sid, t, seq_want, loop, ep=None):
+        """Passio's update on display at t for this bus's next visit -> (status, entry|None). ep: that visit's
+        arrival, to check the time against the bus's visit to the stop before it (any trip id, as the detector)."""
         key = (veh, trip, sid)
         if key not in preds:
             key = (None, trip, sid)
@@ -343,6 +347,13 @@ def build(day, arrivals, preds, raw=None, timetable=None, st=None, step=STEP_S, 
         pv = ev[i - 1] if i else None        # the bus's previous visit on this trip, before t
         if pv is not None and t - pv <= 2 * L.STATE_TTL and (best[2] <= pv or best[3] < pv + L.PREV_VISIT_GAP_S):
             return "previous_lap", best
+        if ep is not None:                   # Passio listed the bus's earlier visit (current lap, next trip id: DC-011)
+            sv = stop_visits.get((veh, sid), [])
+            k = bisect.bisect_left(sv, (ep, -1))
+            pa = sv[k - 1] if k else None
+            if (pa is not None and ep - pa[0] <= 2 * L.STATE_TTL and best[3] < pa[0] + L.PREV_VISIT_GAP_S
+                    and not (loop and best[4] is not None and best[4] == seq_want and pa[1] + 1 != seq_want)):
+                return "previous_lap", best
         return "shown", best
 
     other = None                             # OtherTrips, built on first use (DC-010)
@@ -407,7 +418,7 @@ def build(day, arrivals, preds, raw=None, timetable=None, st=None, step=STEP_S, 
                         crosses = True
                 status, e = ("none", None)
                 if rank == 1:
-                    status, e = shown(veh, trip, sid, t, idx + 1, loop)
+                    status, e = shown(veh, trip, sid, t, idx + 1, loop, ep)
                     if status == "shown":
                         own.add((veh, ep, sid))
                     elif not loop and (veh, ep, sid) in own:     # a lead the own trip id left empty (DC-010)
