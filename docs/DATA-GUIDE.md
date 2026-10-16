@@ -248,8 +248,8 @@ word (including their own names, such as "UGo").
 
 | Column | What it means | Example |
 |---|---|---|
-| `alert_id` | The feed's number for the announcement. **The feed reuses small numbers** for unrelated announcements, so always use it together with `version`. | `2` |
-| `version` | A short code for this exact wording, time window and route list. | `f7acfe751f53` |
+| `alert_id` | The feed's number(s) for the announcement, separated by `;`. **The number is only its place in the feed's list**: it changes when an announcement above it ends (so one announcement can show `1;2`), and numbers are reused for unrelated announcements. Use `version` to tell announcements apart. | `1;2` |
+| `version` | A short code for this exact wording, time window and route list: one row per version. | `f7acfe751f53` |
 | `first_seen`, `last_seen` (+ `_local`) | The first and last time our collector saw this version in the feed (seconds since 1970, and the same on a Chicago clock). Good to about 5 minutes: it was taken down within about 5 minutes after `last_seen`. | `2026-10-14 17:56:24` |
 | `active_start`, `active_end` (+ `_local`) | When the operator says it applies. Blank = no limit on that side (or no window given: always). | `2026-10-14 15:55:00` to `2026-10-15 00:00:00` |
 | `active_periods` | All the windows, if there are several, as `start/end` separated by `;`. | `1792011300/1792040400` |

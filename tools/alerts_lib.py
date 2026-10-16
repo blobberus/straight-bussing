@@ -1,8 +1,11 @@
 """Passio serviceAlerts as alert versions (stdlib only): schema, feed parsing, CSV read / write.
 
-One row = one version of one operator alert: Passio's entity id plus a hash of what the rider is told (header,
-description, cause, effect, active periods, informed entities). A changed text, window or route makes a new version;
-the same version seen again only moves its last_seen. Collected by tools/truth_logger.py (--alerts-out, about every
+One row = one version of one operator alert: a hash of what the rider is told (header, description, cause, effect,
+active periods, informed entities). A changed text, window or route makes a new version; the same version seen again
+only moves its last_seen. alert_id lists every Passio entity id the version was seen under (';'): Passio numbers its
+alerts by their place in the feed, so an alert's id changes when one above it ends (DC-012, 2026-10-16: "UGo Bus Route
+Assistance" was 2, then 1). The version is the key; its active periods are part of it, so a new posting of the same
+text with new dates is a new row. Collected by tools/truth_logger.py (--alerts-out, about every
 5 min), merged into data/ground_truth/alerts.csv on the data branch by tools/merge_alerts.py. Docs: docs/DATA.md
 "alerts.csv". The text is the operator's, verbatim; this project adds nothing to it.
 """
@@ -88,20 +91,32 @@ def _ids(ents, key, trip_key=None):
     return sorted(out)
 
 
+def _id_order(s):
+    """Sort key of an id list: its first id, numbers in number order (ties in a sorted file read like the feed)."""
+    i = str(s or "").split(";")[0]
+    return (0, int(i), "") if i.isdigit() else (1, 0, i)
+
+
+def join_ids(*parts):
+    """';'-joined entity id lists -> one sorted list without repeats ('2', '1;2' -> '1;2'); numbers in number order."""
+    ids = {i for p in parts for i in str(p or "").split(";") if i != ""}
+    return ";".join(sorted(ids, key=_id_order))
+
+
 def versions(feed, now, route_name=None):
     """serviceAlerts feed (dict) -> one row dict per alert version in it, first_seen = last_seen = now.
     Junk entities and deleted ones are skipped; a feed that is not a dict raises ValueError (the caller counts it)."""
     if not isinstance(feed, dict):
         raise ValueError(f"serviceAlerts is not a feed object ({type(feed).__name__})")
-    rows, seen = [], set()
+    rows, seen = [], {}
     for e in feed.get("entity") or ():
         if not isinstance(e, dict) or e.get("is_deleted") is True or not isinstance(e.get("alert"), dict):
             continue
         al = e["alert"]
         key = (_str(e.get("id")), version_of(al))
-        if key in seen:
+        if key[1] in seen:                       # the same alert under two ids in one feed: one row, both ids
+            seen[key[1]]["alert_id"] = join_ids(seen[key[1]]["alert_id"], key[0])
             continue
-        seen.add(key)
         per, ents = _periods(al), _entities(al)
         starts, ends = [p[0] for p in per], [p[1] for p in per]
         start = min(starts) if per and None not in starts else None      # blank = open (no bound) or no period
@@ -113,7 +128,7 @@ def versions(feed, now, route_name=None):
                 names.append(_str(route_name(r)) if route_name else "")
             except Exception:
                 names.append("")
-        rows.append({"alert_id": key[0], "version": key[1], "first_seen": now, "last_seen": now,
+        seen[key[1]] = {"alert_id": key[0], "version": key[1], "first_seen": now, "last_seen": now,
                      "first_seen_local": local(now), "last_seen_local": local(now),
                      "active_start": "" if start is None else start, "active_end": "" if end is None else end,
                      "active_start_local": local(start), "active_end_local": local(end),
@@ -121,29 +136,32 @@ def versions(feed, now, route_name=None):
                      "cause": _str(al.get("cause")), "effect": _str(al.get("effect")),
                      "agency_ids": ";".join(_ids(ents, "agency_id")), "route_ids": ";".join(routes),
                      "route_names": ";".join(names) if any(names) else "", "stop_ids": ";".join(_ids(ents, "stop_id")),
-                     "header": text_of(al.get("header_text")), "description": text_of(al.get("description_text"))})
+                     "header": text_of(al.get("header_text")), "description": text_of(al.get("description_text"))}
+        rows.append(seen[key[1]])
     return rows
 
 
 def key(r):
-    return r.get("alert_id", ""), r.get("version", "")
+    """A row's identity: its version (DC-012: never Passio's entity id, which moves)."""
+    return r.get("version", "")
 
 
 def absorb(into, r):
-    """Fold version row r into the dict {key: row}: new key -> added; known -> min first_seen, max last_seen and
-    blanks filled. -> 'added' | 'extended' | 'same'."""
+    """Fold version row r into the dict {key: row}: new key -> added; known -> min first_seen, max last_seen, the
+    entity ids joined and blanks filled. -> 'added' | 'extended' | 'same'."""
     k = key(r)
     old = into.get(k)
     if old is None:
-        into[k] = dict(r)
+        into[k] = dict(r, alert_id=join_ids(r.get("alert_id")))
         return "added"
-    before = (old["first_seen"], old["last_seen"])
+    before = (old["first_seen"], old["last_seen"], old.get("alert_id"))
     f, l = min(int(old["first_seen"]), int(r["first_seen"])), max(int(old["last_seen"]), int(r["last_seen"]))
-    old.update(first_seen=f, last_seen=l, first_seen_local=local(f), last_seen_local=local(l))
+    old.update(first_seen=f, last_seen=l, first_seen_local=local(f), last_seen_local=local(l),
+               alert_id=join_ids(old.get("alert_id"), r.get("alert_id")))
     for c in COLUMNS:
         if old.get(c) in (None, "") and r.get(c) not in (None, ""):
             old[c] = r[c]
-    return "same" if tuple(map(int, before)) == (f, l) else "extended"
+    return "same" if (int(before[0]), int(before[1]), before[2]) == (f, l, old["alert_id"]) else "extended"
 
 
 def valid(r):
@@ -167,9 +185,9 @@ def read_csv(path):
 def sort_rows(rows):
     def k(r):
         try:
-            return int(r["first_seen"]), str(r["alert_id"]), str(r["version"])
+            return int(r["first_seen"]), _id_order(r.get("alert_id")), str(r["version"])
         except (KeyError, TypeError, ValueError):
-            return 0, str(r.get("alert_id")), str(r.get("version"))
+            return 0, _id_order(r.get("alert_id")), str(r.get("version"))
     return sorted(rows, key=k)
 
 

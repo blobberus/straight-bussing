@@ -4,8 +4,10 @@
 
   python tools/merge_alerts.py --into data/ground_truth/alerts.csv --add run_alerts.csv [more.csv ...]
 
-One row per (alert_id, version). Overlapping runs see the same version: the merged row keeps the earliest
-first_seen and the latest last_seen (blank fields are filled from the other copy); nothing else changes. The file
+One row per version (DC-012: Passio's entity ids move, so alert_id lists every id the version was seen under).
+Overlapping runs see the same version: the merged row keeps the earliest first_seen, the latest last_seen and all
+ids (blank fields are filled from the other copy); nothing else changes. Rows of one version that an older merge
+split by id collapse into one the next time any run merges. The file
 is small (a few versions a day), so it is rewritten whole, atomically, sorted by first_seen. Idempotent: merging
 the same run twice gives the same bytes. A row of the shared file that cannot be read as a version (hand edit) is
 kept as it is; such a row in a run file is skipped and counted (bad=). No rotation (years to reach 1 MB).

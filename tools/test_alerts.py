@@ -22,8 +22,14 @@ def test(fn):
     return fn
 
 
+_TMPS = []
+
+
 def tmp():
-    return Path(tempfile.mkdtemp(prefix="sb-alerts-"))
+    """A fresh temp dir, removed when the tests end (they used to pile up in %TEMP%)."""
+    d = Path(tempfile.mkdtemp(prefix="sb-alerts-"))
+    _TMPS.append(d)
+    return d
 
 
 def tr(text, lang=None):
@@ -355,6 +361,30 @@ def merge_dedupes_extends_last_seen_and_is_idempotent():
 
 
 @test
+def an_alert_keeps_one_row_when_passio_renumbers_it():
+    # DC-012 (2026-10-16): Passio's entity id is the alert's place in the feed; "UGo Bus Route Assistance" was 2 while
+    # the North alert was listed first, then 1. One version = one row, every id it had.
+    d = tmp()
+    ugo = lambda aid: alert_entity(aid=aid, text="UGo Bus Route Assistance", end=T + 86400, route="")
+    run_file(d / "r1.csv", [(T, {"entity": [alert_entity(aid="1"), ugo("2")]}), (T + 300, {"entity": [ugo("1")]})])
+    rows = AL.read_csv(d / "r1.csv")[0]
+    u = [r for r in rows if r["header"] == "UGo Bus Route Assistance"]
+    assert len(u) == 1 and u[0]["alert_id"] == "1;2" and (int(u[0]["first_seen"]), int(u[0]["last_seen"])) == (T, T + 300), u
+    # the same alert under two ids in one feed (a duplicate entity): still one row
+    assert [r["alert_id"] for r in AL.versions({"entity": [ugo("4"), ugo("3")]}, T)] == ["3;4"]
+    # rows an older merge split by id collapse at the next merge (the shared file migrates itself)
+    into = d / "gt" / "alerts.csv"
+    old = [dict(r, alert_id=i, first_seen=f, last_seen=l) for r in u for i, f, l in (("2", T - 600, T), ("1", T + 300, T + 900))]
+    AL.write_csv(into, old)
+    assert len(AL.read_csv(into)[0]) == 2
+    s = M.merge(into, [d / "r1.csv"])
+    rows = [r for r in AL.read_csv(into)[0] if r["header"] == "UGo Bus Route Assistance"]
+    assert len(rows) == 1 and rows[0]["alert_id"] == "1;2" and s["total"] == 2, (s, rows)
+    assert (int(rows[0]["first_seen"]), int(rows[0]["last_seen"])) == (T - 600, T + 900), rows
+    assert AL.join_ids("10;2", "2", "", "x") == "2;10;x"
+
+
+@test
 def merge_skips_bad_run_rows_and_keeps_odd_shared_rows():
     d = tmp()
     run_file(d / "r1.csv", [(T, {"entity": [alert_entity()]})])
@@ -531,6 +561,8 @@ def main():
             print("FAIL", fn.__name__)
             traceback.print_exc()
     print(f"{'ok' if not fails else 'FAILED'} {len(TESTS) - fails}/{len(TESTS)} tests")
+    for d in _TMPS:   # git's object files are read-only on Windows: make them writable, then retry
+        shutil.rmtree(d, onerror=lambda f, p, e: (os.chmod(p, 0o700), f(p)) if os.path.exists(p) else None)
     sys.exit(1 if fails else 0)
 
 

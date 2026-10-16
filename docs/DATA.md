@@ -94,13 +94,16 @@ never delay or stop the 10 s arrival loop. Each run writes its versions to `run_
 merges them into this file in the same commit as the arrivals (a merge failure only warns: the arrivals are still
 pushed). Parsing and the version rule: `tools/alerts_lib.py`. Tests: `tools/test_alerts.py`.
 
-A **version** = Passio's entity id + a 12-hex hash of header, description, cause, effect, active periods and informed
-entities (order-independent; Passio's extra `startDatetime` / `endDatetime` strings are ignored). A changed text,
-window or route makes a new row; the same version seen again only moves `last_seen`. Merge: one row per
-(`alert_id`, `version`), earliest `first_seen`, latest `last_seen`; the file is rewritten whole, sorted by
-`first_seen` (a few versions a day; no rotation).
+A **version** = a 12-hex hash of header, description, cause, effect, active periods and informed entities
+(order-independent; Passio's extra `startDatetime` / `endDatetime` strings are ignored). A changed text, window or
+route makes a new row; the same version seen again only moves `last_seen`. Merge: one row per `version`, earliest
+`first_seen`, latest `last_seen`, every entity id joined; the file is rewritten whole, sorted by `first_seen`
+(a few versions a day; no rotation). Since 2026-10-16 (DC-012): Passio's entity id is the alert's place in the feed,
+so an alert's id changes when one listed above it ends ("UGo Bus Route Assistance" went from 2 to 1); rows used to
+be keyed by id + version and split there; the next merge collapses such rows.
 
-`alert_id` Passio's entity id (small numbers, **reused for unrelated alerts**: always key on alert_id + version) ·
+`alert_id` every Passio entity id the version was seen under, `;`-separated (`1;2`); positions in the feed, not
+stable ids: **key on `version`** ·
 `version` · `first_seen` `last_seen` unix s of the first / last of our polls that showed it, plus `first_seen_local`
 `last_seen_local` (Chicago clock) · `active_start` `active_end` the earliest start / latest end of its active
 periods (epoch; blank = open on that side, or no period = always active), `active_start_local` `active_end_local` ·

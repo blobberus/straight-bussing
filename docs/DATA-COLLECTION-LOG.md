@@ -18,7 +18,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 
 ## Errors
 
-### DC-012 Passio's alert ids are list positions, so one alert splits into rows (open)
+### DC-012 Passio's alert ids are list positions, so one alert splits into rows (fixed)
 - Found 2026-10-16. serviceAlerts entity ids are the alert's place in the feed, not a stable id: "UGo Bus Route
   Assistance" was id 2 while the North alert was listed first, and became id 1 when that one ended (Oct 15 00:00).
   `alerts.csv` keys a row by (alert_id, version), so the same alert text has two rows: id 2 (first seen Oct 14 18:49)
@@ -26,8 +26,13 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 - Impact: 3 rows now (2 real alerts). first_seen / last_seen are split across the rows of one alert. Recoverable:
   the version (content hash) is the same, so the rows merge by version with the earliest first_seen and latest
   last_seen.
-- Fix (not done): key rows by version alone in `tools/alerts_lib.py` (`key`, `versions`), keep the ids seen in a
-  column, and merge the existing rows once; tests in `tools/test_alerts.py`.
+- Fixed 2026-10-16: `tools/alerts_lib.py` keys a row by its version alone (`key`); `alert_id` lists every entity
+  id the version was seen under (`join_ids`, `1;2`), also for one alert under two ids in one feed; `merge_alerts.py`
+  collapses rows an older merge split, so alerts.csv migrates itself at the next merge (a run that started on the old
+  code may split it once more; the following merge collapses it again). The version includes the active periods,
+  so a new posting of the same text with new dates is still its own row. Test
+  `an_alert_keeps_one_row_when_passio_renumbers_it` (test_alerts 17); the tests no longer leave a temp dir behind
+  (148 had piled up in %TEMP%; git's read-only object files needed a chmod before rmtree).
 
 ### DC-011 Many 30-min predictions are another lap's time (open)
 - Found 2026-10-14 during DC-008. 35.6% of the 30-min rows and 7.2% of the 20-min rows are more than 15 min off;
