@@ -1,6 +1,6 @@
 // Tests for core/arrivals.js
 import { test, eq, ok } from "./lib.js";
-import { arrivalsFor, staleLevel, runningCount, activeAlerts, alertText } from "../js/core/arrivals.js";
+import { arrivalsFor, staleLevel, runningCount, activeAlerts, alertText, alertRouteIds } from "../js/core/arrivals.js";
 
 const T = 1_800_000_000;
 const trips = [
@@ -70,6 +70,21 @@ test("activeAlerts periods", () => {
   ];
   eq(activeAlerts({ alerts }, T).map((a) => a.id), ["always", "now", "openEnd", "multi"]);
   eq(activeAlerts({}, T), []);
+});
+
+test("alertRouteIds: GTFS ids, Passio's own ids through alias_ids, unknown ids left out (DC-009)", () => {
+  const routes = { 1075: { long: "North", alias_ids: ["38734"] }, 5703: { long: "Midway Metra", alias_ids: ["38731", "38809"] },
+    1076: { long: "South" }, A: { alias_ids: ["77"] }, B: { alias_ids: [77] } };
+  const al = (...ids) => ({ informed_entity: ids.map((r) => (r == null ? { agency_id: "1068" } : { route_id: r })) });
+  eq(alertRouteIds(al("38734"), routes), ["1075"], "the North alert of 2026-10-14");
+  eq(alertRouteIds(al("1076", "38809", "1076"), routes), ["1076", "5703"], "GTFS id as is, order kept, no repeats");
+  eq(alertRouteIds(al("99999", null), routes), [], "unknown id and agency only: tied to no route");
+  eq(alertRouteIds(al("77"), routes), [], "an alias two routes list names neither");
+  eq(alertRouteIds(al("constructor", "toString"), routes), [], "never a property of the object");
+  eq(alertRouteIds(al(38734), routes), ["1075"], "a number id too");
+  eq(alertRouteIds({}, routes), []);
+  eq(alertRouteIds(al("38734"), undefined), [], "no routes yet");
+  eq(alertRouteIds({ informed_entity: "junk" }, routes), []);
 });
 
 test("alertText", () => {

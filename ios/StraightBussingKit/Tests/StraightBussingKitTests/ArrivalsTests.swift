@@ -93,6 +93,30 @@ final class ArrivalsTests: XCTestCase {
         XCTAssertEqual(Arrivals.activeAlerts(alerts, now: T).map(\.id), ["always", "now", "openEnd", "multi"])
     }
 
+    func testAlertRouteIdsMapPassioIds() {
+        // DC-009 (web core-arrivals.js "alertRouteIds"): the North alert named 38734, North's GTFS shape (route 1075)
+        let routes = ["1075": Route(id: "1075", long: "North", aliasIds: ["38734"]),
+                      "5703": Route(id: "5703", long: "Midway Metra", aliasIds: ["38731", "38809"]),
+                      "1076": Route(id: "1076", long: "South"),
+                      "A": Route(id: "A", aliasIds: ["77"]), "B": Route(id: "B", aliasIds: ["77"])]
+        func al(_ ids: String...) -> ServiceAlert { ServiceAlert(id: "x", header: "", routeIds: ids) }
+        XCTAssertEqual(Arrivals.alertRouteIds(al("38734"), routes: routes), ["1075"])
+        XCTAssertEqual(Arrivals.alertRouteIds(al("1076", "38809", "1076"), routes: routes), ["1076", "5703"], "order kept, no repeats")
+        XCTAssertEqual(Arrivals.alertRouteIds(al("99999"), routes: routes), [], "an unknown id: tied to no route")
+        XCTAssertEqual(Arrivals.alertRouteIds(al("77"), routes: routes), [], "an alias two routes list names neither")
+        XCTAssertEqual(Arrivals.alertRouteIds(al(""), routes: routes), [])
+        XCTAssertEqual(Arrivals.alertRouteIds(al("38734"), routes: [:]), [], "no schedule yet")
+        // the bundled schedule data carries the ids (tools/build_gtfs.py route_aliases)
+        let real = TS.real.data.routes
+        XCTAssertEqual(real["1075"]?.aliasIds, ["38734"])
+        XCTAssertEqual(Arrivals.alertRouteIds(al("38734"), routes: real), ["1075"])
+        // a bad alias list never costs the route
+        let L = StaticLoader.parse(["routes.json": Data(#"{"1":{"long":"A","alias_ids":[38734,"",null,{"x":1},"9"]},"2":{"long":"B","alias_ids":"x"}}"#.utf8)])
+        XCTAssertEqual(L.data.routes["1"]?.aliasIds, ["38734", "9"])
+        XCTAssertEqual(L.data.routes["2"]?.long, "B")
+        XCTAssertEqual(L.data.routes["2"]?.aliasIds, [])
+    }
+
     func testTimeHelpers() {
         XCTAssertEqual(TimeFmt.minsUntil(T + 119, from: T), 1)
         XCTAssertEqual(TimeFmt.minsUntil(T - 1, from: T), -1)

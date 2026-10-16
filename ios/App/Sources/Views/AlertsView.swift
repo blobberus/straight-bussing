@@ -65,7 +65,7 @@ struct AlertRow: View {
     var content: some View {
         let severe = LiveText.isSevere(alert)
         let title = alert.header.isEmpty ? "Service alert" : alert.header
-        let rids = alert.routeIds.reduce(into: [String]()) { out, r in if model.route(r) != nil && !out.contains(r) { out.append(r) } }
+        let rids = Arrivals.alertRouteIds(alert, routes: model.staticData.routes)   // Passio's own ids too (DC-009)
         let when = LiveText.alertWindow(alert, now: model.now)
         return HStack(alignment: .top, spacing: 10) {
             Image(systemName: severe ? "exclamationmark.triangle.fill" : "info.circle")
@@ -132,8 +132,8 @@ struct AlertPhoneLinks: View {
 /// The operator's active alerts in full where no bus is reporting (feed down, empty feed while routes are
 /// scheduled, nothing running; web alerts.js operatorAlertsHTML): the operator posts what to do then (for example
 /// a number to call when buses do not show), next to our official contact. Up to 2, then "All N service alerts".
-/// The operator's words are shown as they are. `untiedOnly` (route detail): only alerts not tied to a route, since
-/// the route lists its own under Schedule changes.
+/// The operator's words are shown as they are. `untiedOnly` (route detail): only alerts tied to no known route
+/// (`Arrivals.alertRouteIds`), since the route lists its own under Schedule changes.
 struct OperatorAlerts: View {
     @Environment(AppModel.self) private var model
     var untiedOnly = false
@@ -141,13 +141,16 @@ struct OperatorAlerts: View {
     var hideCalls: Set<String> = []
     static let maxShown = 2
 
-    /// The alerts shown in full (the first `maxShown` active ones; `untiedOnly`: those not tied to a route).
-    static func shown(_ active: [ServiceAlert], untiedOnly: Bool) -> [ServiceAlert] {
-        Array(active.filter { !untiedOnly || $0.routeIds.isEmpty }.prefix(maxShown))
+    /// The alerts shown in full (the first `maxShown` active ones; `untiedOnly`: those tied to no known route).
+    static func shown(_ active: [ServiceAlert], untiedOnly: Bool, routes: [String: Route]) -> [ServiceAlert] {
+        Array(untied(active, untiedOnly, routes).prefix(maxShown))
+    }
+    static func untied(_ active: [ServiceAlert], _ untiedOnly: Bool, _ routes: [String: Route]) -> [ServiceAlert] {
+        active.filter { !untiedOnly || Arrivals.alertRouteIds($0, routes: routes).isEmpty }
     }
 
     var body: some View {
-        let act = model.activeAlerts.filter { !untiedOnly || $0.routeIds.isEmpty }
+        let act = Self.untied(model.activeAlerts, untiedOnly, model.staticData.routes)
         if !act.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 SectionTitle(text: "From the shuttle operator")
@@ -176,7 +179,8 @@ struct NoBusHelp: View {
     @Environment(AppModel.self) private var model
     var untiedOnly = false
     var body: some View {
-        let phone = LiveText.operatorPhone(OperatorAlerts.shown(model.activeAlerts, untiedOnly: untiedOnly))
+        let phone = LiveText.operatorPhone(OperatorAlerts.shown(model.activeAlerts, untiedOnly: untiedOnly,
+                                                                routes: model.staticData.routes))
         VStack(spacing: 4) {
             // the operator's number is the primary call below: no second button for it (or ours) in the alert card
             OperatorAlerts(untiedOnly: untiedOnly, hideCalls: Set([phone?.url, OfficialContact.telURL].compactMap { $0 }))

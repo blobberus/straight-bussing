@@ -379,6 +379,17 @@ accuracy; a negative accuracy means no heading, as in CoreLocation, whose values
 0.15 s, none with reduced motion); the cone hides with the dot (on the bus, no location). Nothing is stored or sent
 (privacy.html "The way you face"). iOS: ios/README.md "Heading cone".
 
+### Alerts that name a route by Passio's own id (2026-10-16, DC-009, rider safety)
+Passio's service alerts can name a route by its internal id, which is the GTFS `shape_id` of that route's trips (the
+North alert of 2026-10-14 named 38734; North is route 1075). `tools/build_gtfs.py` `route_aliases` adds each route's
+shape ids to `routes.json` as `alias_ids` (left out: a shape two routes share, or one equal to a route id), and
+`data/static.js` keeps them as a clean string list. `core/arrivals.js` `alertRouteIds(alert, routes)` is the one mapping
+from an alert to routes: an informed route id that is a route, else the one route listing it as an alias (two: neither),
+unknown ids dropped. Users: `views/route.js` renderService (Schedule changes), `views/alerts.js` operatorAlerts with a
+route (only alerts tied to no known route, so an unmatched one is never lost on route pages) and the Alerts list chips.
+iOS: Kit `Route.aliasIds` (StaticLoader decodes `alias_ids` leniently: a bad list never costs the route),
+`Arrivals.alertRouteIds`; App RouteDetailView.routeAlerts, AlertsView chips, OperatorAlerts / NoBusHelp `untiedOnly`.
+
 ### Destinations farther than 800 m from a stop: a note, then the trips (2026-10-15, owner)
 First "If a search query for destination doesn't have a proper stop or address within range, say: Sorry, ...", then
 the same day "Change the 800m+ distance restriction to telling the user about the constraint, but still giving a method

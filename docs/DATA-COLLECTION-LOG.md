@@ -83,13 +83,26 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   replay Oct 15's archived prediction updates (pred-updates-2026-10-15, archived after about 15:20Z Oct 16) to split
   real gaps from misses before calling it done.
 
-### DC-009 An operator alert names Passio's own route id, so the app's route view skips it (open, app side)
+### DC-009 An operator alert names Passio's own route id, so the app's route view skips it (fixed, app side)
 - Found 2026-10-14 while adding DC-007. The live North alert ("The North route will run every 30 minutes...")
   names `route_id` 38734, Passio's internal id; the GTFS id the app uses for North is 1075. The web route view's
   "Hours & service" (`web/js/ui/views/route.js` `renderService`, matching `informed_entity.route_id` to the GTFS
   id) never shows it on North; check the same match on iOS. The alert still shows where all active alerts are listed.
 - Impact on the data: `alerts.csv` keeps the id verbatim and leaves `route_names` blank for non-GTFS ids, so a
   learner must map 38734 -> North itself. Rider safety (ship checklist 1): fix the app's match, not the data.
+- Cause (2026-10-16): 38734 is no stray id: it is the GTFS `shape_id` of every North trip in `trips.txt`. Passio's
+  internal route id is the route pattern's shape id, and in the official zip each of the 15 shapes belongs to exactly
+  one route (Midway Metra has two) and none equals a route id. On the web the alert also lost its route chip in the
+  Alerts list and, on a route page with no bus reporting, was dropped from "From the shuttle operator" too (it
+  counted as tied to a route), so it showed on no route page at all.
+- Fixed: `tools/build_gtfs.py` `route_aliases` writes each route's shape ids into `routes.json` as `alias_ids` (a shape
+  two routes share, or equal to a route id, is left out); web `core/arrivals.js` `alertRouteIds` and Kit
+  `Arrivals.alertRouteIds` map an informed route id that is not a route through them (an alias two routes list maps
+  to neither). Used by the route page's Schedule changes, the route page's operator list (now: alerts tied to no
+  known route, so an id nothing matches still shows there) and the Alerts list chips, web and iOS. Tests: build_gtfs,
+  core-arrivals, route-view, views-outage, views-render, data-static, Kit ArrivalsTests.
+- For the collector (`alerts.csv` route_names): the same rule. A route_id that is a routes.json key names that
+  route; else the one route whose `alias_ids` contains it; else (none, or two) leave route_names blank.
 
 ### DC-007 Operator service alerts were not recorded (fixed)
 - Found 2026-10-14.

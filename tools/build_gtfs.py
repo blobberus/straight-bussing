@@ -293,6 +293,24 @@ def route_variants(trips, stimes, route_stops, min_trips=3):
     return out
 
 
+def route_aliases(trips, routes):
+    """route_id -> sorted shape ids of its trips: the ids Passio also uses for a route. Its service alerts can name a
+    route by its internal id, which is the GTFS shape id of that route's trips (the North alert of 2026-10-14 named
+    38734, North's shape; route 1075; DC-009). A shape used by trips of two routes, or equal to a route id, could name
+    either, so it is left out. routes.json carries the list as "alias_ids"; the app maps an alert's unknown route id
+    through it (web core/arrivals.js alertRouteIds, iOS Kit Arrivals.alertRouteIds)."""
+    by = defaultdict(set)
+    for t in trips:
+        s, r = str(t.get("shape_id") or "").strip(), t.get("route_id")
+        if s and r in routes:
+            by[s].add(r)
+    out = defaultdict(list)
+    for s, rs in by.items():
+        if len(rs) == 1 and s not in routes:
+            out[next(iter(rs))].append(s)
+    return {r: sorted(v) for r, v in out.items()}
+
+
 def dump(name, obj):
     (OUT / name).write_text(json.dumps(obj, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
 
@@ -318,6 +336,8 @@ def main():
              for s in rows(z, "stops.txt") if s.get("stop_lat") and s.get("stop_lon")}
 
     trips = rows(z, "trips.txt")
+    for rid, ids in route_aliases(trips, routes).items():   # Passio's own ids for a route (service alerts)
+        routes[rid]["alias_ids"] = ids
     # shape usage counts per (route, direction)
     usage = defaultdict(Counter)
     for t in trips:

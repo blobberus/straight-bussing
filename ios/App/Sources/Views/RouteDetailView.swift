@@ -105,7 +105,10 @@ struct RouteDetailView: View {
         }
     }
 
-    var routeAlerts: [ServiceAlert] { model.activeAlerts.filter { $0.routeIds.contains(rid) } }
+    /// This route's alerts, also those naming it by Passio's own id (`Arrivals.alertRouteIds`, DC-009).
+    var routeAlerts: [ServiceAlert] {
+        model.activeAlerts.filter { Arrivals.alertRouteIds($0, routes: model.staticData.routes).contains(rid) }
+    }
 
     func stopTimeline(ids: [String], loop: Bool, spots: [RouteText.BusSpot], color: Color, route: Route) -> some View {
         VStack(alignment: .leading, spacing: 0) {

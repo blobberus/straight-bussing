@@ -16,6 +16,23 @@ public enum StaticLoader {
 
     struct RawRoute: Decodable {
         var short: String?, long: String?, color: String?, text_color: String?
+        var alias_ids: Ids?
+    }
+    /// A list of ids, strings or numbers; anything else is skipped, and a list that is not one is empty, so a bad
+    /// alias list never costs the route (web data/static.js cleanSlice).
+    struct Ids: Decodable {
+        var value: [String] = []
+        init(from decoder: Decoder) throws {
+            guard var u = try? decoder.unkeyedContainer() else { return }
+            while !u.isAtEnd {
+                let at = u.currentIndex
+                if (try? u.decodeNil()) == true { continue }
+                if let s = try? u.decode(String.self) { if !s.isEmpty { value.append(s) } }
+                else if let n = try? u.decode(Int.self) { value.append(String(n)) }
+                else { _ = try? u.decode(Skip.self) }
+                if u.currentIndex == at { break }   // an element nothing could read: stop, never loop
+            }
+        }
     }
     struct RawStop: Decodable {
         var name: String?
@@ -49,7 +66,8 @@ public enum StaticLoader {
         var routes: [String: Route] = [:]
         for (id, r) in get("routes.json", [String: Lossy<RawRoute>].self) ?? [:] {
             guard let r = r.value else { continue }
-            routes[id] = Route(id: id, short: r.short ?? "", long: r.long ?? "", color: r.color ?? "", textColor: r.text_color ?? "")
+            routes[id] = Route(id: id, short: r.short ?? "", long: r.long ?? "", color: r.color ?? "", textColor: r.text_color ?? "",
+                               aliasIds: r.alias_ids?.value ?? [])
         }
         var stops: [String: Stop] = [:]
         for (id, s) in get("stops.json", [String: Lossy<RawStop>].self) ?? [:] {

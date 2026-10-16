@@ -72,6 +72,14 @@ test("route: route alerts listed under schedule changes, escaped", () => {
   eq(renderService(fixture({}), "R1", NOW), "", "no schedule + no alerts = no section");
 });
 
+test("route: an alert naming Passio's own route id shows on its route (DC-009: the North alert named 38734)", () => {
+  const base = fixture().routes, routes = { ...base, R1: { ...base.R1, alias_ids: ["38734"] } };
+  const north = { header_text: "The North route will run every 30 minutes", active_period: [], informed_entity: [{ route_id: "38734" }] };
+  ok(renderService(svcState({ routes, alerts: [north] }), "R1", NOW).includes("Service alert</span> The North route will run every 30 minutes"), "on its route");
+  ok(!renderService(svcState({ routes, alerts: [north] }), "R2", NOW).includes("North route"), "never on another route");
+  ok(!renderService(svcState({ alerts: [north] }), "R1", NOW).includes("North route"), "no alias data: not placed on a route");
+});
+
 test("route: hidden note honors journeys; hostile names escaped", () => {
   ok(renderRoute(fixture({ routeId: "R1", hiddenRoutes: ["R1"] }), NOW).includes("hidden from the map"));
   const j = renderRoute(fixture({ routeId: "R1", journey: { rids: ["R2"], label: "x", kind: "plan" } }), NOW);

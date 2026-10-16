@@ -225,6 +225,15 @@ test("alerts: list, empty state and About link", () => {
   ok(renderAlerts(fixture(), NOW).includes("No active alerts"));
 });
 
+test("alerts: an alert by Passio's own route id gets its route chip (DC-009)", () => {
+  const base = fixture().routes, routes = { ...base, R1: { ...base.R1, alias_ids: ["38734"] } };
+  const north = { header_text: "North every 30 minutes", active_period: [], informed_entity: [{ route_id: "38734" }] };
+  const h = renderAlerts(fixture({ routes, alerts: [north] }), NOW);
+  ok(h.includes("North every 30 minutes") && /v-alertmeta"><span class="chip/.test(h), "its route chip on it");
+  const plain = renderAlerts(fixture({ alerts: [north] }), NOW);
+  ok(plain.includes("North every 30 minutes") && !plain.includes("v-alertmeta"), "no alias data: listed, no chip");
+});
+
 test("about: unofficial, official contact, privacy hosts, version, theme control", async () => {
   const h = renderAbout();
   for (const s of ["unofficial", "773.702.8181", "safety-security.uchicago.edu/Transportation", "photon.komoot.io", "routing.openstreetmap.de", "valhalla1.openstreetmap.de", "Version", "OpenStreetMap"]) ok(h.includes(s), s);

@@ -150,6 +150,17 @@ test("no bus reports: the operator's alert (title, text, call link) sits with th
   D.from = D.to = D.result = null;
 });
 
+test("route detail, no bus reports: an alert by Passio's own id is listed once on its route, an unknown id still shows (DC-009)", () => {
+  const base = fixture().routes, routes = { ...base, R1: { ...base.R1, alias_ids: ["38734"] } };
+  const NORTH = { header_text: "North every 30 minutes", active_period: [], informed_entity: [{ route_id: "38734" }] };
+  const ODD = { header_text: "Unmapped notice", active_period: [], informed_entity: [{ route_id: "99999" }] };
+  const rd = renderRoute(fixture({ ...QUIET, routes, alerts: [NORTH, ODD], routeId: "R1" }), NOW);
+  eq((rd.match(/North every 30 minutes/g) || []).length, 1, "its own alert once (Schedule changes)");
+  ok(rd.includes("From the shuttle operator") && rd.includes("Unmapped notice"), "an alert no route matches is not lost on route pages");
+  const other = renderRoute(fixture({ ...QUIET, routes, alerts: [NORTH], routeId: "R2" }), NOW);
+  ok(!other.includes("North every 30 minutes"), "another route's page leaves it out");
+});
+
 // Owner decision 2026-10-11: when no bus reports and the operator's live alert gives a phone number, that number is
 // the main call ("Call bus route help: <number as written>") and 773.702.8181 the second ("Safety or urgent:
 // 773.702.8181"). No number in the feed: 773.702.8181 stays the call. Never a hardcoded operator number; the

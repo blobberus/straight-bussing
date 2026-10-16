@@ -46,7 +46,7 @@ data-geocode.js) so the Swift port provably behaves the same.
 |---|---|---|
 | core/geo.js, core/walk.js (`walkEstimate`) | Geo.swift | haversine, 80 m/min x 1.2, nearestStops, bearing; `JS.round`, `Object.keys` order |
 | core/time.js | Arrivals.swift (`TimeFmt`) | clock, minsUntil, ago, etaLabel |
-| core/arrivals.js | Arrivals.swift | arrivalsFor, staleLevel (err > 60 s / old > 300 s / late > 120 s), runningCount, activeAlerts |
+| core/arrivals.js | Arrivals.swift | arrivalsFor, staleLevel (err > 60 s / old > 300 s / late > 120 s), runningCount, activeAlerts, alertRouteIds (2026-10-16, DC-009: an alert's route id may be Passio's own, a route's `alias_ids` = `Route.aliasIds`) |
 | core/operating.js | Operating.swift | ghost (> 5 min older than the feed), unknown route, out of service without predictions |
 | core/visibility.js | RouteState.swift (`RouteVisibility`) | effectiveHidden, mapFocus, drawOrder, mapVisibility |
 | core/custom.js, state.js cleanCustom | Custom.swift, RouteState.swift | every function returns a `StatePatch` (the web's store patch) |

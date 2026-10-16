@@ -8,7 +8,7 @@ import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { nowS, clock, shortDate, sameDay } from "../../core/time.js";
-import { activeAlerts } from "../../core/arrivals.js";
+import { activeAlerts, alertRouteIds } from "../../core/arrivals.js";
 import { routeChip, emptyState, skeleton, officialLinks, OFFICIAL_PHONE, OFFICIAL_TEL, OFFICIAL_URL } from "../components.js";
 
 const WARN = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>';
@@ -50,10 +50,10 @@ export function alertBodyHTML(text) {
   return esc(text).replace(PHONE_RE, (m, pre, num) => `${pre}<a href="tel:+1${num.replace(/\D/g, "")}">${num}</a>`);
 }
 
-/** Active alerts for the no-bus screens (route detail: only the ones not tied to a route; it lists its own). */
+/** Active alerts for the no-bus screens (route detail: only the ones tied to no known route; it lists its own). */
 function operatorAlerts(state, now, rid) {
   const act = activeAlerts(state, now);
-  return rid ? act.filter((a) => !(a.informed_entity || []).some((e) => e && e.route_id)) : act;
+  return rid ? act.filter((a) => !alertRouteIds(a, state.routes).length) : act;
 }
 
 /**
@@ -113,7 +113,7 @@ export function noBusHelpHTML(state, now = nowS(), o = {}) {
 /** One alert as a list item (Alerts view and operatorAlertsHTML). */
 function alertItem(a, state, now) {
   const title = alertText(a.header_text) || "Service alert", body = alertText(a.description_text);
-  const rids = [...new Set((a.informed_entity || []).map((e) => e?.route_id).filter((r) => r && state.routes?.[r]))];
+  const rids = alertRouteIds(a, state.routes);
   const severe = /SEVERE|WARNING/i.test(String(a.severity_level || "")) || /detour|cancel|suspend|closed/i.test(title);
   const when = windowText(a, now);
   return `<li class="v-alert${severe ? " is-severe" : ""}"><span class="v-alertic">${severe ? WARN : INFO}</span><div class="v-grow"><p class="v-prim">${severe ? '<span class="v-sr">Important: </span>' : ""}${esc(title)}</p>${body ? `<p class="v-sec v-alertbody">${alertBodyHTML(body)}</p>` : ""}${rids.length || when ? `<p class="v-alertmeta">${rids.map((r) => routeChip(r, state.routes)).join("")}${when ? `<span class="v-sec">${esc(when)}</span>` : ""}</p>` : ""}</div></li>`;

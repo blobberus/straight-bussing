@@ -959,6 +959,19 @@ def build_gtfs_lists_the_patterns_with_stops_route_stops_lacks():
     assert got == {"M": [["P", "Q", "R", "V", "P"]]}, got       # one-trip pattern x and route N: nothing
 
 
+@test
+def build_gtfs_gives_each_route_the_shape_ids_passio_alerts_use():
+    # DC-009: the North alert named route_id 38734 = the shape of North's trips (route 1075)
+    import build_gtfs as BG
+    routes = {"1075": {}, "5703": {}, "9": {}}
+    trips = [{"route_id": "1075", "shape_id": "38734"}, {"route_id": "1075", "shape_id": "38734"},
+             {"route_id": "5703", "shape_id": "38731"}, {"route_id": "5703", "shape_id": "38809"},
+             {"route_id": "5703", "shape_id": "77"}, {"route_id": "9", "shape_id": "77"},   # shared: could name either
+             {"route_id": "9", "shape_id": "1075"},                                          # equal to a route id
+             {"route_id": "404", "shape_id": "5"}, {"route_id": "9", "shape_id": ""}]        # unknown route, no shape
+    assert BG.route_aliases(trips, routes) == {"1075": ["38734"], "5703": ["38731", "38809"]}, BG.route_aliases(trips, routes)
+
+
 def main():
     fails = 0
     for fn in TESTS:

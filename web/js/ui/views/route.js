@@ -11,7 +11,7 @@ import { registerAction } from "../actions.js";
 import { esc, safeColor, textOn } from "../../core/esc.js";
 import { nowS, minsUntil, ago } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
-import { arrivalsFor, staleLevel, runningCount, activeAlerts, alertText, liveUnknown } from "../../core/arrivals.js";
+import { arrivalsFor, staleLevel, runningCount, activeAlerts, alertText, alertRouteIds, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { serviceHoursAt, isScheduledNow, weekSummary, upcomingChanges, busesByHour, groupHours, hourLabel, dayKey, routeService } from "../../core/schedule.js";
 import { emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
@@ -93,7 +93,7 @@ function busMarker(b, color, fg, top) {
  * @returns {string}
  */
 export function renderService(state, rid, now) {
-  const svc = state.service, alerts = activeAlerts(state, now).filter((a) => (a.informed_entity || []).some((e) => e && String(e.route_id) === rid));
+  const svc = state.service, alerts = activeAlerts(state, now).filter((a) => alertRouteIds(a, state.routes).includes(rid));   // Passio's own ids too (DC-009)
   if (!routeService(svc, rid) && !alerts.length) return "";
   let h = '<section class="r-svc" aria-labelledby="r-svc-h"><h2 class="r-h" id="r-svc-h">Hours &amp; service</h2>';
   const week = weekSummary(svc, rid);

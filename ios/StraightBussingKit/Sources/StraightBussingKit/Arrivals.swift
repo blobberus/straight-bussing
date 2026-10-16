@@ -97,6 +97,26 @@ public enum Arrivals {
         buses.reduce(0) { $0 + ($1.trip.routeId == rid ? 1 : 0) }
     }
 
+    /// Route ids an alert is about (web core/arrivals.js alertRouteIds): each informed route id that is a route, or
+    /// that exactly one route lists in `aliasIds`. Passio names a route in its alerts by its own internal id, the GTFS
+    /// shape id of the route's trips (the North alert of 2026-10-14 named 38734; North is 1075; DC-009). An id no route
+    /// knows is left out, so such an alert counts as tied to no route and shows wherever untied alerts do. Order kept,
+    /// no repeats.
+    public static func alertRouteIds(_ alert: ServiceAlert, routes: [String: Route]) -> [String] {
+        var alias: [String: String] = [:], twice = Set<String>()
+        for (rid, r) in routes {
+            for s in r.aliasIds {
+                if let have = alias[s], have != rid { twice.insert(s) } else { alias[s] = rid }
+            }
+        }
+        var out: [String] = []
+        for id in alert.routeIds where !id.isEmpty {
+            let rid = routes[id] != nil ? id : (twice.contains(id) ? nil : alias[id])
+            if let rid, !out.contains(rid) { out.append(rid) }
+        }
+        return out
+    }
+
     /// Alerts active at `now`: no active period, or any period containing now (open ends allowed).
     public static func activeAlerts(_ alerts: [ServiceAlert], now: Double) -> [ServiceAlert] {
         alerts.filter { a in
