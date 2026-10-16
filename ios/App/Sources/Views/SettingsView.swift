@@ -5,11 +5,13 @@ import StraightBussingKit
 /// Settings (top-right gear, ui/views/settings.js): appearance, service alerts, bus alerts ("notify me when my bus
 /// is near <station>": station, routes, 2 stops / 1 stop / N min, in-app banner + system notifications), the
 /// iPhone-only Live Activity switch + preview, simulated buses (demo, for App Review and screenshots at night),
-/// privacy with the privacy policy link, About.
+/// privacy with the privacy policy link, About, feedback and last the Credits (expands in place).
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    /// Settings > Credits: collapsed every time Settings opens, never stored (web settings.js creditsHTML).
+    @State private var creditsOpen = false
     static let minuteChoices = [0, 2, 5, 10]
 
     var body: some View {
@@ -68,6 +70,7 @@ struct SettingsView: View {
                     } footer: {
                         Text("This is a beta. Tell us what works and what does not.").foregroundStyle(Palette.text2)
                     }
+                    creditsSection
                 }
                 .tint(Palette.accent)
                 .task {
@@ -83,6 +86,80 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("settingsDone") }
             }
+        }
+    }
+
+    // MARK: Credits
+
+    /// One credit line; with a URL the line is a link that opens in Safari.
+    struct CreditItem {
+        let text: String
+        var url: URL? = nil
+    }
+
+    struct CreditGroup {
+        let group: String
+        let items: [CreditItem]
+    }
+
+    /// Settings > Credits (owner 2026-10-16: "At the very bottom of the settings menu, create a button that will expand
+    /// a list of Credits ... App made by blobberus; any APIs used or data sources used for the maps and the search
+    /// function; bus data collection source. Do not credit UChicago or the administration here."). Only what this app
+    /// uses: Apple Maps draws the map and walks (the web's OpenFreeMap / Leaflet / OSRM lines are web only); the names
+    /// on the map and the on-device place list come from OpenStreetMap; Photon; Passio's public feeds. Same facts as
+    /// AboutView's credits; web settings.js CREDITS.
+    static let credits: [CreditGroup] = [
+        CreditGroup(group: "App", items: [
+            CreditItem(text: "App made by blobberus", url: URL(string: "https://github.com/blobberus")),
+        ]),
+        CreditGroup(group: "Maps", items: [
+            CreditItem(text: "Map and walking routes: Apple Maps (MapKit)."),
+            CreditItem(text: "Building and place names on the map: OpenStreetMap contributors, ODbL.",
+                       url: URL(string: "https://www.openstreetmap.org/copyright")),
+        ]),
+        CreditGroup(group: "Search", items: [
+            CreditItem(text: "Places searched on this iPhone: a list built from OpenStreetMap data with the Overpass API.",
+                       url: URL(string: "https://overpass-api.de")),
+            CreditItem(text: "More places: Photon by komoot, on OpenStreetMap data.", url: URL(string: "https://photon.komoot.io")),
+        ]),
+        CreditGroup(group: "Bus data", items: [
+            CreditItem(text: "Live bus positions, arrival predictions and service alerts: Passio's public GTFS-Realtime feeds."),
+            CreditItem(text: "Routes, stops and timetables: Passio's public GTFS schedule."),
+            CreditItem(text: "Data collection: the same public feeds, read every 10 seconds. The collected data is public at github.com/blobberus/straight-bussing-data.",
+                       url: URL(string: "https://github.com/blobberus/straight-bussing-data")),
+        ]),
+    ]
+
+    /// The last section: a "Credits" row that expands the list below it.
+    var creditsSection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $creditsOpen) {
+                ForEach(Self.credits, id: \.group) { g in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(g.group).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text)
+                            .accessibilityAddTraits(.isHeader)
+                        ForEach(g.items, id: \.text) { item in
+                            if let url = item.url {
+                                Link(destination: url) {
+                                    Text(item.text).font(.subheadline).multilineTextAlignment(.leading)
+                                }
+                                .accessibilityHint("Opens in Safari")
+                            } else {
+                                Text(item.text).font(.subheadline).foregroundStyle(Palette.text2)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 2)
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Credits")
+                    Text("Maps, search and bus data sources").font(.caption).foregroundStyle(Palette.text2)
+                }
+                .frame(minHeight: 44, alignment: .leading)
+            }
+            .accessibilityIdentifier("creditsToggle")
         }
     }
 

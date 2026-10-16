@@ -8,7 +8,8 @@
  * system notification in the background when allowed, ui/notifier.js deliveryFor; wording as iOS SettingsView),
  * trip alerts (2026-10-13: during a started trip, before the bus comes and before you get off, with the count
  * the Current trip card and the map show; the 2 stops / 1 stop / minutes choices apply to both),
- * the iPhone-only Live Activity preference, and About. Owns its DOM after mount (regions patched in
+ * the iPhone-only Live Activity preference, About, and last a Credits button that expands the credits list
+ * (owner 2026-10-16; collapsed on every open, nothing stored). Owns its DOM after mount (regions patched in
  * place, focus kept) so the station search field and checkboxes never lose a tap or keystroke.
  * The router view id "settings" is kept only as a compatibility shim: navigating to it goes back and
  * opens the overlay instead (main.js VIEW_IDS still imports this file under that id).
@@ -26,7 +27,7 @@ import { tripNow } from "../../core/tripprogress.js";
 import { legStatus } from "../../core/tripyou.js";
 import { cleanNotify } from "../../state.js";
 import { DEMO } from "../../core/demo.js";
-import { routeChip, officialLinks } from "../components.js";
+import { routeChip, officialLinks, icon } from "../components.js";
 import { alertBodyHTML } from "./alerts.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen } from "../settings-overlay.js";
@@ -297,7 +298,53 @@ ${feedbackHTML()}
 <p class="v-sec st-note">${esc(ALERTS_NOTE)}</p>
 <h3 class="v-h">iPhone app</h3><div class="v-card st-ios">${sw("liveActivity", "Trip status on lock screen", "Live Activity with a minute counter and next stop. Coming to the iPhone app; your choice is saved for later.", n.liveActivity)}</div>
 <div class="v-card"><button type="button" class="v-row" data-action="about:open"><span class="v-grow"><span class="v-prim">About this app</span><span class="v-sec">Unofficial. Privacy, official contact</span></span></button></div>
+${creditsHTML(false)}
 </div>`;
+}
+
+/**
+ * Settings > Credits (owner 2026-10-16: "At the very bottom of the settings menu, create a button that will expand a
+ * list of Credits ... App made by blobberus; any APIs used or data sources used for the maps and the search function;
+ * bus data collection source. Do not credit UChicago or the administration here."). Only what the web app really
+ * uses (index.html, map/style.js, data/geocode.js, core/walk.js, tools/build_places.py, tools/build_gtfs.py); the
+ * same facts as About's credits. iOS: SettingsView creditsSection. Each part: [text] or [text, url].
+ */
+export const CREDITS = Object.freeze([
+  { group: "App", items: [[["App made by "], ["blobberus", "https://github.com/blobberus"], ["."]]] },
+  { group: "Maps", items: [
+    [["Map tiles and style: "], ["OpenFreeMap", "https://openfreemap.org"], [", in the "], ["OpenMapTiles", "https://openmaptiles.org/"], [" schema."]],
+    [["Map data, streets, buildings and place names: "], ["OpenStreetMap", "https://www.openstreetmap.org/copyright"], [" contributors, ODbL."]],
+    [["Backup map tiles, when the main map cannot load: "], ["OpenStreetMap", "https://www.openstreetmap.org/copyright"], [" tile servers."]],
+    [["Map code: "], ["Leaflet", "https://leafletjs.com"], [" (BSD-2-Clause), "], ["MapLibre GL JS", "https://maplibre.org"], [" (BSD-3-Clause) and "],
+      ["MapLibre GL Leaflet", "https://github.com/maplibre/maplibre-gl-leaflet"], [" (ISC)."]],
+    [["Walking routes: "], ["OSRM", "https://project-osrm.org"], [" and "], ["Valhalla", "https://github.com/valhalla/valhalla"],
+      [" servers run by "], ["FOSSGIS", "https://www.fossgis.de"], [", on OpenStreetMap data."]],
+  ] },
+  { group: "Search", items: [
+    [["Places searched on your device: a list built from OpenStreetMap data with the "], ["Overpass API", "https://overpass-api.de"], ["."]],
+    [["More places: "], ["Photon", "https://photon.komoot.io"], [" by komoot, on OpenStreetMap data."]],
+  ] },
+  { group: "Bus data", items: [
+    [["Live bus positions, arrival predictions and service alerts: Passio's public GTFS-Realtime feeds."]],
+    [["Routes, stops and timetables: Passio's public GTFS schedule."]],
+    [["Data collection: the same public feeds, read every 10 seconds. The collected data is public at "],
+      ["github.com/blobberus/straight-bussing-data", "https://github.com/blobberus/straight-bussing-data"], ["."]],
+  ] },
+]);
+
+/** One credit line: text through esc(), links in a new tab. */
+const creditLine = (parts) => parts.map(([t, url]) => (url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(t)}</a>` : esc(t))).join("");
+
+/**
+ * The last part of Settings: the Credits button and its list (collapsed unless open).
+ * @param {boolean} [open]
+ * @returns {string}
+ */
+export function creditsHTML(open = false) {
+  const list = CREDITS.map((g) => `<p class="v-sec st-credh">${esc(g.group)}</p><ul class="v-plain v-sec st-credlist">${g.items.map((it) => `<li>${creditLine(it)}</li>`).join("")}</ul>`).join("");
+  return `<div class="v-card st-credits"><button type="button" class="v-row st-credbtn" data-st="credits" aria-expanded="${open}" aria-controls="st-credits">`
+    + `<span class="v-grow"><span class="v-prim">Credits</span><span class="v-sec">Maps, search and bus data sources</span></span><span class="v-chev st-credchev" aria-hidden="true">${icon("chevron", 18)}</span></button>`
+    + `<div id="st-credits" class="st-credbody"${open ? "" : " hidden"}>${list}</div></div>`;
 }
 
 /* ---------------- mounted behavior ---------------- */
@@ -352,6 +399,11 @@ function onClick(e, root, ctx) {
     ctx.stopLocation?.();
     patch(root, "loc", locHTML(ctx.store.get()));
     ctx.toast?.("Location sharing turned off");
+  } else if (what === "credits") {   // expand / collapse in place: focus stays on the button, nothing stored
+    const open = b.getAttribute("aria-expanded") !== "true", body = root.querySelector("#st-credits");
+    b.setAttribute("aria-expanded", String(open));
+    if (body) body.hidden = !open;
+    if (open) body?.scrollIntoView?.({ block: "nearest" });
   } else if (what === "perm") {
     requestPermission().then((p) => { patch(root, "perm", permHTML(p)); if (p === "granted") ctx.toast?.("Notifications allowed"); });
   }
