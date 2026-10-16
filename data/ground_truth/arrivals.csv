@@ -22414,3 +22414,4 @@ epoch,ts_utc,local_time,dow,hour,minute_of_day,route_id,route_name,trip_id,vehic
 1792129722,2026-10-16T05:48:42Z,2026-10-16 00:48:42,4,0,48,6126,Apostolic/Drexel,676405,4331,8630,Levi Hall (W),970 East 58th Street,41.78966,-87.6013,6,,,,,,0,1792129299,198,pass
 1792133705,2026-10-16T06:55:05Z,2026-10-16 01:55:05,4,1,115,6126,Apostolic/Drexel,676405,4331,8609,57th Street & Drexel (NB),South Drexel Avenue,41.79131,-87.60367,5,8615,312.6,1792133586,119,3.19,4,,,pass
 1792133586,2026-10-16T06:53:06Z,2026-10-16 01:53:06,4,1,113,6126,Apostolic/Drexel,676405,4331,8615,Bernard Mitchell Hospital,South Maryland Avenue,41.78943,-87.60487,2,,,,,,21,,,proximity
+1792138935,2026-10-16T08:22:15Z,2026-10-16 03:22:15,4,3,202,6126,Apostolic/Drexel,676405,4331,8630,Levi Hall (W),970 East 58th Street,41.78966,-87.6013,6,,,,,,0,,,pass
