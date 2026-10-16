@@ -14,7 +14,11 @@ the bus came early); rel = error / lead with lead = actual - t, so the 10% rule 
 Passio's prediction at t follows the collector's attribution rules (tools/arrival_detector.py): this bus's own update
 (an update without a vehicle id only if no other bus has the trip id), the loop-stop stop_sequence, first seen by t
 and still shown within SHOW_GRACE_S, and only for the bus's NEXT visit on that trip; an update made before the
-previous visit on the same trip (or predicting a time within 120 s of it) is passio_status previous_lap.
+previous visit on the same trip (or predicting a time within 120 s of it) is passio_status previous_lap. When the own
+trip id shows nothing at t but did at an earlier minute for the same arrival (the stop was still ahead of the bus), the
+bus's prediction under a trip id Passio re-matched it to meanwhile counts, as in predictions.csv (DC-010: the
+detector's DC-008 rule, Tracker._other_trip_preds, reused as is; never another bus, never its next trip, never its
+previous visit, not at loop stops).
 
 Why two layouts: these query-centric rows are the training table (features at the moment a rider asks); the same
 arrival appears in up to 45 rows, so evaluation takes ONE row per arrival and lead bin (summary(), and the
@@ -27,6 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arrivals_lib as L
+from arrival_detector import Tracker
 
 STEP_S = 60
 HORIZON_S = 2700                 # 45 min
@@ -209,6 +214,48 @@ def load_timetable(gtfs_zip):
 
 
 # ---------------------------------------------------------------- the table
+class OtherTrips:
+    """DC-010: the detector's rule for a lead the own trip id left empty (DC-008, Tracker._other_trip_preds), on the
+    day's prediction updates. A Tracker holds every update of a bus with a vehicle id (a list per key: a whole day, not
+    the live 400-entry window) and is asked for one lead at a time, with the bus's previous visit to the stop set from
+    the day's arrivals as the live detector has it when the arrival is logged."""
+
+    def __init__(self, preds, arrivals, st):
+        self.tr = Tracker(st)
+        self.tr.preds = defaultdict(list)
+        for (veh, trip, sid), lst in preds.items():
+            if veh is None:
+                continue
+            for seen, last, made, pred, seq in lst:      # in the order first seen, as the live polls add them
+                self.tr.add_prediction(trip, sid, made, pred, seq, veh, seen=seen, last=last)
+        self.prev = defaultdict(list)                     # (veh, stop) -> sorted [(epoch, trip, idx)] of its visits
+        for veh, lst in arrivals.items():
+            for ep, trip, rid, sid, idx in lst:
+                self.prev[(veh, sid)].append((ep, trip, idx))
+        for v in self.prev.values():
+            v.sort()
+
+    def at(self, veh, trip, sid, ep, t):
+        """The bus's prediction for its arrival at sid (epoch ep, own trip `trip`) shown at t under another trip id
+        -> ((seen, last, made, pred, seq), other trip id) | None."""
+        tr, key = self.tr, (veh, sid)
+        lst = self.prev.get(key, ())
+        i = bisect.bisect_left(lst, (ep,))
+        if i:
+            tr.visits[key] = lst[i - 1]
+        else:
+            tr.visits.pop(key, None)
+        got = tr._other_trip_preds(trip, sid, ep, veh, [ep - t]).get(ep - t)
+        if got is None:
+            return None
+        pred, made, seen = got
+        for tr2 in sorted({t2 for t2, s2 in tr.bus_keys.get(veh, ()) if s2 == sid and t2 != trip}):
+            x = tr._shown(tr.preds.get((veh, tr2, sid)), t)
+            if x is not None and (x[0], x[1], x[3]) == (made, pred, seen):
+                return (seen, x[4], made, pred, x[2]), tr2
+        return (seen, seen, made, pred, None), None
+
+
 class Index:
     """Sorted per-key lists with a cached key column for bisect."""
     def __init__(self, d):
@@ -298,6 +345,8 @@ def build(day, arrivals, preds, raw=None, timetable=None, st=None, step=STEP_S, 
             return "previous_lap", best
         return "shown", best
 
+    other = None                             # OtherTrips, built on first use (DC-010)
+    own = set()                              # (veh, arrival epoch, stop): its own trip id showed it at an earlier minute
     rows = []
     vehicles = sorted(set(arrivals) | set(live))
     for veh in vehicles:
@@ -359,6 +408,15 @@ def build(day, arrivals, preds, raw=None, timetable=None, st=None, step=STEP_S, 
                 status, e = ("none", None)
                 if rank == 1:
                     status, e = shown(veh, trip, sid, t, idx + 1, loop)
+                    if status == "shown":
+                        own.add((veh, ep, sid))
+                    elif not loop and (veh, ep, sid) in own:     # a lead the own trip id left empty (DC-010)
+                        other = other or OtherTrips(preds, arrivals, st)
+                        got = other.at(veh, trip, sid, ep, t)
+                        if got is not None:
+                            (e, tr2), status = got, "shown"
+                            if tr2:                              # the same time is no phantom visit under tr2
+                                matched.add((tr2, sid, None))
                     if e is not None:
                         matched.add((trip, sid, e[4] if loop else None))
                 row = dict(base, route_id=rid, route_name=st.route_name(rid), trip_id=trip, stop_id=sid,
