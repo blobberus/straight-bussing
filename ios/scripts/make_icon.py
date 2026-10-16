@@ -3,7 +3,8 @@
 root (2026-10-15: a white bird on a bus on teal), so the iPhone app uses the same icon as the web app without a second
 copy in git (tools/make_icons.py makes the web sizes from the same file). Apple wants no transparency: any is put on
 the picture's own corner color. Usage: python3 ios/scripts/make_icon.py [out.png]
-Exit code 2 when Pillow is missing (ios/scripts/bootstrap.sh then falls back to `sips` upscaling icon-512.png).
+Square on purpose: iOS rounds the corners itself (the web icons are pre-rounded, this one never).
+Exit code 2 when Pillow is missing (ios/scripts/bootstrap.sh then falls back to `sips` on the same master).
 """
 import os
 import sys
