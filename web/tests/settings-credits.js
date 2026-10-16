@@ -43,7 +43,8 @@ test("settings credits: the app maker, map and search sources, bus data; no UChi
   const t = box.textContent;
   for (const s of ["App made by blobberus", "OpenFreeMap", "OpenMapTiles", "OpenStreetMap", "ODbL", "Leaflet", "MapLibre GL JS",
     "MapLibre GL Leaflet", "OSRM", "Valhalla", "FOSSGIS", "Overpass API", "Photon", "komoot", "Passio", "GTFS-Realtime",
-    "GTFS schedule", "Data collection", "straight-bussing-data"]) ok(t.includes(s), s);
+    "GTFS schedule", "Data collection", "Data research is currently in progress."]) ok(t.includes(s), s);
+  ok(!t.includes("straight-bussing-data") && !box.querySelector('a[href*="straight-bussing-data"]'), "no data repo link for now (owner 2026-10-16)");
   const low = t.toLowerCase();
   ok(!low.includes("uchicago") && !low.includes("university") && !low.includes("administration") && !/(^|[^a-z])ugo([^a-z]|$)/i.test(t),
     "no UChicago, University, UGo or administration");

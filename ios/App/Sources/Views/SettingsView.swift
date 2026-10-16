@@ -125,8 +125,8 @@ struct SettingsView: View {
         CreditGroup(group: "Bus data", items: [
             CreditItem(text: "Live bus positions, arrival predictions and service alerts: Passio's public GTFS-Realtime feeds."),
             CreditItem(text: "Routes, stops and timetables: Passio's public GTFS schedule."),
-            CreditItem(text: "Data collection: the same public feeds, read every 10 seconds. The collected data is public at github.com/blobberus/straight-bussing-data.",
-                       url: URL(string: "https://github.com/blobberus/straight-bussing-data")),
+            // owner 2026-10-16: no data repo link for now (web settings.js CREDITS)
+            CreditItem(text: "Data collection: the same public feeds, read every 10 seconds. Data research is currently in progress."),
         ]),
     ]
 

@@ -327,8 +327,7 @@ export const CREDITS = Object.freeze([
   { group: "Bus data", items: [
     [["Live bus positions, arrival predictions and service alerts: Passio's public GTFS-Realtime feeds."]],
     [["Routes, stops and timetables: Passio's public GTFS schedule."]],
-    [["Data collection: the same public feeds, read every 10 seconds. The collected data is public at "],
-      ["github.com/blobberus/straight-bussing-data", "https://github.com/blobberus/straight-bussing-data"], ["."]],
+    [["Data collection: the same public feeds, read every 10 seconds. Data research is currently in progress."]],   // owner 2026-10-16: no data repo link for now
   ] },
 ]);
 

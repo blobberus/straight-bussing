@@ -320,8 +320,8 @@ App made by blobberus; OpenFreeMap tiles and style (OpenMapTiles schema); OpenSt
 data, buildings and place names; the OpenStreetMap tile servers as the backup map; Leaflet (BSD-2-Clause), MapLibre
 GL JS (BSD-3-Clause), MapLibre GL Leaflet (ISC); OSRM and Valhalla on FOSSGIS servers for walks; the on-device place
 list from OpenStreetMap through the Overpass API (tools/build_places.py); Photon by komoot; Passio's public
-GTFS-Realtime feeds and GTFS schedule; the collection (the same feeds every 10 s, public at
-github.com/blobberus/straight-bussing-data). Never a UChicago, University, UGo or administration name (owner; tested).
+GTFS-Realtime feeds and GTFS schedule; the collection (the same feeds every 10 s; "Data research is currently in
+progress": no link to the data repo for now, owner 2026-10-16). Never a UChicago, University, UGo or administration name (owner; tested).
 Same facts as About's shorter credits. iOS: SettingsView `creditsSection` (a DisclosureGroup in the last section,
 its own list: Apple Maps for the map and walks instead of the web map stack).
 
