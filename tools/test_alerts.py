@@ -307,7 +307,9 @@ def logger_main_keeps_alert_failures_out_of_the_arrival_counters():
                              "--alerts-out", str(d2 / "a.csv")], fetch_ok)
     assert s["alert_versions"] == 3 and s["alert_ok"] == 1 and s["errors"] == 0, s
     rows = AL.read_csv(d2 / "a.csv")[0]
-    assert [r["alert_id"] for r in rows] == ["1", "2", "3"] and rows[1]["route_names"] == ""   # 38734 is not GTFS
+    assert [r["alert_id"] for r in rows] == ["1", "2", "3"], rows
+    # 38734 is Passio's own id for North (its trips' shape, routes.json alias_ids; DC-009): named, the id kept verbatim
+    assert rows[1]["route_ids"] == "38734" and rows[1]["route_names"] == "North", rows[1]
     out, s = run_logger(d2, ["--once", "--out", str(d2 / "run2.csv"), "--status-file", str(d2 / "s.json")], fetch_ok)
     assert "alert_polls" not in s and "alerts:" not in out, s                 # no --alerts-out: no alert polling
 
@@ -382,6 +384,19 @@ def an_alert_keeps_one_row_when_passio_renumbers_it():
     assert len(rows) == 1 and rows[0]["alert_id"] == "1;2" and s["total"] == 2, (s, rows)
     assert (int(rows[0]["first_seen"]), int(rows[0]["last_seen"])) == (T - 600, T + 900), rows
     assert AL.join_ids("10;2", "2", "", "x") == "2;10;x"
+
+
+@test
+def an_alert_route_id_maps_like_the_app():
+    # DC-009: Passio's own route id = the route's GTFS shape id (routes.json alias_ids); the same rule as the app
+    from types import SimpleNamespace
+    import arrivals_lib
+    st = SimpleNamespace(routes={"1075": {"long": "North", "alias_ids": ["38734"]}, "5703": {"alias_ids": ["38731", "38809"]},
+                                 "9": {"alias_ids": ["777"]}, "8": {"alias_ids": ["777"]}})
+    f = lambda rid: arrivals_lib.Static.alert_route(st, rid)
+    assert f("1075") == "1075" and f("38734") == "1075" and f("38809") == "5703"
+    assert f("777") is None, "two routes claim it: no route"
+    assert f("12345") is None and f("") is None
 
 
 @test

@@ -444,10 +444,11 @@ def main():
         try:
             if AL is None:
                 raise ImportError(AL_ERROR)
-            # route_names only for GTFS route ids: Passio's alerts can name its own ids (North = 38734, GTFS 1075)
+            # route_names: Passio's alerts can name its own id (North = 38734, GTFS 1075): Static.alert_route maps it
+            # the way the app does (DC-009); route_ids stay verbatim; no match = blank
             alerts = AlertLog(a.alerts_out, lambda: fetch("serviceAlerts", timeout=a.alerts_timeout),
                               every=max(30.0, a.alerts_every),
-                              route_name=lambda rid: st.route_name(rid) if rid in st.routes else "").start()
+                              route_name=lambda rid: st.route_name(g) if (g := st.alert_route(rid)) else "").start()
         except Exception as ex:
             alerts, alerts_setup = None, f"setup: {type(ex).__name__}: {ex}"[:300]
             print(f"alerts off for this run ({alerts_setup})", file=sys.stderr, flush=True)

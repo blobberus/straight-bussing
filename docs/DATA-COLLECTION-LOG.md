@@ -103,6 +103,9 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   core-arrivals, route-view, views-outage, views-render, data-static, Kit ArrivalsTests.
 - For the collector (`alerts.csv` route_names): the same rule. A route_id that is a routes.json key names that
   route; else the one route whose `alias_ids` contains it; else (none, or two) leave route_names blank.
+- Collector side (2026-10-16): `arrivals_lib.Static.alert_route` (same rule) fills `route_names` in alerts.csv for
+  Passio's own ids (38734 -> North); `route_ids` stay verbatim. Rows already written keep a blank name (the id is
+  there to map with routes.json alias_ids). Test `an_alert_route_id_maps_like_the_app`.
 
 ### DC-007 Operator service alerts were not recorded (fixed)
 - Found 2026-10-14.

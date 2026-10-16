@@ -125,6 +125,16 @@ class Static:
         r = self.routes.get(rid) or {}
         return r.get("long") or r.get("short") or str(rid)
 
+    def alert_route(self, rid):
+        """The GTFS route a service alert's route_id names, else None (web core/arrivals.js alertRouteIds, iOS Kit
+        Arrivals.alertRouteIds; DC-009): a routes.json key names itself; otherwise the one route whose "alias_ids"
+        (its trips' shape ids, Passio's own route ids: North 1075 = 38734) holds it; no route or two routes: None."""
+        rid = str(rid)
+        if rid in self.routes:
+            return rid
+        hits = [r for r, v in self.routes.items() if isinstance(v, dict) and rid in (v.get("alias_ids") or [])]
+        return hits[0] if len(hits) == 1 else None
+
     def address(self, sid):
         a = self.addr.get(sid) or {}
         return a.get("address") or (self.stops.get(sid) or {}).get("name", "")
