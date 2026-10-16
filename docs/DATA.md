@@ -277,6 +277,20 @@ python tools/test_replay.py                                           # hermetic
   (`build_eta_dataset.py`, release asset `eta-<day>.csv.gz` with `--clobber`, its `data/eta/summary.csv` rows with
   `archive_day.py --merge-summary`).
 
+
+## Using the data on Google Colab (added 2026-10-16)
+The owner may run machine learning (possibly deep learning) on the routes in Google Colab; the starting point is
+`experiments/routeknower/colab/` (`routeknower_colab.ipynb`, `TECHNICAL.md`, `PLAIN-ENGLISH.md` / `.ipynb`). The
+notebook needs no login and reads only public files:
+- `https://api.github.com/repos/blobberus/straight-bussing/releases` to list the daily archive, then the
+  `eta-<day>.csv.gz` assets (`https://github.com/blobberus/straight-bussing/releases/download/data-archive-YYYY-MM/eta-<day>.csv.gz`):
+  the forecast snapshots, the training table.
+- `https://raw.githubusercontent.com/blobberus/straight-bussing/data/data/eta/summary.csv`: the project's own pass
+  rates, which the notebook must reproduce before it trusts its scoring.
+What this asks of collection: keep it running without gaps (each day is one more test day; the ship gate needs 10),
+keep the daily archive (release assets are permanent; run artifacts expire after 90 days), and rebuild past tables
+with the replay tools above whenever the collector's rules change, so the notebook always learns from one
+consistent version. Nothing new needs logging for now.
 ## Automatic collection and reading it
 `.github/workflows/collect.yml` (must live on **main**: GitHub only runs schedules from the default branch).
 Each run logs for 70 min and, 40 min in, starts its own successor (`tools/collect_chain.py`), so runs
