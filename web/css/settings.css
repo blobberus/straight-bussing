@@ -3,6 +3,15 @@
 .st-note { margin-top: var(--s3); }
 .st-pad { margin: var(--s2) 0; }
 .st-label { display: block; margin: var(--s3) 0 var(--s1); font-weight: 600; }
+/* Credits (owner 2026-10-16): the last item; the chevron turns down when the list is open */
+.st-credits { margin-top: var(--s3); }
+.st-credbtn { min-height: var(--tap); }
+.st-credchev svg { transition: transform var(--d-press) ease; }
+.st-credbtn[aria-expanded="true"] .st-credchev svg { transform: rotate(90deg); }
+.st-credbody { padding: 0 0 var(--s3); border-top: 1px solid var(--hairline); }
+.st-credh { margin: var(--s3) 0 var(--s1); color: var(--text); font-weight: 600; }
+.st-credlist { margin: 0; }
+.st-credlist li { margin: 0 0 var(--s1); }
 .st-count { margin-left: 6px; padding: 1px 8px; border-radius: var(--r-pill); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 600; vertical-align: 1px; }
 .st-theme { margin: var(--s1) 0; }
 
@@ -98,7 +107,7 @@
 .sto-body > .st > .v-h:first-child { margin-top: var(--s3); }
 
 @media (prefers-reduced-motion: reduce) {
-  .st-knob, .st-knob::after { transition: none; }
+  .st-knob, .st-knob::after, .st-credchev svg { transition: none; }
   /* no slide: a short fade only */
   .sto { transform: none; opacity: 0; transition: opacity var(--d-press) linear; will-change: auto; }
   .sto-scrim { transition: none; }

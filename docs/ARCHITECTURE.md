@@ -311,6 +311,20 @@ Hidden stops (2026-10-15, owner: Aba at 302 N Green St in Fulton Market, the sto
 Easter-egg places may sit on basemap text (2026-10-15, owner: the Fulton Market nickname "disappears after appearing for a second"): labels are placed on `moveend`, then again when the vector basemap goes `idle` with its street and place names (`textAt`); a tier 2 or 3 name with no spot clear of them was dropped, and in Fulton Market there is none. `placeLabels` now lets a candidate with `textOk` (any label with an `egg`, its own name and its nickname) take the best spot clear of labels and stops, like tier 1; it still prefers a clear one. iOS has no street-name check (MapKit does not say where it draws them), so it never had this.
 A nickname for a place inside a labeled building (within 15 m of its label, e.g. a cafe whose address is the building's) goes on that label instead of being skipped (2026-10-15: 5500 S University Avenue, Fairgrounds Coffee's address, nicknames Campus North).
 
+### Settings > Credits (2026-10-16, owner: "At the very bottom of the settings menu, create a button that will expand a list of Credits")
+The last item of Settings: a `Credits` row (`.st-credbtn`, `aria-expanded` / `aria-controls`, 44 px, chevron turns
+down) expands `#st-credits` in place (`data-st="credits"` in settings.js onClick, focus stays, nothing stored:
+collapsed on every open). Content = `CREDITS` in `ui/views/settings.js`, groups App / Maps / Search / Bus data, each
+line `[text]` or `[text, url]` parts (text through `esc()`, links `target="_blank" rel="noopener"`, https):
+App made by blobberus; OpenFreeMap tiles and style (OpenMapTiles schema); OpenStreetMap contributors (ODbL) for map
+data, buildings and place names; the OpenStreetMap tile servers as the backup map; Leaflet (BSD-2-Clause), MapLibre
+GL JS (BSD-3-Clause), MapLibre GL Leaflet (ISC); OSRM and Valhalla on FOSSGIS servers for walks; the on-device place
+list from OpenStreetMap through the Overpass API (tools/build_places.py); Photon by komoot; Passio's public
+GTFS-Realtime feeds and GTFS schedule; the collection (the same feeds every 10 s, public at
+github.com/blobberus/straight-bussing-data). Never a UChicago, University, UGo or administration name (owner; tested).
+Same facts as About's shorter credits. iOS: SettingsView `creditsSection` (a DisclosureGroup in the last section,
+its own list: Apple Maps for the map and walks instead of the web map stack).
+
 ### Beta feedback (2026-10-13, owner)
 `ui/feedback.js`: `FEEDBACK_URL` (the only place the Google Form address appears), `feedbackLinkHTML()` (a real `<a target="_blank" rel="noopener">`, never window.open after an await), the welcome popup (native `<dialog>` like ui/confirm.js: Cancel focused first, Escape / outside tap close, 350 ms double-tap guard) once per browser session (`sessionStorage`; blocked storage = once per page load), opened by main.js after the first painted render (`welcomeAfterPaint`). Settings starts with "Beta feedback" (`views/settings.js feedbackHTML`). Browser tests set the session flag before booting the app (e2e.js, e2e-demo.js).
 
