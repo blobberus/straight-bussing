@@ -13,9 +13,21 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 ## Checkups
 | When (Chicago) | Verdict | Coverage | Data | Notes |
 |---|---|---|---|---|
+| 2026-10-16 01:11 | healthy | 100% of 31.6 h of actual logging time since the last checkup (83 runs, all succeeded, no gap over 1 min) | arrivals: 3,637 (Oct 14), 3,419 (Oct 15), 0 duplicates, 0 rows missing stop / bus / route, 89 to 90 stations and 13 lines a day; predictions.csv 73,396 rows, 10-min coverage 67% (Oct 13) -> 71% (Oct 14) -> 76% (Oct 15); alerts.csv 3 rows, polled live (last_seen 23 min old); archive through Oct 14 incl. alerts-2026-10-14.csv.gz, Oct 15 due with today's run; data repo synced 03:28Z; weather current | `monitor.py status` HEALTHY; found DC-012; DC-008 checked (watch); DC-011 unchanged; traffic context ends 2026-04-30 (known: the city stopped the dataset, RouteKnower §3.4) |
 | 2026-10-14 17:33 | healthy | 100% of 33.9 h of actual logging time (job start to end), no gaps, 145/145 runs since Oct 11 succeeded | arrivals: 3,469 (Oct 12), 3,640 (Oct 13), 2,473 (Oct 14 so far); predictions.csv 46,386 rows since Oct 12 12:20; no duplicate rows; archive complete through Oct 13 | `monitor.py status` said DEGRADED: DC-004, DC-005 (both false or harmless); the data check found DC-006 to DC-011 |
 
 ## Errors
+
+### DC-012 Passio's alert ids are list positions, so one alert splits into rows (open)
+- Found 2026-10-16. serviceAlerts entity ids are the alert's place in the feed, not a stable id: "UGo Bus Route
+  Assistance" was id 2 while the North alert was listed first, and became id 1 when that one ended (Oct 15 00:00).
+  `alerts.csv` keys a row by (alert_id, version), so the same alert text has two rows: id 2 (first seen Oct 14 18:49)
+  and id 1 (first seen Oct 15 00:00, the renumbering, not when it appeared).
+- Impact: 3 rows now (2 real alerts). first_seen / last_seen are split across the rows of one alert. Recoverable:
+  the version (content hash) is the same, so the rows merge by version with the earliest first_seen and latest
+  last_seen.
+- Fix (not done): key rows by version alone in `tools/alerts_lib.py` (`key`, `versions`), keep the ids seen in a
+  column, and merge the existing rows once; tests in `tools/test_alerts.py`.
 
 ### DC-011 Many 30-min predictions are another lap's time (open)
 - Found 2026-10-14 during DC-008. 35.6% of the 30-min rows and 7.2% of the 20-min rows are more than 15 min off;
@@ -23,6 +35,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   at Levi Hall). Either Passio really shows such times (then the rows are right and Passio is bad that far out)
   or the selection pairs a lap's prediction with the wrong arrival. Needs its own experiment (RouteKnower) before
   the 30-min score is trusted.
+- 2026-10-16: unchanged on Oct 15: 33.9% of 30-min rows and 7.0% of 20-min rows more than 15 min off.
 
 ### DC-010 The forecast-snapshot table has the same trip id gap as DC-008 (open)
 - Found 2026-10-14. `tools/build_eta_dataset.py` looks up Passio's prediction by the arrival's trip id only, like
@@ -44,6 +57,11 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   stops); `SHOWN_PAST_S` in `arrivals_lib.py`; 2 tests in `tools/test_truth.py`. Replaying Oct 13: +290 rows, 0
   changed; 10 min 75.9 -> 77.2%, Central 38 -> 62%. Rows before the deploy are not rewritten (a replay of the
   archived updates could add about 290 a day since Oct 12; no tool for that yet).
+- Checked 2026-10-16 (watch): 10-min coverage of all arrivals 67% (Oct 13) -> 76% (Oct 15, the first full day on the
+  fix), Central 32% -> 69%. Still 151 arrivals on Oct 15 with a 20-min row but no 10-min row (174 on Oct 13; Central
+  39 -> 23), spread over the lines (Midway Metra 20, Red Line/Arts Block 17, East 16). Most should be real gaps;
+  replay Oct 15's archived prediction updates (pred-updates-2026-10-15, archived after about 15:20Z Oct 16) to split
+  real gaps from misses before calling it done.
 
 ### DC-009 An operator alert names Passio's own route id, so the app's route view skips it (open, app side)
 - Found 2026-10-14 while adding DC-007. The live North alert ("The North route will run every 30 minutes...")
