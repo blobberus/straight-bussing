@@ -150,6 +150,79 @@ def test_visit_rank_two_has_no_passio():
     assert ranks[0][0] == 1 and ranks[1] == (2, "none"), ranks
 
 
+def _row(rows, t, stop, trip, label="arrived"):
+    got = [r for r in rows if r["query_epoch"] == t and r["vehicle_id"] == "V1" and r["stop_id"] == stop
+           and r["trip_id"] == trip and r["label_status"] == label]
+    return got[0] if got else None
+
+
+def test_a_lead_shown_under_the_bus_s_re_matched_trip_id_is_kept():
+    """DC-010 = DC-008 in the table: Passio re-matched the bus from trip T1 (its arrivals) to T9 for ten minutes and
+    the stop's prediction went with it; the minutes the own trip id left empty take it, never another bus's or one
+    without a vehicle id; the minutes the own trip id filled stay as they were; T9's time is no phantom visit."""
+    arr = T + 3000
+    arrivals = {"V1": [(arr - 240, "T1", "R", "B", 1), (arr, "T1", "R", "C", 2), (arr + 120, "T1", "R", "D", 3)]}
+    preds = {("V1", "T1", "C"): [(arr - 1300, arr - 800, arr - 1300, arr - 60, 3)],     # own trip id
+             ("V1", "T9", "B"): [(arr - 650, arr - 200, arr - 650, arr - 200, 2)],     # re-matched run: B, C, D ahead
+             ("V1", "T9", "C"): [(arr - 650, arr, arr - 650, arr - 30, 3)],
+             ("V1", "T9", "D"): [(arr - 650, arr, arr - 650, arr + 60, 4)],
+             ("V2", "T9", "C"): [(arr - 640, arr, arr - 640, arr + 400, 3)],           # another bus
+             (None, "T9", "C"): [(arr - 640, arr, arr - 640, arr + 500, 3)]}           # no vehicle id
+    rows = B.build(DAY, arrivals, preds, st=static())
+    for lead in (1200, 900, 780):                                                     # own: unchanged
+        r = _row(rows, arr - lead, "C", "T1")
+        assert r["passio_status"] == "shown" and r["passio_epoch"] == arr - 60, (lead, r)
+    r = _row(rows, arr - 660, "C", "T1")                                              # T9 not seen yet: none
+    assert r["passio_status"] == "none", r
+    for lead in (600, 300, 60):
+        r = _row(rows, arr - lead, "C", "T1")
+        assert r["passio_status"] == "shown" and r["passio_epoch"] == arr - 30, (lead, r)
+        assert r["passio_made_epoch"] == arr - 650 and r["passio_seen_epoch"] == arr - 650 and r["passio_err_s"] == -30
+        assert _row(rows, arr - lead, "C", "T9", "no_arrival") is None, "the borrowed time is no phantom visit"
+    # the own trip id back: own first, else T9 (the old own update is off display by then)
+    preds[("V1", "T1", "C")].append((arr - 400, arr, arr - 400, arr - 20, 3))
+    rows = B.build(DAY, arrivals, preds, st=static())
+    assert _row(rows, arr - 600, "C", "T1")["passio_epoch"] == arr - 30
+    assert _row(rows, arr - 300, "C", "T1")["passio_epoch"] == arr - 20
+
+
+def test_the_bus_s_next_lap_or_an_earlier_visit_never_fills_a_lead():
+    """As test_truth.py: only a trip update about the run the bus is on (not its next trip, whose first stop is still
+    on display; not one that has the bus past the stop), not one about its previous visit, not at a loop stop, and
+    only after a minute the own trip id filled."""
+    arr = T + 3000
+    arrivals = {"V1": [(arr - 240, "T1", "R", "B", 1), (arr, "T1", "R", "C", 2)]}
+    preds = {("V1", "T1", "C"): [(arr - 1300, arr - 300, arr - 1300, arr - 60, 3)],
+             ("V1", "T2", "A"): [(arr - 250, arr, arr - 250, arr + 400, 1)],            # next trip: its first stop
+             ("V1", "T2", "C"): [(arr - 250, arr, arr - 250, arr + 1500, 3)],           # C a lap later
+             ("V1", "T8", "D"): [(arr - 250, arr, arr - 250, arr - 100, 4)],            # bus past C in T8's view
+             ("V1", "T8", "C"): [(arr - 250, arr, arr - 250, arr + 1700, 3)]}
+    rows = B.build(DAY, arrivals, preds, st=static())
+    assert _row(rows, arr - 300, "C", "T1")["passio_status"] == "shown"
+    for lead in (180, 120, 60):
+        assert _row(rows, arr - lead, "C", "T1")["passio_status"] == "none", lead
+    # the previous visit (a lap ago, another trip id): an update seen before it, or still predicting it
+    arrivals = {"V1": [(arr - 1000, "T0", "R", "C", 2), (arr, "T1", "R", "C", 2)]}
+    preds = {("V1", "T1", "C"): [(arr - 1250, arr - 1100, arr - 1250, arr - 60, 3)],
+             ("V1", "T9", "C"): [(arr - 1100, arr, arr - 1100, arr - 30, 3)],           # seen before it
+             ("V1", "T7", "C"): [(arr - 950, arr, arr - 950, arr - 900, 3)]}            # still about it
+    rows = B.build(DAY, arrivals, preds, st=static())
+    assert _row(rows, arr - 1200, "C", "T1")["passio_status"] == "shown"
+    assert all(_row(rows, arr - ld, "C", "T1")["passio_status"] == "none" for ld in (900, 600, 60))
+    preds[("V1", "T6", "C")] = [(arr - 650, arr, arr - 650, arr - 40, 3)]               # after it: kept
+    rows = B.build(DAY, arrivals, preds, st=static())
+    assert _row(rows, arr - 600, "C", "T1")["passio_epoch"] == arr - 40
+    # no own-trip minute before, or a loop stop (A is the route's first and last stop): nothing borrowed
+    arrivals = {"V1": [(arr - 240, "T1", "R", "D", 3), (arr, "T1", "R", "A", 4), (arr + 600, "T1", "R", "C", 2)]}
+    preds = {("V1", "T9", "C"): [(arr - 50, arr + 600, arr - 50, arr + 630, 3)],
+             ("V1", "T1", "A"): [(arr - 1300, arr - 800, arr - 1300, arr - 60, 5)],
+             ("V1", "T9", "A"): [(arr - 650, arr, arr - 650, arr - 30, 5)]}
+    rows = B.build(DAY, arrivals, preds, st=static())
+    assert _row(rows, arr + 300, "C", "T1")["passio_status"] == "none"
+    assert _row(rows, arr - 1200, "A", "T1")["passio_status"] == "shown"
+    assert _row(rows, arr - 600, "A", "T1")["passio_status"] == "none"
+
+
 def test_written_table_round_trips():
     d, rows = built()
     B.write_rows(rows, d / "eta.csv.gz")

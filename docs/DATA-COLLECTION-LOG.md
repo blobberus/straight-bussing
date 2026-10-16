@@ -42,10 +42,25 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   the 30-min score is trusted.
 - 2026-10-16: unchanged on Oct 15: 33.9% of 30-min rows and 7.0% of 20-min rows more than 15 min off.
 
-### DC-010 The forecast-snapshot table has the same trip id gap as DC-008 (open)
-- Found 2026-10-14. `tools/build_eta_dataset.py` looks up Passio's prediction by the arrival's trip id only, like
-  the detector did before the DC-008 fix, so `eta-<day>.csv.gz` and `data/eta/summary.csv` miss the same
-  re-matched predictions (Central the most). Not fixed yet; port `Tracker._other_trip_preds` there.
+### DC-010 The forecast-snapshot table has the same trip id gap as DC-008 (fixed 2026-10-16; past days need a rebuild)
+- Found 2026-10-14. `tools/build_eta_dataset.py` looked up Passio's prediction by the arrival's trip id only, like
+  the detector did before the DC-008 fix, so `eta-<day>.csv.gz` and `data/eta/summary.csv` missed the same
+  re-matched predictions (Central the most), and counted those times as `no_arrival` phantom visits.
+- Fixed: `OtherTrips` in `build_eta_dataset.py` asks the detector's own `Tracker._other_trip_preds` (reused, not
+  copied) for a minute the own trip id left empty after one it filled for the same arrival; never another bus, its
+  next trip, its previous visit or a loop stop. The borrowed time is not also a no_arrival row. 2 tests in
+  `tools/test_eta.py` (the DC-008 cases).
+- Check: the old code rebuilds the archived `eta-2026-10-13` and `eta-2026-10-15` tables row for row; the new
+  one changes only empty Passio cells to shown and drops phantom rows. Oct 15: +1,009 cells shown, -731 no_arrival
+  rows (205,455 -> 204,724 rows); coverage at 10 min 79.6 -> 81.0%, at 1 min 89.6 -> 91.0%; Central 6-10 min
+  79 -> 86%, 10-15 min 78 -> 83%; 10% rule pass within 1 point. Oct 13: +1,266 cells, -1,026 phantom rows; 10 min
+  75.2 -> 76.8%; Central 6-10 min 55 -> 78%, 10-15 min 47 -> 69%, and its 10% pass there 26 -> 16% (the filled
+  minutes were Passio's confused ones, so the old scores flattered it).
+- Past days (2026-10-12 to the deploy; Oct 10-11 have no prediction updates) still have the old tables and summary
+  rows: rebuild each from its archived release files (pred-updates, raw-polls, gtfs) with build_eta_dataset.py, after
+  any arrivals.csv backfill of that day, then re-upload only eta-<day>.csv.gz (--clobber) and merge its summary rows
+  (archive_day.py --merge-summary). Not archive_day.py --replace: that rebuilds from the 90-day run artifacts and
+  re-uploads all of the day's files.
 
 ### DC-008 Passio predictions vanished between leads: our trip id lookup (fixed)
 - Found 2026-10-14 (data check of origin/data at 22:29Z).
