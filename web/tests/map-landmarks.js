@@ -41,6 +41,34 @@ test('landmarks: street and place names of the basemap are avoided; only tier 1 
   p = placeLabels([C('a', 200, 300, 60, 14, 1), C('b', 100, 100, 60, 14, 2)], [], view, everywhere);
   eq(p.map((q) => [q.id, q.onText]), [['a', true]], 'tier 1 still shows (center); tier 2 waits for room');
   eq(LABEL.TEXT_OK, { 1: true });
+  // an easter-egg place (owner 2026-10-15: the Fulton Market nickname vanished once the basemap's names arrived)
+  p = placeLabels([{ ...C('egg', 200, 300, 60, 14, 3), textOk: true }, C('t3', 100, 100, 60, 14, 3)], [], view, everywhere);
+  eq(p.map((q) => [q.id, q.onText]), [['egg', true]], 'an easter-egg place stays on street text; another tier 3 still waits');
+  p = placeLabels([{ ...C('egg', 200, 300, 60, 14, 3), textOk: true }], [], view, textAt);
+  ok(p.length === 1 && !p[0].onText, 'it still takes a clear spot first');
+});
+
+test('landmarks: the Fulton Market easter egg stays after the basemap reports its names (owner 2026-10-15)', async () => {
+  box('t-lm4');
+  const L = window.L, el = document.getElementById('t-lm4');
+  const map = L.map(el, { zoomControl: false, attributionControl: false, maxZoom: 18 });
+  let textEverywhere = false;
+  const layer = createLandmarkLayer(map, { pane: 'overlayPane', textAt: () => textEverywhere });
+  const list = cleanLandmarks(await (await fetch('../data/landmarks.json')).json());
+  const aba = list.find((x) => x.name === 'Aba Restaurant');
+  ok(aba, 'Aba is in the real file');
+  map.setView([aba.lat, aba.lon], 18, { animate: false });
+  layer.setData(list);
+  const shown = () => [...el.querySelectorAll('.sb-lm')].map((e) => e.textContent.replace(/\s+/g, ''));
+  const want = (aba.egg || aba.name).replace(/\s+/g, '');
+  ok(shown().includes(want), 'shown at first');
+  textEverywhere = true;   // the vector basemap went idle: street names all around
+  layer.refresh();
+  ok(shown().includes(want), 'still shown once the basemap names are in');
+  map.setView([aba.lat, aba.lon], 17, { animate: false });
+  layer.refresh();
+  ok(shown().includes('AbaRestaurant'), 'its own name at 17 stays too');
+  map.remove();
 });
 
 function box(id) {

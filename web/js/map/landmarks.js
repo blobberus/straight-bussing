@@ -70,9 +70,10 @@ const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b
  * Place labels: priority order; each takes the first position (centered on its point, then 8 sides at 4 px, then at
  * 14 px, never farther: a name must stay by its building) that covers no label already placed, no stop circle and
  * no basemap text (street and place names: `textAt`); without a spot clear of basemap text, the first one clear of
- * labels and stops (tier 1 only: LABEL.TEXT_OK); with neither, it is left out (it shows once you zoom in).
+ * labels and stops (tier 1 only: LABEL.TEXT_OK, or a candidate with `textOk`: an easter-egg place); with neither, it
+ * is left out (it shows once you zoom in).
  * Pure (textAt is the caller's lookup).
- * @param {Array<{id:any, x:number, y:number, w:number, h:number, tier?:number}>} cands screen point + text box size, in priority order
+ * @param {Array<{id:any, x:number, y:number, w:number, h:number, tier?:number, textOk?:boolean}>} cands screen point + text box size, in priority order
  * @param {Array<{x:number, y:number, w:number, h:number}>} obstacles boxes nothing may cover (stop circles)
  * @param {{w:number, h:number}} view visible size (labels must fit inside)
  * @param {(box:{x, y, w, h})=>boolean} [textAt] basemap text drawn in this box (screen px)
@@ -111,7 +112,7 @@ export function placeLabels(cands, obstacles, view, textAt = null) {
         if (!best || best.covers) best = { a, box, covers, onText };
       } else if (covers <= ok && !best) best = { a, box, covers, onText: !!(textAt && textAt(box)) };
     }
-    const pick = clear || (best && (!best.onText || LABEL.TEXT_OK[c.tier]) ? best : null);
+    const pick = clear || (best && (!best.onText || LABEL.TEXT_OK[c.tier] || c.textOk) ? best : null);
     if (!pick) continue;
     taken.push(pick.box);
     placed.push({ id: c.id, anchor: pick.a, box: pick.box, covers: pick.covers, onText: pick.onText });
@@ -150,7 +151,9 @@ export function createLandmarkLayer(map, o = {}) {
       const px = labelSize(x.tier, z), width = measurer(FONT(px));
       const lines = wrapLines(labelText(x, z), px * LABEL.MAX_EM, width);
       const p = map.latLngToContainerPoint([x.lat, x.lon]);
-      cands.push({ id: r, tier: x.tier, x: p.x, y: p.y, w: Math.ceil(Math.max(...lines.map(width))), h: Math.ceil(lines.length * px * LABEL.LINE), px, lines });
+      // an easter-egg place may sit on basemap text (owner 2026-10-15: the Fulton Market nickname vanished a second after
+      // showing: the basemap's names arrive on 'idle', and a tier 3 name needs a spot clear of them there is none of)
+      cands.push({ id: r, tier: x.tier, x: p.x, y: p.y, w: Math.ceil(Math.max(...lines.map(width))), h: Math.ceil(lines.length * px * LABEL.LINE), px, lines, textOk: !!x.egg });
     });
     const R = LABEL.STOP_R, obstacles = [];
     if (z >= 14) for (const s of stops) { const p = map.latLngToContainerPoint(s); if (p.x > -R && p.y > -R && p.x < size.x + R && p.y < size.y + R) obstacles.push({ x: p.x - R, y: p.y - R, w: 2 * R, h: 2 * R }); }
