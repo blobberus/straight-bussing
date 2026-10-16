@@ -19,6 +19,16 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 
 ## Errors
 
+### DC-013 The public data repo synced every 4 to 5 hours, not every 30 min (fixed)
+- Found 2026-10-16 during the verification. github.com/blobberus/straight-bussing-data's `sync.yml` cron is
+  `4,34 * * * *`, but GitHub fired it only at 23:35, 03:28, 08:25, 13:26 and 17:36 UTC (Oct 15 to 16), the same
+  dropped-schedule behavior as DC-001. The public per-day / per-route CSVs lagged the data branch by up to 5 h.
+- Impact: freshness only; every sync rebuilds all days from arrivals.csv, so nothing was lost (the backfilled
+  Oct 10 to 13 counts reached it with the 18:50Z sync).
+- Fixed (data repo `13a5b57`): each sync run waits 25 min, then dispatches the next run unless one is already
+  waiting (one chain; the concurrency group holds at most one waiting run); the cron stays as a backstop; repo
+  variable `SYNC_CHAIN=off` stops it. Started by hand at 18:52Z.
+
 ### DC-012 Passio's alert ids are list positions, so one alert splits into rows (fixed)
 - Found 2026-10-16. serviceAlerts entity ids are the alert's place in the feed, not a stable id: "UGo Bus Route
   Assistance" was id 2 while the North alert was listed first, and became id 1 when that one ended (Oct 15 00:00).
@@ -137,8 +147,8 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 - For the collector (`alerts.csv` route_names): the same rule. A route_id that is a routes.json key names that
   route; else the one route whose `alias_ids` contains it; else (none, or two) leave route_names blank.
 - Collector side (2026-10-16): `arrivals_lib.Static.alert_route` (same rule) fills `route_names` in alerts.csv for
-  Passio's own ids (38734 -> North); `route_ids` stay verbatim. Rows already written keep a blank name (the id is
-  there to map with routes.json alias_ids). Test `an_alert_route_id_maps_like_the_app`.
+  Passio's own ids (38734 -> North); `route_ids` stay verbatim; the North row already written was filled the
+  same way (data `629d71d`). Test `an_alert_route_id_maps_like_the_app`.
 
 ### DC-007 Operator service alerts were not recorded (fixed)
 - Found 2026-10-14.
