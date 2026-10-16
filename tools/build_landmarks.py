@@ -184,7 +184,8 @@ def find_place(key, places, labeled=()):
 
 def resolve_eggs(doc, rows, places, stops):
     """easter-eggs.json + resolve()'s rows -> (rows, eggs [[row index, nickname]], zoom, problems). Rows of a place
-    (its OSM name) all take the nickname; a place without a label gets a tier 3 row at the end."""
+    (its OSM name) all take the nickname; a place inside a labeled building (within DUP_M) gives it to that label; any
+    other place without a label gets a tier 3 row at the end."""
     if not isinstance(doc, dict):
         return rows, [], None, ["easter-eggs.json: not a JSON object"]
     problems, zoom = [], doc.get("zoom", 17.5)
@@ -209,11 +210,14 @@ def resolve_eggs(doc, rows, places, stops):
         pname, kind, _, lat, lon = place
         idx = [i for i, r in enumerate(rows) if r[5].lower() == pname.lower()]
         if not idx:
+            # a place inside a labeled building (within DUP_M of its label) gives its nickname to that label: the
+            # address is the building's (owner 2026-10-15: 5500 S University Avenue = Fairgrounds Coffee, inside
+            # Campus North, meant as the dorm)
+            idx = [i for i, r in enumerate(rows) if hav(lat, lon, r[1], r[2]) < DUP_M]
+        if not idx:
             near = min(hav(lat, lon, s[1], s[2]) for s in stops) if stops else 0
-            clash = [r[0] for r in rows if hav(lat, lon, r[1], r[2]) < DUP_M]
-            if near > COVER_M or clash:
-                problems.append(f"{where}: {pname} is " + (f"{near:.0f} m from every stop" if near > COVER_M
-                                                           else f"within {DUP_M} m of the label {clash[0]!r}")); continue
+            if near > COVER_M:
+                problems.append(f"{where}: {pname} is {near:.0f} m from every stop"); continue
             rows.append([pname, round(lat, 6), round(lon, 6), EGG_TIER, EGG_KIND.get(kind.lower(), "landmark"), pname])
             idx = [len(rows) - 1]
         for i in idx:

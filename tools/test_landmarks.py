@@ -70,6 +70,18 @@ def a_hidden_stop_only_lets_names_near_it_pass_and_reaches_no_app_file():
 
 
 @test
+def a_place_inside_a_labeled_building_gives_its_nickname_to_the_building():
+    # owner 2026-10-15: "5500 S University Avenue" is Fairgrounds Coffee's address, a cafe inside Campus North
+    places = [("Fairgrounds Coffee", "Cafe", "5500 S University Ave", 41.79471, -87.59842)]
+    rows = [["Campus North", 41.79478, -87.59838, 1, "dorm", "Campus North Residential Commons"]]
+    out, eggs, _, p = B.resolve_eggs({"names": {"5500 S University Avenue": "Transfer Student Dormitory"}}, rows, places, STOPS)
+    assert p == [] and eggs == [[0, "Transfer Student Dormitory"]] and len(out) == 1, (p, eggs, out)
+    far = [("Corner Cafe", "Cafe", "1 Main St", 41.7951, -87.5984)]   # 70 m away: its own tier 3 label
+    out, eggs, _, p = B.resolve_eggs({"names": {"1 Main St": "X"}}, rows, far, STOPS)
+    assert p == [] and len(out) == 2 and eggs == [[1, "X"]] and out[1][3] == B.EGG_TIER, (p, eggs, out)
+
+
+@test
 def an_easter_egg_finds_a_curated_place_outside_places_json_by_its_address():
     cur = {"l": [{"label": "Aba Restaurant", "osm": "Aba", "ref": "node/6256520187", "lat": 41.8870188, "lon": -87.6488726,
                   "address": "302 N Green St", "tier": 3, "kind": "dining"}, {"label": "X", "osm": "X", "tier": 1, "kind": "dining"}]}
