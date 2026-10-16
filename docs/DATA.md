@@ -242,6 +242,41 @@ Windows, hourly in the background (run once in **cmd.exe**; delete with `schtask
 schtasks /Create /TN SBTruth /SC HOURLY /ST 00:07 /F /TR "\"C:\Users\NK\AppData\Local\Programs\Python\Python311\pythonw.exe\" \"C:\Users\NK\Documents\straight-bussing\tools\truth_logger.py\" --duration 3300"
 ```
 
+## Replaying a day (added 2026-10-16)
+`tools/replay_day.py` rebuilds a past service day's arrivals.csv and predictions.csv rows with today's collector code
+(after a detector fix, or to fill rows an older version missed), from what the CI runs kept: each run's
+vehiclePositions polls (artifact `raw-polls-<run>`) and prediction updates (`pred-updates-<run>`), the day's
+`gtfs-<day>.zip` release asset, and the runs' own seed / merge times from their job steps. It re-runs every run the
+way `collect.yml` ran it (`truth_logger.poll`, `Tracker`, `Writer`; seeded from the rows merged before it started;
+merged with `merge_arrivals` / `merge_predictions` in the order the runs ended), so run edges come out as live.
+It only reads GitHub and writes the files you name; putting rows on the data branch is a separate, deliberate step.
+```
+python tools/replay_day.py --day 2026-10-15 --out DIR --compare      # DIR/arrivals-<day>.csv, predictions-<day>.csv
+python tools/replay_day.py --day 2026-10-12 2026-10-13 --out DIR     # several days; inputs cached in %TEMP%/sb-replay
+python tools/replay_day.py --day 2026-10-12 --out DIR --source release   # one pass over the merged day files
+python tools/test_replay.py                                           # hermetic: a replayed run = the live rows, exactly
+```
+- Check (2026-10-15, the same code live and replayed): arrivals 3,431 of 3,431 identical (every field); prediction
+  rows 20,504 live, 20,485 reproduced, 19 only live, 58 only replayed (0.4%). The rest is the prediction log: a run
+  writes an update again only once a minute, so the last minute it was on display is not in the log; the replay
+  moves each logged last sighting 44 s on (`LAST_EXT_S`, never past the next update or the run's end; `--logged-last`
+  takes it as logged: 224 only live, 2 only replayed).
+- Limits: run artifacts are kept 90 days (raw polls since 2026-10-10 09:01Z, prediction logs since 2026-10-12 19:08Z;
+  `python tools/raw_fetch.py --list`); older days fall back to the day's release files (`--source release`: the runs'
+  polls merged into one stream, so one pass sees denser polls than a run did during overlaps, and an update shown,
+  replaced and shown again is one stretch). Days before 2026-10-10 cannot be replayed (no polls were kept). Where no
+  prediction log exists (2026-10-10 / 11, and 2026-10-12 before the predictions started) a replayed arrival keeps the
+  live row's `passio_pred_*` columns (`--no-live-pred` leaves them empty) and there are no predictions rows.
+- Static data comes from the archived zip, not today's web/data (`build_gtfs.py --zip --out`); stop addresses from
+  today's `web/data/stop_addresses.json`.
+- Putting a replay on the data branch: `python tools/apply_replay.py --data-dir <data checkout> --replay-dir DIR --day ...
+  [--dry-run]` (tests: `tools/test_apply_replay.py`). arrivals.csv: the replayed rows merged in with merge_arrivals (no
+  live row is ever removed). predictions.csv: a live row is removed only when today's previous-visit rule (DC-011) says
+  it was about the bus's previous visit AND the replay has no such row; then the replayed rows are merged in with
+  merge_predictions. A live row the replay could not rebuild stays. Idempotent. Then rebuild that day's forecast table
+  (`build_eta_dataset.py`, release asset `eta-<day>.csv.gz` with `--clobber`, its `data/eta/summary.csv` rows with
+  `archive_day.py --merge-summary`).
+
 ## Automatic collection and reading it
 `.github/workflows/collect.yml` (must live on **main**: GitHub only runs schedules from the default branch).
 Each run logs for 70 min and, 40 min in, starts its own successor (`tools/collect_chain.py`), so runs

@@ -149,6 +149,12 @@ Pushing to main is outward-facing: confirm with Nathan first unless he asked for
    A push to main also redeploys Pages (main's current site; harmless). After v2-rewrite is merged into main this step is just that merge.
 5. `python tools/monitor.py dispatch`, or wait for the next :07/:37, then `status`.
 
+## Replay a day after a detector fix
+`python tools/replay_day.py --day YYYY-MM-DD --out "$TEMP/replay" --compare` rebuilds the day's rows with the
+current code from the run artifacts (90 days) and reports what would change against `origin/data` (`git fetch origin
+data` first). Read-only; writing the result to the data branch is a separate step Nathan approves
+(`tools/apply_replay.py --dry-run` first, then without). docs/DATA.md "Replaying a day".
+
 ## Report back to Nathan
 - Verdict and why, in one line.
 - Coverage % and the biggest gap since the reported start; `arrivals.csv` rows and newest arrival.

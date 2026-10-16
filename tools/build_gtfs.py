@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download the Passio GTFS zip and convert it to compact JSON in web/data/."""
+"""Download the Passio GTFS zip and convert it to compact JSON in web/data/ (or: --zip FILE --out DIR)."""
 import csv, io, json, statistics, sys, zipfile, urllib.request
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -315,9 +315,23 @@ def dump(name, obj):
     (OUT / name).write_text(json.dumps(obj, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
 
 
-def main():
-    req = urllib.request.Request(URL, headers={"User-Agent": "straight-bussing/1.0"})
-    data = urllib.request.urlopen(req, timeout=60).read()
+def main(argv=None):
+    """Default: download Passio's zip into web/data (+ data/route_patterns.json). --zip / --out / --patterns build
+    an archived day's zip into another folder instead (tools/replay_day.py; never over web/data)."""
+    import argparse
+    global OUT, PATTERNS
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--zip", help="a local google_transit.zip instead of downloading Passio's")
+    ap.add_argument("--out", help="write the JSON files here instead of web/data")
+    ap.add_argument("--patterns", help="write route_patterns.json here instead of data/route_patterns.json")
+    a = ap.parse_args(argv)
+    OUT = Path(a.out) if a.out else OUT
+    PATTERNS = Path(a.patterns) if a.patterns else PATTERNS
+    if a.zip:
+        data = Path(a.zip).read_bytes()
+    else:
+        req = urllib.request.Request(URL, headers={"User-Agent": "straight-bussing/1.0"})
+        data = urllib.request.urlopen(req, timeout=60).read()
     z = zipfile.ZipFile(io.BytesIO(data))
     OUT.mkdir(parents=True, exist_ok=True)
 
