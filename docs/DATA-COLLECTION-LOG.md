@@ -13,6 +13,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 ## Checkups
 | When (Chicago) | Verdict | Coverage | Data | Notes |
 |---|---|---|---|---|
+| 2026-10-16 12:45 | healthy; verified and backfilled (owner: "make any changes or fixes needed. Update all data collected if needed") | 100% since the last checkup (`monitor.py status` HEALTHY) | fixes DC-009 to DC-012 on main; Oct 10 to 15 replayed with today's code (tools/replay_day.py, validated on Oct 15: 3,431 of 3,431 arrivals identical) and applied (tools/apply_replay.py, data `2db4cbc`): arrivals +576 (Oct 10 +122, 11 +109, 12 +250, 13 +95; GPS pass rows), predictions +2,248 missed rows, -558 previous-lap rows (502 of them predicted over 15 min early), 160 replaced by a fresher copy; 0 duplicates; eta-<day> assets of Oct 10 to 15 re-uploaded and their summary rows rebuilt (data `da1782b`) | Oct 8 / 9 cannot be replayed (no polls were kept); see DC-002, DC-008, DC-010, DC-011 |
 | 2026-10-16 01:11 | healthy | 100% of 31.6 h of actual logging time since the last checkup (83 runs, all succeeded, no gap over 1 min) | arrivals: 3,637 (Oct 14), 3,419 (Oct 15), 0 duplicates, 0 rows missing stop / bus / route, 89 to 90 stations and 13 lines a day; predictions.csv 73,396 rows, 10-min coverage 67% (Oct 13) -> 71% (Oct 14) -> 76% (Oct 15); alerts.csv 3 rows, polled live (last_seen 23 min old); archive through Oct 14 incl. alerts-2026-10-14.csv.gz, Oct 15 due with today's run; data repo synced 03:28Z; weather current | `monitor.py status` HEALTHY; found DC-012; DC-008 checked (watch); DC-011 unchanged; traffic context ends 2026-04-30 (known: the city stopped the dataset, RouteKnower §3.4) |
 | 2026-10-14 17:33 | healthy | 100% of 33.9 h of actual logging time (job start to end), no gaps, 145/145 runs since Oct 11 succeeded | arrivals: 3,469 (Oct 12), 3,640 (Oct 13), 2,473 (Oct 14 so far); predictions.csv 46,386 rows since Oct 12 12:20; no duplicate rows; archive complete through Oct 13 | `monitor.py status` said DEGRADED: DC-004, DC-005 (both false or harmless); the data check found DC-006 to DC-011 |
 
@@ -62,9 +63,12 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   runs late; the Downtown Campus Connector's downtown stops), or a time already past when shown (92 rows on Oct 15).
   So the 30-min score is now trustworthy as a score of what Passio showed: about 28% of its 30-min times are
   more than 15 min off.
-- Past days: rows logged before the fix keep the old pairing until they are regenerated from the archive.
+- Backfilled 2026-10-16: the live rows of Oct 12 to 15 that the fixed rule calls a previous-lap prediction and the
+  replay does not reproduce were removed (558; 502 predicted over 15 min early, median 22 min early; 360 at the
+  30-min lead, 164 at 20 min; Apostolic/Drexel 241, Midway Metra 140). Oct 15: 30-min rows over 15 min off
+  33.9% -> 28.8%. The forecast tables of Oct 12 to 15 were rebuilt with `previous_lap`.
 
-### DC-010 The forecast-snapshot table has the same trip id gap as DC-008 (fixed 2026-10-16; past days need a rebuild)
+### DC-010 The forecast-snapshot table has the same trip id gap as DC-008 (fixed 2026-10-16, backfilled)
 - Found 2026-10-14. `tools/build_eta_dataset.py` looked up Passio's prediction by the arrival's trip id only, like
   the detector did before the DC-008 fix, so `eta-<day>.csv.gz` and `data/eta/summary.csv` missed the same
   re-matched predictions (Central the most), and counted those times as `no_arrival` phantom visits.
@@ -83,6 +87,9 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   any arrivals.csv backfill of that day, then re-upload only eta-<day>.csv.gz (--clobber) and merge its summary rows
   (archive_day.py --merge-summary). Not archive_day.py --replace: that rebuilds from the 90-day run artifacts and
   re-uploads all of the day's files.
+- Backfilled 2026-10-16: eta-2026-10-10 to 10-15 rebuilt from the replayed arrivals with the DC-010 and DC-011
+  code and re-uploaded (`--clobber`), their rows of data/eta/summary.csv replaced (1,272 rows). The old tables
+  can be rebuilt from the same release inputs with the code before fee6831.
 
 ### DC-008 Passio predictions vanished between leads: our trip id lookup (fixed)
 - Found 2026-10-14 (data check of origin/data at 22:29Z).
@@ -104,6 +111,10 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   39 -> 23), spread over the lines (Midway Metra 20, Red Line/Arts Block 17, East 16). Most should be real gaps;
   replay Oct 15's archived prediction updates (pred-updates-2026-10-15, archived after about 15:20Z Oct 16) to split
   real gaps from misses before calling it done.
+- Backfilled 2026-10-16: Oct 12 to 14 replayed with today's code and applied (the Checkups line of 2026-10-16):
+  10-min coverage Oct 13 67% -> 68% of all arrivals (72% of the arrivals live had), Oct 14 71% -> 72%; Central at
+  10 min Oct 13 32% -> 53%, Oct 14 65% -> 76%; arrivals with a 20-min row but no 10-min row Oct 13 174 -> 114,
+  Oct 14 145 -> 117. The rest (Oct 15: 149) are Passio's own gaps: the replay with the fix finds nothing more.
 
 ### DC-009 An operator alert names Passio's own route id, so the app's route view skips it (fixed, app side)
 - Found 2026-10-14 while adding DC-007. The live North alert ("The North route will run every 30 minutes...")
@@ -168,6 +179,8 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   the stops buses drove past. Fixed by `source = pass` rows from the GPS track (`tools/arrival_detector.py`
   `_passes`, `data/route_patterns.json`) and Midway Metra's afternoon stop: 88%. Earlier rows stay as they were;
   the raw polls (release assets) allow a replay.
+- Backfilled 2026-10-16: Oct 10 to 13 replayed from the archived polls with today's detector: +576 arrivals, mostly
+  `pass` rows (Oct 10 +122, 11 +109, 12 +250, 13 +95). Oct 8 and 9 have no kept polls and stay as logged.
 
 ### DC-001 GitHub dropped most scheduled runs (fixed 2026-10-10, backfilled)
 - On 2026-10-09 GitHub fired about 4 of 48 scheduled `collect.yml` runs (23% coverage, multi-hour gaps). Fixed by the

@@ -89,6 +89,10 @@ These rules make results comparable from one week to the next and between predic
    because the feed's trip number moved on a lap: the same bus did reach the stop near the predicted time, but
    under another trip number. A rider at the stop only cares that *a* bus of the route came. From E20 on, each lead
    is also scored as "the next bus of this route at this stop", next to the per-trip score, and both are reported.
+   Update 2026-10-16 (DC-011): most of these were OUR pairing, not Passio: the feed listed the bus's current lap
+   under its next trip number and the collector scored that time against the next lap. The collector now never
+   scores a prediction about the bus's previous visit against the next one, and the past days were rebuilt
+   (558 such rows removed). What is left at 30 minutes (about 28% more than 15 minutes off) is Passio's own error.
 
 ## 3. Where we stand (October 13, 2026)
 
@@ -133,7 +137,8 @@ From Passio's own prediction feed (E20 preliminary, `experiments/routeknower/E20
    the feed's "next stop" did not move while the bus drove on).
 5. **The huge errors 15 to 30 minutes ahead** (this week's data): most are a bus leaving the end of its line or the
    garage 10 to 25 minutes after the printed departure Passio assumed (driver breaks, Apostolic/Drexel at Drexel
-   Garage, Red Line/Arts Block). At 30 minutes ahead, about half are the lap mix-up from section 2, point 9.
+   Garage, Red Line/Arts Block). At 30 minutes ahead, about half used to be the lap mix-up from section 2,
+   point 9; since 2026-10-16 those rows are gone from the data (DC-011), so the rest is Passio's own error.
 
 The error is **one-sided and structural**, not random noise. That is good news: a correction can learn it.
 

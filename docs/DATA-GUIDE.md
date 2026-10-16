@@ -231,9 +231,11 @@ later** than shown (of 1,065 set aside at 15 to 30 minutes, 24 were early). Two 
 1. **The bus left the end of its line or the garage 10 to 25 minutes after the printed departure** Passio
    assumed (driver breaks; most often Apostolic/Drexel at Drexel Garage, the Red Line, the Downtown Campus
    Connector). Real, and riders saw it.
-2. **At 30 minutes ahead, about half are a lap mix-up**: the same bus did pass the stop near the predicted time,
-   but under another trip number, and the row is matched to the visit a lap later. From a rider's point of view a
-   bus did come. The method now scores both ways (GOAL-AND-METHOD section 2, point 9).
+2. **At 30 minutes ahead, about half were a lap mix-up**: the same bus did pass the stop near the predicted time,
+   but under another trip number, and the row was matched to the visit a lap later. Since 2026-10-16 the
+   collector never pairs a prediction about the bus's previous visit with the next lap, and Oct 12 to 15 were
+   rebuilt (558 rows removed, DC-011 in docs/DATA-COLLECTION-LOG.md), so these rows are gone; the far misses left
+   are what Passio really showed. The numbers in this section are from before that rebuild.
 
 **Checking a row against the 10% rule in a spreadsheet:** `=ABS(pred_minus_actual_s) <= 0.1 * lead_target_s`.
 
