@@ -143,6 +143,31 @@ def test_previous_lap_and_phantom_predictions():
     assert not at(rows, T + 1500, "V1", "D", "T3", label="no_arrival")    # not shown any more by then
 
 
+def test_next_trip_update_with_the_current_lap_time_is_previous_lap():
+    """DC-011 (2026-10-16): Passio rolls a bus over to its next trip id early and lists the current lap's time under it.
+    V3 visits B on trip G1 at 100 and on trip G2 at 1300; G2's update shown at T says B at 120 (the G1 visit): for the
+    G2 arrival that is previous_lap, not a 20-min miss. A later G2 time stays shown (a real next-lap prediction)."""
+    d = tmp()
+    with open(d / "arrivals.csv", "w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=L.COLUMNS, lineterminator="\n")
+        w.writeheader()
+        for trip, dt in (("G1", 100), ("G2", 1300)):
+            r = {c: "" for c in L.COLUMNS}
+            r.update(epoch=T + dt, vehicle_id="V3", trip_id=trip, route_id="R", stop_id="B", stop_index=1,
+                     local_time=L.chicago(T + dt).strftime("%Y-%m-%d %H:%M:%S"), source="transition")
+            w.writerow(r)
+
+    def rows_for(pred):
+        (d / "pred.jsonl").write_text(json.dumps(["V3", "G2", "B", T - 200, pred, 2, T - 200, T + 200]) + "\n", encoding="utf-8")
+        return B.build(DAY, B.load_arrivals([d / "arrivals.csv"], T0, T1 + B.HORIZON_S),
+                       B.load_pred_updates([d / "pred.jsonl"], T0, T1), {}, None, static())
+
+    r = at(rows_for(T + 120), T, "V3", "B", "G2")[0]
+    assert r["passio_status"] == "previous_lap" and r.get("passio_epoch") in (None, ""), r["passio_status"]
+    r = at(rows_for(T + 600), T, "V3", "B", "G2")[0]                 # 8 min after the G1 visit: about lap 2
+    assert r["passio_status"] == "shown" and r["passio_err_s"] == -700, r
+
+
 def test_visit_rank_two_has_no_passio():
     _, rows = built()
     r = at(rows, T + 0, "V2", "B", "F")                             # lap 1 at 60 (rank 1) and lap 2 at 1260 (rank 2)

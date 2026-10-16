@@ -68,13 +68,17 @@ class Tracker:
         """Predictions that can be about THIS arrival, oldest first: (made, predicted).
         This vehicle's own predictions, else the trip's predictions that came without a vehicle id. At a
         loop stop (in the route twice) only a prediction whose stop_sequence is idx + 1 counts (or that
-        has no sequence): one update predicts the terminal both as stop 1 and as stop N. When the bus's
-        previous visit to this stop was on the SAME trip id (loops that keep one trip id for two laps, the
-        Downtown Campus Connector's frequency trip; E19 cause A3), a prediction made before that visit, or
-        predicting a time within PREV_VISIT_GAP_S of it, was about the earlier lap and is skipped, unless its
-        stop_sequence names this visit at another index (the loop terminal: one update predicts both ends).
-        A previous visit under another trip id never blocks: on a 15-min loop a real 30-min-ahead prediction
-        for the next run is made before the bus passes the stop on this one."""
+        has no sequence): one update predicts the terminal both as stop 1 and as stop N. A prediction of a time
+        before, or within PREV_VISIT_GAP_S after, the bus's previous visit to this stop was about that earlier
+        visit (a rider reading it saw the bus come then) and is skipped, whatever trip id the previous visit had:
+        Passio rolls a bus over to its next trip id early and lists the current lap's times under it (DC-011,
+        2026-10-16: on 2026-10-15 such rows paired a lap's time with the lap after on Drexel, Midway Metra,
+        Apostolic/Drexel). When the previous visit was on the SAME trip id (loops that keep one trip id for two
+        laps, the Downtown Campus Connector's frequency trip; E19 cause A3), a prediction MADE before that visit is
+        skipped too. Neither applies when the stop_sequence names this visit at another index (the loop terminal:
+        one update predicts both ends). A prediction made before a previous visit under another trip id still
+        counts if it predicts a later time: on a 15-min loop a real 30-min-ahead prediction for the next run is
+        made before the bus passes the stop on this one."""
         d = self.preds.get((self._veh(veh), trip, stop_id))
         if not d and self._only_bus(trip, veh, epoch):    # updates without a vehicle id: only if no other bus has
             d = self.preds.get((None, trip, stop_id), ())  # this trip id (shared trip ids, E01 B1)
@@ -86,7 +90,7 @@ class Tracker:
                 continue
             if abs(pred - epoch) >= 3600:
                 continue
-            if pv is not None and pv[1] == trip and (made <= pv[0] or pred < pv[0] + PREV_VISIT_GAP_S):
+            if pv is not None and (pred < pv[0] + PREV_VISIT_GAP_S or (pv[1] == trip and made <= pv[0])):
                 if not (seq is not None and idx is not None and seq == idx + 1 and pv[2] != idx):
                     continue
             yield made, pred, seen, last

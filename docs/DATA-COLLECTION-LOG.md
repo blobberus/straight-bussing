@@ -29,13 +29,35 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 - Fix (not done): key rows by version alone in `tools/alerts_lib.py` (`key`, `versions`), keep the ids seen in a
   column, and merge the existing rows once; tests in `tools/test_alerts.py`.
 
-### DC-011 Many 30-min predictions are another lap's time (open)
+### DC-011 Many 30-min predictions are another lap's time (fixed in part; the rest is Passio's own error)
 - Found 2026-10-14 during DC-008. 35.6% of the 30-min rows and 7.2% of the 20-min rows are more than 15 min off;
   many look like a prediction for a different lap on loops shorter than the lead (e.g. Apostolic/Drexel bus 4538
   at Levi Hall). Either Passio really shows such times (then the rows are right and Passio is bad that far out)
   or the selection pairs a lap's prediction with the wrong arrival. Needs its own experiment (RouteKnower) before
   the 30-min score is trusted.
 - 2026-10-16: unchanged on Oct 15: 33.9% of 30-min rows and 7.0% of 20-min rows more than 15 min off.
+- Investigated 2026-10-16 (RouteKnower E22): Oct 12 to 15 replayed from the archived raw polls and prediction updates
+  through the detector (the replay reproduces the live rows: 99.8% of arrivals, 18,554 of 18,745 shared prediction
+  rows identical on Oct 15), every far row traced to the update it came from.
+- Cause of the part that was ours: Passio rolls a bus over to its next trip id early and lists the CURRENT lap's
+  times under it; the detector skipped a prediction about the bus's previous visit only when that visit had the
+  same trip id, so such a time (e.g. Drexel 4325 at Goldblatt: 'in 0.6 min' 20 min ahead, and the bus came 0.6 min
+  later on its current lap) was scored against the lap after it. The same in `tools/build_eta_dataset.py`.
+- Fixed: a prediction of a time before, or within PREV_VISIT_GAP_S after, the bus's previous visit to the stop is
+  about that visit whatever its trip id (`Tracker._candidates` in `tools/arrival_detector.py`; `shown()` in
+  `build_eta_dataset.py` marks it `previous_lap`); tests in `tools/test_truth.py`, `tools/test_eta.py`. A real
+  next-lap prediction (a later time) is kept. Effect per day, Oct 12 to 15: 73 to 102 predictions.csv rows
+  dropped (85 to 100% of them > 15 min off), none added; 30-min rows > 15 min off 38.7 -> 27.9% (Oct 12),
+  33.5 -> 27.4%, 36.3 -> 30.9%, 32.4 -> 27.9% (Oct 15); 20-min 0.3 to 1.9 points lower; arrivals.csv only its
+  passio_pred_epoch value on 2 to 11 arrivals a day (format unchanged). Forecast table: 1,306 to 1,668 rows a day
+  go shown -> previous_lap (99 to 100% > 15 min off, all predicted early).
+- Accepted (Passio's own error, rows kept as an honest record): after the fix 95% of the remaining far rows come
+  from the update for exactly this visit (this trip id, stop_sequence = the stop's place on the trip), with no
+  visit of the bus near the predicted time: mostly predicted too early (schedule times while a bus lays over or
+  runs late; the Downtown Campus Connector's downtown stops), or a time already past when shown (92 rows on Oct 15).
+  So the 30-min score is now trustworthy as a score of what Passio showed: about 28% of its 30-min times are
+  more than 15 min off.
+- Past days: rows logged before the fix keep the old pairing until they are regenerated from the archive.
 
 ### DC-010 The forecast-snapshot table has the same trip id gap as DC-008 (open)
 - Found 2026-10-14. `tools/build_eta_dataset.py` looks up Passio's prediction by the arrival's trip id only, like
