@@ -191,10 +191,15 @@ class Tracker:
 
     # ---- resume from CSV tail ----
     def seed(self, rows, now):
+        """Resume from the shared CSV's tail. GPS-sweep rows (DC-003) only feed the sweep's duplicate check: the
+        Passio-driven rules start from their own rows, so the sweep never changes what they log."""
         for r in rows:
             try:
                 ep, idx = int(r["epoch"]), int(r["stop_index"])
                 if now - ep > STATE_TTL:
+                    continue
+                if r.get("source") == "gps":
+                    self.logged[(self._veh(r["vehicle_id"]), r["stop_id"])].append(ep)
                     continue
                 s = self._state((r["vehicle_id"], r["trip_id"]), r["route_id"], now)
                 s["done"].add(idx)                   # blocks duplicates up to STATE_TTL, links only recent rows

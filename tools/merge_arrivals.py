@@ -11,7 +11,9 @@ the epochs are within DUP_S = 300 s, whatever the trip id and stop_index: two co
 on Passio's trip id (it flaps between ids, and flips at terminals, where a stop is both the last index
 of one trip and index 0 of the next), and no loop on this network is shorter than ~15 min (real
 same-trip revisits start at ~16 min), so a bus can't be at one stop twice within DUP_S. The kept row is
-the one with more filled fields (a run that just started has no previous stop or Passio prediction yet). Existing
+the one with more filled fields (a run that just started has no previous stop or Passio prediction yet), except
+that a GPS-sweep row (source 'gps', DC-003) never replaces nor beats a row of the other rules: it is only a fallback for
+a visit no rule logged (overlapping runs can each see a different part of one visit). Existing
 lines are never re-serialised, so git diffs stay small. Idempotent: merging the same file twice
 changes nothing. Stdlib only.
 """
@@ -42,6 +44,14 @@ def key(r):
 
 def filled(r):
     return sum(1 for x in r if x != "")
+
+
+I_SOURCE = COLUMNS.index("source")
+
+
+def rank(r):
+    """Which of two duplicates stays: any rule's row over a GPS-sweep row (DC-003), then the richer one."""
+    return (r[I_SOURCE] != "gps", filled(r))
 
 
 def read_lines(p):
@@ -86,7 +96,7 @@ def merge(into, add, rotate_mb=0.0):
         if hit is None:
             new.append((ep, ln))
             index.setdefault(k, []).append((ep, None))      # also dedupes within this run
-        elif hit[1] is not None and filled(r) > filled(parse(lines[hit[1]])[0]):
+        elif hit[1] is not None and rank(r) > rank(parse(lines[hit[1]])[0]):
             lines[hit[1]] = ln
             stats["replaced"] += 1
         else:
@@ -129,7 +139,7 @@ def dedupe(into):
             out.append(ln)
             continue
         dropped += 1
-        if filled(r) > filled(parse(out[hit[1]])[0]):
+        if rank(r) > rank(parse(out[hit[1]])[0]):
             out[hit[1]] = ln
     if dropped:
         tmp = into.with_name(into.name + ".tmp")
