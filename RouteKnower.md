@@ -7,7 +7,7 @@
 > protocol**, and log every result in **§11**.
 >
 > Status: **collecting arrivals, Passio's predictions 1-30 min ahead (`predictions.csv`, since 2026-10-12) and
-> weather/traffic context; E00, E01, E04, E15, E18, E19 done.** Owner goal since 2026-10-12: the **10% rule** (E19). Created 2026-10-08,
+> weather/traffic context; E00, E01, E04, E15, E18, E19 done.** Owner goal since 2026-10-17: the **10 minute shrink** (3 min at >= 30 min ahead, 2 min at >= 20 min, 1 min below; it replaced the 10% rule of 2026-10-12, E19). Created 2026-10-08,
 > revised the same day after an objective review (§13). Ship target: **Fri Nov 20, 2026**, before
 > Thanksgiving Break (§8). Improving the data and the model continues after shipping.
 
@@ -15,7 +15,7 @@ Related files (read, don't duplicate): `docs/DATA.md` (CSV schemas, detector, co
 (math of the existing models), `docs/BACKTEST.md` (latest backtest report), browsable data + viewer:
 https://github.com/blobberus/straight-bussing-data (auto-synced mirror of the data and this methodology), `monitoring.md` (keeping the
 collectors alive), `web/js/core/predict.js` (how the app reads a model). `docs/LEARNING.md` is superseded. For the owner, in plain English:
-**`docs/GOAL-AND-METHOD.md`** (the 10% rule, the scoring rules, current standings, the optimization plan; keep it in step with
+**`docs/GOAL-AND-METHOD.md`** (the goal: the 10 minute shrink, earlier the 10% rule; the scoring rules, current standings, the optimization plan; keep it in step with
 this file) and `docs/DATA-GUIDE.md` (every file and column with the numbers so far); visual overview
 `docs/prediction-explainer.html`; first Passio far-lead analysis: `experiments/routeknower/E20-prelim-*`.
 
@@ -408,6 +408,7 @@ Reproduce: <exact commands>
 | E15 | 2026-10-08 | Traffic Tracker regions 2022-01..2026-04 x MDW METARs (64,551 joined hours) | Hyde Park speeds -2.0 % light rain, -3.5 % heavy rain, -3.5 % snow (95% CIs exclude 0); ~20 wet / ~5 snow service days expected Oct 8-Nov 30 | **Adopt as prior** for M14; weather secondary. `experiments/routeknower/E15-weather-traffic-prior.md` |
 | E22 | 2026-10-16 | archived raw polls + prediction updates Oct 12-15 replayed through tools/arrival_detector.py (replay = live: 99.8% of arrivals, 99% of shared prediction rows identical) | DC-011: of the rows > 15 min off, the ones from a next-trip update listing the current lap (a time at or before the bus's previous visit under another trip id) were ours: 73-102 predictions.csv rows a day, 1,306-1,668 forecast-table rows; 30-min > 15 min off 32-39% -> 27-31%. The rest (95% from the update for exactly this visit, no visit near the predicted time) is Passio's own error | **Adopt**: the previous-visit time test now ignores the trip id (detector + build_eta_dataset); keep the remaining rows; 30-min Passio score usable |
 | E23 | 2026-10-16 | eta tables Oct 12-15 (4 days with Passio predictions), rolling origin by day: learn Oct 12-13 / test Oct 14, learn Oct 12-14 / test Oct 15 (`experiments/routeknower/colab/routeknower_colab.ipynb`) | band B vs Passio: quantile trees (LightGBM, 17 features known at the query minute) 0-6 min 0.0, 6-10 +0.1, 10-15 +0.9 (0.1 to 1.7), 15-20 +1.4 (0.1 to 2.7), 20-30 +2.1 (-1.7 to 5.9), 30-45 -1.6 points; too late lower in every bin; per-stop shift table -2.1 to +2.0, 4 routes > 10% worse; deep tabular network (embeddings, multi-quantile pinball) identical to Passio in every bin. Passio itself: band B 4 to 24%, too late 4 to 9%. 40 s on a CPU, 713 MB | **Trees are the lead candidate (M9), not yet a ship candidate** (2 test days; gate needs 10, ~Nov 5-12). Deep learning parked until T3 or a GPS sequence input. Bigger gains need inputs (layover / terminal state, M5, M11, M13), not capacity |
+| E23b | 2026-10-17 | the same notebook rerun under the owner's new goal (the 10 minute shrink), eta tables Oct 12-16, test Oct 14, 15, 16 | band B (allowed error early to 1% late) vs Passio: trees 0-6 0.0, 6-10 +0.2 (0.1 to 0.3), 10-15 +0.6 (0.4 to 0.9), 15-20 -0.8 (-2.8 to 1.0), 20-30 +1.4 (-1.7 to 5.5), 30-45 -1.5; too late lower in every bin; North > 10% worse; deep +1.0 at 15-20 but too late higher; Passio band B 9 to 30%, within the allowed error 12 to 34%. 89 s, 810 MB | unchanged: trees lead, not a ship candidate (3 test days of 10); deep learning parked |
 
 ## 12. Open questions
 - Does Passio's ETA come from a schedule or from live positions? (Error = predicted - actual: the pilot's -33 s and E18's -40 s mean buses come *later* than Passio shows, by a stable amount per stop; corrected 2026-10-12, this line used to say the opposite.) M2/M10 answer it.

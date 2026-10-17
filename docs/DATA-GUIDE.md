@@ -5,7 +5,8 @@ so far says. No coding needed: the CSV files open in Excel, Google Sheets or Num
 up to **Tuesday, October 13, 2026, 4:20 PM** (collection started Thursday, October 8, 5 AM).
 
 - **How the data is collected**, in a page: **`docs/HOW-DATA-IS-COLLECTED.md`**.
-- **The goal** (the 10% rule), how predictions are scored, where each predictor stands and the plan to optimize the
+- **The goal** (since October 17 the "10 minute shrink": within 3 minutes at 30 or more minutes ahead, 2 at 20 or
+  more, 1 below; before it the 10% rule), how predictions are scored, where each predictor stands and the plan to optimize the
   algorithm: **`docs/GOAL-AND-METHOD.md`**. This guide only refers to it.
 - How arrivals are detected, technically: `docs/DATA.md`. A visual overview: `docs/prediction-explainer.html`.
 
@@ -238,7 +239,9 @@ later** than shown (of 1,065 set aside at 15 to 30 minutes, 24 were early). Two 
    rebuilt (558 rows removed, DC-011 in docs/DATA-COLLECTION-LOG.md), so these rows are gone; the far misses left
    are what Passio really showed. The numbers in this section are from before that rebuild.
 
-**Checking a row against the 10% rule in a spreadsheet:** `=ABS(pred_minus_actual_s) <= 0.1 * lead_target_s`.
+**Checking a row against the goal in a spreadsheet** (the 10 minute shrink):
+`=ABS(pred_minus_actual_s) <= IF(lead_target_s >= 1800, 180, IF(lead_target_s >= 1200, 120, 60))`. The old 10% rule:
+`=ABS(pred_minus_actual_s) <= 0.1 * lead_target_s`.
 
 ## `alerts.csv`: what the operator announced
 
@@ -300,13 +303,14 @@ lead range.
 |---|---|
 | `targets` | Arrivals with a row in that lead range. |
 | `n` | Of those, how many the predictor had a time for. `n / targets` = coverage. (October 12's Passio coverage looks low, about 50%, only because its log starts at 12:20 PM.) |
-| `pass_10`, `pass_10_floor` | How many were within 10% of the lead; the same with a 1-minute floor. |
+| `pass_shrink`, `early_shrink` | How many were within the allowed error of the goal (the 10 minute shrink), and how many were shown too early by more than that. |
+| `pass_10`, `pass_10_floor` | The old goal, kept for comparison: within 10% of the lead; the same with a 1-minute floor. |
 | `late_1` | How many were more than 1% of the lead too late (the bus came early). |
 | `early_10` | How many were more than 10% too early (the bus came late). |
 | `gross`, `gross_early` | Huge errors (set aside), and how many of them were "bus came early". |
 | `mae_s`, `median_err_s` | Average size of the error and the median error, without huge errors. |
 
-**Pass rate of a row:** `pass_10 / (n - gross)`. Pooled over days, with uncertainty ranges over days:
+**Pass rate of a row:** `pass_shrink / (n - gross)` (the old 10% rule: `pass_10 / (n - gross)`). Pooled over days, with uncertainty ranges over days:
 `python tools/build_eta_dataset.py report data/eta/summary.csv`. The current standings are in GOAL-AND-METHOD
 section 3.
 

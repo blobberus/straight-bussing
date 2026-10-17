@@ -1,6 +1,6 @@
 name: Archive prediction data
 # Daily, after the Chicago service day ends (04:00): the 90-day CI artifacts of collect.yml (pred-updates-<run>,
-# raw-polls-<run>) become one gzipped file per service day, plus the forecast-snapshot table for the 10% rule
+# raw-polls-<run>) become one gzipped file per service day, plus the forecast-snapshot table for the accuracy goal
 # (tools/build_eta_dataset.py), uploaded to the GitHub Release data-archive-YYYY-MM (assets do not grow the git
 # history; about 5.5 MB a day, plus the GTFS zip used). The day's aggregate pass rates go to data/eta/summary.csv on the data branch.
 # Catches up the last 10 days, so a dropped scheduled run costs nothing. Code: tools/archive_day.py.

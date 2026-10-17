@@ -21,7 +21,8 @@ It watches each bus and notices when it reaches a stop, in one of three ways: Pa
 bus's GPS comes close enough to the stop, or the GPS track shows it drove past a stop Passio never mentioned. For
 each arrival it notes the bus, the route, the stop, the time and how long the bus waited. It also notes **what
 Passio was predicting 1, 2, 3, 5, 10, 15, 20 and 30 minutes before** that arrival. Comparing the two is how the
-10% rule is measured.
+accuracy goal is measured (the "10 minute shrink": within 3 minutes at 30 or more
+minutes ahead, 2 at 20 or more, 1 below).
 
 ## 4. Where it is saved
 When a session ends, it adds what it saw to a few shared spreadsheet files on the project's separate "data" branch
@@ -33,7 +34,7 @@ day**.
 - The raw feed snapshots and every prediction Passio showed that day are **archived permanently**.
 - A **minute-by-minute table** of what was predicted against what really happened is built. This is what the Colab
   notebook (`experiments/routeknower/colab/`) learns from.
-- Passio is **scored against the 10% rule** for that day.
+- Passio is **scored against the accuracy goal** for that day.
 - A separate job saves the day's **weather**.
 
 ## 6. The public copy

@@ -10,8 +10,8 @@ right more often, and **almost never too late**? A time shown too late is a miss
 
 ## The short answer: not deep learning yet
 "Deep learning" means a neural network: a model with many adjustable numbers that learns patterns from examples.
-We tried a small one on the 4 days of data we have. **It learned nothing useful**: its times were the same as
-Passio's. A simpler model, "trees" (many small yes/no rules added together), did a little better than Passio, and
+We tried a small one on the 5 days of data we have. **It learned nothing reliable**: its times were about the
+same as Passio's. A simpler model, "trees" (many small yes/no rules added together), did a little better than Passio, and
 it ran in under a minute.
 
 So the plan is: **use the simple models now, and come back to deep learning later**, in about mid-December, when
@@ -19,7 +19,7 @@ there are 8 to 10 weeks of data (including Thanksgiving Break and finals), or wh
 bus's recent GPS trail.
 
 ## Why the simple models win for now
-1. **Not enough examples yet.** A neural network needs many examples of every stop at every time of day. Four days
+1. **Not enough examples yet.** A neural network needs many examples of every stop at every time of day. Five days
    is far too few. Tree models handle small data much better.
 2. **The big misses come from things the data does not show.** Most of Passio's large errors happen when a bus
    leaves the end of its line late (a driver break, a long wait). No model, simple or deep, can predict what it
@@ -28,26 +28,29 @@ bus's recent GPS trail.
    neural network is much harder to carry in both the website and the iPhone app.
 
 ## The goal, and how it is scored
-- **The 10% rule**: a prediction made 20 minutes ahead should be right within 2 minutes (10% of 20).
+- **The 10 minute shrink** (the goal since October 17): a prediction made 30 or more minutes ahead must be right
+  within 3 minutes, 20 or more minutes ahead within 2 minutes, and closer in within 1 minute. (It replaced the
+  "10% rule", which allowed 10% of the time ahead.)
 - **Too late is worse than too early**: the scoring allows a little early, but almost no late.
 - Each model is tested on days it has never seen: it learns on earlier days and is scored on the next day.
 
-## What we found (Oct 14 and 15)
-Share of buses where the time was close enough (percent):
+## What we found (Oct 14 to 16)
+Share of buses where the time was within the allowed error of the goal (percent):
 
 | How far ahead | Passio | Trees | Neural network |
 |---|---|---|---|
-| under 6 min | 4.1 | 4.1 | 4.1 |
-| 6 to 10 min | 6.9 | 7.0 | 6.9 |
-| 10 to 15 min | 11.2 | 12.0 | 11.2 |
-| 15 to 20 min | 18.4 | 19.8 | 18.4 |
-| 20 to 30 min | 23.6 | 25.7 | 23.6 |
-| 30 to 45 min | 12.3 | 10.7 | 12.3 |
+| under 6 min | 34.3 | 34.3 | 34.3 |
+| 6 to 10 min | 12.4 | 13.3 | 12.6 |
+| 10 to 15 min | 12.4 | 13.4 | 12.4 |
+| 15 to 20 min | 13.2 | 12.4 | 14.5 |
+| 20 to 30 min | 24.6 | 25.5 | 24.4 |
+| 30 to 45 min | 12.3 | 10.7 | 12.0 |
 
-The trees were also too late a little less often than Passio. But two test days are not enough to be sure: the
-project only shows riders a new time after **at least 10 test days** prove it is better (around Nov 5 to 12). The
-table also shows the hard truth: even Passio is rarely close enough by this strict rule, so small corrections
-alone will not reach the goal.
+The trees were a little better in most rows and too late a little less often than Passio, but worse on the North
+route. The neural network gained in one row but was too late more often there. Three test days are not enough to
+be sure: the project only shows riders a new time after **at least 10 test days** prove it is better (around Nov
+5 to 12). The table also shows the hard truth: even Passio is rarely close enough by this strict goal, so small
+corrections alone will not reach it.
 
 ## How to run it yourself
 1. Click **Open the notebook in Colab** above (sign in with any Google account).

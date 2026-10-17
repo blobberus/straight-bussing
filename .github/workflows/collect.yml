@@ -67,7 +67,7 @@ jobs:
         continue-on-error: true              # rows are flushed as they are found; keep what we have
         run: |
           date +%s > "$RUNNER_TEMP/log.t0"
-          # --pred-out: Passio's prediction 1 to 30 min ahead of each arrival (predictions.csv, the 10% rule);
+          # --pred-out: Passio's prediction 1 to 30 min ahead of each arrival (predictions.csv, the owner's accuracy goal);
           # --pred-log: every prediction update Passio published (artifact below, for re-analysis);
           # --alerts-out: Passio's service alerts at start and every 5 min, one row per alert version (own thread,
           # never delays the 10 s loop; merged into data/ground_truth/alerts.csv below)

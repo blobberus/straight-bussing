@@ -5,7 +5,7 @@ file each, builds the forecast-snapshot table (tools/build_eta_dataset.py) and u
 Release `data-archive-YYYY-MM` (release assets: no growth of the git history; about 5.5 MB a day, plus the day's
 GTFS zip so the timetable columns can be rebuilt exactly, and alerts-<day>.csv.gz, the operator's service alert
 versions in the feed that day, from the data branch's alerts.csv, once alert collection has begun). The day's
-aggregate rows (10% rule by lead) are merged into data/eta/summary.csv on the data branch (tiny).
+aggregate rows (the owner's accuracy goal by lead) are merged into data/eta/summary.csv on the data branch (tiny).
 
   python tools/archive_day.py --catch-up 10 --arrivals A.csv --gtfs g.zip --data-dir databranch   # CI (archive.yml)
   python tools/archive_day.py --day 2026-10-12 --local                  # this PC, if CI was down (adds local logs)

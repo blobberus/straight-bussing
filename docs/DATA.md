@@ -11,7 +11,7 @@ predictions and train our own (`tools/model_*.py`, `docs/ALGORITHMS.md`). Unoffi
 | `data/ground_truth/archive/*.csv` | `data` branch | same schemas, rotated when a live file passes 40 MB (arrivals, predictions; alerts.csv never rotates) |
 | CI artifacts `raw-polls-<run>`, `pred-updates-<run>` | GitHub Actions, 90 days | every position poll (E03) and every Passio prediction update `[veh, trip, stop_id, made, predicted, seq, seen, last]` (repeated about once a minute while it stays on display) per run (`tools/raw_fetch.py --list`) |
 | Release `data-archive-YYYY-MM` assets | GitHub Releases (prerelease), kept | from service day 2026-10-12 on (Oct 10-11: positions only), one set per service day, uploaded the morning after: `pred-updates-<day>.jsonl.gz`, `raw-polls-<day>.jsonl.gz` (the two artifacts merged and deduped), `eta-<day>.csv.gz` (forecast snapshots, below), `gtfs-<day>.zip`, and from the first day alerts were collected `alerts-<day>.csv.gz` (the alerts.csv versions in the feed at some poll of that service day; header only = none seen); about 5.5 MB a day, no growth of the git history (`.github/workflows/archive.yml`, `tools/archive_day.py`) |
-| `data/eta/summary.csv` | `data` branch | the 10% rule per service day x source x lead bin x route / segment (below); a few hundred rows a day |
+| `data/eta/summary.csv` | `data` branch | the owner's goal (10 minute shrink; the 10% rule beside it) per service day x source x lead bin x route / segment (below); a few hundred rows a day |
 | `web/data/learned.json` | `data` branch | model refreshed after each run (if `tools/refresh_model.py` exists) |
 | `data/ground_truth/synthetic_arrivals.csv` | main | **fake**, seeded 3-week demo (ids start `syn`); `tools/make_synthetic_truth.py` |
 | `web/data/places.json` | main | named places within a 30-min walk of campus stops for on-device place search; `tools/build_places.py` (OpenStreetMap Overpass, ODbL); refreshed by the daily Pages run |
@@ -38,8 +38,9 @@ only roughly sorted.
 
 ## predictions.csv (added 2026-10-12; one row = one arrival x one target lead)
 The arrivals file keeps its 25 columns; this file sits next to it. Join on `vehicle_id` + `stop_id` + `epoch`
-(within 300 s: two collector runs can time one arrival a few seconds apart). Owner goal, the **10% rule**: a
-prediction made L before the arrival should be right to 10% of L (1 min at 10 min ahead, 3 min at 30 min ahead).
+(within 300 s: two collector runs can time one arrival a few seconds apart). Owner goal (since 2026-10-17), the **10 minute
+shrink**: a prediction made L before the arrival should be right within 3 min at >= 30 min ahead, 2 min at >= 20 min, 1 min below (`arrivals_lib.shrink_tol`;
+from 2026-10-12 to 10-16 the goal was the 10% rule, 10% of L).
 
 `epoch` `local_time` `route_id` `route_name` `trip_id` `vehicle_id` `stop_id` `stop_name` `stop_index` (as in
 arrivals.csv) · `lead_target_s` 60, 120, 180, 300, 600, 900, 1200 or 1800 · `pred_epoch` Passio's newest
@@ -154,10 +155,12 @@ predictions.csv, and that time is no longer a no_arrival row). Inputs: the archi
 **Aggregating it (`summary()`, `data/eta/summary.csv`).** Rows of one arrival are near-copies (up to 45 per arrival),
 so never average over rows: per source and lead bin (0-6, 6-10, 10-15, 15-20, 20-30, 30-45 min) each arrival gives
 ONE sample, its row nearest the middle of the bin. Per (service_day, source, lead_bin, route or ALL, segment all /
-current_trip / next_trip): `targets` (arrivals with a row in the bin), `n` (with that source), `pass_10`
+current_trip / next_trip): `targets` (arrivals with a row in the bin), `n` (with that source), `pass_shrink`
+(|err| within the owner's allowed error, the 10 minute shrink; since 2026-10-17, every day rebuilt),
+`early_shrink` (err below minus that), `pass_10`
 (|err| <= 10% of lead), `pass_10_floor` (with a 60 s floor), `late_1` (err > 1% of lead), `early_10`, `gross`
 (|err| > max(10 min, half the lead): out of the pass counts, E19 rule) and `gross_early`, `mae_s`, `median_err_s`
-(without gross). Pass rate = pass_10 / (n - gross); coverage = n / targets. Across days:
+(without gross). Pass rate = pass_shrink / (n - gross) (the 10% history: pass_10 / (n - gross)); coverage = n / targets. Across days:
 `python tools/build_eta_dataset.py report data/eta/summary.csv [--route R] [--segment next_trip]` pools the days and
 gives a 95% bootstrap interval **over days** (RouteKnower 6.5: days are the unit of noise; >= 10 days to decide).
 

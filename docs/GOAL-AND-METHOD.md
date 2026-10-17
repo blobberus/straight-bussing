@@ -10,19 +10,23 @@ Numbers below: data up to Tuesday, October 13, 2026, 4:20 PM.
 
 ## 1. The goal
 
-### 1.1 The 10% rule (owner, October 12, 2026)
+### 1.1 The 10 minute shrink (owner, October 17, 2026)
 
-> A prediction made L minutes before the bus arrives must be right to within **10% of L**.
+> "The new rule is the 10 minute shrink: >=30min = 3 min accurate, >=20 min = 2 min accurate, >=10min = 1 min
+> accurate."
 
 | How far ahead the prediction was made | Allowed error (either way) |
 |---|---|
-| 1 minute | 6 seconds |
-| 2 minutes | 12 seconds |
-| 5 minutes | 30 seconds |
-| **10 minutes** | **1 minute** |
-| 15 minutes | 1.5 minutes |
-| 20 minutes | 2 minutes |
-| **30 minutes** | **3 minutes** |
+| 30 minutes or more | **3 minutes** |
+| 20 to 30 minutes | **2 minutes** |
+| 10 to 20 minutes | **1 minute** |
+| under 10 minutes | 1 minute (assumed: the owner named no tighter step, and 0 would be unreachable; owner to confirm) |
+
+It replaced the **10% rule** of October 12 (allowed error = 10% of the lead: 6 s at 1 min, 1.5 min at 15 min, with a
+proposed 1-minute floor under 10 min). The new rule is the same at exactly 10, 20 and 30 minutes, stricter between
+those steps (at 15 or 25 minutes ahead) and above 30, and the same as the floored 10% rule under 10 minutes. The
+daily summary keeps the 10% counts (`pass_10`) next to the new ones (`pass_shrink`), so both can be compared.
+Code: `tools/arrivals_lib.py` `shrink_tol`.
 
 "Error" always means **predicted time minus actual arrival time**:
 - **Positive = "too late"**: the prediction said a later time than the bus really came. The bus came early, and a
@@ -37,13 +41,13 @@ This sentence can be read three ways. All three are measured, but one is adopted
 
 | Reading | What it asks | Status |
 |---|---|---|
-| **B (adopted)** | Each prediction may be up to 10% of L too early, but at most **1% of L too late** (10 min ahead: at most 6 s too late, at most 60 s too early). "Most" predictions should land in that window. | **Working target. Owner to confirm.** |
+| **B (adopted)** | Each prediction may be up to the allowed error (section 1.1) too early, but at most **1% of L too late** (10 min ahead: at most 6 s too late, at most 60 s too early; 25 min ahead: 15 s late, 2 min early). "Most" predictions should land in that window. | **Working target. Owner to confirm.** |
 | A1 | Fewer than 1% of all predictions are too late at all. | Measured. Reaching it means shifting every prediction so much earlier that almost none stays within 10% (E19). |
 | A2 | Fewer than 1% of predictions are too late by more than 10% of L. | Measured. Same problem as A1, a little milder. |
 
-So the **single number we optimize** is the share of predictions inside the window **from 10% of L too early to
-1% of L too late** ("band B"), checked separately at each lead time (1, 2, 3, 5, 10, 15, 20, 30 minutes). The
-plain 10% rule (either direction) is reported next to it.
+So the **single number we optimize** is the share of predictions inside the window **from the allowed error too
+early to 1% of L too late** ("band B"), checked separately at each lead time (1, 2, 3, 5, 10, 15, 20, 30 minutes).
+The plain rule (the allowed error either way) is reported next to it. Until October 17 the early edge was 10% of L.
 
 ### 1.3 Huge errors are set aside, but never hidden
 
@@ -60,10 +64,10 @@ The owner asked to leave huge errors out because they come from different proble
 ### 1.4 Open decisions for the owner
 
 1. **Which reading of the 1% rule** (section 1.2). B is assumed.
-2. **A floor for short leads.** At 1 to 3 minutes ahead, 10% is only 6 to 18 seconds: tighter than the arrival
-   detector's own accuracy (about 10 seconds) and finer than the app shows (whole minutes). Proposal: count a
-   prediction under 10 minutes ahead as passing if it is within **1 minute** (10 minutes and up, the 10% rule is
-   already 1 minute or more). Passio at 2 minutes ahead passes 9% without the floor and 49% with it.
+2. **A floor for short leads.** Settled by the 10 minute shrink (October 17): 1 minute from 10 to 20 minutes ahead.
+   Under 10 minutes the 1-minute floor is assumed (the old proposal: at 1 to 3 minutes ahead a 10% rule was only 6 to
+   18 seconds, tighter than the arrival detector's own accuracy and finer than the app's whole minutes). Owner to
+   confirm.
 
 ## 2. How every prediction is scored
 
@@ -94,7 +98,28 @@ These rules make results comparable from one week to the next and between predic
    scores a prediction about the bus's previous visit against the next one, and the past days were rebuilt
    (558 such rows removed). What is left at 30 minutes (about 28% more than 15 minutes off) is Passio's own error.
 
-## 3. Where we stand (October 13, 2026)
+## 3. Where we stand
+
+### 3.0 Under the 10 minute shrink (October 12 to 16, 2026; the daily summary)
+Passio, one sample per arrival and lead bin, huge misses set aside (`python tools/build_eta_dataset.py report
+data/eta/summary.csv`). **A first look: 5 days.**
+
+| Lead | Passio within the allowed error | (old 10% rule) | too late (more than 1% of the lead) |
+|---|---|---|---|
+| under 6 min | 35% | 7% | 10% |
+| 6 to 10 min | 13% | 10% | 10% |
+| 10 to 15 min | 13% | 16% | 10% |
+| 15 to 20 min | 14% | 24% | 8% |
+| 20 to 30 min | 26% | 31% | 6% |
+| 30 to 45 min | 12% | 13% | 4% |
+
+First learned corrections (Colab notebook, test days Oct 14 to 16, band B): trees +0.2 to +1.4 points in 4 of the 5
+bins from 2 to 30 minutes, with less "too late", not yet significant everywhere and one route (North) more than
+10% worse; a deep network no real gain (RouteKnower E23). The tables below are the October 13 look under the 10%
+rule.
+
+### 3.1 Under the 10% rule (October 13, 2026)
+
 
 Share of predictions within the 10% rule. "Band B" = within 10% too early to 1% too late (the working goal).
 Passio: `predictions.csv`, Monday 12:20 PM to Tuesday 4:20 PM (1.2 days; 900 to 3,700 arrivals per lead).

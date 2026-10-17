@@ -4,9 +4,10 @@ Notebook: `routeknower_colab.ipynb` ([Open in Colab](https://colab.research.goog
 Plain-English version: `PLAIN-ENGLISH.md` / `PLAIN-ENGLISH.ipynb`. Project plan: `RouteKnower.md` (E23).
 
 ## Direction, in one paragraph
-**Not deep learning yet.** On the data so far (4 service days with Passio predictions, so 2 test days), a small
-deep tabular network learned no useful correction: its scores equal Passio's in every lead bin. Gradient-boosted
-quantile trees gained 1 to 2 points of band B at 10 to 30 minutes ahead without raising "too late", in seconds on a
+**Not deep learning yet.** On the data so far (5 service days with Passio predictions, so 3 test days; scored
+under the owner's goal since 2026-10-17, the 10 minute shrink), a small deep tabular network learned no reliable
+correction (about Passio's scores, and too late more often where it gained). Gradient-boosted quantile trees gained
+0.2 to 1.4 points of band B in 4 of the 5 bins from 2 to 30 minutes ahead with less "too late", in seconds on a
 CPU. So the notebook's default path is trees plus a per-stop shift table (RouteKnower M2 / M9), with the network as
 an optional section that is off by default (`RUN_DEEP = False`). Revisit deep learning at tier T3 (8 to 10 weeks
 including Thanksgiving Break and finals, about mid-December) or once a sequence input is used (the bus's recent GPS
@@ -18,8 +19,10 @@ trace from the raw polls), because that is where a network can learn something t
 - **What is learned**: the shift y = actual arrival minus Passio's shown time (seconds). A model predicts a low
   **quantile** of y, and the corrected time is Passio's time plus that shift. Where Passio shows nothing, nothing
   is predicted (the timetable sources stay as reported baselines).
-- **Metric** (docs/GOAL-AND-METHOD.md): the owner's 10% rule. The working target is **band B**: the error
-  (predicted minus actual) between 10% of the lead too early and 1% of the lead too late, with the "too late" share
+- **Metric** (docs/GOAL-AND-METHOD.md): the owner's goal since 2026-10-17, the **10 minute shrink** (allowed
+  error 3 min at >= 30 min ahead, 2 min at >= 20, 1 min below; it replaced the 10% rule). The working target is
+  **band B**: the error (predicted minus actual) between the allowed error too early and 1% of the lead too late,
+  with the "too late" share
   no higher than Passio's (the goal is under 1%). Scored exactly like `tools/build_eta_dataset.py summary()`: one
   row per arrival and lead bin (0-6, 6-10, 10-15, 15-20, 20-30, 30-45 min), never a plain row average. The notebook
   stops if its Passio numbers do not match `data/eta/summary.csv`.
@@ -28,8 +31,8 @@ trace from the raw polls), because that is where a network can learn something t
   the model keeps Passio's time.
 
 ## Data and leakage rules
-- About 200k rows a day, about 125k with a Passio time shown; Oct 12 to 15 give about 500k learning rows, about
-  29 MB of compressed files, under 1 GB of memory.
+- About 200k rows a day, about 125k with a Passio time shown; Oct 12 to 16 give about 630k learning rows, about
+  36 MB of compressed files, under 1 GB of memory.
 - Features (known at t only): route, stop, hour, weekday, stop index, visit rank, this trip or the next, stops and
   metres to go, terminal crossing, age of the last stop, speed, standing time, delay against the timetable, Passio's
   age, and Passio's / the timetable's times as "minutes from now". The labels and every error column are excluded
@@ -37,26 +40,28 @@ trace from the raw polls), because that is where a network can learn something t
 - Splits by **whole service days** (rolling origin: learn on days 1 to k, test on day k + 1); one arrival is never
   in both; every model is scored on the same rows as Passio. This is RouteKnower section 6's protocol.
 
-## Measured results (validation run on this PC, 2026-10-16)
-Learn Oct 12 to 13, test Oct 14; learn Oct 12 to 14, test Oct 15. Band B in percent of arrivals; the difference
-versus Passio with a 95% range from resampling whole days; "too late" in percent.
+## Measured results (validation run on this PC, 2026-10-17, the 10 minute shrink)
+Learn on the days before, test on Oct 14, 15 and 16 (3 test days). Band B in percent of arrivals (allowed error
+too early to 1% of the lead too late); the difference versus Passio with a 95% range from resampling whole days;
+"too late" in percent.
 
 | Lead | Passio band B | Trees band B (vs Passio) | Deep | Per-stop shift | Too late: Passio / trees |
 |---|---|---|---|---|---|
-| 0-6 min | 4.1 | 4.1 (0.0) | 4.1 | 4.2 | 8.9 / 8.8 |
-| 6-10 min | 6.9 | 7.0 (+0.1, 0.0 to 0.2) | 6.9 | 6.9 | 9.2 / 8.8 |
-| 10-15 min | 11.2 | 12.0 (+0.9, 0.1 to 1.7) | 11.2 | 9.0 | 9.1 / 8.5 |
-| 15-20 min | 18.4 | 19.8 (+1.4, 0.1 to 2.7) | 18.4 | 16.2 | 7.9 / 7.2 |
-| 20-30 min | 23.6 | 25.7 (+2.1, -1.7 to 5.9) | 23.6 | 25.6 | 6.1 / 4.9 |
-| 30-45 min | 12.3 | 10.7 (-1.6, -3.0 to -0.1) | 12.3 | 12.0 | 4.2 / 4.2 |
+| 0-6 min | 29.5 | 29.5 (0.0, -0.1 to 0.1) | 29.5 | 29.5 | 9.4 / 9.3 |
+| 6-10 min | 9.2 | 9.4 (+0.2, 0.1 to 0.3) | 9.3 | 9.3 | 9.5 / 8.9 |
+| 10-15 min | 9.4 | 10.0 (+0.6, 0.4 to 0.9) | 9.4 | 8.4 | 9.3 / 8.4 |
+| 15-20 min | 10.3 | 9.5 (-0.8, -2.8 to 1.0) | 11.3 | 9.7 | 8.2 / 7.1 |
+| 20-30 min | 20.2 | 21.7 (+1.4, -1.7 to 5.5) | 20.1 | 21.2 | 6.2 / 5.5 |
+| 30-45 min | 11.5 | 10.0 (-1.5, -2.8 to -0.6) | 11.2 | 11.0 | 3.7 / 3.7 |
 
 Verdict against the ship gate (RouteKnower 6.6): no model passes yet; the gate needs at least 10 test days. Trees
-are the best first look: better in 4 of the 5 gate bins (2 to 30 min), too late lower everywhere, no route more
-than 10% worse. The per-stop shift helps at 20 to 30 min but makes 4 routes more than 10% worse. The deep model
-changed nothing. Run time: 40 s for everything on this PC's CPU (deep model included), peak memory 713 MB.
+are the best first look: better in 4 of the 5 gate bins (2 to 30 min), too late lower in every bin, but North is
+more than 10% worse. The per-stop shift is better in 2 of 5 bins (one route worse). The deep model is better in 2
+of 5, but too late more often there. Run time: 89 s for everything on this PC's CPU (deep model included), peak
+memory 810 MB. (The first look on 2026-10-16, under the 10% rule with 2 test days, said the same: RouteKnower E23.)
 
-The bigger lesson is in the Passio column: even Passio reaches band B for only 4 to 24% of arrivals, and is too
-late 4 to 9% of the time. Gains of 1 to 2 points will not reach the owner's goal on their own.
+The bigger lesson is in the Passio column: even Passio reaches band B for only 9 to 30% of arrivals, and is too
+late 4 to 10% of the time. Gains of a point or two will not reach the owner's goal on their own.
 
 ## Why deep learning is not the direction yet
 1. **Too little data for a network.** About 90 stops, 13 routes and 6 lead bins leave a few samples per cell per
