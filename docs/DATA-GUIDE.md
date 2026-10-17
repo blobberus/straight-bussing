@@ -4,6 +4,7 @@ This guide explains every data file and column for someone who has never seen th
 so far says. No coding needed: the CSV files open in Excel, Google Sheets or Numbers. Numbers in this guide: data
 up to **Tuesday, October 13, 2026, 4:20 PM** (collection started Thursday, October 8, 5 AM).
 
+- **How the data is collected**, in a page: **`docs/HOW-DATA-IS-COLLECTED.md`**.
 - **The goal** (the 10% rule), how predictions are scored, where each predictor stands and the plan to optimize the
   algorithm: **`docs/GOAL-AND-METHOD.md`**. This guide only refers to it.
 - How arrivals are detected, technically: `docs/DATA.md`. A visual overview: `docs/prediction-explainer.html`.
