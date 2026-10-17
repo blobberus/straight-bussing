@@ -257,7 +257,9 @@ struct CustomRouteDetailView: View {
     }
 }
 
-/// A route in a custom route: live status + the next bus at your nearest stop, and a Highlight toggle.
+/// A route in a custom route: live status (or when it runs again today, `Schedule.restingText`) + "Hidden on map"
+/// when hidden, the next bus at your nearest stop (never for a hidden route), and a Highlight toggle. Every saved
+/// route stays listed (owner 2026-10-17; web myroutes.js savedRouteStatus).
 struct CustomRouteLine: View {
     @Environment(AppModel.self) private var model
     let customId: String
@@ -279,9 +281,12 @@ struct CustomRouteLine: View {
 
     var body: some View {
         let n = model.running(rid)
+        let hidden = model.hidden.contains(rid)
         let run = n > 0 ? "\(n) bus\(n == 1 ? "" : "es") running" : model.liveOutage ? "Live status unavailable"
-            : Operating.noLiveStatus(rid, buses: model.buses, service: model.staticData.service, now: model.now) ?? "Not running right now"
-        let next = nearestNext.map { " \u{00B7} \(model.isStale ? "~" : "")\(max(0, TimeFmt.minsUntil($0.t, from: model.now))) min at \($0.stop)" } ?? ""
+            : Operating.noLiveStatus(rid, buses: model.buses, service: model.staticData.service, now: model.now)
+                ?? Schedule.restingText(model.staticData.service, rid, model.now)
+        let off = hidden ? (model.routeState.journey != nil ? " \u{00B7} Not on this trip" : " \u{00B7} Hidden on map") : ""
+        let next = hidden ? "" : nearestNext.map { " \u{00B7} \(model.isStale ? "~" : "")\(max(0, TimeFmt.minsUntil($0.t, from: model.now))) min at \($0.stop)" } ?? ""
         HStack(spacing: 10) {
             Button { model.push(.route(rid)) } label: {
                 HStack(spacing: 10) {
@@ -290,7 +295,7 @@ struct CustomRouteLine: View {
                         Text(model.longName(rid)).foregroundStyle(Palette.text)
                         HStack(spacing: 4) {
                             if n > 0 { LiveDot() }
-                            Text(run + next).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
+                            Text(run + off + next).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
                         }
                     }
                     Spacer(minLength: 0)

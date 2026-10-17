@@ -3,7 +3,7 @@ import { test, eq, ok } from "./lib.js";
 import { NOW, fixture, makeCtx, tick, root } from "./views-fixtures.js";
 import { runAction } from "../js/ui/actions.js";
 import { getView } from "../js/ui/router.js";
-import { renderMyRoutes, renderCustom, renderEditor, saveEditor, createPatcher, _ui } from "../js/ui/views/myroutes.js";
+import { renderMyRoutes, renderCustom, renderEditor, saveEditor, createPatcher, _ui, restingText } from "../js/ui/views/myroutes.js";
 import { renderStop } from "../js/ui/views/stop.js";
 
 const noRaw = (h) => !h.includes("<script>") && !h.includes("javascript:") && !h.includes("<img");
@@ -234,6 +234,34 @@ test("myroutes: swipe left opens the tray; a full swipe never deletes; the drag'
   ok(_ui.swiped === null && !ctx.store.get().activeCustom, "closed, nothing toggled");
   getView("myroutes").unmount();
   el.remove();
+});
+
+test("customroute: every saved route stays listed, running or not, hidden on the map or not (owner 2026-10-17)", () => {
+  // "Hidden routes in the my routes folder should still display if they are not running". NOW = Fri 2:00 AM Chicago.
+  reset();
+  const day = (spans) => ({ first: spans[0][0], last: spans[spans.length - 1][1], trips: 4, buses: Array(24).fill(0), spans });
+  const svc = (days) => ({ routes: { R3: { days, exceptions: [] } } });
+  const CR = { id: "cr", name: "Mine", rids: ["R1", "R2", "R3"], highlight: [] };
+  const rows = (h) => (h.match(/class="mr-rrow"/g) || []).length;
+  let h = renderCustom(fixture({ customRoutes: [CR], hiddenRoutes: ["R2"], service: svc({ fri: day([["10:00", "18:00"]]) }) }), "cr", NOW);
+  eq(rows(h), 3, "all three saved routes listed");
+  ok(h.includes("1 bus running"), "R1 live");
+  ok(h.includes("1 bus running \u00b7 Hidden on map"), "R2 hidden on the map: still listed, says so (not by color alone)");
+  ok(h.includes("Not running now \u00b7 Scheduled from 10:00 AM today"), "R3: when it starts later today, from the timetable");
+  ok(!/min at/.test(h.split("Hidden on map")[0].split("R2").pop() || ""), "no arrival time for the hidden route");
+  h = renderCustom(fixture({ customRoutes: [CR], service: svc({ mon: day([["10:00", "18:00"]]) }) }), "cr", NOW);
+  ok(h.includes("Not running today") && rows(h) === 3, "no service today: still listed");
+  h = renderCustom(fixture({ customRoutes: [CR], service: svc({ fri: day([["00:30", "01:30"]]) }) }), "cr", NOW);
+  ok(h.includes("No more service today"), "ran earlier today");
+  h = renderCustom(fixture({ customRoutes: [CR], hiddenRoutes: ["R1", "R2", "R3"] }), "cr", NOW);
+  eq(rows(h), 3, "all hidden: still all listed");
+  ok((h.match(/Hidden on map/g) || []).length === 3);
+  ok(renderCustom(fixture({ customRoutes: [CR], hiddenRoutes: ["R2"] }), "cr", NOW).includes("Not running right now \u00b7") === false
+     && restingText(fixture({}), "R3", NOW) === "Not running right now", "no schedule data: the plain words");
+  ok(!/[\u2013\u2014]/.test(h), "no en or em dash");
+  const two = fixture({ customRoutes: [CR] });
+  two.buses = two.buses.concat([{ ...two.buses[0], vehicle: { id: "v9", label: "909" } }]);
+  ok(renderCustom(two, "cr", NOW).includes("2 buses running"), "plural: buses (was buss)");
 });
 
 test("customroute: Edit and Delete sit right under Show on map, before the route list", () => {

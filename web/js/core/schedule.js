@@ -244,6 +244,23 @@ export function scheduledUntil(service, rid, unixS) {
 }
 
 /**
+ * Start of the next scheduled service window later today (the local date of unixS, calendar exceptions applied), for
+ * a route that is not running now (My Routes: "Scheduled from 4:00 PM today"). Same as the iOS Kit
+ * Schedule.nextStartToday.
+ * @param {object} service
+ * @param {string} rid
+ * @param {number} unixS
+ * @returns {string|null} 'HH:MM'; null when no window starts later today, or no schedule data
+ */
+export function nextStartToday(service, rid, unixS) {
+  const r = routeService(service, rid);
+  if (!r) return null;
+  const p = localParts(unixS);
+  const s = spansOf(dayFor(r, isoDate(p)).day).find(([a]) => mins(a) > p.min);
+  return s ? s[0] : null;
+}
+
+/**
  * Hours grouped by equal scheduled bus counts, for an accessible text summary.
  * @param {{hour:number, buses:number}[]} list busesByHour output
  * @returns {{from:number, to:number, buses:number}[]} to = exclusive end hour (may wrap)

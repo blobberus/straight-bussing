@@ -20,6 +20,7 @@ import { nowS } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
 import { arrivalsFor, staleLevel, runningCount, activeAlerts, liveUnknown } from "../../core/arrivals.js";
 import { scheduledNoLive, noLiveStatus } from "../../core/operating.js";
+import { hoursOn, nextStartToday, clock12 } from "../../core/schedule.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { createCustom, applyCustom, clearCustom, updateCustom, deleteCustom, toggleHighlight } from "../../core/custom.js";
 import { routeChip, etaBlock, icon, emptyState, skeleton } from "../components.js";
@@ -160,6 +161,38 @@ function nearestNext(state, rid, now) {
 }
 
 /**
+ * A saved route with no live bus and not scheduled right now: when it runs again today, from the timetable (owner
+ * 2026-10-17: saved routes "should still display if they are not running"). Never a live time, never a bus coming.
+ * @param {object} state
+ * @param {string} rid
+ * @param {number} now
+ * @returns {string} "Not running now · Scheduled from 4:00 PM today" | "No more service today" | "Not running today"
+ */
+export function restingText(state, rid, now) {
+  const next = nextStartToday(state.service, rid, now);
+  if (next) return `Not running now \u00b7 Scheduled from ${clock12(next)} today`;
+  const h = hoursOn(state.service, rid, now);
+  if (!h) return "Not running right now";   // no schedule data for the route
+  return h.first ? "No more service today" : "Not running today";
+}
+
+/**
+ * Status line of a route in a saved custom route: live buses, or why there are none; plus "Hidden on map" when the
+ * user hid it (it stays listed here; core/visibility.js still keeps it off the map and the arrivals).
+ * @param {object} state
+ * @param {string} rid
+ * @param {number} now
+ * @param {Set<string>} hidden effectiveHidden(state)
+ * @returns {{text:string, live:boolean}}
+ */
+export function savedRouteStatus(state, rid, now, hidden) {
+  const n = runningCount(state, rid);
+  const run = n ? `${n} bus${n === 1 ? "" : "es"} running` : liveUnknown(state, now) ? "Live status unavailable" : noLiveStatus(state, rid, now) || restingText(state, rid, now);
+  const off = hidden.has(String(rid)) ? (state.journey ? " \u00b7 Not on this trip" : " \u00b7 Hidden on map") : "";
+  return { text: run + off, live: n > 0 };
+}
+
+/**
  * Render a custom route's detail.
  * @param {object} state
  * @param {string} id custom route id
@@ -178,11 +211,12 @@ export function renderCustom(state, id, now = nowS()) {
   h += `<div class="v-actions mr-dacts"><button type="button" class="v-btn v-btn--secondary" data-action="mr:edit" data-id="${esc(c.id)}">${PENCIL}Edit</button>`
     + `<button type="button" class="v-btn v-btn--secondary mr-danger" data-action="mr:del" data-id="${esc(c.id)}" data-from="detail">${TRASH}Delete</button></div>`;
   h += '<div class="v-card">';
-  for (const rid of rids) {
-    const n = runningCount(state, rid), hl = (c.highlight || []).includes(rid), nx = nearestNext(state, rid, now);
-    const run = n ? `${plural(n, "bus")} running` : liveUnknown(state, now) ? "Live status unavailable" : noLiveStatus(state, rid, now) || "Not running right now";
+  const hiddenSet = new Set(effectiveHidden(state).map(String));
+  for (const rid of rids) {   // every saved route stays listed: running, scheduled, not running, hidden on the map
+    const hl = (c.highlight || []).includes(rid), st = savedRouteStatus(state, rid, now, hiddenSet);
+    const nx = hiddenSet.has(String(rid)) ? null : nearestNext(state, rid, now);   // a hidden route shows no arrival time
     const next = nx ? ` · ${stale ? "~" : ""}${Math.max(0, Math.floor((nx.t - now) / 60))} min at ${nx.stop}` : "";
-    h += `<div class="mr-rrow"><button type="button" class="v-row mr-rmain" data-action="route:open" data-id="${esc(rid)}">${routeChip(rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(longName(rid, state.routes))}</span><span class="v-sec">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(run + next)}</span></span></button>`
+    h += `<div class="mr-rrow"><button type="button" class="v-row mr-rmain" data-action="route:open" data-id="${esc(rid)}">${routeChip(rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(longName(rid, state.routes))}</span><span class="v-sec">${st.live ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(st.text + next)}</span></span></button>`
       + `<button type="button" class="mr-hl${hl ? " is-on" : ""}" data-action="mr:hl" data-id="${esc(c.id)}" data-rid="${esc(rid)}" aria-pressed="${hl}" aria-label="Highlight ${esc(longName(rid, state.routes))}"><span class="mr-hltick" aria-hidden="true">${CHECK}</span>Highlight</button></div>`;
   }
   if (!rids.length) h += '<p class="v-sec mr-pad">None of these routes are in the current schedule. Edit to choose others.</p>';

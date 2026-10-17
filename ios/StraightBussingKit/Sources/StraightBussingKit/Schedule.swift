@@ -212,6 +212,25 @@ public enum Schedule {
         return windowAt(r, t)?.1
     }
 
+    /// Start of the next scheduled service window later today (the local date of `t`, calendar exceptions applied):
+    /// 'HH:MM' (format with `clock12`), nil when none starts later today or no schedule data (web core/schedule.js
+    /// nextStartToday).
+    public static func nextStartToday(_ service: ServiceData?, _ rid: String, _ t: Double) -> String? {
+        guard let r = routeService(service, rid) else { return nil }
+        let p = localParts(t)
+        return spansOf(dayFor(r, isoDate(p)).day).first { (mins($0.0) ?? -1) > p.min }?.0
+    }
+
+    /// A saved route with no live bus and not scheduled right now (My Routes, owner 2026-10-17: saved routes "should
+    /// still display if they are not running"), from the timetable, never a live time: "Not running now \u{00B7}
+    /// Scheduled from 4:00 PM today", "No more service today", "Not running today"; "Not running right now" without
+    /// schedule data (web myroutes.js restingText).
+    public static func restingText(_ service: ServiceData?, _ rid: String, _ t: Double) -> String {
+        if let next = nextStartToday(service, rid, t) { return "Not running now \u{00B7} Scheduled from \(clock12(next)) today" }
+        guard let h = hoursOn(service, rid, t) else { return "Not running right now" }
+        return h.first != nil ? "No more service today" : "Not running today"
+    }
+
     public struct HourGroup: Hashable, Sendable {
         public var from: Int
         /// Exclusive end hour (may exceed 24 when wrapping).
