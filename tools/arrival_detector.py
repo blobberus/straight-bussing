@@ -704,15 +704,21 @@ class Tracker:
             trip = "" if ov or frozen else (rep.get("trip") or "")
             anc = g["anchor"].get(route)
             j = None
-            if anc and 0 < when - anc[1] <= MAX_LINK_S:
+            recent = anc is not None and 0 < when - anc[1] <= MAX_LINK_S
+            if recent:
                 ok = [(self._ahead(route, anc[0], i), -i, i) for i in idxs if self._ahead(route, anc[0], i)]
                 j = min(ok)[2] if ok else None
-            if j is not None and anc[2] is not None:
-                anc[2]["ok"] = True                   # the visit before it is confirmed by this one
-            self._candidate(g, veh, route, j if j is not None else idxs[0], when, sid, trip, j is not None)
+            if j is not None and anc[2] is not None and anc[2]["start"]:
+                anc[2]["ok"] = True                   # the visit before it, which started a chain, is confirmed
+            self._candidate(g, veh, route, j if j is not None else idxs[0], when, sid, trip, j is not None,
+                            start=j is not None or not recent)
 
-    def _candidate(self, g, veh, route, idx, when, sid, trip, ok):
-        c = {"epoch": int(when), "route": route, "trip": trip, "veh": veh, "idx": idx, "sid": sid, "ok": ok}
+    def _candidate(self, g, veh, route, idx, when, sid, trip, ok, start=True):
+        """start: the visit may be confirmed by the next one (it follows the bus's previous visit on the route, or
+        there was none recently); a visit out of order with a recent one may not (the bus is not following the
+        route's order there)."""
+        c = {"epoch": int(when), "route": route, "trip": trip, "veh": veh, "idx": idx, "sid": sid, "ok": ok,
+             "start": start}
         g["cand"].append(c)
         g["anchor"][route] = (idx, when, c)
 
