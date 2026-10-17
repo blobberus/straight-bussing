@@ -213,8 +213,14 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   routes tying = a shared corridor, no change) but is **off** (`GPS_WRONG_ROUTE = False`): on Oct 15 it found 6
   episodes and Passio never named the suggested route for that bus, and a Downtown Campus Connector bus crossing
   campus fits another route's stops too. Those buses keep only the rows on Passio's route.
-- Past days: Oct 10-16 need a backfill (replay_day + apply_replay; GPS rows are added, no row changes); the
-  forecast tables of the same days then get the extra arrivals (no Passio time: `none`). Oct 8-9 have no polls.
+- Backfilled 2026-10-17: Oct 10-16 replayed with the sweep and applied (data `b487487`): +1,789 arrivals (`source =
+  gps`: Oct 10 +85, 11 +64, 12 +281, 13 +263, 14 +359, 15 +374, 16 +363), 0 rows replaced, 0 duplicates; Oct 16
+  also got its DC-008 / DC-011 prediction backfill (-58 / +50), Oct 12-13 lost 3 previous-lap rows. Forecast
+  tables of Oct 10-16 rebuilt, re-uploaded and their summary rows replaced (`088b807`): arrivals to score +9%
+  (18,152 -> 19,792 in each bin, Oct 12-16), Passio's scores unchanged within 0.1 point. One known difference: the
+  forecast table's previous-lap rule (DC-011) now sees GPS visits as the bus's earlier visit, so about 0.5% of its
+  Passio rows turn `previous_lap`, while predictions.csv's detector ignores GPS rows by design (they never change
+  the other rules' rows). Oct 8-9 have no polls and stay as logged.
 
 ### DC-002 Stops Passio did not name were not logged (fixed 2026-10-13, backfilled)
 - Replaying the raw GPS showed the collector logged only stops Passio named for the bus: South 48%, all lines 83% of
