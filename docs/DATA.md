@@ -251,7 +251,7 @@ python tools/test_merge.py                          # merge / dedupe tests
 ```
 Windows, hourly in the background (run once in **cmd.exe**; delete with `schtasks /Delete /TN SBTruth /F`):
 ```
-schtasks /Create /TN SBTruth /SC HOURLY /ST 00:07 /F /TR "\"C:\Users\NK\AppData\Local\Programs\Python\Python311\pythonw.exe\" \"C:\Users\NK\Documents\straight-bussing\tools\truth_logger.py\" --duration 3300"
+schtasks /Create /TN SBTruth /SC HOURLY /ST 00:07 /F /TR "\"%LOCALAPPDATA%\Programs\Python\Python311\pythonw.exe\" \"%USERPROFILE%\Documents\straight-bussing\tools\truth_logger.py\" --duration 3300"
 ```
 
 ## Replaying a day (added 2026-10-16)

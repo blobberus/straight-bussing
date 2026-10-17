@@ -1,7 +1,7 @@
 # monitoring.md: constant ground-truth collection runbook
 
 For Claude. When the owner says **"run monitoring.md"**: do **Run it** top to bottom, fix what it finds,
-then **Report back**. Paths assume the repo at `C:\Users\NK\Documents\straight-bussing` (Bash: `/c/Users/NK/Documents/straight-bussing`);
+then **Report back**. Paths assume the repo at `%USERPROFILE%\Documents\straight-bussing` (Bash: `~/Documents/straight-bussing`);
 on any other PC use that clone's folder (see **Run the stopgap on another PC**).
 
 ## What is running
@@ -34,7 +34,7 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   while an alert is in the feed).
 
 ## Run it
-1. `cd /c/Users/NK/Documents/straight-bussing && python tools/monitor.py status` (exit 0 HEALTHY, 1 DEGRADED, 2 DOWN).
+1. `cd ~/Documents/straight-bussing && python tools/monitor.py status` (exit 0 HEALTHY, 1 DEGRADED, 2 DOWN).
 2. HEALTHY: go to **Report back**.
 3. DEGRADED / DOWN: for each `[warn]` / `[DOWN]` line, apply the matching row of the fix table.
 4. If it is DOWN and not fixed within ~10 min, **take over locally** (below), and tell the owner.
@@ -60,15 +60,15 @@ Git Bash gotcha: it rewrites `rev:path` arguments (`git show origin/data:data/..
 ## Take over locally
 Start it with the **Bash tool, `run_in_background: true`**:
 ```
-cd /c/Users/NK/Documents/straight-bussing && python tools/monitor.py local --hours 0
+cd ~/Documents/straight-bussing && python tools/monitor.py local --hours 0
 ```
 - Check: `python tools/monitor.py status` (line `local RUNNING pid ...`) and `tail -5 data/monitor/monitor.log`.
 - Stop: `python tools/monitor.py stop` (finishes and pushes the current rows, forces after 90 s).
 - It pushes to `data` with the owner's git login (blobberus); commits say `(local monitor ...)`. A second `local` while one is running is a no-op.
 - Limits: it only runs while this Claude Code session, the PC, and the network are up. To survive reboots, **only if the owner asks**,
   add an hourly watchdog with the PowerShell tool (`resume` exits at once if one is already running):
-  `schtasks /Create /TN SBMonitor /SC HOURLY /F /TR "C:\Users\NK\AppData\Local\Programs\Python\Python311\pythonw.exe C:\Users\NK\Documents\straight-bussing\tools\monitor.py resume"`
-  (no inner quotes needed: neither path has spaces)
+  `schtasks /Create /TN SBMonitor /SC HOURLY /F /TR "$env:LOCALAPPDATA\Programs\Python\Python311\pythonw.exe $env:USERPROFILE\Documents\straight-bussing\tools\monitor.py resume"`
+  (no inner quotes needed while neither path has spaces)
   Remove it with `schtasks /Delete /TN SBMonitor /F`. Check the pythonw path first: `python -c "import sys; print(sys.executable)"`.
 
 ## Run the stopgap on another PC
@@ -102,7 +102,7 @@ can run at once (the merge drops duplicates). Each PC keeps its own state in its
   ```
   git pull && nohup python3 tools/monitor.py local > /dev/null 2>&1 &
   ```
-- Claude Code on that PC: same as **Take over locally** above, with this clone's path instead of `C:\Users\NK\...`.
+- Claude Code on that PC: same as **Take over locally** above, with this clone's path instead of `~/Documents/straight-bussing`.
 
 **3. Keep it running**
 - The PC must stay awake and online. Windows: Settings > System > Power > Sleep: Never (while plugged in).
@@ -126,7 +126,7 @@ can run at once (the merge drops duplicates). Each PC keeps its own state in its
 ## Resume after a stop
 Same background command, with `resume`:
 ```
-cd /c/Users/NK/Documents/straight-bussing && python tools/monitor.py resume
+cd ~/Documents/straight-bussing && python tools/monitor.py resume
 ```
 It first merges and pushes every leftover `data/monitor/runs/run-*.csv`, printing `recovering: N unmerged run file(s) ...;
 last session ended cleanly | was interrupted`, then keeps collecting. Only the time when nothing ran is lost. CI resumes by
@@ -144,7 +144,7 @@ Pushing to main is outward-facing: confirm with the owner first unless they aske
    W="$TEMP/sb-mainwt"; git worktree add "$W" main
    cd "$W" && git checkout v2-rewrite -- <same paths> && python tools/test_merge.py && python tools/test_truth.py \
      && git commit -m "Collector: <what changed>" && git push origin main
-   cd /c/Users/NK/Documents/straight-bussing && git worktree remove "$W"
+   cd ~/Documents/straight-bussing && git worktree remove "$W"
    ```
    A push to main also redeploys Pages (main's current site; harmless). After v2-rewrite is merged into main this step is just that merge.
 5. `python tools/monitor.py dispatch`, or wait for the next :07/:37, then `status`.
