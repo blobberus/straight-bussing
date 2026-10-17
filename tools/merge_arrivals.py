@@ -95,10 +95,13 @@ def merge(into, add, rotate_mb=0.0):
         hit = next(((e, i) for e, i in index.get(k, ()) if abs(ep - e) <= DUP_S), None)
         if hit is None:
             new.append((ep, ln))
-            index.setdefault(k, []).append((ep, None))      # also dedupes within this run
-        elif hit[1] is not None and rank(r) > rank(parse(lines[hit[1]])[0]):
+            index.setdefault(k, []).append((ep, -len(new)))  # also dedupes within this run (-n = new[n - 1])
+        elif hit[1] >= 0 and rank(r) > rank(parse(lines[hit[1]])[0]):
             lines[hit[1]] = ln
             stats["replaced"] += 1
+        elif hit[1] < 0 and r[I_SOURCE] != "gps" and parse(new[-hit[1] - 1][1])[0][I_SOURCE] == "gps":
+            new[-hit[1] - 1] = (new[-hit[1] - 1][0], ln)    # the run logged the visit by GPS first, then by a rule
+            stats["dup"] += 1
         else:
             stats["dup"] += 1
     new.sort(key=lambda x: x[0])
