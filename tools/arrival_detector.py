@@ -672,14 +672,16 @@ class Tracker:
             g["override"] = ov = None
         if prev is None or not 0 < vt - prev[2] <= MAX_GAP:
             return
+        seen = []
         for sid, fits in self._hits(prev[0], prev[1], lat, lon):
             last = g["hit"].get(sid)
             if last is not None and vt - last < SAME_VISIT_S:
                 continue                              # the same visit (approach, dwell, departure)
             g["hit"][sid] = vt
             when = self._approach({"hist": g["hist"]}, self.st.stops[sid], None)
-            if when is None:
-                continue                              # it never arrived in the reports kept (parked all along)
+            if when is not None:                      # None: it never arrived in the reports kept (parked all along)
+                seen.append((when, sid, fits))
+        for when, sid, fits in sorted(seen, key=lambda x: x[0]):    # two stops a few metres apart: in time order
             h = (when, sid, fits)
             g["chain"].append(h)
             if ov is None and proute and self.wrong_route:
