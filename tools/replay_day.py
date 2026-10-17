@@ -395,10 +395,12 @@ def pair(a_rows, b_rows, key, i_ep, tol=MATCH_S):
 
 def fill_live_pred(rows, live, pred_spans):
     """Rows logged where no prediction updates exist (pred_spans: [(t_first, t_last)] of runs that had them) keep
-    the live row's passio_pred_* columns. -> how many rows were filled."""
+    the live row's passio_pred_* columns (never a GPS-sweep row: DC-003 attaches no Passio prediction to those).
+    -> how many rows were filled."""
     spans = sorted(pred_spans)
     covered = lambda ep: any(a <= ep <= b for a, b in spans)
-    need = [r for r in rows if r[I_PE] == "" and not covered(int(r[I_EP]))]
+    i_src = L.COLUMNS.index("source")
+    need = [r for r in rows if r[I_PE] == "" and r[i_src] != "gps" and not covered(int(r[I_EP]))]
     pairs, _, _ = pair(need, [r for r in live if r[I_PE] != ""], lambda r: (r[I_VEH], r[I_STOP]), I_EP)
     for mine, theirs in pairs:
         mine[I_PE], mine[I_PL] = theirs[I_PE], theirs[I_PL]

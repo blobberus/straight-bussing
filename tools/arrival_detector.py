@@ -7,7 +7,7 @@ import math
 from collections import defaultdict, deque
 
 from arrivals_lib import (DEPART_SPEED, FROZEN_S, GPS_HIST, GPS_HOLD_S, GPS_SKIP, GPS_WRONG_ROUTE, HIST, MAX_GAP,
-                          MAX_LINK_S, MAX_SKIP, MIN_PRED_AGE, NEAR_M, PASS_MIN_MOVE_M, PRED_LEADS, PREV_VISIT_GAP_S,
+                          MAX_LINK_S, MAX_SKIP, MAX_SPEED, MIN_PRED_AGE, NEAR_M, PASS_MIN_MOVE_M, PRED_LEADS, PREV_VISIT_GAP_S,
                           RADIUS_M, SAME_VISIT_S, SHOW_GRACE_S, SHOWN_PAST_S, STATE_TTL, STOP_SPEED, WRONG_MIN_OFF,
                           WRONG_MIN_RUN, WRONG_MIN_SPAN_S, hav_m)
 
@@ -28,6 +28,7 @@ class Tracker:
         self.on_pred = None                                    # callback(veh, trip, stop_id, made, predicted, seq)
         self.gps = {}                                          # veh -> GPS sweep state (DC-003, _sweep)
         self.logged = defaultdict(lambda: deque(maxlen=8))     # (veh, stop_id) -> epochs of every row logged there
+        self.rule_log = defaultdict(lambda: deque(maxlen=40))  # veh -> (epoch, route, idx) of the rules' recent rows
         self._at_stop = None                                   # stop_id -> [(route, idx)], built on first use
         self.wrong_route = GPS_WRONG_ROUTE                     # the sweep may follow another route than Passio's
 
@@ -203,6 +204,7 @@ class Tracker:
                 if r.get("source") == "gps":
                     self.logged[(self._veh(r["vehicle_id"]), r["stop_id"])].append(ep)
                     continue
+                self.rule_log[self._veh(r["vehicle_id"])].append((ep, r["route_id"], idx))
                 s = self._state((r["vehicle_id"], r["trip_id"]), r["route_id"], now)
                 s["done"].add(idx)                   # blocks duplicates up to STATE_TTL, links only recent rows
                 if (s["prev"] is None or ep >= s["prev"]["epoch"]) and now - ep <= MAX_LINK_S:
@@ -548,7 +550,8 @@ class Tracker:
     # follow Passio's stop and miss those visits. The sweep follows the GPS alone, per bus: every stop of the bus's
     # route whose RADIUS_M circle the track touched while moving in the route's direction, in route order with the
     # visit before it (or confirmed by the one after it), timed like _approach. It waits GPS_HOLD_S and writes a row
-    # (source 'gps') only if nothing else logged that bus at that stop within 300 s, so it only adds rows, never
+    # (source 'gps') only if nothing else logged that bus at that stop within SAME_VISIT_S and the visit fits between
+    # the rules' own rows around it (route order, speed), so it only adds rows, never
     # changes one. The route is Passio's, unless the track clearly follows another route (_wrong_route). trip_id is
     # Passio's trip when its assignment was live, blank when it was frozen or another route; no Passio prediction is
     # attached to these rows (Passio showed them under the frozen or wrong trip).
@@ -714,11 +717,39 @@ class Tracker:
         g["anchor"][route] = (idx, when, c)
 
     def _logged_near(self, veh, sid, epoch):
-        return any(abs(e - epoch) <= 300 for e in self.logged.get((veh, sid), ()))
+        """Any row of this bus at this stop within SAME_VISIT_S: the same visit (a bus circling a terminal block
+        during its layover re-enters the stop's circle minutes after it was logged; no loop here is shorter)."""
+        return any(abs(e - epoch) <= SAME_VISIT_S for e in self.logged.get((veh, sid), ()))
+
+    def _fits_rules(self, veh, c):
+        """A GPS visit fits between the bus's rule-logged arrivals around it on the same route: the latest one
+        before it (within MAX_LINK_S) is behind it in route order (within half the route) and reachable at a
+        plausible speed, and the first one after it (within GPS_HOLD_S) is ahead of it. A geometric coincidence (a
+        route passing the same corner twice) or a maneuver near a terminal does not fit."""
+        route, j, ep = c["route"], c["idx"], c["epoch"]
+        order = self.st.route_stops[route]
+        n = len(order)
+        ring = n - 1 if order[0] == order[-1] and n > 2 else 0
+        half = max(GPS_SKIP, (n - 1) // 2)
+        fwd = (lambda a, b: (b - a) % ring) if ring else (lambda a, b: b - a)
+        log = [x for x in self.rule_log.get(veh, ()) if x[1] == route]
+        before = [x for x in log if 0 < ep - x[0] <= MAX_LINK_S]
+        if before:
+            b = max(before)
+            if not 1 <= fwd(b[2], j) <= half:
+                return False
+            d, _ = self.st.dist_between(route, b[2], j) if b[2] < j else (None, None)
+            if d and d / max(1, ep - b[0]) > MAX_SPEED:
+                return False
+        after = [x for x in log if 0 < x[0] - ep <= GPS_HOLD_S]
+        if after and not 1 <= fwd(j, min(after)[2]) <= half:
+            return False
+        return True
 
     def _sweep_flush(self, now, final=False):
         """Held GPS visits old enough (GPS_HOLD_S; MAX_LINK_S for one still waiting for its confirmation) -> rows,
-        unless any rule logged that bus at that stop within 300 s. At shutdown (final) the younger ones are dropped,
+        unless any rule logged that bus at that stop within SAME_VISIT_S, or the visit does not fit between the
+        rules' rows around it (_fits_rules). At shutdown (final) the younger ones are dropped,
         not forced out: the collector's runs overlap by about 30 min, so the next run sees those visits with the
         context they need, and a run's last minutes never get a half-observed row."""
         out = []
@@ -730,7 +761,7 @@ class Tracker:
                     if not final:
                         keep.append(c)
                     continue
-                if not c["ok"] or self._logged_near(veh, c["sid"], c["epoch"]):
+                if not c["ok"] or self._logged_near(veh, c["sid"], c["epoch"]) or not self._fits_rules(veh, c):
                     continue
                 self.logged[(veh, c["sid"])].append(c["epoch"])
                 out.append({"epoch": c["epoch"], "route": c["route"], "trip": c["trip"], "veh": veh, "idx": c["idx"],
@@ -782,6 +813,7 @@ class Tracker:
         if epoch > self.visits.get(vk, (0,))[0]:      # after the lookups: they need the previous visit
             self.visits[vk] = (epoch, key[1], idx)
         self.logged[vk].append(epoch)
+        self.rule_log[self._veh(key[0])].append((epoch, route, idx))
         if pv is None or epoch >= pv["epoch"]:       # (a deferred arrival logged after a later one is not
             s["prev"] = {"idx": idx, "epoch": epoch, "dwell": None}   # what the next stop follows)
         if la is None or epoch >= la[1]:             # the bus's latest arrival by time, as in seed()
