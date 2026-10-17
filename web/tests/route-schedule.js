@@ -1,6 +1,6 @@
 // core/schedule.js unit tests.
 import { test, eq, ok } from "./lib.js";
-import { localParts, clock12, dayKey, hoursOn, serviceHoursAt, weekSummary, busesByHour, upcomingChanges, isScheduledNow, scheduledUntil, groupHours, hourLabel, routeService } from "../js/core/schedule.js";
+import { localParts, clock12, dayKey, hoursOn, serviceHoursAt, weekSummary, busesByHour, upcomingChanges, isScheduledNow, scheduledUntil, nextStartToday, groupHours, hourLabel, routeService } from "../js/core/schedule.js";
 import { serviceFixture, utc } from "./route-fixtures.js";
 
 const S = serviceFixture();
@@ -112,4 +112,17 @@ test("schedule: real data/service.json is well formed", async () => {
     for (const w of weekSummary(svc, rid)) ok(w.label === "No service" || /\d:\d\d [AP]M to \d/.test(w.label), rid + " label " + w.label);
     for (const d of Object.values(svc.routes[rid].days)) if (d) eq(d.buses.length, 24, rid + " buses[24]");
   }
+});
+
+// My Routes (owner 2026-10-17): a saved route that is not running says when it starts later today (iOS Kit
+// ScheduleTests.testNextStartToday, the same cases)
+test("schedule: nextStartToday = the next window starting later today, else null", () => {
+  eq(nextStartToday(S, "N", utc("2026-10-08T15:00:00Z")), "16:00", "10 AM: the night route starts at 4 PM");
+  eq(nextStartToday(S, "N", utc("2026-10-08T22:00:00Z")), null, "5 PM: running already, nothing later today");
+  eq(nextStartToday(S, "D", utc("2026-10-08T11:00:00Z")), "07:00", "6 AM: the day route starts at 7");
+  eq(nextStartToday(S, "D", utc("2026-10-08T15:00:00Z")), null, "10 AM: started at 7");
+  eq(nextStartToday(S, "D", utc("2026-10-11T15:00:00Z")), null, "Sunday: no service");
+  eq(nextStartToday(S, "D", utc("2026-11-26T12:00:00Z")), null, "holiday removed");
+  eq(nextStartToday(S, "zz", 0), null);
+  eq(nextStartToday(null, "D", 0), null);
 });
