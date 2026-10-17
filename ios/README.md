@@ -345,7 +345,7 @@ App Store Connect API key (`ExportOptions.plist`: `app-store-connect`, `destinat
 `scripts/asc.py` checks the key, registers the bundle ids and finds the app record first (tests:
 `scripts/test_asc.py`). Its `dry_run` input builds the archive without any secret: first green dry run
 [38170005267](https://github.com/blobberus/straight-bussing/actions/runs/38170005267) (Xcode 26.6, iOS 26.5 SDK, all
-archive checks ok). Setup and the reasons: docs/APPSTORE-SUBMIT.md ("Nathan's checklist", step 13).
+archive checks ok). Setup and the reasons: docs/APPSTORE-SUBMIT.md ("Owner's checklist", step 13).
 
 ## Performance (measured, 2026-10-10)
 
@@ -589,7 +589,7 @@ Web status as of 2026-10-10 (web parity port; contracts in docs/ARCHITECTURE.md 
 
 ## App Store checklist status
 
-Nathan's part is the ordered list "Nathan's checklist" at the top of docs/APPSTORE-SUBMIT.md (2026-10-11).
+The owner's part is the ordered list "Owner's checklist" at the top of docs/APPSTORE-SUBMIT.md (2026-10-11).
 
 - [x] Permission: **granted** by UChicago Transportation / Passio (owner statement, 2026-10-11). Attach the written
       permission in App Store Connect > App Review Information > Attachment; the review notes say it is attached.
@@ -601,7 +601,7 @@ Nathan's part is the ordered list "Nathan's checklist" at the top of docs/APPSTO
       is set by CI.
 - [x] Signing + TestFlight lane: `.github/workflows/ios-release.yml` (unsigned Release archive, cloud-signed export,
       upload to App Store Connect), Release config with automatic signing and `DEVELOPMENT_TEAM` from `APPLE_TEAM_ID`,
-      Debug unsigned for the simulator CI. Dry run green (run 38170005267). Waiting for Nathan: Apple account, app
+      Debug unsigned for the simulator CI. Dry run green (run 38170005267). Waiting for the owner: Apple account, app
       record, Admin API key, `appstore` environment, secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` and the
       variable `APPLE_TEAM_ID`.
 - [x] App Privacy: **Data Not Collected** (owner decision 2026-10-11; reasons in docs/APPSTORE-SUBMIT.md step 17).
@@ -628,7 +628,7 @@ Nathan's part is the ordered list "Nathan's checklist" at the top of docs/APPSTO
 - [x] Support (owner decision 2026-10-11: a Google Form): "Contact support" in Settings and About opens
       `support.html?contact=1&app=ios&v=<version (build)>&os=<iOS version on model>` in Safari (`SiteLinks.supportContact`,
       `Views/SupportLink.swift`); the page fills in "Straight Bussing iPhone app 1.0.0 (12), iOS 26.1 on iPhone17,1" and
-      forwards to the form once Nathan pastes its pre-filled link into `web/support-form.js` (recipe:
+      forwards to the form once the owner pastes its pre-filled link into `web/support-form.js` (recipe:
       docs/APPSTORE-SUBMIT.md "Support form"). Until then it offers GitHub Issues.
 - [x] App Store screenshots: CI makes one 6.9-inch set (iPhone 17 Pro Max simulator, 1320 x 2868, PNG without alpha)
       in the preview's `store/` folder. That is the only required iPhone size: App Store Connect scales it for smaller

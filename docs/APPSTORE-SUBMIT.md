@@ -4,9 +4,9 @@ Researched 2026-10-10, pipeline and owner decisions added 2026-10-11, from Apple
 Facts I could not confirm on a first-party page are marked **(unverified)**. This guide is about the **native SwiftUI
 app in `ios/`**. It builds on, and does not repeat: `docs/APPSTORE.md` (costs, 4.2 analysis), `conversion to
 appstore.md` (feature plan, Live Activity and push design), `ios/README.md` (code layout, CI, checklist). Owner:
-Nathan, on Windows, no Mac.
+The owner, on Windows, no Mac.
 
-## Nathan's checklist (start here)
+## Owner's checklist (start here)
 
 The release pipeline exists (2026-10-11): GitHub Actions builds the app, Apple's cloud signs it and the run uploads it
 to App Store Connect. No Mac, no certificate, no .p12, no provisioning profile. What is left is yours, in this order.
@@ -115,17 +115,17 @@ The gaps the 2026-10-10 research found are all closed:
    `web/privacy.html`, `web/support.html` on GitHub Pages.
 4. **Screenshot size**: CI makes the 6.9-inch set (step 19).
 5. **The reviewer may see no buses**: Settings > Demo > Simulated buses (demo) (D7).
-6. **Signing**: real bundle id, version 1.0.0, Release signing, cloud-signed upload pipeline (step 13). Only Nathan's
+6. **Signing**: real bundle id, version 1.0.0, Release signing, cloud-signed upload pipeline (step 13). Only the owner's
    Apple account, API key and secrets are missing (checklist steps 1 to 7).
 
 ## 1. Decisions
 
 | # | Decision | Status | Why |
 |---|---|---|---|
-| D1 | Individual or organization account | **Individual** (Nathan's checklist step 1) | Organizations must be a legal entity (no DBAs), have a D-U-N-S Number, a public website on their own domain and a work email on that domain ([enrollment support](https://developer.apple.com/support/enrollment/)). A student club is usually not a legal entity. Catch: as an individual, **your legal name is shown as the seller** on the App Store. An app can be moved to an organization account later with App Transfer ([overview](https://developer.apple.com/help/app-store-connect/transfer-an-app/overview-of-app-transfer/)). |
+| D1 | Individual or organization account | **Individual** (the owner's checklist step 1) | Organizations must be a legal entity (no DBAs), have a D-U-N-S Number, a public website on their own domain and a work email on that domain ([enrollment support](https://developer.apple.com/support/enrollment/)). A student club is usually not a legal entity. Catch: as an individual, **your legal name is shown as the seller** on the App Store. An app can be moved to an organization account later with App Transfer ([overview](https://developer.apple.com/help/app-store-connect/transfer-an-app/overview-of-app-transfer/)). |
 | D2 | Real bundle id | **`io.github.blobberus.straightbussing`** (widget: `.widgets`), set 2026-10-11 as the one setting `SB_BUNDLE_ID` in `ios/project.yml` | Reverse DNS of a domain you control (blobberus.github.io). Permanent: the App Store Connect field "can't be changed after you upload your first build" and an uploaded bundle id can't be reused (reported on [Apple forums](https://developer.apple.com/forums/thread/7401), unverified on a help page). |
 | D3 | App name and subtitle | Name **Straight Bussing** (16 of 30 chars), subtitle **Unofficial shuttle tracker** (26 of 30) | Names are 2 to 30 characters ([app information](https://developer.apple.com/help/app-store-connect/reference/app-information/app-information/)). Creating the record (checklist step 4) reserves the name. Keep "UChicago", "University of Chicago", "UGo", "Passio" out of the name, subtitle, keywords, icon and screenshots (2.3.7, 4.1(c), 5.2.1). |
-| D4 | UChicago Transportation / Passio permission | **GRANTED** (owner statement, 2026-10-11) | Nathan attaches the written permission in App Review Information > Attachment, and the review notes say so (step 18). Permission is not endorsement: the app, the listing and the pages keep "unofficial" and "not affiliated with or endorsed by" unless Nathan decides otherwise. |
+| D4 | UChicago Transportation / Passio permission | **GRANTED** (owner statement, 2026-10-11) | The owner attaches the written permission in App Review Information > Attachment, and the review notes say so (step 18). Permission is not endorsement: the app, the listing and the pages keep "unofficial" and "not affiliated with or endorsed by" unless the owner decides otherwise. |
 | D5 | Countries | **United States only** | The app is only useful in Chicago. Every account must still declare EU trader status, but if you don't distribute in the EU you are not a trader, so no address or phone is published ([DSA trader requirements](https://developer.apple.com/help/app-store-connect/manage-compliance-information/manage-european-union-digital-services-act-trader-requirements/)). |
 | D6 | What version 1.0 contains | **The current feature set** (local Live Activity, bus alerts while the app is open, no server) | Without a server nothing about the rider leaves the phone, so the label is "Data Not Collected" and there is no backend to keep alive during review. Server push (P7) can come in 1.1 with an updated label. |
 | D7 | Reviewer access to buses at any hour | **Settings > Demo > Simulated buses (demo)** (built 2026-10-10; off by default, never saved). Owner decision 2026-10-11: no demo banner any more; while it is on, the status pill says "Simulated buses" | Guideline 2.1 requires that reviewers can see the full app. Simulated buses must never look real (ship checklist item 1): the pill label stays on every screen. |
@@ -263,8 +263,8 @@ Claude can adapt:
     Download `AuthKey_XXXXXXXXXX.p8` (it "can only be downloaded once") and copy the **Key ID** and **Issuer ID**
     ([API help](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/)). A key's role
     can't be edited; revoke and regenerate instead. An Admin key is powerful, so it lives only in the `appstore`
-    environment, whose jobs wait for Nathan's approval (step 12). Revoke it in the same place if it is ever exposed.
-12. **[N] Environment and secrets** (checklist steps 6 and 7). Environment `appstore` with Nathan as required reviewer
+    environment, whose jobs wait for the owner's approval (step 12). Revoke it in the same place if it is ever exposed.
+12. **[N] Environment and secrets** (checklist steps 6 and 7). Environment `appstore` with blobberus (the owner) as required reviewer
     and deployment refs `main` + tags `v*` (Settings > Environments; free for public repos). Environment secrets
     `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (base64 of the .p8 file; the PEM text itself also works) and the
     repository variable `APPLE_TEAM_ID` (not a secret). Commands: checklist step 7. Secrets are not passed to workflows
@@ -274,7 +274,7 @@ Claude can adapt:
 
 13. **[done] `.github/workflows/ios-release.yml`** (Actions > "iOS release (TestFlight / App Store Connect)"; manual
     `workflow_dispatch` and `v*` tags; `runs-on: macos-26`). Two jobs:
-    - **release** (`environment: appstore`, so it waits for Nathan's approval): checks that the three secrets and the
+    - **release** (`environment: appstore`, so it waits for the owner's approval): checks that the three secrets and the
       variable exist and look right (readable message and the exact `gh` command when not); on a tag, checks that the
       tag is `v` + `MARKETING_VERSION`; checks `xcodebuild -version` is 26+; writes the key file; **preflight**
       (`ios/scripts/asc.py`, plain App Store Connect API calls): the key is accepted, both bundle ids are registered
@@ -373,7 +373,7 @@ Claude can adapt:
       advertising, is collected only infrequently and optionally, and is affirmatively provided by the user each time.
       One criterion speaks of data "provided by the user in your app's interface" with the user's name shown in the
       form; our form is a web page outside the app, so the stronger reason is that the app does not collect it at all
-      (like the Support URL on the store page). If Nathan ever wants zero doubt, he can instead declare Customer
+      (like the Support URL on the store page). If the owner ever wants zero doubt, they can instead declare Customer
       Support and Other User Contact Info (App Functionality, not used for tracking); the choice can be changed without
       a new build.
     - **The schedule check** (at most daily, blobberus.github.io) and the **Passio feed requests** are plain requests
@@ -384,7 +384,7 @@ Claude can adapt:
       domains, `NSPrivacyCollectedDataTypes` empty, and the only required-reason API is UserDefaults (CA92.1, the app's
       own settings; the widget extension uses none, and no file-timestamp, boot-time, disk-space or keyboard APIs are
       used).
-18. **[N] Version page "1.0 Prepare for Submission"** (Claude drafted; Nathan pastes):
+18. **[N] Version page "1.0 Prepare for Submission"** (Claude drafted; the owner pastes):
     - Screenshots: step 19. App icon: taken from the build (the 1024 px opaque PNG `make_icon.py` makes from `straight-bussing-icon-LARGE.png`).
     - **Promotional Text** (170 max, 145 used):
       ```
@@ -458,7 +458,7 @@ Claude can adapt:
 
 ### Support form (Google Form, about 2 minutes; checklist step 10)
 
-Owner decision 2026-10-11 (D8). Claude cannot make the form (it needs Nathan's Google account); everything else is
+Owner decision 2026-10-11 (D8). Claude cannot make the form (it needs the owner's Google account); everything else is
 built: "Contact support" in iOS Settings and About opens
 `https://blobberus.github.io/straight-bussing/support.html?contact=1&app=ios&v=<version (build)>&os=<iOS version on
 model>` in Safari, the web About opens `support.html?contact=1&app=web&v=<APP_VERSION>`, and `support.html`
@@ -506,7 +506,7 @@ Submit. If the form gets more questions (a screenshot upload needs sign-in), upd
 ### Phase G: submit and launch
 
 24. **[N+C] Pre-submit check.** Claude ticks the `.claude/rules/project.md` ship checklist (stale-data honesty, "est." labels, no
-    "official" claims, 44 pt targets, privacy) on the TestFlight build. Nathan confirms: permission attached, simulated
+    "official" claims, 44 pt targets, privacy) on the TestFlight build. The owner confirms: permission attached, simulated
     buses work, privacy and support URLs load, screenshots match the build, Content Rights and App Privacy answered.
 25. **[N] Submit** (checklist step 12). Version page > select the build > Add for Review > Submit to App Review.
     Status goes Waiting for Review > In Review > Pending Developer Release (manual release) or Rejected.
@@ -517,7 +517,7 @@ Submit. If the form gets more questions (a screenshot upload needs sign-in), upd
 
 ### Phase H: after launch
 
-28. **Updates [C, N runs and submits].** Claude bumps `MARKETING_VERSION` (1.0.1, 1.1.0); Nathan runs step 8 (or pushes
+28. **Updates [C, N runs and submits].** Claude bumps `MARKETING_VERSION` (1.0.1, 1.1.0); the owner runs step 8 (or pushes
     the tag `v` + version) and submits. "What's New" is required for every version after the first. For updates,
     choose **phased release**: automatic updates go to 1%, 2%, 5%, 10%, 20%, 50%, 100% over 7 days, pausable for 30
     days in total ([phased release](https://developer.apple.com/help/app-store-connect/update-your-app/release-a-version-update-in-phases/)).
@@ -534,7 +534,7 @@ Submit. If the form gets more questions (a screenshot upload needs sign-in), upd
 
 ## 6. Summary: who does what
 
-| Only Nathan | Claude in this repo |
+| Only the owner | Claude in this repo |
 |---|---|
 | Apple Account + 2FA, enrollment + ID photo + payment, agreements, DSA declaration, (optional) App IDs, app record, API key, GitHub environment + secrets + variable, approving release runs, the Google Form, Content Rights / age rating / privacy answers (truthfulness is his), attaching the permission, submit, reply to App Review, release, renewal | Release pipeline (`ios-release.yml`, `ExportOptions.plist`, `asc.py`, `release_archive.sh`), `project.yml` bundle id / version / signing, privacy and support pages, Contact support links, simulated buses, App Store screenshot job, listing text and review notes, fixes from TestFlight QA and review, docs and `.claude/rules/project.md` status |
 

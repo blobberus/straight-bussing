@@ -2,7 +2,7 @@
 
 Written 2026-10-11. Goal: ride with the real app on your iPhone, then with other riders, fix everything found, and
 submit the exact build that passed. TestFlight comes with the paid Apple Developer Program (99 USD a year), so the
-plan starts with enrolling. Account setup is "Nathan's checklist" in `docs/APPSTORE-SUBMIT.md` (steps 1 to 9); this
+plan starts with enrolling. Account setup is "Owner's checklist" in `docs/APPSTORE-SUBMIT.md` (steps 1 to 9); this
 file is the testing loop. Dates are targets.
 
 Visual version with links, "where it can snag" tips for every step and ticks that are remembered: open
@@ -13,11 +13,11 @@ Visual version with links, "where it can snag" tips for every step and ticks tha
 | Phase | Dates | Who | Done when |
 |---|---|---|---|
 | 0. Prep | Oct 12 to 14 | Claude | the prep list below is done (no Apple account needed) |
-| 1. Enroll and set up | Oct 12 to 15 | Nathan | checklist steps 1 to 9: build 1 is on your iPhone |
-| 2. Round 1: you alone (internal testing) | Oct 15 to 21 | Nathan rides, Claude fixes | every item in A to F passed once, no open P0 |
+| 1. Enroll and set up | Oct 12 to 15 | Owner | checklist steps 1 to 9: build 1 is on your iPhone |
+| 2. Round 1: you alone (internal testing) | Oct 15 to 21 | Owner rides, Claude fixes | every item in A to F passed once, no open P0 |
 | 3. Round 2: other riders (external testing) | Oct 22 to Nov 1 | 10 to 30 riders, Claude fixes | no open P0 or P1, no crash in the last 7 days |
 | 4. Freeze and submit | Nov 2 to 6 | both | the final build passes the full list and is submitted |
-| 5. Review and release | about Nov 4 to 10 | Apple, then Nathan | live well before Thanksgiving Break (Nov 23 to 27) |
+| 5. Review and release | about Nov 4 to 10 | Apple, then the owner | live well before Thanksgiving Break (Nov 23 to 27) |
 
 ## Phase 0: Claude's prep before build 1
 

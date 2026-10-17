@@ -6,7 +6,7 @@
   python3 ios/scripts/asc.py preflight --app <bundle id> --widget <bundle id> --key <AuthKey.p8>
       Before the 15-minute archive: checks that App Store Connect accepts the key ($ASC_KEY_ID, $ASC_ISSUER_ID),
       registers the two bundle ids if they are missing, and stops with a readable message if the app record
-      does not exist yet (Nathan's checklist in docs/APPSTORE-SUBMIT.md).
+      does not exist yet (the owner's checklist in docs/APPSTORE-SUBMIT.md).
   python3 ios/scripts/asc.py explain <xcodebuild log>
       After a failed export/upload: turns the known Apple errors into what to do.
 
@@ -17,11 +17,11 @@ import argparse, base64, binascii, json, os, re, subprocess, sys, time, urllib.e
 from pathlib import Path
 
 API = "https://api.appstoreconnect.apple.com"
-GUIDE = "docs/APPSTORE-SUBMIT.md, Nathan's checklist"
+GUIDE = "docs/APPSTORE-SUBMIT.md, the owner's checklist"
 
 
 class Stop(Exception):
-    """A failure with a message meant for Nathan."""
+    """A failure with a message meant for the owner."""
 
 
 def say(kind, title, text):

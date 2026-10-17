@@ -1,6 +1,6 @@
 # monitoring.md: constant ground-truth collection runbook
 
-For Claude. When Nathan says **"run monitoring.md"**: do **Run it** top to bottom, fix what it finds,
+For Claude. When the owner says **"run monitoring.md"**: do **Run it** top to bottom, fix what it finds,
 then **Report back**. Paths assume the repo at `C:\Users\NK\Documents\straight-bussing` (Bash: `/c/Users/NK/Documents/straight-bussing`);
 on any other PC use that clone's folder (see **Run the stopgap on another PC**).
 
@@ -37,7 +37,7 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
 1. `cd /c/Users/NK/Documents/straight-bussing && python tools/monitor.py status` (exit 0 HEALTHY, 1 DEGRADED, 2 DOWN).
 2. HEALTHY: go to **Report back**.
 3. DEGRADED / DOWN: for each `[warn]` / `[DOWN]` line, apply the matching row of the fix table.
-4. If it is DOWN and not fixed within ~10 min, **take over locally** (below), and tell Nathan.
+4. If it is DOWN and not fixed within ~10 min, **take over locally** (below), and tell the owner.
 5. Run `status` again.
 6. Log it in `docs/DATA-COLLECTION-LOG.md`: one Checkups line (verdict, coverage, rows), and a `DC-NNN` entry for
    every error found (what, impact on the rows, cause, fix or status). Commit it with the fixes, then report.
@@ -47,9 +47,9 @@ Git Bash gotcha: it rewrites `rev:path` arguments (`git show origin/data:data/..
 ## Fix table
 | Status says | Likely cause | Do |
 |---|---|---|
-| `workflow is disabled_...` | 60-day idle rule or someone disabled it | Ask Nathan to open https://github.com/blobberus/straight-bussing/actions/workflows/collect.yml and press **Enable workflow** (or, with a token: `curl -X PUT -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/blobberus/straight-bussing/actions/workflows/collect.yml/enable`). Then dispatch. |
-| `no scheduled run has fired yet` / `no run started for ...` | The self-chain stopped (read the last run's **Self-chain** summary line / `::warning::`) and the cron backstop hasn't fired; GitHub delays or drops scheduled runs under load | `python tools/monitor.py dispatch` (uses `GITHUB_TOKEN` or the logged-in `gh` CLI; otherwise it prints the manual steps for Nathan). One dispatch restarts the chain. If the chain keeps stopping: `python tools/test_chain.py`, check `vars.COLLECT_CHAIN` is not `off` (`gh variable list`). Check the workflow is on main: `git fetch -q origin && git ls-tree --name-only origin/main .github/workflows/` (must list `collect.yml`). Over 2 h with no run: take over locally, recheck in an hour. |
-| `a run failed` / `the last 3 runs failed` | Python error, GTFS download, git push | Steps of a run: `curl -s https://api.github.com/repos/blobberus/straight-bussing/actions/runs/<run_id>/jobs` (run id is in the URL that status prints; shows each step's conclusion). Full logs need auth: ask Nathan to open the run URL, or read it with Claude in Chrome. Reproduce locally: `python tools/truth_logger.py --once`, `python tools/test_truth.py`, `python tools/test_merge.py`. Fix, then **Update the collector**. |
+| `workflow is disabled_...` | 60-day idle rule or someone disabled it | Ask the owner to open https://github.com/blobberus/straight-bussing/actions/workflows/collect.yml and press **Enable workflow** (or, with a token: `curl -X PUT -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/blobberus/straight-bussing/actions/workflows/collect.yml/enable`). Then dispatch. |
+| `no scheduled run has fired yet` / `no run started for ...` | The self-chain stopped (read the last run's **Self-chain** summary line / `::warning::`) and the cron backstop hasn't fired; GitHub delays or drops scheduled runs under load | `python tools/monitor.py dispatch` (uses `GITHUB_TOKEN` or the logged-in `gh` CLI; otherwise it prints the manual steps for the owner). One dispatch restarts the chain. If the chain keeps stopping: `python tools/test_chain.py`, check `vars.COLLECT_CHAIN` is not `off` (`gh variable list`). Check the workflow is on main: `git fetch -q origin && git ls-tree --name-only origin/main .github/workflows/` (must list `collect.yml`). Over 2 h with no run: take over locally, recheck in an hour. |
+| `a run failed` / `the last 3 runs failed` | Python error, GTFS download, git push | Steps of a run: `curl -s https://api.github.com/repos/blobberus/straight-bussing/actions/runs/<run_id>/jobs` (run id is in the URL that status prints; shows each step's conclusion). Full logs need auth: ask the owner to open the run URL, or read it with Claude in Chrome. Reproduce locally: `python tools/truth_logger.py --once`, `python tools/test_truth.py`, `python tools/test_merge.py`. Fix, then **Update the collector**. |
 | `push failed after 5 attempts` (in a run's Merge step) | Many runs racing, or a file > 100 MB | One lost run is covered by the overlap. If repeated: `git fetch origin data && git log --oneline -5 origin/data`; the CSV rotates to `archive/` at 40 MB, so check that the rotation still works. |
 | `Passio feed unreachable` | Passio outage | Nothing to fix. Note the time. If it lasts > 1 day, check that the feed URL in .claude/rules/project.md still works. |
 | `buses are running but no new arrivals merged for 3 h` | Detector or static data broken (GTFS changed) | During service hours: `python tools/truth_logger.py --duration 120 --out "$TEMP/t.csv"`. `skip row` on stderr means stops are missing from `web/data` (CI rebuilds GTFS each run; check main's `tools/build_gtfs.py`). |
@@ -64,21 +64,21 @@ cd /c/Users/NK/Documents/straight-bussing && python tools/monitor.py local --hou
 ```
 - Check: `python tools/monitor.py status` (line `local RUNNING pid ...`) and `tail -5 data/monitor/monitor.log`.
 - Stop: `python tools/monitor.py stop` (finishes and pushes the current rows, forces after 90 s).
-- It pushes to `data` with Nathan's git login; commits say `(local monitor ...)`. A second `local` while one is running is a no-op.
-- Limits: it only runs while this Claude Code session, the PC, and the network are up. To survive reboots, **only if Nathan asks**,
+- It pushes to `data` with the owner's git login (blobberus); commits say `(local monitor ...)`. A second `local` while one is running is a no-op.
+- Limits: it only runs while this Claude Code session, the PC, and the network are up. To survive reboots, **only if the owner asks**,
   add an hourly watchdog with the PowerShell tool (`resume` exits at once if one is already running):
   `schtasks /Create /TN SBMonitor /SC HOURLY /F /TR "C:\Users\NK\AppData\Local\Programs\Python\Python311\pythonw.exe C:\Users\NK\Documents\straight-bussing\tools\monitor.py resume"`
   (no inner quotes needed: neither path has spaces)
   Remove it with `schtasks /Delete /TN SBMonitor /F`. Check the pythonw path first: `python -c "import sys; print(sys.executable)"`.
 
 ## Run the stopgap on another PC
-For Nathan (by hand) or Claude Code on that PC. Any Windows, macOS or Linux machine works; several PCs plus CI
+For the owner (by hand) or Claude Code on that PC. Any Windows, macOS or Linux machine works; several PCs plus CI
 can run at once (the merge drops duplicates). Each PC keeps its own state in its clone's `data/monitor/`.
 
 **1. One-time setup**
 - Install **Git** (https://git-scm.com; on Windows keep "Git Credential Manager" checked) and **Python 3.11+**
   (https://python.org; on Windows tick "Add python.exe to PATH"). No pip packages are needed.
-- Sign in with a GitHub account that can push to `blobberus/straight-bussing` (Nathan's, or a collaborator).
+- Sign in with a GitHub account that can push to `blobberus/straight-bussing` (blobberus, or a collaborator).
   The first push opens a browser sign-in (Windows/macOS Credential Manager). Linux / headless: use a
   fine-grained personal access token with **Contents: read and write** on this repo as the password.
 - Clone and check:
@@ -135,10 +135,10 @@ State: `data/monitor/state.json` (totals, last push, last error), `monitor.log`,
 `merged/` (pushed, kept 7 days), `databranch/` (scratch worktree, branch `monitor-data`; rebuilt on every push).
 
 ## Update the collector
-Pushing to main is outward-facing: confirm with Nathan first unless he asked for the update.
+Pushing to main is outward-facing: confirm with the owner first unless they asked for the update.
 1. Edit on `v2-rewrite`: `.github/workflows/collect.yml`, `tools/{truth_logger,arrival_detector,arrivals_lib,merge_arrivals,merge_predictions,alerts_lib,merge_alerts,refresh_model,model_core,model_segments,model_quantile,model_kalman,backtest,monitor,collect_chain}.py`, `docs/DATA.md`.
 2. Test: `python tools/test_truth.py && python tools/test_merge.py && python tools/test_alerts.py && python tools/test_models.py && python tools/test_monitor.py && python tools/test_chain.py && python tools/truth_logger.py --once`.
-3. Commit only those paths on v2-rewrite (`git commit --only -m "..." -- <paths>`; Nathan may have other uncommitted work), then `git push origin v2-rewrite`.
+3. Commit only those paths on v2-rewrite (`git commit --only -m "..." -- <paths>`; the owner may have other uncommitted work), then `git push origin v2-rewrite`.
 4. Bring the same files to main through a worktree (the method used in commit `a466886`):
    ```
    W="$TEMP/sb-mainwt"; git worktree add "$W" main
@@ -152,12 +152,12 @@ Pushing to main is outward-facing: confirm with Nathan first unless he asked for
 ## Replay a day after a detector fix
 `python tools/replay_day.py --day YYYY-MM-DD --out "$TEMP/replay" --compare` rebuilds the day's rows with the
 current code from the run artifacts (90 days) and reports what would change against `origin/data` (`git fetch origin
-data` first). Read-only; writing the result to the data branch is a separate step Nathan approves
+data` first). Read-only; writing the result to the data branch is a separate step the owner approves
 (`tools/apply_replay.py --dry-run` first, then without). docs/DATA.md "Replaying a day".
 
-## Report back to Nathan
+## Report back to the owner
 - Verdict and why, in one line.
 - Coverage % and the biggest gap since the reported start; `arrivals.csv` rows and newest arrival.
 - What you did (dispatch, local takeover started and how to stop it, fixes pushed).
-- What needs him: enabling the workflow, a token for dispatch, the reboot watchdog.
+- What needs the owner: enabling the workflow, a token for dispatch, the reboot watchdog.
 - New or still-open `DC-NNN` entries from `docs/DATA-COLLECTION-LOG.md`.

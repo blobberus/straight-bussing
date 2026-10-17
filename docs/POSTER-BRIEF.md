@@ -1,7 +1,7 @@
 # Straight Bussing: poster brief (product statement + functional proposal)
 
 For the agent designing a QR code poster that riders see inside the campus shuttles. This file is self-contained:
-everything you may claim is listed here, and the "Do not claim" rules are hard rules. Owner: Nathan.
+everything you may claim is listed here, and the "Do not claim" rules are hard rules. Owner: blobberus.
 Written 2026-10-15 against the live site.
 
 ## 1. Product statement
@@ -71,9 +71,9 @@ Optional teaser (small, playful, never reveal names): "Zoom all the way in. Some
 **Feel:** Apple Maps / Citymapper. Calm, lots of white space, one accent color, the map is the hero. No gradients,
 no glow, no emoji, no stock photos of buses. Route colors are the only bright colors, and only as map data.
 
-**App icon:** a white bird riding a white bus on a teal app-icon tile (#00A894) with rounded corners. Nathan must give
+**App icon:** a white bird riding a white bus on a teal app-icon tile (#00A894) with rounded corners. The owner must give
 you `straight-bussing-icon-rounded.png` (rounded corners, transparent outside: use this one on the poster) or
-`straight-bussing-icon-LARGE.png` (square, if you round it yourself) (both 1000 x 1000 px; about 8.5 cm / 3.3 in wide at 300 dpi, so ask Nathan
+`straight-bussing-icon-LARGE.png` (square, if you round it yourself) (both 1000 x 1000 px; about 8.5 cm / 3.3 in wide at 300 dpi, so ask the owner
 for a larger or vector original before printing it bigger). Do not redraw or recolor it. The icon's teal may be the
 poster's brand color (a teal band or the icon tile); keep it apart from the "Live" green below, which it resembles, so
 riders never read teal as "live".
@@ -102,7 +102,7 @@ Numbers in tabular figures.
 **Layout concepts:**
 1. *Phone-first:* a clean phone mockup showing the map with a few colored route lines, bus markers and the
    bottom sheet ("Current trip", next arrivals), headline above, QR code bottom right with the call to action.
-   Only use real screenshots of the live site that Nathan provides; do not invent screens or times.
+   Only use real screenshots of the live site that the owner provides; do not invent screens or times.
 2. *Big question:* headline "Where's my bus?" in large type on off-white, 3 perk lines with simple line icons,
    the QR code as the largest object, app icon + name + URL at the bottom, disclaimer in small type.
 
@@ -129,7 +129,7 @@ as an illustration, but no caption may say the times are exact.
   "Scan for live bus times" / "Scan. See your bus." / "Point your camera here".
 - **Install hint** (optional, small): "Add to Home Screen to keep it one tap away."
 
-## 6. Owner to-dos (Nathan; not for the designer)
+## 6. Owner to-dos (not for the designer)
 
 - [ ] **Get written approval from UChicago Transportation before posting inside any shuttle.** The data permission
   (granted 2026-10-11) covers using the shuttle data, not advertising in their vehicles. Ask what is allowed:

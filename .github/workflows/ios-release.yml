@@ -1,6 +1,6 @@
 name: iOS release (TestFlight / App Store Connect)
 # Builds the native app in ios/ for the App Store and uploads it to App Store Connect, where it shows in TestFlight.
-# Nathan's checklist: docs/APPSTORE-SUBMIT.md. Run it: Actions > iOS release > Run workflow (or push a tag v1.0.0).
+# The owner's checklist: docs/APPSTORE-SUBMIT.md. Run it: Actions > iOS release > Run workflow (or push a tag v1.0.0).
 #
 # Signing, with nothing made by hand: the Release archive is built UNSIGNED, then `xcodebuild -exportArchive` signs it
 # with automatic signing + -allowProvisioningUpdates + an App Store Connect API key (Team key, Admin role), so Apple's
@@ -89,7 +89,7 @@ jobs:
           [ -n "$ASC_KEY_P8" ] || problems+=("secret ASC_KEY_P8: base64 of the AuthKey_KEY_ID.p8 file. Set it with: base64 -w0 ~/Downloads/AuthKey_KEY_ID.p8 | gh secret set ASC_KEY_P8 -R $R --env appstore")
           if [ ${#problems[@]} -gt 0 ]; then
             { echo "### Release not started: ${#problems[@]} setting(s) missing or malformed"
-              echo "Nathan's checklist in docs/APPSTORE-SUBMIT.md has every step. Secrets go to the \`appstore\` environment."
+              echo "The owner's checklist in docs/APPSTORE-SUBMIT.md has every step. Secrets go to the \`appstore\` environment."
               for p in "${problems[@]}"; do echo "- $p"; done
               echo
               echo "For a build check without any secrets: Run workflow with **Dry run** ticked."; } >> "$GITHUB_STEP_SUMMARY"

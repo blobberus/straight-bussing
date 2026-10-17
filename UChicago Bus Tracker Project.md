@@ -1,6 +1,6 @@
 # UChicago Bus Tracker Project
 
-As of 6 October 2026 · Author: Nathan
+As of 6 October 2026 · Author: blobberus
 
 > **Note for the model reading this:** This file is a project brief. The goal is a free, unofficial student app that shows UChicago shuttle locations live. The sections up to "Sources" match the shared project doc. The "Technical reference" appendix at the end adds the implementation details found during research. Every feed URL below returned live data on 6 October 2026.
 

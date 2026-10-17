@@ -2,7 +2,7 @@
 
 > **What this is.** The single plan for turning the ground-truth arrivals we collect into a model that
 > predicts (1) how long a shuttle takes to drive between stations and (2) when it will reach a station,
-> and for **proving** each step with tests before it reaches riders. Written for Nathan and for any
+> and for **proving** each step with tests before it reaches riders. Written for the owner and for any
 > Claude agent. Agents: read this whole file before running an experiment, follow **§10 Agent
 > protocol**, and log every result in **§11**.
 >
@@ -188,7 +188,7 @@ logged before then keep the defects, so the `load_rows` rules stay.
   (Downtown Campus Connector, South Loop Shuttle), plus Stony Island and Garfield; campus streets are not covered.
 - **CTA Bus Tracker / GTFS-Realtime** (live bus GPS on Hyde Park streets, the same input the city used):
   [requires a developer key](https://www.transitchicago.com/developers/) under CTA's license. Good candidate if
-  Nathan registers a key (E17); not used until then.
+  the owner registers a key (E17); not used until then.
 - **TomTom / HERE traffic APIs**: need keys; their terms on storing data could not be verified (TomTom's terms page did
   not load), so not adopted.
 
@@ -337,7 +337,7 @@ A failed gate keeps the current source for that output; logged as "not yet". No 
 | E14 | Calendar-regime models (Thanksgiving Break, finals, winter break) | T3 + E04 | per-regime buckets or features |
 | E15 | Weather effect on arterial traffic (prior) | history | **done 2026-10-08**: ~2-4.5 % slower; secondary factor |
 | E16 | Weather effect on shuttle run time and dwell (M14 re-estimate) | T2 + 10 wet days | multipliers with CIs; compare to E15 prior |
-| E17 | CTA bus GPS on Hyde Park streets as a live traffic feed | Nathan's CTA developer key | adopt if it improves on M13 |
+| E17 | CTA bus GPS on Hyde Park streets as a live traffic feed | The owner's CTA developer key | adopt if it improves on M13 |
 | E18 | One-minute goal (owner request): Passio's error per stop and what M2 / M10 buy, 2-3 min ahead | T0 | **done 2026-10-12**: worth pursuing, inconclusive for shipping (4 test days); re-run weekly, decide at T1 |
 | E19 | **The 10% rule** (owner goal 2026-10-12: error <= 10% of the lead, 1 min at 10 min, 3 min at 30 min; "under 1% too late") on the data we have, and what the huge errors are | T0 | **done 2026-10-12**: no source meets it yet; predictions.csv (1-30 min) collected from today |
 | E20 | Passio at 1-30 min from `predictions.csv` under the 10% rule (E19 scoring rule), plus our layover / run-matching model; also scored in the **rider's view** (the next bus of the route at the stop, whatever its trip id: about half of Passio's gross misses at 30 min are a lap mix-up, `docs/GOAL-AND-METHOD.md` 2.9) | 1 week of predictions.csv | first look Oct 19, decide at T1 |
@@ -375,11 +375,11 @@ Dates are targets; the gates in §6.6 decide. Calendar dates from the 2026-27 Co
 2. **Snapshot** the data (§3) into `$TEMP/rk/`; record row counts, date range and `sha256sum`.
 3. **Code** goes in `tools/rk_<name>.py`: stdlib Python, reusing `model_core.load_rows`, `context_join.join` and the
    backtest's information-time logic. Do not change production models (`model_*.py`, `refresh_model.py`, `predict.js`)
-   unless the decision is "adopt" and Nathan agrees.
+   unless the decision is "adopt" and the owner agrees.
 4. **Never overwrite** `docs/BACKTEST.md` with an experiment run: pass `--out experiments/routeknower/...`.
 5. **Write up** `experiments/routeknower/E##-<slug>.md` with the template below; add a row to §11.
 6. **Decide:** adopt / reject / inconclusive (needs tier X). Inconclusive is a fine result; a false win is not.
-7. **Windows note:** Controlled Folder Access is on for Nathan's PC; if a Git Bash write into the repo fails with
+7. **Windows note:** Controlled Folder Access is on for the owner's PC; if a Git Bash write into the repo fails with
    "Permission denied", write with Python or the Edit/Write tools.
 8. **Sources:** use only the vetted sources in §3.4. A new source needs the same vetting (terms allow storing and
    modelling, documented API, coverage of our streets) written into §3.4 before use. Never scrape Google Maps.

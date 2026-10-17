@@ -6,7 +6,7 @@ Researched 2026-10-07. Items marked (est.) are not verified from a first-party p
 
 Update 2026-10-11: UChicago Transportation / Passio gave permission (owner statement), the cloud-signed release pipeline
 exists (`.github/workflows/ios-release.yml`, no certificate or profile to make by hand), and the App Privacy label is
-"Data Not Collected". What is left is Nathan's checklist at the top of `docs/APPSTORE-SUBMIT.md`.
+"Data Not Collected". What is left is the owner's checklist at the top of `docs/APPSTORE-SUBMIT.md`.
 
 Corrected 2026-10-10 (re-checked against Apple's pages for APPSTORE-SUBMIT.md): the iPhone app is now native SwiftUI
 (`ios/`), so the Capacitor recommendation in section 3 is superseded; App Review times now come from Apple's own
