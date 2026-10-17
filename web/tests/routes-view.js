@@ -19,6 +19,15 @@ function mounted(over = {}) {
 }
 const key = (el, k) => el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
 
+test("routes: a hidden route stays grayed but still says whether it runs (owner 2026-10-17)", () => {
+  const h = renderRoutes(base({ hiddenRoutes: ["R1", "R3"] }));          // R1 has a live bus in the fixture, R3 none
+  const rowOf = (id) => h.slice(h.indexOf(`data-action="route:open" data-id="${id}"`), h.indexOf(`data-action="routes:toggle" data-id="${id}"`));
+  ok(/1 bus running · Hidden from map and times/.test(rowOf("R1")), "hidden and running: says it runs");
+  ok(rowOf("R1").includes("v-livedot"), "the live dot stays on a running hidden route");
+  ok(/(Not running|Scheduled|No more)[^<]* · Hidden from map and times/.test(rowOf("R3")), "hidden and not running: says so");
+  ok(h.includes('class="v-routerow is-off"'), "still grayed");
+});
+
 test("routes: no bar when nothing is hidden; make button once a route is hidden", () => {
   eq(topBarHTML(base()), "");
   const h = topBarHTML(base({ hiddenRoutes: ["R3"] }));

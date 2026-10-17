@@ -242,7 +242,7 @@ struct RouteRow: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(model.longName(rid)).font(.body.weight(.medium)).foregroundStyle(hidden ? Palette.text2 : Palette.text)
                         HStack(spacing: 4) {
-                            if n > 0 && !hidden { LiveDot() }
+                            if n > 0 { LiveDot() }
                             Text(subtitle(n, tripOff: tripOff)).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
                         }
                     }
@@ -264,9 +264,16 @@ struct RouteRow: View {
         .frame(minHeight: 44)
     }
 
+    /// Whether the route runs, also for a hidden one (owner 2026-10-17: a grayed line must still say if it is
+    /// running; web routes.js row), then why it is grayed.
     func subtitle(_ n: Int, tripOff: Bool) -> String {
-        if tripOff { return "Not part of this trip" }
-        if hidden { return "Hidden from map and times" }
+        let live = liveStatus(n)
+        if tripOff { return "\(live) · Not part of this trip" }
+        if hidden { return "\(live) · Hidden from map and times" }
+        return live
+    }
+
+    func liveStatus(_ n: Int) -> String {
         if n > 0 { return "\(n) bus\(n == 1 ? "" : "es") running" }
         if model.liveOutage { return "Live status unknown" }   // a feed outage is not "not running"
         if let s = Operating.noLiveStatus(rid, buses: model.buses, service: model.staticData.service, now: model.now) { return s }

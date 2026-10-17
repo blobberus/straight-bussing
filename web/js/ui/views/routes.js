@@ -84,9 +84,11 @@ export const idleText = (state, id, now) => { const h = hoursOn(state.service, i
 function row(state, id, hidden, now) {
   const r = state.routes[id] || {}, n = runningCount(state, id), name = nameOf(state, id);
   const tripOff = hidden && !!state.journey && !(state.hiddenRoutes || []).includes(id);   // hidden only by the journey
-  const status = tripOff ? "Not part of this trip" : hidden ? "Hidden from map and times" : n ? `${n} bus${n > 1 ? "es" : ""} running` : liveUnknown(state, now) ? "Live status unknown" : noLiveStatus(state, id, now) || idleText(state, id, now);
+  // whether the route runs, also for a hidden one (owner 2026-10-17: a grayed line must still say if it is running)
+  const live = n ? `${n} bus${n > 1 ? "es" : ""} running` : liveUnknown(state, now) ? "Live status unknown" : noLiveStatus(state, id, now) || idleText(state, id, now);
+  const status = tripOff ? `${live} · Not part of this trip` : hidden ? `${live} · Hidden from map and times` : live;
   const eye = tripOff ? "" : `<button type="button" class="v-eye" data-action="routes:toggle" data-id="${esc(id)}" aria-pressed="${hidden ? "false" : "true"}" aria-label="${hidden ? "Show" : "Hide"} route ${esc(r.short || "")} ${esc(name)}">${hidden ? EYEOFF : EYE}</button>`;
-  return `<div class="v-routerow${hidden ? " is-off" : ""}"><button type="button" class="v-row v-rowmain" data-action="route:open" data-id="${esc(id)}">${routeChip(id, state.routes)}<span class="v-grow"><span class="v-prim">${esc(name)}</span><span class="v-sec">${n && !hidden ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(status)}</span></span></button>${eye}</div>`;
+  return `<div class="v-routerow${hidden ? " is-off" : ""}"><button type="button" class="v-row v-rowmain" data-action="route:open" data-id="${esc(id)}">${routeChip(id, state.routes)}<span class="v-grow"><span class="v-prim">${esc(name)}</span><span class="v-sec">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(status)}</span></span></button>${eye}</div>`;
 }
 
 /**
