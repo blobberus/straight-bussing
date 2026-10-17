@@ -42,6 +42,13 @@ STAND_M = 40.0                   # standing: within this many metres of where it
 GROSS = lambda err, lead: abs(err) > max(600.0, 0.5 * lead)     # E19 gross miss: out of the pass rate, still counted
 LEAD_BINS = ((0, 360, "0-6"), (360, 600, "6-10"), (600, 900, "10-15"), (900, 1200, "15-20"),
              (1200, 1800, "20-30"), (1800, 2701, "30-45"))
+# Under 10 min the owner's goal is measured ONCE per arrival (owner 2026-10-17: "the under 10 minute accuracy should
+# be measured once", so a model cannot pass by always showing "1 min away" as the bus comes): the goal bin 0-10,
+# sampled at the row nearest 5 min ahead (its middle; a constant 60 s there is 4 min off). 0-6 and 6-10 stay as
+# diagnostics only, never part of the goal or the ship gate.
+UNDER10_BIN = (0, 600, "0-10")
+SUMMARY_BINS = (UNDER10_BIN,) + LEAD_BINS
+GOAL_BINS = ("0-10", "10-15", "15-20", "20-30", "30-45")
 SOURCES = (("passio", "passio_epoch"), ("timetable", "tt_epoch"), ("timetable_delay", "ttd_epoch"))
 
 COLUMNS = ("query_epoch,query_local,service_day,dow,day_type,cal_regime,hour,vehicle_id,route_id,route_name,trip_id,"
@@ -496,30 +503,37 @@ def lead_bin(lead):
     return next((b[2] for b in LEAD_BINS if b[0] <= lead < b[1]), None)
 
 
+def summary_bins(lead):
+    """The summary bins a lead falls in: its LEAD_BINS bin, plus the goal bin 0-10 under 10 minutes."""
+    return [b[2] for b in SUMMARY_BINS if b[0] <= lead < b[1]]
+
+
 def summary(rows, day):
     """One sample per (arrival, lead bin, source): the row whose lead is nearest the bin middle (rows of one arrival
     are near-copies; averaging them all would weight long waits). -> list of SUMMARY_COLUMNS dicts, for all routes
-    and per route (segment all), and current trip vs next trip (route ALL)."""
-    mids = {b[2]: (b[0] + min(b[1], HORIZON_S)) / 2 for b in LEAD_BINS}
+    and per route (segment all), and current trip vs next trip (route ALL). Bins: SUMMARY_BINS (the goal bin 0-10,
+    one sample per arrival nearest 5 min ahead, and the finer diagnostic bins)."""
+    mids = {b[2]: (b[0] + min(b[1], HORIZON_S)) / 2 for b in SUMMARY_BINS}
     picks = {}                                # (source, bin, arrival) -> (distance to mid, row)
     targets = defaultdict(set)                # (bin, route, segment) -> arrivals with any row in the bin
     for r in rows:
         if r.get("label_status") != "arrived" or not r["lead_s"] or r["lead_s"] <= 0:
             continue
-        b = lead_bin(r["lead_s"])
-        if b is None:
+        bins = summary_bins(r["lead_s"])
+        if not bins:
             continue
         akey = (r["vehicle_id"], r["stop_id"], r["actual_epoch"])
         seg = "next_trip" if r["next_trip"] else "current_trip"
-        for g in (("ALL", "all"), (r["route_id"], "all"), ("ALL", seg)):
-            targets[(b, g[0], g[1])].add(akey)
-        for name, col in SOURCES:
-            if r.get(col) in (None, ""):
-                continue
-            k = (name, b, akey)
-            dist = abs(r["lead_s"] - mids[b])
-            if k not in picks or dist < picks[k][0]:
-                picks[k] = (dist, r)
+        for b in bins:
+            for g in (("ALL", "all"), (r["route_id"], "all"), ("ALL", seg)):
+                targets[(b, g[0], g[1])].add(akey)
+            for name, col in SOURCES:
+                if r.get(col) in (None, ""):
+                    continue
+                k = (name, b, akey)
+                dist = abs(r["lead_s"] - mids[b])
+                if k not in picks or dist < picks[k][0]:
+                    picks[k] = (dist, r)
     groups = defaultdict(list)
     for (name, b, akey), (_, r) in picks.items():
         err = r[{"passio": "passio_err_s", "timetable": "tt_err_s", "timetable_delay": "ttd_err_s"}[name]]
@@ -527,7 +541,7 @@ def summary(rows, day):
         for g in (("ALL", "all"), (r["route_id"], "all"), ("ALL", seg)):
             groups[(name, b, g[0], g[1])].append((err, r["lead_s"]))
     out = []
-    order = {b[2]: i for i, b in enumerate(LEAD_BINS)}
+    order = {b[2]: i for i, b in enumerate(SUMMARY_BINS)}
     for (name, b, route, seg), v in sorted(groups.items(), key=lambda kv: (kv[0][0], order[kv[0][1]], kv[0][2], kv[0][3])):
         ok = [(e, ld) for e, ld in v if not GROSS(e, ld)]
         n = len(ok)
@@ -579,11 +593,12 @@ def report(path, boots=2000, seed=7, route="ALL", segment="all"):
                                                               int(r["n"]), int(r["late_1"]), int(r["targets"]),
                                                               int(r["pass_10"]))
     rnd = random.Random(seed)
-    order = {b[2]: i for i, b in enumerate(LEAD_BINS)}
-    out = [f"Accuracy goal (10 minute shrink: 3 min at >= 30 min, 2 at >= 20, 1 below) by lead ({route}, {segment}); "
-           "one sample per arrival and bin; 95% CI = bootstrap over days", "",
+    order = {b[2]: i for i, b in enumerate(SUMMARY_BINS)}
+    out = [f"Accuracy goal (10 minute shrink: 3 min at >= 30 min, 2 at >= 20, 1 below; under 10 min once per arrival, "
+           f"at about 5 min ahead) by lead ({route}, {segment}); one sample per arrival and bin; 95% CI = bootstrap over days", "",
            "| source | lead min | days | n | pass | 95% CI | (old 10% rule) | too late > 1% | shown / targets |",
            "|---|---|---:|---:|---:|---|---:|---:|---:|"]
+    diag = []
     for (src, b) in sorted(by, key=lambda k: (k[0], order.get(k[1], 9))):
         d = by[(src, b)]
         days = sorted(d)
@@ -603,8 +618,12 @@ def report(path, boots=2000, seed=7, route="ALL", segment="all"):
         late = sum(x[3] for x in d.values()) / n if n else 0
         tg = sum(x[4] for x in d.values())
         old = sum(x[5] for x in d.values()) / den
-        out.append(f"| {src} | {b} | {len(days)} | {n} | {rate:.0%} | {ci} | {old:.0%} | {late:.0%} | {n / tg:.0%} |" if tg else
-                   f"| {src} | {b} | {len(days)} | {n} | {rate:.0%} | {ci} | {old:.0%} | {late:.0%} | |")
+        line = (f"| {src} | {b} | {len(days)} | {n} | {rate:.0%} | {ci} | {old:.0%} | {late:.0%} | {n / tg:.0%} |" if tg else
+                f"| {src} | {b} | {len(days)} | {n} | {rate:.0%} | {ci} | {old:.0%} | {late:.0%} | |")
+        (out if b in GOAL_BINS else diag).append(line)
+    if diag:
+        out += ["", "Diagnostics only (not the goal): the finer bins under 10 min; the goal counts each arrival once there "
+                "(bin 0-10, the prediction nearest 5 min ahead)", "", out[2], out[3]] + diag
     return "\n".join(out)
 
 

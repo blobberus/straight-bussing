@@ -286,6 +286,22 @@ def test_ten_minute_shrink_tolerances():
     assert [abs(e) <= 0.10 * ld for e, ld in ok] == [True, True, True]
 
 
+def test_under_ten_minutes_is_measured_once_and_cannot_be_gamed():
+    # owner 2026-10-17: "the under 10 minute accuracy should be measured once ... avoid the edge case where predictions
+    # infinitely go to 1 minute": a "model" that always shows "1 min away" (error = 60 - lead) as the bus comes
+    arr = 1792100000
+    rows = [{"label_status": "arrived", "lead_s": ld, "vehicle_id": "v", "stop_id": "S", "actual_epoch": arr,
+             "next_trip": 0, "route_id": "R", "passio_epoch": arr - ld + 60, "passio_err_s": 60 - ld,
+             "tt_epoch": "", "ttd_epoch": ""} for ld in range(30, 600, 30)]
+    assert [abs(60 - ld) <= L.shrink_tol(ld) for ld in (60, 120)] == [True, True], "scored at 1 or 2 min it would pass"
+    s = {(r["source"], r["lead_bin"], r["route"], r["segment"]): r for r in B.summary(rows, DAY)}
+    g = s[("passio", "0-10", "ALL", "all")]
+    assert g["n"] == 1 and g["pass_shrink"] == 0, ("one sample per arrival under 10 min, and it fails", g)
+    assert int(g["median_err_s"]) == -240, "the sample is the row nearest 5 min ahead"
+    assert B.GOAL_BINS[0] == "0-10" and "0-6" not in B.GOAL_BINS and "6-10" not in B.GOAL_BINS, "finer bins are diagnostics"
+    assert s[("passio", "0-6", "ALL", "all")]["n"] == 1 and s[("passio", "6-10", "ALL", "all")]["n"] == 1
+
+
 def test_merge_summary_and_report():
     d, rows = built()
     s = B.summary(rows, DAY)

@@ -153,7 +153,8 @@ predictions.csv, and that time is no longer a no_arrival row). Inputs: the archi
 130,000 rows and 4 MB gzipped per service day.
 
 **Aggregating it (`summary()`, `data/eta/summary.csv`).** Rows of one arrival are near-copies (up to 45 per arrival),
-so never average over rows: per source and lead bin (0-6, 6-10, 10-15, 15-20, 20-30, 30-45 min) each arrival gives
+so never average over rows: per source and lead bin (the goal bins 0-10, 10-15, 15-20, 20-30, 30-45 min; under 10
+min the goal counts each arrival once, owner 2026-10-17; plus the diagnostic 0-6, 6-10) each arrival gives
 ONE sample, its row nearest the middle of the bin. Per (service_day, source, lead_bin, route or ALL, segment all /
 current_trip / next_trip): `targets` (arrivals with a row in the bin), `n` (with that source), `pass_shrink`
 (|err| within the owner's allowed error, the 10 minute shrink; since 2026-10-17, every day rebuilt),

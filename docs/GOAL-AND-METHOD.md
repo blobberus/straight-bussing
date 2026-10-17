@@ -28,6 +28,17 @@ those steps (at 15 or 25 minutes ahead) and above 30, and the same as the floore
 daily summary keeps the 10% counts (`pass_10`) next to the new ones (`pass_shrink`), so both can be compared.
 Code: `tools/arrivals_lib.py` `shrink_tol`.
 
+**Under 10 minutes, measured once** (owner, October 17): "the under 10 minute accuracy should be measured once ...
+avoid the edge case where predictions infinitely go to 1 minute and the model avoids being inaccurate by
+precalculating the prediction to 60s (1min) for every minute/second under 10 mins away." With a flat 1-minute
+allowance, scoring every minute as the bus comes would reward a model that always shows "1 min away" (it is right
+whenever the bus is 2 minutes or less away). So each arrival counts **once** for the whole window under 10 minutes:
+the prediction made closest to **5 minutes ahead** (the middle of the window; there a constant "1 min" is 4 minutes
+off, and a model cannot aim at that moment because it does not know when the bus will really come). This is the
+goal bin `0-10` in the daily summary; the finer `0-6` and `6-10` bins, and `predictions.csv`'s 1, 2 and 3 minute
+leads, are diagnostics only, never part of the goal or the ship gate. In `predictions.csv` the goal's under-10 point
+is the 5-minute lead (`lead_target_s` 300).
+
 "Error" always means **predicted time minus actual arrival time**:
 - **Positive = "too late"**: the prediction said a later time than the bus really came. The bus came early, and a
   rider who trusted the prediction **can miss the bus**. This is the dangerous direction.
@@ -106,17 +117,16 @@ data/eta/summary.csv`). **A first look: 5 days.**
 
 | Lead | Passio within the allowed error | (old 10% rule) | too late (more than 1% of the lead) |
 |---|---|---|---|
-| under 6 min | 35% | 7% | 10% |
-| 6 to 10 min | 13% | 10% | 10% |
+| under 10 min (once per arrival, about 5 min ahead) | 22% | 8% | 10% |
 | 10 to 15 min | 13% | 16% | 10% |
 | 15 to 20 min | 14% | 24% | 8% |
 | 20 to 30 min | 26% | 31% | 6% |
 | 30 to 45 min | 12% | 13% | 4% |
 
-First learned corrections (Colab notebook, test days Oct 14 to 16, band B): trees +0.2 to +1.4 points in 4 of the 5
-bins from 2 to 30 minutes, with less "too late", not yet significant everywhere and one route (North) more than
-10% worse; a deep network no real gain (RouteKnower E23). The tables below are the October 13 look under the 10%
-rule.
+First learned corrections (Colab notebook, test days Oct 14 to 16, band B, goal bins): trees +0.3 points at 10 to
+15 minutes and +1.4 at 20 to 30, but -1.2 at 15 to 20 and no gain under 10, with less "too late"; one route (North)
+more than 10% worse; a deep network no real gain (RouteKnower E23c). The tables below are the October 13 look
+under the 10% rule.
 
 ### 3.1 Under the 10% rule (October 13, 2026)
 
@@ -203,8 +213,8 @@ past days only.
 ### 5.4 When a new version may reach riders (the ship gate)
 
 All of these must hold on at least 10 test days:
-1. Better than Passio in **band B** at every lead from 2 to 30 minutes, with the day-resampled uncertainty range
-   above zero.
+1. Better than Passio in **band B** in every goal bin up to 30 minutes (under 10 minutes scored once per arrival,
+   at about 5 minutes ahead; then 10-15, 15-20, 20-30), with the day-resampled uncertainty range above zero.
 2. **Too late no more often than Passio** (the 1% rule must not get worse; an early bus is a missed bus).
 3. No route more than 10% worse than Passio.
 4. In the app, every derived time stays labelled "est." with its source, and stale data is still flagged (ship

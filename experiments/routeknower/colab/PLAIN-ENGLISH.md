@@ -31,6 +31,8 @@ bus's recent GPS trail.
 - **The 10 minute shrink** (the goal since October 17): a prediction made 30 or more minutes ahead must be right
   within 3 minutes, 20 or more minutes ahead within 2 minutes, and closer in within 1 minute. (It replaced the
   "10% rule", which allowed 10% of the time ahead.)
+- **Under 10 minutes, each bus is checked only once**, at about 5 minutes before it came. Otherwise a model could
+  cheat by always saying "1 minute away": that is right whenever the bus is about to arrive, and useless before.
 - **Too late is worse than too early**: the scoring allows a little early, but almost no late.
 - Each model is tested on days it has never seen: it learns on earlier days and is scored on the next day.
 
@@ -39,18 +41,17 @@ Share of buses where the time was within the allowed error of the goal (percent)
 
 | How far ahead | Passio | Trees | Neural network |
 |---|---|---|---|
-| under 6 min | 34.3 | 34.3 | 34.3 |
-| 6 to 10 min | 12.4 | 13.3 | 12.6 |
-| 10 to 15 min | 12.4 | 13.4 | 12.4 |
-| 15 to 20 min | 13.2 | 12.4 | 14.5 |
-| 20 to 30 min | 24.6 | 25.5 | 24.4 |
-| 30 to 45 min | 12.3 | 10.7 | 12.0 |
+| under 10 min (checked once, about 5 min ahead) | 21.1 | 21.0 | 21.1 |
+| 10 to 15 min | 12.4 | 13.1 | 12.4 |
+| 15 to 20 min | 13.2 | 12.5 | 13.4 |
+| 20 to 30 min | 24.6 | 25.5 | 21.9 |
+| 30 to 45 min | 12.3 | 10.9 | 11.5 |
 
-The trees were a little better in most rows and too late a little less often than Passio, but worse on the North
-route. The neural network gained in one row but was too late more often there. Three test days are not enough to
-be sure: the project only shows riders a new time after **at least 10 test days** prove it is better (around Nov
-5 to 12). The table also shows the hard truth: even Passio is rarely close enough by this strict goal, so small
-corrections alone will not reach it.
+The trees were a little better at 10 to 15 and 20 to 30 minutes and too late a little less often than Passio, but
+worse at 15 to 20 minutes and on the North route. The neural network did not help. Three test days are not enough
+to be sure: the project only shows riders a new time after **at least 10 test days** prove it is better (around
+Nov 5 to 12). The table also shows the hard truth: even Passio is rarely close enough by this strict goal, so
+small corrections alone will not reach it.
 
 ## How to run it yourself
 1. Click **Open the notebook in Colab** above (sign in with any Google account).

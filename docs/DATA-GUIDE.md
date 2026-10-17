@@ -295,8 +295,9 @@ that day).
 
 ## The daily scoreboard: `data/eta/summary.csv`
 
-One row per day, predictor (`passio`, `timetable`, `timetable_delay`), lead range (0-6, 6-10, 10-15, 15-20, 20-30,
-30-45 minutes), route (or `ALL`) and segment (`all`, `current_trip`, `next_trip`). Each arrival counts **once** per
+One row per day, predictor (`passio`, `timetable`, `timetable_delay`), lead range (the goal ranges 0-10, 10-15, 15-20, 20-30, 30-45; under 10 minutes the goal counts each arrival once, at
+about 5 minutes ahead, so always showing "1 minute" cannot pass; 0-6 and 6-10 are extra detail
+only), route (or `ALL`) and segment (`all`, `current_trip`, `next_trip`). Each arrival counts **once** per
 lead range.
 
 | Column | What it means |
