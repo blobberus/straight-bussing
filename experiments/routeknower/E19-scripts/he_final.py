@@ -2,7 +2,7 @@
 import sys, json, bisect
 from collections import Counter, defaultdict
 from pathlib import Path
-sys.path.insert(0, r"C:\Users\billy\Documents\straight-bussing\tools")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools"))
 import model_core as C
 
 RK = Path(__file__).parent

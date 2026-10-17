@@ -1,7 +1,8 @@
 """Huge-error investigation, step 1: size the tail of Passio's stored-prediction error."""
 import sys, statistics
 from collections import Counter, defaultdict
-sys.path.insert(0, r"C:\Users\billy\Documents\straight-bussing\tools")
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools"))
 import model_core as C
 
 B1_FIX = 1791620287 + 2 * 3600

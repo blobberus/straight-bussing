@@ -3,11 +3,11 @@ raw reports in [arrival - 90 s, arrival + 90 s] (reports can be 20-40 s apart, a
 import json, math, sys
 from collections import defaultdict
 from pathlib import Path
-sys.path.insert(0, r"C:\Users\billy\Documents\straight-bussing\tools")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools"))
 import model_core as C
 
 RK = Path(__file__).parent
-ROOT = Path(r"C:\Users\billy\Documents\straight-bussing")
+ROOT = Path(__file__).resolve().parents[3]        # the repo
 stops = json.loads((ROOT / "web/data/stops.json").read_text(encoding="utf-8"))
 raw = defaultdict(list)
 for f in sorted((RK / "raw" / "days").glob("*.jsonl")):

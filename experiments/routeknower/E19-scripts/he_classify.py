@@ -3,10 +3,10 @@ Writes he_rows.json (one dict per row with a prediction) for the summaries."""
 import sys, json, math, bisect, statistics
 from collections import defaultdict
 from pathlib import Path
-sys.path.insert(0, r"C:\Users\billy\Documents\straight-bussing\tools")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools"))
 import model_core as C
 
-ROOT = Path(r"C:\Users\billy\Documents\straight-bussing")
+ROOT = Path(__file__).resolve().parents[3]        # the repo
 RK = Path(sys.argv[1]).parent
 B1_FIX = 1791620287 + 2 * 3600
 stops = json.loads((ROOT / "web/data/stops.json").read_text(encoding="utf-8"))

@@ -74,7 +74,7 @@ Riders feel Q3, Q4 and Q5. A good Q1 score with a bad Q3 score is not a win.
 
 Schemas: `docs/DATA.md`. One arrivals row = one bus arriving at one station. Latest snapshot:
 ```
-cd /c/Users/billy/Documents/straight-bussing      # or your clone
+cd straight-bussing      # your clone
 git fetch -q origin data
 MSYS_NO_PATHCONV=1 git show origin/data:data/ground_truth/arrivals.csv > "$TEMP/rk/arrivals.csv"
 for f in weather_mdw weather_campus traffic_regions_hourly; do
