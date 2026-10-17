@@ -64,7 +64,10 @@ GPS_SKIP = MAX_SKIP + 1  # a GPS visit confirms the previous one when it follows
 GPS_HIST = 36            # recent reports the sweep keeps per bus (6 min at 10 s) to time an arrival like _approach
 FROZEN_S = 900           # Passio naming the same trip + stop this long while the bus drives = frozen (trip_id left blank)
 WRONG_MIN_RUN = 5        # the track follows another route: at least this many visits in that route's order ...
-WRONG_MIN_OFF = 3        # ... of which at least this many at stops Passio's route does not have
+WRONG_MIN_OFF = 3        # ... of which at least this many at stops Passio's route does not have, over at least
+WRONG_MIN_SPAN_S = 600   # this long (a bus crossing another route's street is not running it)
+GPS_WRONG_ROUTE = False  # the override is OFF: on Oct 10-16 no episode was corroborated by Passio (it never named the
+                         # route the track suggested), and pass-through drives fit too; detection is kept and tested
 PASS_MIN_MOVE_M = 15.0   # a 'pass' needs the bus to move at least this far between two reports (GPS jitter of a
                          # standing bus never counts as driving past a stop)
 

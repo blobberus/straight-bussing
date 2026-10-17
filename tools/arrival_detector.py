@@ -6,9 +6,10 @@ Rules: docs/DATA.md "Detection". Tests: tools/test_truth.py.
 import math
 from collections import defaultdict, deque
 
-from arrivals_lib import (DEPART_SPEED, FROZEN_S, GPS_HIST, GPS_HOLD_S, GPS_SKIP, HIST, MAX_GAP, MAX_LINK_S, MAX_SKIP,
-                          MIN_PRED_AGE, NEAR_M, PASS_MIN_MOVE_M, PRED_LEADS, PREV_VISIT_GAP_S, RADIUS_M, SAME_VISIT_S,
-                          SHOW_GRACE_S, SHOWN_PAST_S, STATE_TTL, STOP_SPEED, WRONG_MIN_OFF, WRONG_MIN_RUN, hav_m)
+from arrivals_lib import (DEPART_SPEED, FROZEN_S, GPS_HIST, GPS_HOLD_S, GPS_SKIP, GPS_WRONG_ROUTE, HIST, MAX_GAP,
+                          MAX_LINK_S, MAX_SKIP, MIN_PRED_AGE, NEAR_M, PASS_MIN_MOVE_M, PRED_LEADS, PREV_VISIT_GAP_S,
+                          RADIUS_M, SAME_VISIT_S, SHOW_GRACE_S, SHOWN_PAST_S, STATE_TTL, STOP_SPEED, WRONG_MIN_OFF,
+                          WRONG_MIN_RUN, WRONG_MIN_SPAN_S, hav_m)
 
 
 class Tracker:
@@ -28,6 +29,7 @@ class Tracker:
         self.gps = {}                                          # veh -> GPS sweep state (DC-003, _sweep)
         self.logged = defaultdict(lambda: deque(maxlen=8))     # (veh, stop_id) -> epochs of every row logged there
         self._at_stop = None                                   # stop_id -> [(route, idx)], built on first use
+        self.wrong_route = GPS_WRONG_ROUTE                     # the sweep may follow another route than Passio's
 
     # ---- Passio predictions (tripUpdates) ----
     @staticmethod
@@ -620,8 +622,9 @@ class Tracker:
 
     def _wrong_route(self, g, proute):
         """The track follows exactly one other route clearly better than Passio's: at least WRONG_MIN_RUN recent
-        visits in that route's order, WRONG_MIN_OFF of them at stops Passio's route does not have, and Passio's route
-        explaining at most one of those visits. -> (route, chain) or None (none, or two routes tie: a shared
+        visits in that route's order over WRONG_MIN_SPAN_S or more, WRONG_MIN_OFF of them at stops Passio's route
+        does not have, and Passio's route explaining at most one of those visits. Used only with self.wrong_route
+        (GPS_WRONG_ROUTE, off: no real episode was corroborated yet). -> (route, chain) or None (none, or two routes tie: a shared
         corridor stays Passio's)."""
         recent = [h for h in g["chain"] if g["chain"][-1][0] - h[0] <= MAX_LINK_S * 2]
         if len(recent) < WRONG_MIN_RUN:
@@ -630,7 +633,8 @@ class Tracker:
         found = []
         for route in {r for r, _ in recent[-1][2]} - {proute}:
             run = self._chain(route, recent)
-            if len(run) < WRONG_MIN_RUN or sum(1 for (h, _) in run if h[1] not in mine) < WRONG_MIN_OFF:
+            if (len(run) < WRONG_MIN_RUN or run[-1][0][0] - run[0][0][0] < WRONG_MIN_SPAN_S
+                    or sum(1 for (h, _) in run if h[1] not in mine) < WRONG_MIN_OFF):
                 continue
             if proute and len(self._chain(proute, [h for h, _ in run])) > 1:
                 continue
@@ -675,7 +679,7 @@ class Tracker:
                 continue                              # it never arrived in the reports kept (parked all along)
             h = (when, sid, fits)
             g["chain"].append(h)
-            if ov is None and proute:
+            if ov is None and proute and self.wrong_route:
                 w = self._wrong_route(g, proute)
                 if w:
                     ov = g["override"] = {"route": w[0], "passio": proute, "last": vt}
