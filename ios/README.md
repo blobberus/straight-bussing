@@ -267,7 +267,7 @@ gallery "28-livestates", "29-livestates-end") draws the card in all four states 
   changing to another mode of transportation after arriving at the closest destination."
 - Routes to station (pick), Alerts.
 - Routes: Edit map order (drag, VoiceOver Move up / down, Reset order), custom-route / journey bar, station filter
-  chip, Show all / Hide all, Running / Scheduled, no live location / Not running / Hidden with eye toggles, official
+  chip, Show all / Show running / Hide all, Running / Scheduled, no live location / Not running / Hidden with eye toggles, official
   contact. Route detail: status, today's hours, bus sentences, stop timeline with next ETA, pills, chevrons and buses
   on the rail, Hours & service (week, schedule changes with route alerts, buses by hour).
 - My Routes: custom routes (tap = show on the map; `.swipeActions` and a long-press menu with Details / Edit /
@@ -514,6 +514,7 @@ actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 | Routes: "Routes to <station>" filter chip + "Only show these routes" / "Show all routes" | done | station journey cleared with the filter |
 | Routes: custom-route bar ("Make this a custom route" + name "My route N", "Showing <name>" + Clear, "<name> · edited" + Update / Save as new), journey bar "Only showing routes for …" + Show all | done | |
 | Routes: Show all / Hide all (scoped to the station filter; disabled when nothing to do; hidden during a journey) | done | toasts "All routes shown" / "All routes hidden. Show them again here." |
+| Routes: Show running (2026-10-17, owner): web `core/custom.js showRunning` = Kit `Custom.showRunning`, `routes:show-running` = `AppModel.showRunningRoutes` (operating = a live bus or scheduled now with no live location; none = nothing changes + in-app banner "No lines are operating at this time." / "No lines are reporting a live location right now." / "Live data is unavailable, so running lines can't be shown."; disabled when only running routes show) | done (iOS uncompiled until CI) | |
 | Routes: sorted by short name, groups Running / Scheduled, no live location / Not running (Live status unknown) / Hidden (Not on this trip) | done | |
 | Route rows: "N buses running", noLive status, "Not running · Today ...", and for a grayed row its running status first ("1 bus running · Hidden from map and times", "... · Not part of this trip", no eye; owner 2026-10-17), eye toggle with toast | done | iOS adds today's hours to "Not running" (see web missing) |
 | Edit map order: drag, Move up / down, Reset order, "moved to position N" toast | done | VoiceOver actions Move up / Move down |
