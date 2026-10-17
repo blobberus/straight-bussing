@@ -49,7 +49,7 @@
 /* Show all / Hide all */
 .rt-bulk { display: flex; justify-content: flex-end; gap: var(--s1); margin: var(--s2) 0 calc(-1 * var(--s2)); }
 .rt-bulk .v-btn--quiet { min-height: var(--tap); padding: 0 var(--s3); }
-.rt-bulk .v-btn:disabled { opacity: .4; cursor: default; }
+.rt-bulk .v-btn:disabled, .rt-bulk .v-btn[aria-disabled="true"] { opacity: .4; cursor: default; }
 
 /* official service contact, always at the bottom of the list */
 .rt-official { margin: var(--s3) 0 var(--s4); padding-top: var(--s3); border-top: 1px solid var(--hairline); }

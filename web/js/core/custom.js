@@ -214,6 +214,23 @@ export function hideAll(state, rids = null) {
 }
 
 /**
+ * Show only the routes operating now (owner 2026-10-17, "Show running"): `operating` stays visible (the caller passes
+ * the routes with a live bus and those scheduled now with no live location: hiding one could hide a bus that is out
+ * there), every other route of the scope is hidden, dropping an applied custom route. Hidden routes outside the
+ * scope stay as they are. iOS: Kit Custom.showRunning.
+ * @param {object} state
+ * @param {string[]} operating route ids operating now
+ * @param {string[]|null} [rids] limit to these routes (the station filter); null = all
+ * @returns {object} patch
+ */
+export function showRunning(state, operating, rids = null) {
+  const scope = rids ? rids.map(String) : Object.keys(state.routes || {});
+  const inScope = new Set(scope), keep = new Set((operating || []).map(String));
+  const outside = (state.hiddenRoutes || []).map(String).filter((r) => !inScope.has(r));
+  return { activeCustom: null, prevHidden: [], hiddenRoutes: [...new Set([...outside, ...scope.filter((r) => !keep.has(r))])] };
+}
+
+/**
  * Toggle a favorite station.
  * @param {{favStops?:string[]}} state
  * @param {string} stopId

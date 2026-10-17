@@ -18,7 +18,7 @@ import { scheduledNoLive, noLiveStatus, silentService, silentText } from "../../
 import { nowS } from "../../core/time.js";
 import { hoursOn } from "../../core/schedule.js";
 import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibility.js";
-import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, cleanName } from "../../core/custom.js";
+import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, showRunning, cleanName } from "../../core/custom.js";
 import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { OFFICIAL_HTML } from "./pick.js";
 import { operatorAlertsHTML, noBusHelpHTML, operatorPhone } from "./alerts.js";
@@ -154,17 +154,52 @@ export function orderHTML(state) {
 }
 
 /**
- * Show all / Hide all for the routes in the list (the station filter's routes when one is set).
- * Not offered during a journey (its bar has its own Show all).
+ * Routes operating now (owner 2026-10-17, "Show running"): a live bus, or scheduled now with no live location (never
+ * hidden by Show running: the bus may be out there without a location). Over `scope` (route ids), else every route.
+ * @param {object} state
+ * @param {number} [now] unix seconds
+ * @param {string[]|null} [scope]
+ * @returns {string[]}
+ */
+export function operatingIds(state, now = nowS(), scope = null) {
+  return (scope || routeIds(state)).map(String).filter((id) => runningCount(state, id) > 0 || scheduledNoLive(state, id, now));
+}
+
+/** The live feed cannot tell what runs (not loaded yet, or failing with no bus): Show running changes nothing. */
+const liveNotKnown = (state, now) => !state.liveLoaded || liveUnknown(state, now);
+
+/**
+ * True when exactly the operating routes of the scope are visible already (Show running would change nothing).
+ * @param {object} state
+ * @param {number} [now]
+ * @returns {boolean}
+ */
+export function onlyRunningShown(state, now = nowS()) {
+  if (liveNotKnown(state, now)) return false;
+  const scope = (bulkScope(state) || routeIds(state)).map(String), ops = new Set(operatingIds(state, now, scope));
+  if (!ops.size) return false;
+  const hidden = new Set(effectiveHidden(state));
+  const visible = scope.filter((id) => !hidden.has(id));
+  return visible.length === ops.size && visible.every((id) => ops.has(id));
+}
+
+/**
+ * Show all / Show running / Hide all for the routes in the list (the station filter's routes when one is set).
+ * Not offered during a journey (its bar has its own Show all). Show running is never disabled while nothing
+ * operates: tapping it then says so (owner 2026-10-17); when only running routes are shown it is aria-disabled
+ * (still focusable, with the reason).
  * @param {object} state
  * @param {{running:string[], scheduled:string[], idle:string[], hidden:string[]}} g groupRoutes(state)
+ * @param {number} [now]
  * @returns {string}
  */
-export function bulkHTML(state, g) {
+export function bulkHTML(state, g, now = nowS()) {
   if (state.journey) return "";
   const shown = g.running.length + g.scheduled.length + g.idle.length, scope = state.routeFilter ? " at this station" : "";
+  const done = onlyRunningShown(state, now);
   return `<div class="rt-bulk" role="group" aria-label="All routes${scope}">`
     + `<button type="button" class="v-btn v-btn--quiet" data-action="routes:show-all"${g.hidden.length ? "" : " disabled"}>Show all<span class="v-sr"> routes${scope}</span></button>`
+    + `<button type="button" class="v-btn v-btn--quiet" data-action="routes:show-running"${done ? ' aria-disabled="true"' : ""}>Show running<span class="v-sr"> routes only${scope}${done ? ", only running routes are shown" : ""}</span></button>`
     + `<button type="button" class="v-btn v-btn--quiet" data-action="routes:hide-all"${shown ? "" : " disabled"}>Hide all<span class="v-sr"> routes${scope}</span></button></div>`;
 }
 
@@ -194,7 +229,7 @@ export function listHTML(state, now = nowS()) {
   const calls = (unknown || empty) && !state.routeFilter && !!operatorPhone(state, now), help = () => (calls ? noBusHelpHTML(state, now) : operatorAlertsHTML(state, now));   // the operator's number: calls go with its alert, not at the bottom
   if (unknown && !state.routeFilter) h += emptyState("Live bus status unavailable", "Can't reach the shuttle feed. Routes are listed below for reference.") + help();
   else if (empty && !state.routeFilter) h += (silentService(state, now) ? emptyState("No live locations right now", silentText(state, g.scheduled, now, OFFICIAL_PHONE)) : emptyState("No shuttles running right now", "Routes are listed below for reference.")) + help();
-  h += bulkHTML(state, g);
+  h += bulkHTML(state, g, now);
   const group = (title, ids, hidden, cls) => (ids.length ? `<h3 class="v-h">${title}</h3><div class="v-list${cls ? " " + cls : ""}">${ids.map((i) => row(state, i, hidden, now)).join("")}</div>` : "");
   h += group("Running", g.running, false, "");
   h += group("Scheduled, no live location", g.scheduled, false, "");
@@ -357,6 +392,24 @@ registerAction("routes:show-all", (ds, ev, ctx) => {
   const s = ctx.store.get();
   ctx.store.set(showAll(s, bulkScope(s)));
   ctx.toast?.("All routes shown");
+});
+/** Owner 2026-10-17: "Add a 'Show running' option ... If no routes are running, give a on-screen (not app)
+ * notification that no lines are operating at this time." The message is the in-page toast (role=status). */
+export const RUN_MSG = Object.freeze({
+  none: "No lines are operating at this time.",
+  silent: "No lines are reporting a live location right now.",
+  unknown: "Live data is unavailable, so running lines can't be shown.",
+  already: "Only running lines are shown.",
+});
+registerAction("routes:show-running", (ds, ev, ctx) => {
+  const s = ctx.store.get(), now = ctx.now ? ctx.now() : nowS();
+  if (liveNotKnown(s, now)) { ctx.toast?.(RUN_MSG.unknown); return; }          // nothing changes
+  const scope = bulkScope(s), ops = operatingIds(s, now, scope);
+  if (!ops.length) { ctx.toast?.(RUN_MSG.none); return; }                      // nothing changes
+  if (onlyRunningShown(s, now)) { ctx.toast?.(RUN_MSG.already); return; }
+  ctx.store.set(showRunning(s, ops, scope));
+  const live = ops.filter((id) => runningCount(s, id) > 0).length;
+  ctx.toast?.(live ? `Showing only the ${ops.length} line${ops.length === 1 ? "" : "s"} operating now` : RUN_MSG.silent);
 });
 registerAction("routes:hide-all", (ds, ev, ctx) => {
   const s = ctx.store.get();

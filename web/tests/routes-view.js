@@ -2,7 +2,8 @@
 import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
 import { bindActions, runAction } from "../js/ui/actions.js";
-import { renderRoutes, groupRoutes, topBarHTML, orderHTML, defaultName, mountRoutes, unmountRoutes, _ui } from "../js/ui/views/routes.js";
+import { renderRoutes, groupRoutes, topBarHTML, orderHTML, defaultName, mountRoutes, unmountRoutes, _ui, operatingIds, onlyRunningShown, RUN_MSG } from "../js/ui/views/routes.js";
+import { showRunning } from "../js/core/custom.js";
 
 const noRaw = (h) => !h.includes("<script>") && !h.includes("javascript:");
 const C1 = { id: "c1", name: "Work <b>commute</b>", rids: ["R1", "R2"], highlight: [] };
@@ -249,4 +250,52 @@ test("routes: a Not running row also shows today's hours (iOS RouteRow), with 't
   ok(rows.length >= 3 && rows.every((t) => (t.match(/·/g) || []).length <= 1 && !/[–—]/.test(t)), "copy rules: " + rows.join(" | "));
   const live = renderRoutes(base({ service }), NOW);   // fixture buses: R1 and R2 report, R3 does not
   ok(live.includes("1 bus running") && live.includes("Not running · Today 7:00 AM to 7:25 PM") && !live.includes("Today 3:30 PM"), "running rows keep their bus count");
+});
+
+
+// ---- Show running (owner 2026-10-17: "Add a 'Show running' option ... If no routes are running, give a on-screen
+// (not app) notification that no lines are operating at this time.")
+const allDay = { first: "00:00", last: "28:00", trips: 10, buses: Array(24).fill(1) };
+const week = (d) => ({ mon: d, tue: d, wed: d, thu: d, fri: d, sat: d, sun: d });
+
+test("show running: core keeps the operating routes (live or scheduled now), hides the rest of the scope", () => {
+  const s = base({ hiddenRoutes: ["R3"], customRoutes: [C1], activeCustom: "c1", prevHidden: ["R2"] });
+  eq(operatingIds(s, NOW).sort(), ["R1", "R2"], "R1 and R2 have live buses in the fixture");
+  eq(showRunning(s, ["R1"]), { activeCustom: null, prevHidden: [], hiddenRoutes: ["R2", "R3"] }, "every route in scope: data order");
+  eq(showRunning(base({ hiddenRoutes: ["R3"] }), ["R1"], ["R1", "R2"]).hiddenRoutes, ["R3", "R2"], "station scope: R3 outside it untouched");
+  const silent = base({ buses: [], service: { routes: { R3: { days: week(allDay), exceptions: [] } } } });
+  eq(operatingIds(silent, NOW), ["R3"], "scheduled now with no live location counts (never hidden by Show running)");
+});
+
+test("show running: the button sits with Show all / Hide all, aria-disabled once only running routes show", () => {
+  let h = renderRoutes(base());
+  ok(/data-action="routes:show-all"[^>]*>Show all.*data-action="routes:show-running"[^>]*>Show running.*data-action="routes:hide-all"/s.test(h), "between Show all and Hide all");
+  ok(!/data-action="routes:show-running" aria-disabled/.test(h), "R3 is visible and not running: enabled");
+  h = renderRoutes(base({ hiddenRoutes: ["R3"] }));
+  ok(/data-action="routes:show-running" aria-disabled="true"/.test(h) && h.includes("only running routes are shown"), "already only running: aria-disabled with the reason");
+  ok(onlyRunningShown(base({ hiddenRoutes: ["R3"] }), NOW) && !onlyRunningShown(base(), NOW));
+  ok(!renderRoutes(base({ journey: { rids: ["R1"], label: "x" } })).includes("routes:show-running"), "not during a journey");
+  ok(!/data-action="routes:show-running" aria-disabled/.test(renderRoutes(base({ buses: [] }))), "nothing operating: stays tappable to say so");
+});
+
+test("show running: applies, says how many, and tells when nothing operates without changing anything", () => {
+  const ctx = makeCtx({ hiddenRoutes: [] });
+  runAction("routes:show-running", {}, null, ctx);
+  eq(ctx.store.get().hiddenRoutes, ["R3"]);
+  eq(ctx.calls.toast.pop(), "Showing only the 2 lines operating now");
+  runAction("routes:show-running", {}, null, ctx);
+  eq(ctx.calls.toast.pop(), RUN_MSG.already);
+  const none = makeCtx({ hiddenRoutes: ["R2"], buses: [] });
+  runAction("routes:show-running", {}, null, none);
+  eq([none.store.get().hiddenRoutes, none.calls.toast.pop()], [["R2"], "No lines are operating at this time."], "nothing operates: unchanged + the message");
+  const silent = makeCtx({ hiddenRoutes: [], buses: [], service: { routes: { R3: { days: week(allDay), exceptions: [] } } } });
+  runAction("routes:show-running", {}, null, silent);
+  eq([silent.store.get().hiddenRoutes.sort(), silent.calls.toast.pop()], [["R1", "R2"], "No lines are reporting a live location right now."],
+    "scheduled, no live location: kept visible, never \"nothing operates\"");
+  for (const over of [{ liveLoaded: false }, { buses: [], lastOk: NOW - 3600, feedTs: NOW - 3600, failed: true }]) {
+    const u = makeCtx({ hiddenRoutes: ["R2"], ...over });
+    runAction("routes:show-running", {}, null, u);
+    eq([u.store.get().hiddenRoutes, u.calls.toast.pop()], [["R2"], "Live data is unavailable, so running lines can't be shown."], JSON.stringify(over));
+  }
+  ok(Object.values(RUN_MSG).every((m) => !/[\u2013\u2014]/.test(m)), "no en or em dash");
 });

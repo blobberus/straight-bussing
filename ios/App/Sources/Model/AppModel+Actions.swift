@@ -29,6 +29,36 @@ extension AppModel {
         showInfo("All routes shown")
     }
 
+    /// Routes operating now in the bulk scope (owner 2026-10-17, "Show running"; web routes.js operatingIds): a live
+    /// bus, or scheduled now with no live location (never hidden: the bus may be out there without a location).
+    func operatingRoutes() -> [String] {
+        (bulkScope ?? routeState.routeIds).filter {
+            running($0) > 0 || Operating.scheduledNoLive($0, buses: buses, service: staticData.service, now: now)
+        }
+    }
+
+    /// Exactly the operating routes of the scope are visible already (Show running would change nothing).
+    var onlyRunningShown: Bool {
+        guard liveLoaded, !liveOutage else { return false }
+        let ops = Set(operatingRoutes())
+        guard !ops.isEmpty else { return false }
+        let visible = (bulkScope ?? routeState.routeIds).filter { !routeState.hiddenRoutes.contains($0) }
+        return Set(visible) == ops && visible.count == ops.count
+    }
+
+    /// Show running (web routes:show-running): with nothing operating it changes nothing and says so in the in-app
+    /// banner (owner: an on-screen message, not a system notification).
+    func showRunningRoutes() {
+        if !liveLoaded || liveOutage { showInfo("Live data is unavailable, so running lines can't be shown."); return }
+        let ops = operatingRoutes()
+        if ops.isEmpty { showInfo("No lines are operating at this time."); return }
+        if onlyRunningShown { showInfo("Only running lines are shown."); return }
+        apply(Custom.showRunning(routeState, operating: ops, bulkScope))
+        let live = ops.filter { running($0) > 0 }.count
+        showInfo(live > 0 ? "Showing only the \(ops.count) line\(ops.count == 1 ? "" : "s") operating now"
+                          : "No lines are reporting a live location right now.")
+    }
+
     func hideAllRoutes() {
         apply(Custom.hideAll(routeState, bulkScope))
         showInfo("All routes hidden. Show them again here.")

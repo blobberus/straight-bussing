@@ -115,6 +115,17 @@ final class VisibilityCustomTests: XCTestCase {
         XCTAssertEqual(Custom.hideAll(base(hidden: ["a"]), ["a", "c"]).hiddenRoutes, ["a", "c"])
     }
 
+    func testShowRunning() {
+        // owner 2026-10-17 "Show running" (web custom.js showRunning): the operating routes stay, the rest hide
+        let h = base(hidden: ["a"], active: "x", prev: ["d"])
+        XCTAssertEqual(Custom.showRunning(h, operating: ["a", "c"]),
+                       StatePatch(hiddenRoutes: ["b", "d"], activeCustom: .some(nil), prevHidden: []))
+        // a station filter scope: hidden routes outside it are kept as they are
+        XCTAssertEqual(Custom.showRunning(base(hidden: ["d"]), operating: ["a"], ["a", "b"]).hiddenRoutes, ["d", "b"])
+        XCTAssertEqual(Custom.showRunning(base(), operating: []).hiddenRoutes?.sorted(), ["a", "b", "c", "d"],
+                       "the caller never applies an empty set (it says nothing runs instead)")
+    }
+
     func testCleanName() {
         XCTAssertEqual(Custom.cleanName(nil), "My route")
         XCTAssertEqual(Custom.cleanName(String(repeating: "x", count: 80)).count, 60)

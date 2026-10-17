@@ -143,6 +143,16 @@ public enum Custom {
         return StatePatch(hiddenRoutes: unique(s.hiddenRoutes + add), activeCustom: .some(nil), prevHidden: [])
     }
 
+    /// Show only the routes operating now (owner 2026-10-17, "Show running"; web core/custom.js showRunning):
+    /// `operating` (a live bus, or scheduled now with no live location) stays visible, every other route of the scope
+    /// is hidden, dropping an applied custom route; hidden routes outside the scope stay as they are.
+    public static func showRunning(_ s: RouteState, operating: [String], _ rids: [String]? = nil) -> StatePatch {
+        let scope = rids ?? s.routeIds
+        let inScope = Set(scope), keep = Set(operating)
+        let outside = s.hiddenRoutes.filter { !inScope.contains($0) }
+        return StatePatch(hiddenRoutes: unique(outside + scope.filter { !keep.contains($0) }), activeCustom: .some(nil), prevHidden: [])
+    }
+
     /// Toggle a favorite station.
     public static func toggleFav(_ s: RouteState, _ stopId: String) -> StatePatch {
         let f = s.favStops

@@ -134,6 +134,13 @@ struct RoutesView: View {
                         Button("Show all") { model.showAllRoutes() }.secondaryButtonStyle().disabled(g.hidden.isEmpty)
                             .accessibilityLabel("Show all routes\(scope)")
                         Spacer()
+                        // owner 2026-10-17: only the lines operating now; with none it says so (never disabled then)
+                        Button("Show running") { model.showRunningRoutes() }.secondaryButtonStyle()
+                            .disabled(model.onlyRunningShown)
+                            .accessibilityLabel("Show running routes only\(scope)")
+                            .accessibilityHint(model.onlyRunningShown ? "Only running routes are shown" : "")
+                            .accessibilityIdentifier("routes.showRunning")
+                        Spacer()
                         Button("Hide all") { model.hideAllRoutes() }.secondaryButtonStyle().disabled(g.running.isEmpty && g.scheduled.isEmpty && g.idle.isEmpty)
                             .accessibilityLabel("Hide all routes\(scope)")
                     }
