@@ -17,12 +17,13 @@ alerts. Each session runs 70 minutes, and before it ends it starts the next one,
 missed. A backup alarm restarts the chain if it ever breaks.
 
 ## 3. What it writes down
-It watches each bus and notices when it reaches a stop, in one of three ways: Passio's "next stop" changes, the
-bus's GPS comes close enough to the stop, or the GPS track shows it drove past a stop Passio never mentioned. For
+It watches each bus and notices when it reaches a stop, in one of four ways: Passio's "next stop" changes, the
+bus's GPS comes close enough to the stop, the GPS track shows it drove past a stop Passio never mentioned, or (since
+October 17) the GPS track alone shows it reached a stop while Passio's information about that bus was "frozen". For
 each arrival it notes the bus, the route, the stop, the time and how long the bus waited. It also notes **what
 Passio was predicting 1, 2, 3, 5, 10, 15, 20 and 30 minutes before** that arrival. Comparing the two is how the
-accuracy goal is measured (the "10 minute shrink": within 3 minutes at 30 or more
-minutes ahead, 2 at 20 or more, 1 below).
+accuracy goal is measured (the "10 minute shrink": within 3 minutes at 30 or more minutes ahead, 2 at 20 or more,
+1 below; see `docs/ACCURACY-GOAL-PLAIN.md`).
 
 ## 4. Where it is saved
 When a session ends, it adds what it saw to a few shared spreadsheet files on the project's separate "data" branch
@@ -48,7 +49,14 @@ every 30 minutes.
 - Because the raw feeds are archived, a fix can be **replayed over past days**, so old data gets the same repair
   (done on 2026-10-16 for Oct 10 to 15).
 
-## 8. Being fixed now
-**DC-003**: sometimes Passio "freezes" a bus (its next stop and trip stop changing while the bus drives) or files it
-under the wrong route, so some of that bus's stops are missed. The fix works out the real route from the GPS alone,
-then fills in the missed stops on past days too.
+## 8. The latest fix: buses Passio "freezes" (DC-003, October 17)
+Sometimes Passio's information about a bus freezes: its "next stop" and trip stay the same for an hour while the bus
+keeps driving. Before this fix those stops were simply missed (the Red Line only had about 60 to 75% of the stops it
+drove past). Now the collector also follows each bus's GPS on its own: when the bus drives into a stop on its route
+that nothing else recorded, it is written down as an arrival marked `gps`. These rows only ever add missed visits;
+they never change anything else. The Red Line now has about 97% of its stops, and all lines together about 95%
+(from 84 to 88%). A hand check of 196 of these new rows against the raw GPS found about 99% correct. The saved days
+from October 10 on were filled in too (1,789 arrivals added).
+
+Still open: a bus that Passio lists under the **wrong route** entirely. The detection exists, but it stays switched
+off until a real case can be confirmed, so it never writes a wrong row.

@@ -5,6 +5,7 @@ so far says. No coding needed: the CSV files open in Excel, Google Sheets or Num
 up to **Tuesday, October 13, 2026, 4:20 PM** (collection started Thursday, October 8, 5 AM).
 
 - **How the data is collected**, in a page: **`docs/HOW-DATA-IS-COLLECTED.md`**.
+- **The accuracy goal**, in a page: **`docs/ACCURACY-GOAL-PLAIN.md`**.
 - **The goal** (since October 17 the "10 minute shrink": within 3 minutes at 30 or more minutes ahead, 2 at 20 or
   more, 1 below; before it the 10% rule), how predictions are scored, where each predictor stands and the plan to optimize the
   algorithm: **`docs/GOAL-AND-METHOD.md`**. This guide only refers to it.
