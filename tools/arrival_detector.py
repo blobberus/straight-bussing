@@ -28,7 +28,7 @@ class Tracker:
         self.on_pred = None                                    # callback(veh, trip, stop_id, made, predicted, seq)
         self.gps = {}                                          # veh -> GPS sweep state (DC-003, _sweep)
         self.logged = defaultdict(lambda: deque(maxlen=8))     # (veh, stop_id) -> epochs of every row logged there
-        self.rule_log = defaultdict(lambda: deque(maxlen=40))  # veh -> (epoch, route, idx) of the rules' recent rows
+        self.rule_log = defaultdict(lambda: deque(maxlen=40))  # veh -> (epoch, route, idx) of its recent rows (any source)
         self._at_stop = None                                   # stop_id -> [(route, idx)], built on first use
         self.wrong_route = GPS_WRONG_ROUTE                     # the sweep may follow another route than Passio's
 
@@ -201,10 +201,10 @@ class Tracker:
                 ep, idx = int(r["epoch"]), int(r["stop_index"])
                 if now - ep > STATE_TTL:
                     continue
+                self.rule_log[self._veh(r["vehicle_id"])].append((ep, r["route_id"], idx))
                 if r.get("source") == "gps":
                     self.logged[(self._veh(r["vehicle_id"]), r["stop_id"])].append(ep)
                     continue
-                self.rule_log[self._veh(r["vehicle_id"])].append((ep, r["route_id"], idx))
                 s = self._state((r["vehicle_id"], r["trip_id"]), r["route_id"], now)
                 s["done"].add(idx)                   # blocks duplicates up to STATE_TTL, links only recent rows
                 if (s["prev"] is None or ep >= s["prev"]["epoch"]) and now - ep <= MAX_LINK_S:
@@ -728,10 +728,10 @@ class Tracker:
         return any(abs(e - epoch) <= SAME_VISIT_S for e in self.logged.get((veh, sid), ()))
 
     def _fits_rules(self, veh, c):
-        """A GPS visit fits between the bus's rule-logged arrivals around it on the same route: the latest one
-        before it (within MAX_LINK_S) is behind it in route order (within half the route) and reachable at a
-        plausible speed, and the first one after it (within GPS_HOLD_S) is ahead of it. A geometric coincidence (a
-        route passing the same corner twice) or a maneuver near a terminal does not fit."""
+        """A GPS visit fits between the bus's rows around it on the same route (the rules' and the GPS rows it
+        already wrote): the latest one before it (within MAX_LINK_S) is behind it in route order (within half the
+        route) and reachable at a plausible speed, and the first one after it (within GPS_HOLD_S) is ahead of it. A
+        geometric coincidence (a route passing the same corner twice) or a maneuver near a terminal does not fit."""
         route, j, ep = c["route"], c["idx"], c["epoch"]
         order = self.st.route_stops[route]
         n = len(order)
@@ -770,6 +770,7 @@ class Tracker:
                 if not c["ok"] or self._logged_near(veh, c["sid"], c["epoch"]) or not self._fits_rules(veh, c):
                     continue
                 self.logged[(veh, c["sid"])].append(c["epoch"])
+                self.rule_log[veh].append((c["epoch"], c["route"], c["idx"]))
                 out.append({"epoch": c["epoch"], "route": c["route"], "trip": c["trip"], "veh": veh, "idx": c["idx"],
                             "source": "gps", "prev": None, "dwell": None, "pred": None, "preds": {}})
             g["cand"] = keep

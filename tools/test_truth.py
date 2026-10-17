@@ -995,6 +995,149 @@ def build_gtfs_gives_each_route_the_shape_ids_passio_alerts_use():
     assert BG.route_aliases(trips, routes) == {"1075": ["38734"], "5703": ["38731", "38809"]}, BG.route_aliases(trips, routes)
 
 
+
+# ---------------------------------------------------------------- DC-003: the GPS sweep
+def square_static():
+    """A 500 m square loop Q (8 stops: corners and edge midpoints, counter-clockwise) and, 1.1 km north, two one-way
+    routes W and V over the same 6 stops (a shared corridor) plus a route P along the square's south edge only."""
+    st = fake_static()
+    k = 111320.0 * math.cos(math.radians(LAT))
+    pts = [(0, 0), (250, 0), (500, 0), (500, 250), (500, 500), (250, 500), (0, 500), (0, 250)]
+    st.stops = {f"Q{i}": {"name": f"Stop Q{i}", "lat": LAT + y / 111320.0, "lon": LON0 + x / k} for i, (x, y) in enumerate(pts)}
+    for i in range(6):
+        st.stops[f"W{i}"] = {"name": f"Stop W{i}", "lat": LAT + 0.01, "lon": LON0 + STEP * i}
+    st.route_stops = {"Q": [f"Q{i}" for i in range(8)] + ["Q0"], "W": [f"W{i}" for i in range(6)], "P": ["Q0", "Q1", "Q2"]}
+    st.routes = {"Q": {"short": "Q", "long": "Square"}, "W": {"short": "W", "long": "North"}, "P": {"short": "P", "long": "South edge"}}
+    return st
+
+
+def sweep_run(tr, reps, settle=700):
+    """run(), but held GPS visits get GPS_HOLD_S to mature before the final drain (the run's last minutes)."""
+    out = []
+    for r in reps:
+        out += tr.update(r, r["vt"] + 2)
+        out += tr.drain(r["vt"] + 2)
+    out += tr.drain(reps[-1]["vt"] + settle)
+    out += tr.drain(reps[-1]["vt"] + settle + 5, final=True)
+    return sorted(out, key=lambda e: e["epoch"])
+
+
+@test
+def a_frozen_bus_still_gets_every_stop_it_drives_past():
+    """DC-003: Passio keeps naming Q1 for three laps of the square while the bus drives on (a lap of about 19 min:
+    no loop here is shorter than 15 min, the same-visit window): the rules log what they can (lap 1 near Q1, the GPS
+    passes within their window), the sweep logs every other stop it passed, once each, with a blank trip id once
+    Passio has been frozen FROZEN_S."""
+    st = square_static()
+    path = [f"Q{i}" for i in range(8)] * 3 + ["Q0"]
+    reps, truth = simulate(st, path, route="Q", trip="T1", speed=2.0, dwell=20)
+    for r in reps:
+        r["stop_id"] = "Q1"
+    ev = sweep_run(Tracker(st), reps)
+    t_end = reps[-1]["vt"]
+    gps = [e for e in ev if e["source"] == "gps"]
+    assert gps, [(e["idx"], e["source"]) for e in ev]
+    for i, a in truth.items():
+        sid = path[i]
+        hits = [e for e in ev if st.route_stops["Q"][e["idx"]] == sid and abs(e["epoch"] - a) <= 30]
+        assert len(hits) == 1, (i, sid, a - T0, [(e["idx"], e["source"], e["epoch"] - T0) for e in ev])
+    keys = [(st.route_stops["Q"][e["idx"]], e["epoch"] // 100) for e in ev]
+    assert len(keys) == len(set(keys)), "no visit twice"
+    frozen_from = reps[0]["vt"] + L.FROZEN_S
+    assert all(e["trip"] == "" for e in gps if e["epoch"] >= frozen_from + 30), [(e["epoch"] - T0, e["trip"]) for e in gps]
+    assert all(e["trip"] == "T1" for e in gps if e["epoch"] < frozen_from - 30)
+    assert all(not e["preds"] and e["pred"] is None and e["prev"] is None for e in gps), "no Passio prediction, no link"
+
+
+@test
+def a_correctly_assigned_bus_gets_no_gps_rows():
+    """The sweep only adds what no rule logged: a bus Passio follows correctly is logged exactly as before."""
+    st = square_static()
+    path = [f"Q{i}" for i in range(8)] * 2 + ["Q0"]
+    reps, truth = simulate(st, path, route="Q", trip="T1", speed=2.0, dwell=20)
+    ev = sweep_run(Tracker(st), reps)
+    assert not [e for e in ev if e["source"] == "gps"], [(e["idx"], e["source"]) for e in ev]
+    assert len(ev) == len(truth) - 1 or len(ev) == len(truth), (len(ev), len(truth))
+
+
+@test
+def no_gps_row_without_a_gps_pass():
+    """Frozen Passio, but the bus drives a square 90 m north-east of the stops' one: it never comes within RADIUS_M of
+    a stop, so it gets no row at all (the sweep never invents a visit)."""
+    st = square_static()
+    path = [f"Q{i}" for i in range(8)] * 2 + ["Q0"]
+    reps, _ = simulate(st, path, route="Q", trip="T1", speed=2.0, dwell=20)
+    for r in reps:
+        r["stop_id"] = "Q1"
+        r["lat"] += 90 / 111320.0                  # 90 m north and 90 m east of every stop
+        r["lon"] += 90 / (111320.0 * math.cos(math.radians(LAT)))
+    ev = sweep_run(Tracker(st), reps)
+    assert not [e for e in ev if e["source"] == "gps"], [(e["idx"], e["source"]) for e in ev]
+
+
+@test
+def a_bus_on_another_route_is_followed_only_when_the_override_is_on():
+    """Passio files the bus under P (frozen at Q1) while it drives route W 1.1 km north: with the wrong-route override
+    (off by default, GPS_WRONG_ROUTE) the track's W visits get rows on W with a blank trip id; without it, none."""
+    st = square_static()
+    st.route_stops.pop("V", None)
+    path = [f"W{i}" for i in range(6)]
+    reps, truth = simulate(st, path, route="P", trip="TP", speed=4.0, dwell=150)
+    for r in reps:
+        r["stop_id"] = "Q1"
+    ev = sweep_run(Tracker(st), reps)
+    assert not ev, [(e["route"], e["idx"], e["source"]) for e in ev]
+    tr = Tracker(st)
+    tr.wrong_route = True
+    ev = sweep_run(tr, reps)
+    assert [(e["route"], e["idx"], e["trip"], e["source"]) for e in ev] == [("W", i, "", "gps") for i in range(6)], \
+        [(e["route"], e["idx"], e["trip"], e["source"]) for e in ev]
+    for e in ev:
+        assert abs(e["epoch"] - truth[e["idx"]]) <= 20, (e["idx"], e["epoch"] - truth[e["idx"]])
+
+
+@test
+def a_shared_corridor_stays_passios_route():
+    """Two routes (W and V) run the same stops: the track fits both equally, so neither is chosen (a shared corridor
+    is no evidence the bus left Passio's route), even with the override on."""
+    st = square_static()
+    st.route_stops["V"] = list(st.route_stops["W"])
+    st.routes["V"] = {"short": "V", "long": "North twin"}
+    reps, _ = simulate(st, [f"W{i}" for i in range(6)], route="P", trip="TP", speed=4.0, dwell=150)
+    for r in reps:
+        r["stop_id"] = "Q1"
+    tr = Tracker(st)
+    tr.wrong_route = True
+    ev = sweep_run(tr, reps)
+    assert not ev, [(e["route"], e["idx"], e["source"]) for e in ev]
+
+
+@test
+def gps_rows_never_change_the_rules_rows():
+    """Merging: a rule's row of the same visit always stays over a GPS row (also inside one run file), and seeding
+    ignores GPS rows for the rules' own state."""
+    import merge_arrivals as MA
+    st = square_static()
+    row = lambda ep, src, trip="T1": L.row_text(L.fmt_row(st, {"epoch": ep, "route": "Q", "trip": trip, "veh": "V1",
+                                                               "idx": 1, "source": src, "prev": None, "dwell": None,
+                                                               "pred": None}))
+    d = Path(tempfile.mkdtemp(prefix="sb-truth-"))
+    into, add = d / "a.csv", d / "b.csv"
+    into.write_text(MA.HEADER + row(T0, "gps", ""), encoding="utf-8", newline="")
+    add.write_text(MA.HEADER + row(T0 + 40, "transition") + row(T0 + 400, "gps", ""), encoding="utf-8", newline="")
+    MA.merge(into, add)
+    srcs = [ln.split(",")[-1].strip() for ln in into.read_text(encoding="utf-8").splitlines()[1:]]
+    assert srcs == ["transition", "gps"], srcs
+    one = d / "c.csv"
+    one.write_text(MA.HEADER + row(T0, "gps", "") + row(T0 + 60, "pass"), encoding="utf-8", newline="")
+    into2 = d / "d.csv"
+    MA.merge(into2, one)
+    srcs = [ln.split(",")[-1].strip() for ln in into2.read_text(encoding="utf-8").splitlines()[1:]]
+    assert srcs == ["pass"], srcs
+    tr = Tracker(st)
+    tr.seed([dict(zip(L.COLUMNS, next(__import__("csv").reader([row(T0, "gps", "")]))))], T0 + 60)
+    assert not tr.v and tr.logged[("V1", "Q1")], "a GPS row only feeds the sweep's duplicate check"
+
 def main():
     fails = 0
     for fn in TESTS:
