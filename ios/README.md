@@ -50,7 +50,7 @@ data-geocode.js) so the Swift port provably behaves the same.
 | core/operating.js | Operating.swift | ghost (> 5 min older than the feed), unknown route, out of service without predictions |
 | core/visibility.js | RouteState.swift (`RouteVisibility`) | effectiveHidden, mapFocus, drawOrder, mapVisibility |
 | core/custom.js, state.js cleanCustom | Custom.swift, RouteState.swift | every function returns a `StatePatch` (the web's store patch) |
-| core/schedule.js | Schedule.swift | America/Chicago, after-midnight spans, calendar exceptions |
+| core/schedule.js | Schedule.swift | America/Chicago, after-midnight spans, calendar exceptions; `nextStartToday` and `restingText` (2026-10-17, owner: saved routes that are not running say when they run again today) |
 | core/predict.js | Predict.swift (`SchedulePredictor`) | segments.json + optional learned model (v1/v2 blending, quantiles) |
 | core/planner.js | Planner.swift, PlannerRefine.swift | walk at both ends (800 m, widened to 1600 m), transfers <= 150 m, live waits, refineWalking |
 | core/walk.js (`walkRoute`), directions.js replan (async half) | WalkRouting.swift | `WalkRouteCache` actor around any router: 4-decimal endpoints, plausibility, 3 s timeout, estimate fallback (retried after 60 s), shared in-flight requests, <= 6 at once; `Planner.refinePlan` refines + re-ranks the shown options and the walk-only line |

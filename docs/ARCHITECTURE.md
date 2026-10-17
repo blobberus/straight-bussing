@@ -411,6 +411,15 @@ Tap a custom route row = show it on the map / stop showing (`mr:toggle`, no navi
 `confirmDialog({title, body, confirmLabel, danger})` -> Promise<boolean> (native `<dialog role="alertdialog">`, Cancel focused,
 Escape / backdrop cancel; settles from the button itself, not the async close event).
 
+Saved routes always listed (2026-10-17, owner: "Hidden routes in the my routes folder should still display if they are
+not running"): a custom route's detail lists every saved route (the list never filtered by running or visibility;
+checked in the real app with demo buses and a 15-route set, 2 hidden). Each row now says why there is no bus:
+`savedRouteStatus` = live buses / Scheduled, no live location / `restingText` ("Not running now · Scheduled from
+4:00 PM today" from `core/schedule.js` `nextStartToday`, "No more service today", "Not running today"), plus
+"Hidden on map" (or "Not on this trip" in a journey) when hidden; a hidden route shows no arrival time. Never a live
+time without a bus. core/visibility.js still keeps hidden routes off the map and the arrivals. Also fixed: "2 buss
+running". iOS: Kit `Schedule.nextStartToday` / `Schedule.restingText`, `CustomRouteLine`.
+
 ### 2026-10-09: stutter fixes, map credit, self-update
 - Sheet geometry: the sheet element is always `--v-max` tall (offset and content padding use `--v-max`); `--v-full` depends only on
   the status pill (`--pill-h`, measured by a ResizeObserver in main.js). The context chip never changes the detent; it fades out at

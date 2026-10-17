@@ -84,6 +84,23 @@ final class ScheduleTests: XCTestCase {
         XCTAssertNil(Schedule.isScheduledNow(S, "zz", 0))
     }
 
+    /// My Routes (owner 2026-10-17): when a saved route that is not running starts later today (web route-schedule.js
+    /// "nextStartToday", the same cases).
+    func testNextStartToday() {
+        XCTAssertEqual(Schedule.nextStartToday(S, "N", utc("2026-10-08T15:00:00Z")), "16:00", "10 AM: the night route starts at 4 PM")
+        XCTAssertNil(Schedule.nextStartToday(S, "N", utc("2026-10-08T22:00:00Z")), "5 PM: running already")
+        XCTAssertEqual(Schedule.nextStartToday(S, "D", utc("2026-10-08T11:00:00Z")), "07:00", "6 AM: starts at 7")
+        XCTAssertNil(Schedule.nextStartToday(S, "D", utc("2026-10-08T15:00:00Z")), "10 AM: started at 7")
+        XCTAssertNil(Schedule.nextStartToday(S, "D", utc("2026-10-11T15:00:00Z")), "Sunday: no service")
+        XCTAssertNil(Schedule.nextStartToday(S, "D", utc("2026-11-26T12:00:00Z")), "holiday removed")
+        XCTAssertNil(Schedule.nextStartToday(S, "zz", 0))
+        XCTAssertNil(Schedule.nextStartToday(nil, "D", 0))
+        XCTAssertEqual(Schedule.restingText(S, "N", utc("2026-10-08T15:00:00Z")), "Not running now \u{00B7} Scheduled from 4:00 PM today")
+        XCTAssertEqual(Schedule.restingText(S, "D", utc("2026-10-09T01:00:00Z")), "No more service today", "8 PM Thursday")
+        XCTAssertEqual(Schedule.restingText(S, "D", utc("2026-10-11T15:00:00Z")), "Not running today", "Sunday")
+        XCTAssertEqual(Schedule.restingText(S, "zz", 0), "Not running right now", "no schedule data")
+    }
+
     func testBusesByHourAndGroups() {
         let n = Schedule.busesByHour(S, "N", "mon")
         XCTAssertEqual(n.first, .init(hour: 16, buses: 2))
