@@ -554,6 +554,7 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   primary action: Current trip's "Use my location", a stop's "Directions to here"), then "Safety or urgent: 773.702.8181"
   (secondary) and "Official transportation page"; without one, the usual official line (773.702.8181 stays the call).
   `noBusHelpHTML` = `operatorAlertsHTML` + `callsHTML` replaces `operatorAlertsHTML + OFFICIAL_HTML` on Current trip, stop,
-  route detail and Directions; Routes puts the calls with the alert and then drops its bottom official line. The operator's
+  route detail and Directions; Routes puts the calls with the alert and then drops its bottom official line (since 2026-10-17, owner: Routes keeps
+  the alert at the top and moves the calls and the official page to the bottom, under every route, as its one bottom block). The operator's
   text stays verbatim (including "UGo"). `core/operating.js silentText` still names 773.702.8181 (shared with iOS; unchanged).
 - Unchanged by decision: walking times carry no "est." label.

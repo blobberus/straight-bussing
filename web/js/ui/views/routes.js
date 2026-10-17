@@ -21,7 +21,7 @@ import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibi
 import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, showRunning, cleanName } from "../../core/custom.js";
 import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { OFFICIAL_HTML } from "./pick.js";
-import { operatorAlertsHTML, noBusHelpHTML, operatorPhone } from "./alerts.js";
+import { operatorAlertsHTML, callsHTML, operatorPhone } from "./alerts.js";
 import { stationToggleHTML } from "./journey.js";
 import { attachOrderDrag } from "./routes-drag.js";
 
@@ -226,7 +226,9 @@ export function listHTML(state, now = nowS()) {
   const total = g.running.length + g.scheduled.length + g.idle.length + g.hidden.length;
   if (!total) return h + (state.routeFilter ? emptyState("No routes at this station", "Clear the filter to see every route.") : emptyState("No routes", "The schedule data did not load. Reload the app.") + OFFICIAL_HTML);
   const unknown = liveUnknown(state, now), empty = state.liveLoaded && !(state.buses || []).length;   // unknown: feed unreachable, we cannot say a route is not running
-  const calls = (unknown || empty) && !state.routeFilter && !!operatorPhone(state, now), help = () => (calls ? noBusHelpHTML(state, now) : operatorAlertsHTML(state, now));   // the operator's number: calls go with its alert, not at the bottom
+  // the operator's alerts stay at the top; its number and ours (the call buttons, the official page) go to the bottom,
+  // under every route (owner 2026-10-17)
+  const calls = (unknown || empty) && !state.routeFilter && !!operatorPhone(state, now), help = () => operatorAlertsHTML(state, now);
   if (unknown && !state.routeFilter) h += emptyState("Live bus status unavailable", "Can't reach the shuttle feed. Routes are listed below for reference.") + help();
   else if (empty && !state.routeFilter) h += (silentService(state, now) ? emptyState("No live locations right now", silentText(state, g.scheduled, now, OFFICIAL_PHONE)) : emptyState("No shuttles running right now", "Routes are listed below for reference.")) + help();
   h += bulkHTML(state, g, now);
@@ -235,7 +237,7 @@ export function listHTML(state, now = nowS()) {
   h += group("Scheduled, no live location", g.scheduled, false, "");
   h += group(unknown ? "Live status unknown" : "Not running", g.idle, false, empty ? "is-dim" : "");
   h += group(state.journey ? "Not on this trip" : "Hidden", g.hidden, true, "");
-  return h + (calls ? "" : `<div class="rt-official">${OFFICIAL_HTML}</div>`);
+  return h + `<div class="rt-official">${calls ? callsHTML(state, now) : OFFICIAL_HTML}</div>`;
 }
 
 /** Top region: Edit map order first, then the custom-route / journey bar (empty in order mode). */

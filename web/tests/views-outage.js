@@ -183,7 +183,12 @@ test("no bus reports: the operator's number from the live alert is the main call
       ok(h.includes("UGo Bus Route Assistance"), `${name} ${where}: the operator's words verbatim`);
       eq(calls(h), 2, `${name} ${where}: two call buttons, once`);
     }
-    ok(!/rt-official/.test(screens.routes), name + " routes: no second 773.702.8181 line at the bottom");
+    // Routes (owner 2026-10-17): the operator's alert stays at the top; the call buttons and the official page go to the
+    // bottom, under every route, once
+    const r = screens.routes, lastRow = r.lastIndexOf('class="v-routerow'), firstRow = r.indexOf('class="v-routerow');
+    ok(r.indexOf("UGo Bus Route Assistance") < firstRow, name + " routes: the alert above the routes");
+    ok(r.indexOf("Call bus route help") > lastRow && r.indexOf("Official transportation page") > lastRow, name + " routes: calls and the official page under every route");
+    ok(r.indexOf('class="rt-official"') > lastRow && (r.match(/class="rt-official"/g) || []).length === 1, name + " routes: one bottom block");
     // the screen's own primary action keeps the primary style: the main call takes the secondary one
     const noLoc = renderNearby(fixture(over), NOW), stop = renderStop(fixture({ ...over, stopId: "S1" }), NOW);
     eq(main(noLoc)[1], "v-btn--secondary", name + " Current trip without location: Use my location stays primary");
