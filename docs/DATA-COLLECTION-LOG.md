@@ -180,9 +180,41 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 - Fixed: `last_start` in `tools/monitor.py` reads the in-progress runs' "Log arrivals" step start when the newest
   run looks late; test `test_last_start_queued_run`.
 
-### DC-003 Buses with a frozen or wrong Passio trip assignment (open, backfilled)
-- Known since 2026-10-13 (RouteKnower E21). A bus whose Passio trip / route assignment is stale or wrong is not
-  matched to its route's stops, so some of its arrivals are missing. Not fixed yet.
+### DC-003 Buses with a frozen or wrong Passio trip assignment (fixed in part 2026-10-17: frozen / lapped / lagging buses; wrong route open)
+- Known since 2026-10-13 (RouteKnower E21). The rules follow Passio's "next stop" for each bus, so they miss the
+  stops a bus drives past when that stop is wrong: (1) **frozen** (Passio names the same trip and stop for 15 min
+  or more while the bus drives: 60 to 77 bus-hours a weekday Oct 12-15, mostly the Downtown Campus Connector and
+  the Red Line), (2) **a jump over the end of a loop** (Passio names a stop of the next lap early; South on Oct 15),
+  (3) Passio **behind the bus** or naming the passed stop without a time, (4) a bus **filed under another route**.
+  Oct 15, the stop visits buses drove past on Passio's route: 3,768, 84.7% with a row; of the 578 missed, 223
+  frozen, 174 loop jumps, 124 named but untimed, 41 behind, 16 named stop not on the route.
+- Fixed (1 to 3): the **GPS sweep** in `tools/arrival_detector.py` (`Tracker._sweep`, live and in replay): per bus,
+  every stop of its route whose 40 m circle the track enters moving the route's direction, in route order with
+  the bus's previous GPS visit (or starting a chain that the next visit confirms), timed like the rules
+  (`_approach`). It waits GPS_HOLD_S (10 min) and writes a row, `source = gps`, only if no rule logged that bus at
+  that stop within 15 min (`SAME_VISIT_S`) and the visit fits the bus's rows before and after it (route order,
+  speed under 30 m/s). trip_id is Passio's trip, blank when Passio had been frozen 15 min (its trip is stale);
+  no Passio prediction is attached (none for the accuracy scores: the 10 minute shrink is unchanged by them), no
+  previous-stop link, no dwell. It only adds rows: `seed()` keeps GPS rows out of the rules' state and a merge
+  keeps any rule's row of the same visit over a GPS row (`merge_arrivals.rank`, also inside one run file).
+- Replay with the fix (Oct 10-16, `tools/replay_day.py`): every existing arrival row and every predictions row
+  identical on Oct 10-15 (Oct 16 against live: identical but the DC-011 change); added `gps` rows 91, 64, 293,
+  282, 359, 374, 363 (1,826: Red Line 773, Central 324, Downtown Campus Connector 214, South 183, the rest under
+  70 each). Share of the stop visits driven past with a row: Oct 12 87.3% -> 94.8%, Oct 13 88.0% -> 95.3%,
+  Oct 14 86.1% -> 95.4%, Oct 15 84.7% -> 94.7%, weekend Oct 10 / 11 83.7% / 83.4% -> 92.5% / 91.4%; Red Line
+  55-75% -> 96-97%, Downtown Campus Connector 82-92% -> 93-97%, South Oct 15 35.1% -> 85.9%.
+- Precision: 196 sampled `gps` rows (40 a day, every route, Oct 10-15) checked against the raw polls (the bus
+  entered the stop's circle moving the route's way within 90 s of the row; route order with the rows around it;
+  speed): 191 pass; of the 5 flagged, 4 are real passes the check misread (two stops 1 s apart, a corner turn, a
+  report at exactly 40.0 m, a window into the next lap) and 1 a real pass at an unusual point of the route
+  (service unclear): about 99%.
+- Still open (4): a bus Passio files under another route. Detection exists (`_wrong_route`: 5 visits over 10 min
+  in exactly one other route's order, 3 at stops Passio's route lacks, Passio's route explaining at most one; two
+  routes tying = a shared corridor, no change) but is **off** (`GPS_WRONG_ROUTE = False`): on Oct 15 it found 6
+  episodes and Passio never named the suggested route for that bus, and a Downtown Campus Connector bus crossing
+  campus fits another route's stops too. Those buses keep only the rows on Passio's route.
+- Past days: Oct 10-16 need a backfill (replay_day + apply_replay; GPS rows are added, no row changes); the
+  forecast tables of the same days then get the extra arrivals (no Passio time: `none`). Oct 8-9 have no polls.
 
 ### DC-002 Stops Passio did not name were not logged (fixed 2026-10-13, backfilled)
 - Replaying the raw GPS showed the collector logged only stops Passio named for the bus: South 48%, all lines 83% of

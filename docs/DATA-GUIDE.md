@@ -75,11 +75,11 @@ What was wrong, and what changed on October 13:
 - **Midway Metra's afternoon loop** (from 3:30 PM, 20 of 46 weekday trips) runs through **57th St. & Metra
   (NB)**, which the morning loop does not serve. That stop had no Midway Metra rows at all; its afternoon visits
   were logged at 57th St. & Metra (SB), 27 m across the street. Both are fixed.
-- **Still missing:** buses whose feed entry freezes (Passio's "next stop" and trip number stay the same for an
-  hour or more while the bus drives), or that Passio lists under the wrong route. About 60 bus-hours of that on
-  Monday, mostly the Downtown Campus Connector and the Red Line, which is why the Red Line is still at 62%. This
-  needs a matcher that works out from the GPS alone which route a bus is driving. The raw GPS is archived every day,
-  so those days can be redone later.
+- **Buses whose feed entry freezes** (Passio's "next stop" and trip number stay the same for an hour or more while
+  the bus drives; 60 to 77 bus-hours a weekday, mostly the Downtown Campus Connector and the Red Line) are logged
+  since October 17 from the GPS track alone (source `gps`): the Red Line went from 55-75% of the stops it drove
+  past to 96-97%, all lines from 84-88% to 91-95%. Past days from October 10 are redone from the archived GPS.
+- **Still missing:** buses that Passio lists under the wrong route keep only the stops on the route Passio says.
 
 ## `arrivals.csv`: the 25 columns
 
@@ -104,7 +104,7 @@ few metres and the feed reports every 10 seconds or so).
 |---|---|---|
 | `route_id` | The route's number in the public timetable. Use it to tell routes apart; names can change. | `1077` |
 | `route_name` | The route's name, as riders know it. | `East` |
-| `trip_id` | The feed's number for one run of the route. Caveats: the feed changes a bus's trip number in the middle of a run (Red Line: up to twice a lap), reuses numbers, sometimes names an earlier scheduled run than the one the bus drives, and gives every Downtown Campus Connector bus the same one (`874028`). Use it together with `vehicle_id`. | `501697` |
+| `trip_id` | The feed's number for one run of the route. Caveats: the feed changes a bus's trip number in the middle of a run (Red Line: up to twice a lap), reuses numbers, sometimes names an earlier scheduled run than the one the bus drives, and gives every Downtown Campus Connector bus the same one (`874028`). Use it together with `vehicle_id`. Blank on a `gps` row logged while the feed was frozen (its number was stale). | `501697` |
 | `vehicle_id` | The bus. The same bus keeps its ID all day, even when it switches routes. | `4315` |
 
 ### Which stop
@@ -188,7 +188,7 @@ than a minute *earlier* than shown only 3% of the time. Weekends were easier tha
 
 | Column | What it means | Example |
 |---|---|---|
-| `source` | How the arrival was detected. **`transition`**: the feed's "next stop" for this bus moved past this stop; the time is when the bus actually passed it (69% of rows so far). **`proximity`**: the bus was seen standing within 40 m of the stop (31%). **`pass`** (new, from October 13, about 5 PM): the feed never named this stop, but the bus's GPS track went past it within 40 m in the route's direction; the time is its closest approach. The replay suggests about 7% of weekday rows and 17% of weekend rows will be `pass`. All three are real arrivals. | `transition` |
+| `source` | How the arrival was detected. **`transition`**: the feed's "next stop" for this bus moved past this stop; the time is when the bus actually passed it (69% of rows so far). **`proximity`**: the bus was seen standing within 40 m of the stop (31%). **`pass`** (new, from October 13, about 5 PM): the feed never named this stop, but the bus's GPS track went past it within 40 m in the route's direction; the time is its closest approach. The replay suggests about 7% of weekday rows and 17% of weekend rows will be `pass`. **`gps`** (from October 17, and October 10 on after the backfill): the feed's "next stop" for this bus was wrong (frozen, ahead, behind), and the GPS track alone shows the bus reached the stop in the route's order; no Passio prediction, previous stop or dwell; `trip_id` blank when the feed had been frozen. All four are real arrivals. | `transition` |
 
 ## `predictions.csv`: what Passio showed 1 to 30 minutes ahead
 
