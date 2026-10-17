@@ -6,9 +6,9 @@ Rules: docs/DATA.md "Detection". Tests: tools/test_truth.py.
 import math
 from collections import defaultdict, deque
 
-from arrivals_lib import (DEPART_SPEED, HIST, MAX_GAP, MAX_LINK_S, MAX_SKIP, MIN_PRED_AGE, NEAR_M, PASS_MIN_MOVE_M,
-                          PRED_LEADS, PREV_VISIT_GAP_S, RADIUS_M, SAME_VISIT_S, SHOW_GRACE_S, SHOWN_PAST_S, STATE_TTL,
-                          STOP_SPEED, hav_m)
+from arrivals_lib import (DEPART_SPEED, FROZEN_S, GPS_HIST, GPS_HOLD_S, GPS_SKIP, HIST, MAX_GAP, MAX_LINK_S, MAX_SKIP,
+                          MIN_PRED_AGE, NEAR_M, PASS_MIN_MOVE_M, PRED_LEADS, PREV_VISIT_GAP_S, RADIUS_M, SAME_VISIT_S,
+                          SHOW_GRACE_S, SHOWN_PAST_S, STATE_TTL, STOP_SPEED, WRONG_MIN_OFF, WRONG_MIN_RUN, hav_m)
 
 
 class Tracker:
@@ -25,6 +25,9 @@ class Tracker:
         self.last_arr = {}                                     # veh -> (stop_id, epoch, prev dict) of last arrival
         self.visits = {}                                       # (veh, stop_id) -> (epoch, trip, idx) of its last arrival there
         self.on_pred = None                                    # callback(veh, trip, stop_id, made, predicted, seq)
+        self.gps = {}                                          # veh -> GPS sweep state (DC-003, _sweep)
+        self.logged = defaultdict(lambda: deque(maxlen=8))     # (veh, stop_id) -> epochs of every row logged there
+        self._at_stop = None                                   # stop_id -> [(route, idx)], built on first use
 
     # ---- Passio predictions (tripUpdates) ----
     @staticmethod
@@ -203,6 +206,7 @@ class Tracker:
                 vk = (self._veh(r["vehicle_id"]), r["stop_id"])
                 if ep > self.visits.get(vk, (0,))[0]:
                     self.visits[vk] = (ep, r["trip_id"], idx)
+                self.logged[vk].append(ep)
             except (ValueError, KeyError):
                 continue
 
@@ -528,6 +532,203 @@ class Tracker:
             s["pnext"] = nxt
         self._passes(s, key, route, out)
         s["last_vt"] = vt
+        self._sweep(rep, vt, lat, lon, sp)
+        return out
+
+    # ---- GPS sweep (DC-003, RouteKnower E21): stops the track drove past that no Passio-driven rule logged ----
+    # Passio's feed can freeze a bus's trip and "next stop" for an hour while it drives (Red Line, Downtown Campus
+    # Connector), jump over the end of a loop, lag behind the bus, or file it under another route. The rules above
+    # follow Passio's stop and miss those visits. The sweep follows the GPS alone, per bus: every stop of the bus's
+    # route whose RADIUS_M circle the track touched while moving in the route's direction, in route order with the
+    # visit before it (or confirmed by the one after it), timed like _approach. It waits GPS_HOLD_S and writes a row
+    # (source 'gps') only if nothing else logged that bus at that stop within 300 s, so it only adds rows, never
+    # changes one. The route is Passio's, unless the track clearly follows another route (_wrong_route). trip_id is
+    # Passio's trip when its assignment was live, blank when it was frozen or another route; no Passio prediction is
+    # attached to these rows (Passio showed them under the frozen or wrong trip).
+
+    def _stops_at(self):
+        if self._at_stop is None:
+            self._at_stop = defaultdict(list)
+            for route, order in self.st.route_stops.items():
+                for j, sid in enumerate(order):
+                    self._at_stop[sid].append((route, j))
+        return self._at_stop
+
+    def _hits(self, la0, lo0, la1, lo1):
+        """Stops whose RADIUS_M circle the segment enters (or crosses), moving with a route's direction there:
+        [(stop_id, {(route, idx)})] (only the route indexes whose direction fits). A segment that starts inside the
+        circle is the bus leaving: never a hit (a bus already standing there when logging began has no arrival)."""
+        kx = 111320.0 * math.cos(math.radians(la0))
+        mv = ((lo1 - lo0) * kx, (la1 - la0) * 111320.0)
+        L2 = mv[0] * mv[0] + mv[1] * mv[1]
+        if L2 < PASS_MIN_MOVE_M ** 2:
+            return []
+        pad = 0.001                                   # ~110 m: the radius plus slack
+        lat_lo, lat_hi = min(la0, la1) - pad, max(la0, la1) + pad
+        lon_lo, lon_hi = min(lo0, lo1) - 1.4 * pad, max(lo0, lo1) + 1.4 * pad
+        out = []
+        for sid, places in self._stops_at().items():
+            a = self.st.stops.get(sid)
+            if not a or not (lat_lo <= a["lat"] <= lat_hi and lon_lo <= a["lon"] <= lon_hi):
+                continue
+            ax, ay = (lo0 - a["lon"]) * kx, (la0 - a["lat"]) * 111320.0
+            if math.hypot(ax, ay) <= RADIUS_M:
+                continue                              # already at the stop: leaving it (its arrival came before)
+            f = max(0.0, min(1.0, -(ax * mv[0] + ay * mv[1]) / L2))
+            if math.hypot(ax + f * mv[0], ay + f * mv[1]) > RADIUS_M:
+                continue
+            fits = set()
+            for route, j in places:
+                hd = self._heading(route, j)
+                if hd is None or hd[0] * mv[0] + hd[1] * mv[1] > 0:
+                    fits.add((route, j))
+            if fits:
+                out.append((sid, fits))
+        return out
+
+    def _ahead(self, route, a, b):
+        """Stops from index a forward to index b on the route (wrapping on a loop), or None if b is not 1 to GPS_SKIP
+        stops ahead of a."""
+        order = self.st.route_stops[route]
+        n = len(order)
+        ring = n - 1 if order[0] == order[-1] and n > 2 else 0
+        d = (b - a) % ring if ring else b - a
+        return d if 1 <= d <= GPS_SKIP else None
+
+    def _chain(self, route, hits):
+        """Longest run at the end of hits (time order) that follows the route: each hit fits the route's direction at
+        an index 1 to GPS_SKIP stops after the previous one. -> list of (hit, idx)."""
+        run = []
+        for h in reversed(hits):
+            idxs = [j for r, j in h[2] if r == route]
+            if not idxs:
+                break
+            if not run:
+                run.append((h, idxs[0]))
+                continue
+            nxt = run[-1][1]
+            j = next((j for j in idxs if self._ahead(route, j, nxt)), None)
+            if j is None:
+                break
+            run.append((h, j))
+        return run[::-1]
+
+    def _wrong_route(self, g, proute):
+        """The track follows exactly one other route clearly better than Passio's: at least WRONG_MIN_RUN recent
+        visits in that route's order, WRONG_MIN_OFF of them at stops Passio's route does not have, and Passio's route
+        explaining at most one of those visits. -> (route, chain) or None (none, or two routes tie: a shared
+        corridor stays Passio's)."""
+        recent = [h for h in g["chain"] if g["chain"][-1][0] - h[0] <= MAX_LINK_S * 2]
+        if len(recent) < WRONG_MIN_RUN:
+            return None
+        mine = set(self.st.route_stops.get(proute, ()))
+        found = []
+        for route in {r for r, _ in recent[-1][2]} - {proute}:
+            run = self._chain(route, recent)
+            if len(run) < WRONG_MIN_RUN or sum(1 for (h, _) in run if h[1] not in mine) < WRONG_MIN_OFF:
+                continue
+            if proute and len(self._chain(proute, [h for h, _ in run])) > 1:
+                continue
+            found.append((len(run), route, run))
+        if not found:
+            return None
+        found.sort(key=lambda x: -x[0])
+        if len(found) > 1 and found[1][0] == found[0][0]:
+            return None
+        return found[0][1], found[0][2]
+
+    def _sweep(self, rep, vt, lat, lon, sp):
+        veh = self._veh(rep["veh"])
+        if veh is None:
+            return
+        g = self.gps.get(veh)
+        if g is None:
+            g = self.gps[veh] = {"hist": deque(maxlen=GPS_HIST), "named": None, "hit": {}, "chain": deque(maxlen=12),
+                                 "anchor": {}, "cand": [], "override": None, "last_vt": None}
+        if g["last_vt"] is not None and vt <= g["last_vt"]:
+            return
+        named = (rep.get("trip"), rep.get("stop_id"))
+        if g["named"] is None or g["named"][:2] != named:
+            g["named"] = (named[0], named[1], vt)
+        frozen = vt - g["named"][2] >= FROZEN_S
+        prev = g["hist"][-1] if g["hist"] else None
+        g["hist"].append((lat, lon, vt, sp))
+        g["last_vt"] = vt
+        proute = rep.get("route") if rep.get("route") in self.st.route_stops else None
+        ov = g["override"]
+        if ov and (ov["passio"] != proute or vt - ov["last"] > MAX_LINK_S):
+            g["override"] = ov = None
+        if prev is None or not 0 < vt - prev[2] <= MAX_GAP:
+            return
+        for sid, fits in self._hits(prev[0], prev[1], lat, lon):
+            last = g["hit"].get(sid)
+            if last is not None and vt - last < SAME_VISIT_S:
+                continue                              # the same visit (approach, dwell, departure)
+            g["hit"][sid] = vt
+            when = self._approach({"hist": g["hist"]}, self.st.stops[sid], None)
+            if when is None:
+                continue                              # it never arrived in the reports kept (parked all along)
+            h = (when, sid, fits)
+            g["chain"].append(h)
+            if ov is None and proute:
+                w = self._wrong_route(g, proute)
+                if w:
+                    ov = g["override"] = {"route": w[0], "passio": proute, "last": vt}
+                    g["anchor"].pop(w[0], None)
+                    for (hh, j) in w[1]:              # the visits that showed it are this route's too
+                        self._candidate(g, veh, w[0], j, hh[0], hh[1], "", True)
+                    continue
+            elif ov is not None:
+                if len(self._chain(proute, list(g["chain"])[-3:])) >= 2:
+                    g["override"] = ov = None         # the track fits Passio's route again
+                elif any(r == ov["route"] for r, _ in fits):
+                    ov["last"] = vt
+            route = ov["route"] if ov else proute
+            if route is None:
+                continue
+            idxs = [j for r, j in fits if r == route]
+            if not idxs:
+                continue
+            trip = "" if ov or frozen else (rep.get("trip") or "")
+            anc = g["anchor"].get(route)
+            j = None
+            if anc and 0 < when - anc[1] <= MAX_LINK_S:
+                ok = [(self._ahead(route, anc[0], i), -i, i) for i in idxs if self._ahead(route, anc[0], i)]
+                j = min(ok)[2] if ok else None
+            if j is not None and anc[2] is not None:
+                anc[2]["ok"] = True                   # the visit before it is confirmed by this one
+            self._candidate(g, veh, route, j if j is not None else idxs[0], when, sid, trip, j is not None)
+
+    def _candidate(self, g, veh, route, idx, when, sid, trip, ok):
+        c = {"epoch": int(when), "route": route, "trip": trip, "veh": veh, "idx": idx, "sid": sid, "ok": ok}
+        g["cand"].append(c)
+        g["anchor"][route] = (idx, when, c)
+
+    def _logged_near(self, veh, sid, epoch):
+        return any(abs(e - epoch) <= 300 for e in self.logged.get((veh, sid), ()))
+
+    def _sweep_flush(self, now, final=False):
+        """Held GPS visits old enough (GPS_HOLD_S; MAX_LINK_S for one still waiting for its confirmation) -> rows,
+        unless any rule logged that bus at that stop within 300 s. At shutdown (final) the younger ones are dropped,
+        not forced out: the collector's runs overlap by about 30 min, so the next run sees those visits with the
+        context they need, and a run's last minutes never get a half-observed row."""
+        out = []
+        for veh, g in list(self.gps.items()):
+            keep = []
+            for c in g["cand"]:
+                age = now - c["epoch"]
+                if age < GPS_HOLD_S or (not c["ok"] and age < MAX_LINK_S):
+                    if not final:
+                        keep.append(c)
+                    continue
+                if not c["ok"] or self._logged_near(veh, c["sid"], c["epoch"]):
+                    continue
+                self.logged[(veh, c["sid"])].append(c["epoch"])
+                out.append({"epoch": c["epoch"], "route": c["route"], "trip": c["trip"], "veh": veh, "idx": c["idx"],
+                            "source": "gps", "prev": None, "dwell": None, "pred": None, "preds": {}})
+            g["cand"] = keep
+            if not keep and g["last_vt"] is not None and now - g["last_vt"] > STATE_TTL:
+                del self.gps[veh]
         return out
 
     def _arrive(self, s, key, route, idx, epoch, source, out):
@@ -571,6 +772,7 @@ class Tracker:
         vk = (self._veh(key[0]), sid)
         if epoch > self.visits.get(vk, (0,))[0]:      # after the lookups: they need the previous visit
             self.visits[vk] = (epoch, key[1], idx)
+        self.logged[vk].append(epoch)
         if pv is None or epoch >= pv["epoch"]:       # (a deferred arrival logged after a later one is not
             s["prev"] = {"idx": idx, "epoch": epoch, "dwell": None}   # what the next stop follows)
         if la is None or epoch >= la[1]:             # the bus's latest arrival by time, as in seed()
@@ -602,4 +804,5 @@ class Tracker:
                     del self.bus_keys[k[0]]
         for k in [k for k, t in self.visits.items() if t[0] < now - 2 * STATE_TTL]:
             del self.visits[k]
+        out += self._sweep_flush(now, final)
         return out

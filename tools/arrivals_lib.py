@@ -58,6 +58,13 @@ STATE_TTL = 3600         # forget a (vehicle, trip) after this many seconds sile
 MAX_LINK_S = 1500        # s: longest real stop-to-stop time incl. dwell (DCC Lake Shore Dr hop ~15 min); an
                          # older previous arrival is not linked (collector or feed gap: stops were missed)
 HIST = 8                 # recent reports kept per (vehicle, trip) for back-dating arrivals
+GPS_HOLD_S = 600         # DC-003 GPS sweep: a visit seen only by the GPS track waits this long for the Passio-driven
+                         # rules to log it first; only then does it get its own row (source 'gps')
+GPS_SKIP = MAX_SKIP + 1  # a GPS visit confirms the previous one when it follows it on the route within this many stops
+GPS_HIST = 36            # recent reports the sweep keeps per bus (6 min at 10 s) to time an arrival like _approach
+FROZEN_S = 900           # Passio naming the same trip + stop this long while the bus drives = frozen (trip_id left blank)
+WRONG_MIN_RUN = 5        # the track follows another route: at least this many visits in that route's order ...
+WRONG_MIN_OFF = 3        # ... of which at least this many at stops Passio's route does not have
 PASS_MIN_MOVE_M = 15.0   # a 'pass' needs the bus to move at least this far between two reports (GPS jitter of a
                          # standing bus never counts as driving past a stop)
 
