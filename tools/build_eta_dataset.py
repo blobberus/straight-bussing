@@ -50,7 +50,9 @@ COLUMNS = ("query_epoch,query_local,service_day,dow,day_type,cal_regime,hour,veh
            "passio_status,passio_epoch,passio_made_epoch,passio_seen_epoch,passio_age_s,passio_err_s,passio_rel,"
            "tt_epoch,tt_err_s,tt_rel,ttd_epoch,ttd_err_s,ttd_rel").split(",")
 SUMMARY_COLUMNS = ("service_day,source,lead_bin,route,segment,targets,n,pass_10,pass_10_floor,late_1,early_10,"
-                   "gross,gross_early,mae_s,median_err_s").split(",")
+                   "gross,gross_early,mae_s,median_err_s,pass_shrink,early_shrink").split(",")
+# pass_shrink / early_shrink (2026-10-17): the owner's current goal, the 10 minute shrink (arrivals_lib.shrink_tol:
+# 3 min at >= 30 min ahead, 2 at >= 20, 1 below); pass_10 / pass_10_floor / early_10 stay for the 10% rule history.
 
 
 # ---------------------------------------------------------------- inputs
@@ -536,7 +538,9 @@ def summary(rows, day):
                     "late_1": sum(e > 0.01 * ld for e, ld in v), "early_10": sum(e < -0.10 * ld for e, ld in v),
                     "gross": len(v) - n, "gross_early": sum(1 for e, ld in v if GROSS(e, ld) and e > 0),
                     "mae_s": round(statistics.fmean(abs(e) for e, _ in ok)) if ok else "",
-                    "median_err_s": round(statistics.median(e for e, _ in ok)) if ok else ""})
+                    "median_err_s": round(statistics.median(e for e, _ in ok)) if ok else "",
+                    "pass_shrink": sum(abs(e) <= L.shrink_tol(ld) for e, ld in ok),
+                    "early_shrink": sum(e < -L.shrink_tol(ld) for e, ld in v)})
     return out
 
 
@@ -562,17 +566,24 @@ def merge_summary(path, new_rows):
 
 
 def report(path, boots=2000, seed=7, route="ALL", segment="all"):
-    """Pass rates under the 10% rule by source and lead bin across days, with a 95% bootstrap CI over days."""
+    """Pass rates under the owner's goal (the 10 minute shrink; the 10% rule alongside) by source and lead bin across
+    days, with a 95% bootstrap CI over days. Rows written before 2026-10-17 lack pass_shrink: those days count only
+    for the 10% column until their summary is rebuilt."""
     with open(path, encoding="utf-8", newline="") as f:
         rows = [r for r in csv.DictReader(f) if r["route"] == route and r["segment"] == segment]
     by = defaultdict(dict)
     for r in rows:
-        by[(r["source"], r["lead_bin"])][r["service_day"]] = (int(r["n"]) - int(r["gross"]), int(r["pass_10"]),
-                                                              int(r["n"]), int(r["late_1"]), int(r["targets"]))
+        if r.get("pass_shrink") in (None, ""):
+            continue
+        by[(r["source"], r["lead_bin"])][r["service_day"]] = (int(r["n"]) - int(r["gross"]), int(r["pass_shrink"]),
+                                                              int(r["n"]), int(r["late_1"]), int(r["targets"]),
+                                                              int(r["pass_10"]))
     rnd = random.Random(seed)
     order = {b[2]: i for i, b in enumerate(LEAD_BINS)}
-    out = [f"10% rule by lead ({route}, {segment}); one sample per arrival and bin; 95% CI = bootstrap over days", "",
-           "| source | lead min | days | n | pass 10% | 95% CI | too late > 1% | shown / targets |", "|---|---|---:|---:|---:|---|---:|---:|"]
+    out = [f"Accuracy goal (10 minute shrink: 3 min at >= 30 min, 2 at >= 20, 1 below) by lead ({route}, {segment}); "
+           "one sample per arrival and bin; 95% CI = bootstrap over days", "",
+           "| source | lead min | days | n | pass | 95% CI | (old 10% rule) | too late > 1% | shown / targets |",
+           "|---|---|---:|---:|---:|---|---:|---:|---:|"]
     for (src, b) in sorted(by, key=lambda k: (k[0], order.get(k[1], 9))):
         d = by[(src, b)]
         days = sorted(d)
@@ -591,8 +602,9 @@ def report(path, boots=2000, seed=7, route="ALL", segment="all"):
         n = sum(x[2] for x in d.values())
         late = sum(x[3] for x in d.values()) / n if n else 0
         tg = sum(x[4] for x in d.values())
-        out.append(f"| {src} | {b} | {len(days)} | {n} | {rate:.0%} | {ci} | {late:.0%} | {n / tg:.0%} |" if tg else
-                   f"| {src} | {b} | {len(days)} | {n} | {rate:.0%} | {ci} | {late:.0%} | |")
+        old = sum(x[5] for x in d.values()) / den
+        out.append(f"| {src} | {b} | {len(days)} | {n} | {rate:.0%} | {ci} | {old:.0%} | {late:.0%} | {n / tg:.0%} |" if tg else
+                   f"| {src} | {b} | {len(days)} | {n} | {rate:.0%} | {ci} | {old:.0%} | {late:.0%} | |")
     return "\n".join(out)
 
 

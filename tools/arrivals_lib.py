@@ -16,7 +16,7 @@ COLUMNS = ("epoch,ts_utc,local_time,dow,hour,minute_of_day,route_id,route_name,t
            "stop_name,stop_address,stop_lat,stop_lon,stop_index,prev_stop_id,dist_prev_m,prev_arrival_epoch,"
            "segment_s,speed_mps,dwell_s,passio_pred_epoch,passio_pred_lead_s,source").split(",")
 
-# predictions.csv (owner goal 2026-10-12, the "10% rule": 1 min at 10 min ahead, 3 min at 30 min ahead): for each
+# predictions.csv (owner goal: the accuracy rule, SHRINK_TOL_S below; first the "10% rule" of 2026-10-12): for each
 # arrival, Passio's newest prediction made at least lead_target_s before it, one row per target lead. The arrivals
 # file keeps its 25 columns; rows join on vehicle_id + stop_id + epoch.
 PRED_COLUMNS = ("epoch,local_time,route_id,route_name,trip_id,vehicle_id,stop_id,stop_name,stop_index,"
@@ -29,6 +29,21 @@ PREV_VISIT_GAP_S = 120   # a prediction counts for this arrival only if made aft
                          # stop and predicting a time this far past it (else it was about the earlier lap)
 SHOWN_PAST_S = 30        # a predicted stop time stays listed this long after it passes (web core/arrivals.js): the
                          # other-trip rule (Tracker._other_trip_preds) takes no time a screen had dropped
+
+# The owner's accuracy goal since 2026-10-17, the "10 minute shrink" (it replaced the 10% rule of 2026-10-12): a
+# prediction made L ahead must be within 3 min at L >= 30 min, 2 min at L >= 20 min, 1 min at L >= 10 min. Under
+# 10 min the 1-min floor stays (the owner named no tighter step; 0 would be unreachable). "Too late" is unchanged:
+# shown more than 1% of L later than the bus came (reading B).
+SHRINK_TOL_S = ((1800, 180), (1200, 120), (0, 60))
+
+
+def shrink_tol(lead_s):
+    """Allowed |predicted - actual| in seconds at a lead of lead_s seconds (the 10 minute shrink)."""
+    for at, tol in SHRINK_TOL_S:
+        if lead_s >= at:
+            return tol
+    return SHRINK_TOL_S[-1][1]
+
 
 RADIUS_M = 40.0          # proximity arrival radius
 STOP_SPEED = 1.0         # m/s: "stopped" threshold for proximity arrivals

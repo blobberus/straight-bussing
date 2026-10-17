@@ -271,6 +271,19 @@ def test_summary_one_sample_per_arrival_and_bin():
             r["passio_err_s"] = 900
     p2 = {(r["source"], r["lead_bin"], r["route"], r["segment"]): r for r in B.summary(rows2, DAY)}[("passio", "0-6", "ALL", "all")]
     assert (p2["n"], p2["pass_10"], p2["gross"], p2["gross_early"], p2["late_1"]) == (3, 1, 1, 1, 1), p2
+    # the owner's goal since 2026-10-17 (10 minute shrink): under 10 min the 1-minute floor, so pass_shrink = pass_10_floor
+    assert p["pass_shrink"] == p["pass_10_floor"] == 3 and p["early_shrink"] == 0, p
+
+
+def test_ten_minute_shrink_tolerances():
+    # owner 2026-10-17: ">=30min = 3 min accurate, >=20 min = 2 min accurate, >=10min = 1 min accurate"
+    t = L.shrink_tol
+    assert [t(s) for s in (0, 60, 599, 600, 1199)] == [60] * 5, "1 min under 20 min (the floor below 10)"
+    assert [t(s) for s in (1200, 1799)] == [120, 120] and [t(s) for s in (1800, 2700)] == [180, 180]
+    # a 25-min-ahead time 100 s off passes both rules; 130 s off fails now (2 min) but passed the 10% rule (150 s)
+    ok = [(100, 1500), (130, 1500), (-170, 1900)]
+    assert [abs(e) <= t(ld) for e, ld in ok] == [True, False, True]
+    assert [abs(e) <= 0.10 * ld for e, ld in ok] == [True, True, True]
 
 
 def test_merge_summary_and_report():
