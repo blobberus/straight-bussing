@@ -33,8 +33,9 @@ previous dwell) · `speed_mps` = dist / (segment_s - previous dwell), blank if >
 stopped here (0 = drove through, blank = unknown) · `passio_pred_epoch` Passio's newest prediction for this
 bus + trip + stop (at a loop terminal: the one with the matching stop_sequence) made >= 120 s before the
 arrival, `passio_pred_lead_s` = epoch - when it was made · `source`
-`transition` | `proximity` | `pass` (since 2026-10-13). Rows are appended when the bus leaves the stop, so files are
-only roughly sorted.
+`transition` | `proximity` | `pass` (since 2026-10-13) | `gps` (since 2026-10-17, DC-003; `trip_id` may be blank,
+no prev / dwell / Passio prediction). Rows are appended when the bus leaves the stop (a `gps` row 10 min after the
+visit), so files are only roughly sorted.
 
 ## predictions.csv (added 2026-10-12; one row = one arrival x one target lead)
 The arrivals file keeps its 25 columns; this file sits next to it. Join on `vehicle_id` + `stop_id` + `epoch`
@@ -189,11 +190,18 @@ gives a 95% bootstrap interval **over days** (RouteKnower 6.5: days are the unit
   St. & Metra (NB), 27 m from the morning loop's end (SB). GPS cannot tell those two apart, so the variant's stop
   counts only when Passio names it, and while it does, its 27 m neighbour gets no proximity row (before: the
   afternoon visits were logged at SB).
-- **Not caught yet:** buses whose Passio `stop_id` or trip stays frozen for an hour or more while they drive (about
-  60 bus-hours on 2026-10-12, mostly Downtown Campus Connector and Red Line/Arts Block, e.g. bus 12648 6:34 to 10:46
-  AM on one Red Line trip and one stop), or that Passio files under another route. Red Line/Arts Block logged 62%
-  of its passes on 2026-10-12 for this reason. Needs a GPS-only route matcher; the raw polls are archived daily,
-  so these days can be re-derived once it exists.
+- **gps** (since 2026-10-17, DC-003, `Tracker._sweep`): the stops the rules above miss because Passio's stop is wrong
+  (frozen for an hour while the bus drives, a jump over the end of a loop, behind the bus). Per bus, every stop of
+  its route whose 40 m circle the track enters moving the route's direction, in route order with the bus's
+  previous GPS visit (or starting a chain the next one confirms), timed like a transition. Held 10 min
+  (`GPS_HOLD_S`); written only if no rule logged that bus at that stop within 15 min and it fits the bus's rows
+  before and after (order, speed). `trip_id` blank when Passio had named the same trip and stop for 15 min
+  (`FROZEN_S`); no Passio prediction, previous-stop link or dwell. Never changes another row: seeding ignores GPS
+  rows for the rules' state, and a merge keeps any rule's row of the same visit (`merge_arrivals.rank`). Replay
+  Oct 10-16: +1,826 rows, the share of the stop visits buses drove past with a row 84-88% -> 91-95% (Red Line
+  55-75% -> 96-97%), every other row identical; about 99% of 196 sampled rows confirmed on the raw polls.
+- **Not caught yet:** a bus Passio files under another route keeps only the rows on Passio's route. The sweep can
+  detect it (`GPS_WRONG_ROUTE`, off: no episode was corroborated so far; DC-003 in docs/DATA-COLLECTION-LOG.md).
 - Time = when the track crosses the stop, interpolated between reports with the reported speed; else the
   earliest closest report inside 40 m; else closest within 120 m; else (transitions only) the midpoint of
   the last two reports, if they are <= 60 s apart and the stop lies between them. No row if the bus was
