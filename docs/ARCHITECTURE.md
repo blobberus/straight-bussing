@@ -605,4 +605,5 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   "No shuttles are reporting live locations" is at most one poll late. On the map a bus missing from a poll while others still
   report keeps its badge for `MISSING_S` (45 s) and then continues along its line; a poll with no bus at all clears the map at
   once (the map never shows buses while the pill says none report); a route the rider hides goes at once.
+- iOS: Kit `BusTrack.swift` (the same rules and numbers, `BusTrackTests` incl. a golden file the web JS computed on real reports) and App `Model/BusMotion.swift` (steps the badge along the path; ios/README.md parity matrix).
 

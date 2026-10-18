@@ -118,7 +118,8 @@ struct MapLayers {
 }
 
 /// A bus marker. `stale` (report older than 60 s) is computed when live data or the clock updates, so the map
-/// never reads the clock.
+/// never reads the clock. `coord` and `bearing` are where `BusMotion` draws it now (on its route line, moving along it)
+/// and its heading rotation (unwrapped degrees, so a turn across north goes the short way).
 struct MapBus: Identifiable, Equatable {
     let id: String
     let rid: String
@@ -144,6 +145,9 @@ final class AppModel {
     /// Building and place names on the map (bundled web/data/landmarks.json), in their own observable like the camera.
     @ObservationIgnored let mapLabels = MapLabelModel()
     @ObservationIgnored let busAlerter = BusAlerter()
+    /// Bus markers riding their route line (Kit BusTrack, web map/layers.js): `refreshStatus` feeds it the reports,
+    /// its steps republish `mapBuses` (`publishBuses`).
+    @ObservationIgnored let busMotion = BusMotion()
     /// Sidewalk routes (Apple Maps walking directions) behind the Kit's cache; nil in `-demo` (deterministic CI).
     @ObservationIgnored let walkCache: WalkRouteCache?
     /// Photon address search (only when the on-device index has < 5 matches); nil in `-demo` (no network in CI shots).
@@ -278,6 +282,7 @@ final class AppModel {
         self.walkCache = config.demo ? nil : WalkRouteCache(fetch: { a, b in try await AppleWalkDirections.route(a, b) })
         self.placeSearcher = config.demo ? nil : PlaceSearcher()
         self.scheduleStore = config.demo ? nil : ScheduleStore.standard
+        busMotion.onStep = { [weak self] len, smooth in self?.publishBuses(step: len, smooth: smooth) }
     }
 
     var colorScheme: ColorScheme? {

@@ -102,6 +102,7 @@ extension AppModel {
     /// fresh while the first new poll is on its way), then polling, the clock tick, permissions, schedule check.
     func didBecomeActive() {
         inForeground = true
+        busMotion.resume()
         pollsSinceActive = 0   // data from before the break is old because nothing polled: not an outage
         now = Date().timeIntervalSince1970
         refreshStatus()
@@ -115,6 +116,7 @@ extension AppModel {
     /// Leaving the app: one fresh Live Activity update, then no polling and no clock tick in the background.
     func didEnterBackground() {
         inForeground = false
+        busMotion.pause()   // no animation work in the background: every move ends where it was going
         flushLiveActivity()
         pausePolling()
         clockTask?.cancel()
@@ -209,15 +211,33 @@ extension AppModel {
         let pill = LiveText.pill(level: level, polled: liveLoaded, lastOk: lastOk, feedTs: feedTs, loaded: liveLoaded,
                                  busCount: buses.count, silent: silentService, alerts: activeAlerts.count)
         if statusPill != pill { statusPill = pill }
-        let t = now
-        let markers = liveState.buses.enumerated().map { i, b in
-            MapBus(id: b.vehicle.id ?? "bus-\(i)", rid: b.trip.routeId ?? "", label: b.displayLabel, coord: b.coord,
-                   bearing: b.bearing, stale: b.timestamp > 0 && t - b.timestamp > 60)
+        // buses ride their route line (Kit BusTrack, BusMotion; web map/track.js): a changed report starts a move from
+        // where the badge is now; `-demo` (CI) and Reduce Motion move at once
+        let reports = liveState.buses.enumerated().map { i, b in
+            BusMotion.Report(id: b.vehicle.id ?? "bus-\(i)", rid: b.trip.routeId ?? "", coord: b.coord, bearing: b.bearing, vt: b.timestamp)
         }
-        // buses glide to their new position (web drawBuses "smooth glide"), still under reduced motion
-        if mapBuses != markers {
-            if UIAccessibility.isReduceMotionEnabled { mapBuses = markers }
-            else { withAnimation(.easeInOut(duration: 1.0)) { mapBuses = markers } }
+        busMotion.update(reports, shapes: staticData.shapes, version: staticVersion, now: now,
+                         reduce: UIAccessibility.isReduceMotionEnabled || config.demo)
+        publishBuses(step: 0, smooth: false)
+    }
+
+    /// The bus markers where `busMotion` draws them now (stale for `now`). A step of a few meters animates in a straight
+    /// line over the step (a normal glide, on the street within about a meter); a longer one (a catch-up) is set as is,
+    /// exactly on the line, like the web's frames.
+    func publishBuses(step: Double, smooth: Bool) {
+        let t = now
+        let markers = liveState.buses.enumerated().map { i, b -> MapBus in
+            let id = b.vehicle.id ?? "bus-\(i)"
+            let s = busMotion.shown(id)
+            let bearing: Double? = s != nil ? s!.rotation : b.bearing
+            return MapBus(id: id, rid: b.trip.routeId ?? "", label: b.displayLabel, coord: s?.coord ?? b.coord,
+                          bearing: bearing, stale: b.timestamp > 0 && t - b.timestamp > 60)
+        }
+        guard mapBuses != markers else { return }
+        if smooth && step > 0 && !UIAccessibility.isReduceMotionEnabled {
+            withAnimation(.linear(duration: step)) { mapBuses = markers }
+        } else {
+            mapBuses = markers
         }
     }
 
