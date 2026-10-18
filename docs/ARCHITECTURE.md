@@ -159,7 +159,7 @@ export function createMap(elId): MapApi
 setTheme(isDark)                 // swaps OpenFreeMap style via map/style.js (positron/dark patched for legible street names + house numbers; OSM raster fallback if maplibre missing)
 setBottomInset(px)               // visible-map padding from the sheet; fits/flies respect it
 drawNetwork({routes, shapes, routeStops, stopRoutes, stops, hidden:[], focus:[]|null, dark})  // casing+color route lines (dim non-focused to .25), stops at zoom>=14 with 44px tap halo
-drawBuses(buses, {routes, hidden, focus, nowS})   // rounded-square badge in route color, heading triangle, pulse ring, stale (>60 s) dimmed; smooth glide; recreate marker only if route changes
+drawBuses(buses, {routes, shapes, hidden, focus, nowS})   // rounded-square badge in route color, heading triangle, pulse ring, stale (>60 s) dimmed; on its route line and moved along it (map/track.js, below); recreate marker only if route changes
 setSelectedStop(stop|null)       // {id,lat,lon}
 setUser(pos|null)                // blue dot
 setHeading(deg|null, spread?)    // heading cone on the dot (2026-10-14): accent wedge, deg clockwise from north, spread = width (default 60, 20..160);
@@ -585,3 +585,19 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   the alert at the top and moves the calls and the official page to the bottom, under every route, as its one bottom block). The operator's
   text stays verbatim (including "UGo"). `core/operating.js silentText` still names 773.702.8181 (shared with iOS; unchanged).
 - Unchanged by decision: walking times carry no "est." label.
+
+## Buses ride their route line (2026-10-18, owner: "the bus location should update smoothly without exiting the borders of the roads and the station lines they follow")
+- `map/track.js` (pure, tests `web/tests/map-track.js`): a fix within `ON_M` (40 m) of its route's shape (`store.shapes[rid]`, the
+  drawn line) is drawn on the line; `follow(prep, from, at, pt, {bearing, dt})` returns the new place and the way there through
+  the line's own points (`walk`). The pass that continues from where the badge is wins (out-and-back streets and loops pass one
+  point twice), within `SPEED_MPS` (22 m/s) x the time since the last report + `SLACK_M` (400 m); a step back up to `BACK_M`
+  (30 m) is jitter and stays on the line; a new badge takes the closest pass, the one heading the feed's way when two tie (+25 m
+  for a pass running the other way). Off the line (a detour, the garage) the fix is drawn as is. On 2026-10-14's polls 87% of
+  fixes were within 40 m of their line (median 3.8 m); most of the rest are over 100 m off (buses away from their route).
+- `map/layers.js createBusLayer`: no CSS glide on the badge any more; a requestAnimationFrame loop moves it along the path:
+  a normal poll at constant speed over `GLIDE_MS` (9 s), a catch-up (over 350 m along the line, or after more than 30 s without a
+  report: a reload, a feed gap) eased in 0.9 to 2.6 s (`moveTiming`); off the line a straight glide up to 150 m, longer = a jump.
+  The heading triangle turns with the street (`headingAt`, short way round); a new badge with no feed bearing takes the line's
+  direction. Frames pause while Leaflet animates a zoom (`zoomstart` / `zoomend`); prefers-reduced-motion moves at once.
+  `createBusLayer(map, cb, {clock, frame, reduce})` takes a manual clock and frame queue in tests; `shown(id)` = the drawn spot.
+

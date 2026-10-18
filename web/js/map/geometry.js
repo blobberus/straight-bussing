@@ -76,6 +76,26 @@ function projSeg(p, a, b) {
 }
 
 /**
+ * Cumulative distance (m) at each vertex of a polyline (map/track.js keeps buses on their line).
+ * @param {Array<[number, number]>} line
+ * @returns {number[]}
+ */
+export function cumulativeM(line) {
+  return cumulative(line);
+}
+
+/**
+ * Every pass of a line near p (candidates() below; map/track.js).
+ * @param {Array<[number, number]>} line
+ * @param {number[]} cum cumulativeM(line)
+ * @param {[number, number]} p
+ * @returns {{best:number, cands:Array<{seg:number, t:number, d:number, pos:number, pt:[number,number]}>}}
+ */
+export function passesNear(line, cum, p) {
+  return candidates(line, cum, p);
+}
+
+/**
  * Every distinct pass of the line near p: one candidate per run of consecutive segments within
  * max(60 m, best + 25 m). An out-and-back route yields two candidates for a stop on the shared street.
  * @returns {{best:number, cands:Array<{seg:number, t:number, d:number, pos:number, pt:[number,number]}>}}

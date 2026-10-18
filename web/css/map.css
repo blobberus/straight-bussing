@@ -154,11 +154,10 @@
 .sb-bus.is-stale{opacity:.5;border-color:#9a9aa0}
 .sb-bus.is-stale::after{display:none}
 @keyframes sb-pulse{0%{transform:scale(.85);opacity:.55}100%{transform:scale(1.45);opacity:0}}
-/* glide between polls; off while zooming (Leaflet's own zoom-anim transition wins during animated zooms) */
-.sb-map .leaflet-marker-icon.sb-busicon{transition:transform 9s linear}
-.sb-map.sb-zooming .leaflet-marker-icon.sb-busicon{transition:none}
+/* buses move by script along their route line (map/layers.js createBusLayer, map/track.js): no CSS glide on the
+   badge, except Leaflet's own zoom animation */
+.sb-map .leaflet-marker-icon.sb-busicon{transition:none}
 .sb-map .leaflet-zoom-anim .leaflet-marker-icon.sb-busicon{transition:transform .25s cubic-bezier(0,0,.25,1)}
-.sb-map .leaflet-marker-icon.sb-busicon.sb-snap{transition:none!important}
 .sb-map .leaflet-marker-icon.sb-busicon:focus-visible{outline:2px solid var(--sb-accent);outline-offset:3px;border-radius:11px}
 
 /* raster fallback basemap in dark */

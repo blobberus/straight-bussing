@@ -90,7 +90,7 @@ function syncMap(s, changed) {
   const { hidden, focus, order } = mapVisibility(s);   // journey > custom route / hidden list; see core/visibility.js
   if (NET_KEYS.some(has)) mapCall("drawNetwork", { routes: s.routes, shapes: s.shapes, routeStops: s.routeStops,
     stopRoutes: s.stopRoutes, stops: s.stops, hidden, focus, order, dark: isDark() });
-  if (BUS_KEYS.some(has)) mapCall("drawBuses", s.buses || [], { routes: s.routes, hidden, focus, nowS: nowS() });
+  if (BUS_KEYS.some(has)) mapCall("drawBuses", s.buses || [], { routes: s.routes, shapes: s.shapes, hidden, focus, nowS: nowS() });
   if (has("view") || has("stopId") || has("stops")) {
     const st = s.view === "stop" && s.stopId && s.stops ? s.stops[s.stopId] : null;
     mapCall("setSelectedStop", st ? { id: s.stopId, lat: st.lat, lon: st.lon } : null);

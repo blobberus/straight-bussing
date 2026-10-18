@@ -9,6 +9,8 @@
 import { safeColor, textOn } from '../core/esc.js';
 import { bearing as geoBearing } from '../core/geo.js';
 import { createChevronLayer, orientedLines } from './chevrons.js';
+import { unwrapDeg } from './geometry.js';
+import { prepareShape, follow, pathCum, pointAt, advance, headingAt } from './track.js';
 
 const ids = new WeakMap();
 let nextId = 1;
@@ -203,7 +205,6 @@ export function createNetworkLayer(map, cb) {
 }
 
 const STALE_S = 60;
-const SNAP_M = 800;
 
 function busIcon(color, label) {
   const root = document.createElement('div');
@@ -224,20 +225,133 @@ function pulse(el) {
   el.classList.add('sb-pulse');
 }
 
+/** A normal poll's glide (ms): about one poll interval, at constant speed, so the badge keeps moving. */
+export const GLIDE_MS = 9000;
+/** A move along the line longer than this (m), or after a gap of more than GLIDE_GAP_S, catches up quickly. */
+const NORMAL_M = 350, GLIDE_GAP_S = 30;
+/** Off the line, a move longer than this (m) is drawn as a jump: a straight glide would cross the blocks. */
+const STRAIGHT_M = 150;
+
+/**
+ * How long a move takes (ms) and whether it eases (a catch-up) or runs at constant speed (a normal poll).
+ * @param {{along:boolean}} r map/track.js follow() result
+ * @param {number} len path length (m)
+ * @param {number} dt seconds since the bus's last report
+ * @param {boolean} reduce prefers-reduced-motion
+ * @returns {{dur:number, ease:boolean}} dur 0 = drawn there at once
+ */
+export function moveTiming(r, len, dt, reduce) {
+  if (reduce || !(len > 0.5)) return { dur: 0, ease: false };
+  if (r.along) {
+    if (len <= NORMAL_M && !(dt > GLIDE_GAP_S)) return { dur: GLIDE_MS, ease: false };
+    return { dur: Math.round(Math.min(2600, Math.max(900, 700 + len * 0.8))), ease: true };
+  }
+  return len <= STRAIGHT_M ? { dur: GLIDE_MS, ease: false } : { dur: 0, ease: false };
+}
+
+const easeInOut = (k) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
+
 /**
  * Bus layer: rounded-square badges in route color with a heading triangle, one-shot pulse on each
- * moved position, dimmed when stale (> 60 s). Glide is CSS (map.css) and disabled while zooming.
- * Heading = feed bearing, else derived from movement (busHeading); focused routes get a larger arrow.
- * Non-focused routes' buses are not shown while a focus is set; hidden routes never are.
+ * moved position, dimmed when stale (> 60 s). Heading = feed bearing, else derived from movement (busHeading);
+ * focused routes get a larger arrow. Non-focused routes' buses are not shown while a focus is set; hidden routes
+ * never are.
+ * Movement (2026-10-18, owner: smooth, never off the roads and the route lines): a report near its route's line is
+ * drawn on the line and each move is animated along it (map/track.js follow; o.shapes), at constant speed over one
+ * poll, or eased in about 1 to 2.5 s when it catches up after a reload or a gap in the feed; the heading turns with
+ * the street. Off the line: a short straight glide, a long move jumps. Frames come from requestAnimationFrame
+ * (no CSS transition on the badge), paused while Leaflet animates a zoom; prefers-reduced-motion moves at once.
  * @param {L.Map} map
  * @param {{onBusTap:(info:{id:string, rid:string, label:string})=>void}} cb
- * @returns {{draw(buses:Array, o:object):number}} draw returns how many markers changed
+ * @param {{clock?:()=>number, frame?:(fn:Function)=>any, reduce?:()=>boolean}} [opt] tests: a manual clock (ms),
+ *   frame scheduler and reduced-motion switch (defaults: performance.now, requestAnimationFrame, the media query)
+ * @returns {{draw(buses:Array, o:object):number, setYou(id):boolean, shown(id):[number,number]|null}}
+ *   draw returns how many markers changed; shown = where a bus's badge is drawn now (tests)
  */
-export function createBusLayer(map, cb) {
+export function createBusLayer(map, cb, opt = {}) {
   const L = window.L;
   const group = L.layerGroup().addTo(map);
-  const markers = new Map(); // vehicle id -> {rid, color, label, mk, s, ll}
+  const markers = new Map(); // vehicle id -> {rid, color, label, mk, s, ll, disp, to, anim, vt, seen, rot}
   let youId = null;          // the bus you ride (Current trip): ring + "You" pill on its marker
+  let zooming = false, raf = 0;
+  const clock = opt.clock || (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
+  const schedule = opt.frame || (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
+  const reduce = opt.reduce || (() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  map.on('zoomstart', () => { zooming = true; });
+  map.on('zoomend', () => { zooming = false; kick(); });
+
+  /** Rotate the heading triangle the short way round (unwrapDeg: never a spin across north). */
+  function turn(m, deg) {
+    if (!Number.isFinite(deg)) return;
+    const rot = unwrapDeg(m.rot, deg);
+    if (Number.isFinite(m.rot) && Math.abs(rot - m.rot) < 2) return;
+    m.rot = rot;
+    const hd = m.mk.getElement()?.querySelector('.sb-bus-hd');
+    if (hd) hd.style.transform = `rotate(${rot}deg)`;
+  }
+
+  /** Fraction (0..1, eased) of a move done at time t. */
+  function done(a, t) {
+    const k = a.dur > 0 ? Math.min(1, Math.max(0, (t - a.t0) / a.dur)) : 1;
+    return a.ease ? easeInOut(k) : k;
+  }
+
+  /** Where the badge is on its line now ({li, pos}), or null when it is not on the line. */
+  function onLine(m, t) {
+    const a = m.anim;
+    if (a) return a.along ? { li: a.li, pos: advance(a.s, a.pos0, a.f * done(a, t)) } : null;
+    return m.to ? { li: m.to.li, pos: m.to.pos } : null;
+  }
+
+  function frame() {
+    raf = 0;
+    const t = clock();
+    let more = false;
+    for (const m of markers.values()) {
+      const a = m.anim;
+      if (!a) continue;
+      const e = done(a, t);
+      if (!zooming) {
+        const p = pointAt(a.path, a.cum, e * a.total);
+        m.mk.setLatLng(p);
+        m.disp = p;
+        if (a.along && a.f > 2) turn(m, headingAt(a.s, advance(a.s, a.pos0, a.f * e)));
+      }
+      if (e >= 1 && !zooming) { m.anim = null; if (Number.isFinite(a.endHd)) turn(m, a.endHd); } else more = true;
+    }
+    if (more) raf = schedule(frame) || 1;
+  }
+
+  function kick() {
+    if (raf || !schedule) return;
+    for (const m of markers.values()) if (m.anim) { raf = schedule(frame) || 1; return; }
+  }
+
+  /**
+   * Move a badge to a new report: on its line when near it, along the line when it continues there.
+   * @returns {[number, number]} where it will be drawn
+   */
+  function moveTo(m, prep, pt, feedBrg, brg, dt) {
+    const t = clock(), from = onLine(m, t);
+    const r = follow(prep, from, m.disp || m.ll, pt, { bearing: feedBrg, dt });
+    const target = r.to ? r.to.pt : pt;
+    const cum = pathCum(r.path), total = cum[cum.length - 1] || 0;
+    const { dur, ease } = moveTiming(r, total, dt, reduce());
+    const endHd = r.along && r.f > 2 ? headingAt(prep[r.to.li], r.to.pos) : brg;
+    m.to = r.to;
+    if (!dur) {
+      m.anim = null;
+      m.mk.setLatLng(target);
+      m.disp = target;
+      turn(m, endHd);
+      return target;
+    }
+    m.anim = { path: r.path, cum, total, t0: t, dur, ease, along: r.along, f: r.f, endHd,
+      li: r.to ? r.to.li : -1, s: r.to ? prep[r.to.li] : null, pos0: r.along && from ? from.pos : 0 };
+    if (!r.along) turn(m, endHd);
+    kick();
+    return target;
+  }
 
   /** Mark (or unmark) a bus marker as the one you are on: it moves with the bus, glide included. */
   function markYou(m, on) {
@@ -289,32 +403,38 @@ export function createBusLayer(map, cb) {
       const s = busSig(rid, lat, lon, brg, stale, label, color, focused);
       if (m && m.s === s) continue;
       changed++;
+      const prep = prepareShape(o.shapes?.[rid]);
+      const vt = Number.isFinite(+v.timestamp) && +v.timestamp > 0 ? +v.timestamp : NaN;
+      let moved = false;
       if (!m || m.rid !== rid || m.color !== color || m.label !== label) {
         if (m) group.removeLayer(m.mk);
-        const mk = L.marker([lat, lon], { icon: busIcon(color, label), zIndexOffset: 500, keyboard: false,
+        const r0 = follow(prep, null, null, [lat, lon], { bearing: feed });   // a new badge starts on its line
+        const start = r0.to ? r0.to.pt : [lat, lon];
+        const mk = L.marker(start, { icon: busIcon(color, label), zIndexOffset: 500, keyboard: false,
           title: `Route ${label} bus`, riseOnHover: true });
         const info = { id: key, rid, label: v.vehicle?.label != null ? String(v.vehicle.label) : '' };
         mk.on('click', () => cb.onBusTap(info));
         mk.addTo(group);
-        m = { rid, color, label, mk, s: '', ll: [lat, lon], brg: NaN };
+        m = { rid, color, label, mk, s: '', ll: [lat, lon], brg: NaN, disp: start, to: r0.to, anim: null, vt, seen: now, rot: NaN };
         markers.set(key, m);
         if (key === youId) markYou(m, true);
+        // no feed heading: the line's own direction (shapes run the way the buses drive)
+        turn(m, Number.isFinite(brg) ? brg : r0.to ? headingAt(prep[r0.to.li], r0.to.pos) : NaN);
+        moved = true;
       } else if (m.ll[0] !== lat || m.ll[1] !== lon) {
-        const icon = m.mk.getElement();
-        const jump = map.distance(m.ll, [lat, lon]) > SNAP_M;
-        if (jump && icon) icon.classList.add('sb-snap');
-        m.mk.setLatLng([lat, lon]);
-        if (jump && icon) requestAnimationFrame(() => requestAnimationFrame(() => icon.classList.remove('sb-snap')));
+        const dt = Number.isFinite(vt) && Number.isFinite(m.vt) ? vt - m.vt : now - (m.seen ?? now);
+        moveTo(m, prep, [lat, lon], feed, brg, dt);
+        moved = true;
+      } else if (!m.anim) {
+        turn(m, brg);
       }
-      const moved = m.ll[0] !== lat || m.ll[1] !== lon || !m.s;
-      m.ll = [lat, lon]; m.s = s; m.brg = brg;
+      m.ll = [lat, lon]; m.s = s; m.brg = brg; m.seen = now;
+      if (Number.isFinite(vt)) m.vt = vt;
       const el = m.mk.getElement()?.firstElementChild;
       if (el) {
         el.classList.toggle('is-stale', stale);
-        el.classList.toggle('no-hd', !Number.isFinite(brg));
+        el.classList.toggle('no-hd', !Number.isFinite(m.rot));
         el.classList.toggle('is-focus', focused);
-        const hd = el.querySelector('.sb-bus-hd');
-        if (hd && Number.isFinite(brg)) hd.style.transform = `rotate(${brg}deg)`;
         if (moved && !stale) pulse(el);
       }
     }
@@ -323,5 +443,13 @@ export function createBusLayer(map, cb) {
     }
     return changed;
   }
-  return { draw, setYou };
+
+  /** Where a bus's badge is drawn now (vehicle id), or null. */
+  function shown(id) {
+    const m = markers.get(String(id));
+    if (!m) return null;
+    const p = m.mk.getLatLng();
+    return [p.lat, p.lng];
+  }
+  return { draw, setYou, shown };
 }

@@ -197,9 +197,9 @@ export function createMap(elId) {
     },
 
     /**
-     * Live buses, updated in place.
+     * Live buses, updated in place, drawn on their route line and moved along it (map/track.js).
      * @param {Array} list store.buses
-     * @param {{routes, hidden?:string[], focus?:string[]|null, nowS?:number}} o
+     * @param {{routes, shapes?, hidden?:string[], focus?:string[]|null, nowS?:number}} o shapes: store.shapes
      */
     drawBuses(list, o = {}) { buses.draw(list, o); if (you) renderYou(); },
 
