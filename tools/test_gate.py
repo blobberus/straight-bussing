@@ -102,15 +102,25 @@ def probe_retries_empty_answers_and_stops_at_the_first_bus():
     bus = {"header": {"timestamp": head}, "entity": [{"vehicle": {"position": {"latitude": 41.8}, "trip": {"trip_id": "t"},
                                                                   "timestamp": head - 20}}]}
     empty = {"header": {"timestamp": head}, "entity": []}
+    none = lambda: {"entity": []}
     seq, slept = [empty, empty, bus], []
-    assert G.probe(lambda: seq.pop(0), sleep=slept.append) == (True, 1) and slept == [10.0, 10.0]
+    assert G.probe(lambda: seq.pop(0), sleep=slept.append, get_trips=none) == (True, 1) and slept == [10.0, 10.0]
     seq = [bus, empty, empty]
-    assert G.probe(lambda: seq.pop(0), sleep=lambda s: None) == (True, 1) and len(seq) == 2
-    assert G.probe(lambda: empty, sleep=lambda s: None) == (True, 0)
+    assert G.probe(lambda: seq.pop(0), sleep=lambda s: None, get_trips=none) == (True, 1) and len(seq) == 2
+    assert G.probe(lambda: empty, sleep=lambda s: None, get_trips=none) == (True, 0)
 
     def boom():
         raise OSError("down")
-    assert G.probe(boom, sleep=lambda s: None) == (False, 0)
+    assert G.probe(boom, sleep=lambda s: None, get_trips=boom) == (False, 0)
+    # empty positions (a machine Passio keeps answering with empty lists, DC-015) but live predictions: buses run
+    now = int(G.time.time())
+    trips = {"entity": [{"trip_update": {"trip": {"trip_id": "t1"}, "vehicle": {"id": "101"},
+                                         "stop_time_update": [{"arrival": {"time": now + 300}}]}},
+                        {"trip_update": {"trip": {"trip_id": "t2"}, "stop_time_update": [{"arrival": {"time": now - 900}}]}},
+                        {"trip_update": "junk"}, None]}
+    assert G.predicted_buses(trips, now) == 1
+    assert G.probe(lambda: empty, sleep=lambda s: None, get_trips=lambda: trips) == (True, 1)
+    assert G.probe(boom, sleep=lambda s: None, get_trips=lambda: trips) == (True, 1)
     stale = {"header": {"timestamp": head}, "entity": [{"vehicle": {"position": {"latitude": 41.8},
                                                                     "trip": {"trip_id": "t"}, "timestamp": head - 400}}]}
     no_trip = {"header": {"timestamp": head}, "entity": [{"vehicle": {"position": {"latitude": 41.8}, "timestamp": head}}]}
@@ -144,6 +154,8 @@ def activity_tracks_buses_feed_health_and_round_trips_through_json():
     assert G.from_live(j, t0 + 60 + 31 * 60, act.spans).mode == "sleep"
     assert G.from_live({"started": t0}, t0 + 10, act.spans).mode == "collect"
     assert G.from_live(None, t0, []) is None and G.from_live({"x": 1}, t0, []) is None
+    act.saw(t0 + 3000, {"fresh": 0, "pred": 2})                        # no position but Passio predicts buses
+    assert act.last_bus == t0 + 3000
     fresh = G.Activity(t0, [])                                        # never saw a bus: the start counts
     assert fresh.verdict(t0 + 29 * 60).mode == "collect" and fresh.verdict(t0 + 31 * 60).mode == "sleep"
 

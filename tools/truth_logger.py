@@ -163,10 +163,12 @@ class RawPolls:
         self.n += 1
 
 
-def poll(tr, w, now, err, get=fetch, raw=None):
+def poll(tr, w, now, err, get=fetch, raw=None, pred_count=None):
     """One poll of both feeds. Any failure (network, bad JSON, a malformed entry, a detector bug, the raw
     poll file) goes to err() and only skips that feed or entry for this poll, never the run.
+    pred_count(feed, now) -> buses Passio predicts for (service_gate.predicted_buses): added as summary["pred"].
     -> feed_summary or None."""
+    pred = 0
     try:
         feed = get("tripUpdates")
     except Exception as ex:
@@ -176,6 +178,11 @@ def poll(tr, w, now, err, get=fetch, raw=None):
             store_predictions(tr, feed, now, err)
         except Exception as ex:                  # not a feed object at all
             err("tripUpdates", ex)
+        if pred_count is not None:
+            try:
+                pred = pred_count(feed, now)
+            except Exception as ex:
+                err("tripUpdates count", ex)
     try:
         feed = get("vehiclePositions")
     except Exception as ex:
@@ -207,6 +214,8 @@ def poll(tr, w, now, err, get=fetch, raw=None):
         w.write(ev)
     except Exception as ex:
         err("write rows", ex)
+    if summary is not None and pred_count is not None:
+        summary["pred"] = pred
     return summary
 
 
@@ -460,17 +469,18 @@ def main():
             print(f"alerts off for this run ({alerts_setup})", file=sys.stderr, flush=True)
     end = time.time() + a.duration if a.duration else None
     started, polls, summary = time.time(), 0, {}
-    act, idle_stop, gate_at = None, None, started + 60
+    act, idle_stop, gate_at, pcount = None, None, started + 60, None
     if a.stop_when_idle or a.live_file:          # an unreadable schedule or a gate bug only costs the early stop
         try:
             import service_gate as G
             act = G.Activity(started, G.spans_around(G.load_json(G.SERVICE), started), G.route_names())
+            pcount = G.predicted_buses           # a second live signal: some machines get empty position lists
         except Exception as ex:
             print(f"idle stop off for this run ({type(ex).__name__}: {ex})", file=sys.stderr, flush=True)
     try:
         while True:
             t0 = time.time()
-            s = poll(tr, w, int(t0), err, raw=raw)
+            s = poll(tr, w, int(t0), err, raw=raw, pred_count=pcount)
             if plog is not None:
                 try:
                     plog.flush()

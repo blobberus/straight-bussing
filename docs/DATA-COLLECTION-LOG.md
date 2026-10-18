@@ -19,6 +19,17 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 
 ## Errors
 
+### DC-015 Some machines get empty vehicle lists from Passio most of the time (watch; the gate no longer depends on them)
+- Found 2026-10-18 while checking why about 1 in 3 polls had no vehicles: on 2026-10-14 16:00 to 16:06 the two
+  overlapping CI runs alternated, and one of them got an empty list on 4 of 5 polls while the other always had 11 to
+  18 buses. The empty answers carry a fresh feed clock (not a cached copy), so Passio serves them to some clients.
+- Impact: none on the data so far (the overlapping run logged the buses). Risk after DC-014: an idle run or a lone
+  collect run on such a machine could think no bus runs.
+- Fixed: `service_gate.probe` also reads the trip updates when a read has no position (Passio predicts only while
+  buses run) and asks with a cache-buster like the app; the logger counts a predicted bus as live
+  (`poll(..., pred_count)`, summary `pred=`); scheduled starts still start collecting regardless. Watch whether riders'
+  phones see it too (the app would show "No shuttles are reporting live locations" for a poll).
+
 ### DC-014 The collector ran all day and night, even while no bus ran (fixed: only while buses run)
 - Found 2026-10-18 (owner: "only run when the bus routes are active ... a buffer for time so that just in case the
   schedule is not exact"). Since DC-001 the chain logged every 10 s around the clock: on Sunday Oct 18 it had run all

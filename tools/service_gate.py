@@ -162,8 +162,35 @@ def fresh_buses(feed, now=None):
     return n
 
 
+def predicted_buses(feed, now=None):
+    """Buses Passio is predicting for in a tripUpdates feed: trip updates with a stop time from 2 min ago to
+    60 min ahead (counted per vehicle, else per trip). Passio publishes none while no bus runs (none at 2 to 4 AM
+    on 2026-10-14 / 16), so this is a second live signal next to the positions."""
+    now = int(now or time.time())
+    seen = set()
+    for e in feed.get("entity") or []:
+        u = (e or {}).get("trip_update") if isinstance(e, dict) else None
+        if not isinstance(u, dict):
+            continue
+        veh = u.get("vehicle") if isinstance(u.get("vehicle"), dict) else {}
+        trip = u.get("trip") if isinstance(u.get("trip"), dict) else {}
+        key = veh.get("id") or trip.get("trip_id")
+        for st in u.get("stop_time_update") or []:
+            if not isinstance(st, dict):
+                continue
+            try:
+                t = int(((st.get("arrival") or st.get("departure") or {}) or {}).get("time"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if now - 120 <= t <= now + 3600:
+                seen.add(key or id(u))
+                break
+    return len(seen)
+
+
 def fetch(name, timeout=15):
-    req = urllib.request.Request(FEED + name + ".json", headers={"User-Agent": UA, "Accept-Encoding": "gzip"})
+    url = f"{FEED}{name}.json?_={int(time.time() * 1000)}"          # like the app: never a cached copy
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Encoding": "gzip"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         body = r.read()
     if body[:2] == b"\x1f\x8b":
@@ -171,19 +198,29 @@ def fetch(name, timeout=15):
     return json.loads(body.decode("utf-8"))
 
 
-def probe(get=None, tries=3, gap=10.0, sleep=time.sleep):
-    """-> (feed_ok, live buses). Up to `tries` reads `gap` s apart, stopping at the first with a bus: Passio
-    sends an empty list on about 1 in 3 polls even in service, so 3 empty reads in a row are needed for 'none'."""
+def probe(get=None, tries=3, gap=10.0, sleep=time.sleep, get_trips=None):
+    """-> (feed_ok, live buses). Up to `tries` reads `gap` s apart, stopping at the first with a bus. Passio sends
+    an empty vehicle list on about 1 in 3 polls even in service, and some machines get empty lists most of the time
+    (one CI runner on 2026-10-14: 4 in 5, with a fresh feed clock; DC-015), so each read with no position also
+    checks the trip updates (predictions exist only while buses run)."""
     get = get or (lambda: fetch("vehiclePositions"))
+    get_trips = get_trips or (lambda: fetch("tripUpdates"))
     ok = False
     for i in range(tries):
         if i:
             sleep(gap)
+        n = 0
         try:
             n = fresh_buses(get())
             ok = True
         except Exception:
-            continue
+            pass
+        if not n:
+            try:
+                n = predicted_buses(get_trips())
+                ok = True
+            except Exception:
+                pass
         if n:
             return True, n
     return ok, 0
@@ -210,7 +247,7 @@ class Activity:
     def saw(self, now, summary):
         if summary is not None:
             self.last_ok = now
-            if summary.get("fresh"):
+            if summary.get("fresh") or summary.get("pred"):     # a position, or a prediction Passio makes for a bus
                 self.last_bus = now
 
     def last_seen(self):
