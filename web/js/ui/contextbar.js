@@ -4,7 +4,8 @@
  * fewer routes than usual, with a one-tap way out.
  *   journey set          -> "Only showing routes for: <label>" + route chips + "Show all" (journey:end)
  *   custom route applied -> "My route: <name>" + "Clear" (custom:clear)
- * Registers the global actions `journey:end` and `custom:clear`; they work from any button in the
+ *   Lines by Time on     -> "Lines active at <time>" + "Clear" (time:clear; core/custom.js clearTimeView)
+ * Registers the global actions `journey:end`, `custom:clear` and `time:clear`; they work from any button in the
  * app (sheet content, dialogs, this bar) because actions are looked up by name at tap time.
  * Text too long for the bar scrolls like a song title in Apple Music (startMarquee): it rests at the
  * start, glides left until a copy of the text sits where it began, rests again. Off with reduced motion.
@@ -12,7 +13,8 @@
 import { registerAction } from "./actions.js";
 import { esc } from "../core/esc.js";
 import { activeCustomRoute } from "../core/visibility.js";
-import { clearCustom } from "../core/custom.js";
+import { clearCustom, clearTimeView } from "../core/custom.js";
+import { TIME_PREFIX } from "../core/timeactive.js";
 import { routeChip } from "./components.js";
 
 const MAX_CHIPS = 4;
@@ -37,6 +39,12 @@ export function contextBarHTML(state) {
       + (chips ? `<span class="ctx-chips">${chips}</span>` : "")
       + '<button type="button" class="ctx-btn" data-action="journey:end">Show all</button>';
   }
+  const tv = state && state.timeView;
+  if (tv && tv.name) {
+    const rest = tv.name.startsWith(TIME_PREFIX) ? tv.name.slice(TIME_PREFIX.length).trim() : tv.name;
+    return textHTML(tv.name.startsWith(TIME_PREFIX) ? TIME_PREFIX : "Showing", rest)
+      + `<button type="button" class="ctx-btn" data-action="time:clear" aria-label="Clear ${esc(tv.name)}, show your usual routes">Clear</button>`;
+  }
   const c = activeCustomRoute(state || {});
   if (c) {
     return textHTML("My route:", c.name)
@@ -58,7 +66,7 @@ export function endJourneyPatch(state) {
 }
 
 /**
- * Register journey:end / custom:clear. Safe to call more than once (later call replaces).
+ * Register journey:end / custom:clear / time:clear. Safe to call more than once (later call replaces).
  * @returns {void}
  */
 export function registerContextActions() {
@@ -67,6 +75,10 @@ export function registerContextActions() {
   });
   registerAction("custom:clear", (ds, ev, ctx) => {
     const p = clearCustom(ctx.store.get());
+    if (Object.keys(p).length) ctx.store.set(p);
+  });
+  registerAction("time:clear", (ds, ev, ctx) => {
+    const p = clearTimeView(ctx.store.get());
     if (Object.keys(p).length) ctx.store.set(p);
   });
 }
@@ -137,7 +149,7 @@ export function mountContextBar(el, store, opts = {}) {
   el.addEventListener("pointerleave", leave);
   draw(store.get());
   const off = store.subscribe((s, changed) => {
-    if (!changed || ["journey", "activeCustom", "customRoutes", "routes"].some((k) => changed.has(k))) draw(s);
+    if (!changed || ["journey", "activeCustom", "customRoutes", "routes", "timeView"].some((k) => changed.has(k))) draw(s);
   });
   return () => {
     off();

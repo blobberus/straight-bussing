@@ -13,6 +13,7 @@ import { nowS } from "./core/time.js";
 import { hav } from "./core/geo.js";
 import { DEMO } from "./core/demo.js";
 import { mapVisibility } from "./core/visibility.js";
+import { settleTimeView } from "./core/custom.js";
 import { createMap } from "./map/map.js";
 import { loadStatic } from "./data/static.js";
 import { startLive } from "./data/live.js";
@@ -28,10 +29,10 @@ import { isSettingsOpen, closeSettingsOverlay } from "./ui/settings-overlay.js";
 import { startTripMap } from "./ui/tripmap.js";
 import { createCompass } from "./ui/compass.js";
 
-/** Every view module; each calls registerView() at import time. */
-export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes", "settings"]);
+/** Every view module; each calls registerView() at import time ("timepick" only registers its actions: Lines by Time is an overlay). */
+export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes", "settings", "timepick"]);
 /** Views that may not be deployed yet: a failed import is a warning, not an error. */
-const OPTIONAL_VIEWS = new Set(["settings"]);
+const OPTIONAL_VIEWS = new Set(["settings", "timepick"]);
 const RENDER_TICK_MS = 15000;
 const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "setSelectedStop", "setUser", "setHeading",
   "highlightStops", "drawPlan", "drawFavorites", "setTrip", "inView", "setLandmarks", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove", "onMapTap"];
@@ -381,6 +382,8 @@ async function boot() {
   mountContextBar(el.ctxbar, store);
 
   store.subscribe((s, changed) => { syncMap(s, changed); scheduleRender(); syncHistory(); });
+  // Lines by Time: the moment the shown lines change (one deselected or added), the "Lines active at" name goes and the lines stay
+  store.subscribe((s, changed) => { if (s.timeView && (!changed || changed.has("hiddenRoutes") || changed.has("routes"))) { const p = settleTimeView(s); if (Object.keys(p).length) store.set(p); } });
   render();
   syncMap(store.get(), null);
   tripMap = startTripMap(store, map);   // you in the started trip + follow camera (same evaluation as the card and alerts)

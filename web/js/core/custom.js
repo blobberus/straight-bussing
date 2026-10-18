@@ -7,6 +7,13 @@
  * Applying a custom route rewrites hiddenRoutes to "everything not in the set" and remembers the
  * previous hiddenRoutes in prevHidden, so clearing it restores what the user had. Only one custom
  * route is applied at a time.
+ *
+ * Lines by Time (owner 2026-10-18) applies a temporary one, store.timeView (never saved, not in My Routes):
+ * {at, name: "Lines active at <time>", rids, before: {hiddenRoutes, activeCustom, prevHidden}}. It shows only rids and
+ * keeps everything from before (an applied custom route too) to put back on Clear. The moment the shown set changes
+ * (a line deselected, or one added) it is no longer "Lines active at": settleTimeView drops the name and the routes
+ * stay as they are, like an edited custom route. state.js saves `before` while it is on, so a reload shows the
+ * rider's own routes. iOS: Kit Custom.applyTimeView / clearTimeView / settleTimeView.
  */
 
 const MAX_NAME = 60;
@@ -78,7 +85,7 @@ export function createCustom(state, { name, rids }) {
  */
 export function saveVisibleAsCustom(state, name) {
   const { id, patch } = createCustom(state, { name, rids: visibleRids(state) });
-  return { id, patch: { ...patch, activeCustom: id, prevHidden: [] } };
+  return { id, patch: { ...patch, activeCustom: id, prevHidden: [], timeView: null } };
 }
 
 /**
@@ -138,8 +145,9 @@ export function deleteCustom(state, id) {
 export function applyCustom(state, id) {
   const c = (state.customRoutes || []).find((x) => x.id === id);
   if (!c) return {};
-  const prev = state.activeCustom ? state.prevHidden || [] : state.hiddenRoutes || [];
-  return { activeCustom: id, prevHidden: prev.slice(), hiddenRoutes: hiddenFor(state, c.rids), routeFilter: null };
+  const src = state.timeView && state.timeView.before ? state.timeView.before : state;   // Lines by Time on: what was there before it
+  const prev = src.activeCustom ? src.prevHidden || [] : src.hiddenRoutes || [];
+  return { activeCustom: id, prevHidden: prev.slice(), hiddenRoutes: hiddenFor(state, c.rids), routeFilter: null, timeView: null };
 }
 
 /**
@@ -199,7 +207,7 @@ export function moveToIndex(state, rid, index) {
 export function showAll(state, rids = null) {
   const only = rids ? new Set(rids.map(String)) : null;
   const hidden = only ? (state.hiddenRoutes || []).filter((r) => !only.has(r)) : [];
-  return { activeCustom: null, prevHidden: [], hiddenRoutes: hidden };
+  return { activeCustom: null, prevHidden: [], hiddenRoutes: hidden, timeView: null };
 }
 
 /**
@@ -210,7 +218,7 @@ export function showAll(state, rids = null) {
  */
 export function hideAll(state, rids = null) {
   const add = rids ? rids.map(String) : Object.keys(state.routes || {});
-  return { activeCustom: null, prevHidden: [], hiddenRoutes: [...new Set([...(state.hiddenRoutes || []), ...add])] };
+  return { activeCustom: null, prevHidden: [], hiddenRoutes: [...new Set([...(state.hiddenRoutes || []), ...add])], timeView: null };
 }
 
 /**
@@ -227,7 +235,63 @@ export function showRunning(state, operating, rids = null) {
   const scope = rids ? rids.map(String) : Object.keys(state.routes || {});
   const inScope = new Set(scope), keep = new Set((operating || []).map(String));
   const outside = (state.hiddenRoutes || []).map(String).filter((r) => !inScope.has(r));
-  return { activeCustom: null, prevHidden: [], hiddenRoutes: [...new Set([...outside, ...scope.filter((r) => !keep.has(r))])] };
+  return { activeCustom: null, prevHidden: [], hiddenRoutes: [...new Set([...outside, ...scope.filter((r) => !keep.has(r))])], timeView: null };
+}
+
+/**
+ * What a timeView keeps to restore: the visibility before Lines by Time (the one already kept if it is on).
+ * @param {object} state
+ * @returns {{hiddenRoutes:string[], activeCustom:string|null, prevHidden:string[]}}
+ */
+function beforeTime(state) {
+  const b = state.timeView && state.timeView.before;
+  if (b) return b;
+  return { hiddenRoutes: (state.hiddenRoutes || []).map(String), activeCustom: state.activeCustom || null, prevHidden: (state.prevHidden || []).map(String) };
+}
+
+/**
+ * Apply Lines by Time's temporary custom route: show only the lines active at the chosen time, keep what was shown
+ * before for Clear. Ends a journey (a started trip, "Routes to station"): the menu says so before Set time, since a
+ * journey decides the map over hiddenRoutes (core/visibility.js) and the lines would not show.
+ * @param {object} state
+ * @param {{at:number, name:string, rids:string[]}} spec name: "Lines active at <time>"
+ * @returns {object} patch ({} when no known route is in rids: the map does not change)
+ */
+export function applyTimeView(state, { at, name, rids }) {
+  const keep = [...new Set((rids || []).map(String))].filter((r) => (state.routes || {})[r]);
+  if (!keep.length) return {};
+  const label = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, 80) || 'Lines active';
+  return {
+    timeView: { at: Number(at) || 0, name: label, rids: keep, before: beforeTime(state) },
+    hiddenRoutes: hiddenFor(state, keep), activeCustom: null, prevHidden: [], routeFilter: null, journey: null,
+  };
+}
+
+/**
+ * Clear Lines by Time: put back what was shown before it (an applied custom route stays applied; one deleted
+ * meanwhile falls back to the routes from before it).
+ * @param {object} state
+ * @returns {object} patch ({} if it is not on)
+ */
+export function clearTimeView(state) {
+  const tv = state.timeView;
+  if (!tv) return {};
+  const b = tv.before || {};
+  if (b.activeCustom && !(state.customRoutes || []).some((c) => c.id === b.activeCustom)) {
+    return { timeView: null, activeCustom: null, hiddenRoutes: (b.prevHidden || []).slice(), prevHidden: [] };
+  }
+  return { timeView: null, hiddenRoutes: (b.hiddenRoutes || []).slice(), activeCustom: b.activeCustom || null, prevHidden: (b.prevHidden || []).slice() };
+}
+
+/**
+ * The shown set no longer equals the time's lines (a line deselected or added): drop the name, keep the routes.
+ * @param {object} state
+ * @returns {object} patch ({} while it still matches, or when it is not on)
+ */
+export function settleTimeView(state) {
+  const tv = state.timeView;
+  if (!tv) return {};
+  return matchesCurrent(state, tv) ? {} : { timeView: null };
 }
 
 /**

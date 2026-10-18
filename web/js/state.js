@@ -104,6 +104,7 @@ export function initialState() {
     favStops: cleanHidden(load(KEYS.favStops, [])),            // favorite station ids
     notify: cleanNotify(load(KEYS.notify, null)),              // "bus nearing my station" settings
     journey: null,                                             // {rids, label} while "only show relevant routes" is on (not persisted)
+    timeView: null,                                            // Lines by Time's temporary route (core/custom.js applyTimeView; not persisted)
     // nav (ui/router.js writes)
     view: 'nearby', prevView: null, stopId: null, routeId: null,
     routeFilter: null,
@@ -117,12 +118,15 @@ export function initialState() {
  */
 export function persistPrefs(s) {
   return s.subscribe((state, changed) => {
-    if (!changed || changed.has('hiddenRoutes')) save(KEYS.hiddenRoutes, cleanHidden(state.hiddenRoutes));
+    // Lines by Time is temporary: while it is on, what was shown before it is what gets saved (a reload shows that)
+    const b = state.timeView && state.timeView.before, tv = !!changed && changed.has('timeView');
+    const vis = b ? { hiddenRoutes: b.hiddenRoutes, activeCustom: b.activeCustom, prevHidden: b.prevHidden } : state;
+    if (!changed || tv || changed.has('hiddenRoutes')) save(KEYS.hiddenRoutes, cleanHidden(vis.hiddenRoutes));
     if (!changed || changed.has('theme')) save(KEYS.theme, cleanTheme(state.theme));
     if (!changed || changed.has('routeOrder')) save(KEYS.routeOrder, cleanHidden(state.routeOrder));
     if (!changed || changed.has('customRoutes')) save(KEYS.customRoutes, cleanCustom(state.customRoutes));
-    if (!changed || changed.has('activeCustom')) save(KEYS.activeCustom, cleanId(state.activeCustom));
-    if (!changed || changed.has('prevHidden')) save(KEYS.prevHidden, cleanHidden(state.prevHidden));
+    if (!changed || tv || changed.has('activeCustom')) save(KEYS.activeCustom, cleanId(vis.activeCustom));
+    if (!changed || tv || changed.has('prevHidden')) save(KEYS.prevHidden, cleanHidden(vis.prevHidden));
     if (!changed || changed.has('favStops')) save(KEYS.favStops, cleanHidden(state.favStops));
     if (!changed || changed.has('notify')) save(KEYS.notify, cleanNotify(state.notify));
   });

@@ -30,7 +30,7 @@ import { DEMO } from "../../core/demo.js";
 import { routeChip, officialLinks, icon } from "../components.js";
 import { alertBodyHTML } from "./alerts.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
-import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen } from "../settings-overlay.js";
+import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen, overlayKind } from "../settings-overlay.js";
 import { locPlatform, locEnv, LOC_STEPS, LOC_ORDER, locResultText } from "../../core/lochelp.js";
 import { feedbackLinkHTML } from "../feedback.js";
 
@@ -485,7 +485,7 @@ export const SETTINGS_CONTENT = Object.freeze({
  * @returns {HTMLElement} overlay root
  */
 export function openSettings(ctx, trigger) {
-  return openSettingsOverlay(ctx, SETTINGS_CONTENT, { trigger });
+  return openSettingsOverlay(ctx, SETTINGS_CONTENT, { trigger, title: "Settings", kind: "settings" });
 }
 
 // Compatibility shim: Settings is no longer a sheet view. Anything that still navigates to
@@ -504,6 +504,7 @@ registerView("settings", {
 
 // The gear toggles the overlay.
 registerAction("settings:open", (ds, ev, ctx) => {
+  if (isSettingsOpen() && overlayKind() !== "settings") closeSettingsOverlay({ focus: "none" });   // Lines by Time: swap
   if (isSettingsOpen() && !ds?.section) return void closeSettingsOverlay();
   const o = isSettingsOpen() ? document.getElementById("settingsOverlay") : openSettings(ctx, ev?.target?.closest?.("[data-action]") || undefined);
   if (ds?.section) {   // e.g. Current trip's "How to allow location": open Settings at that section

@@ -261,7 +261,7 @@ const week = (d) => ({ mon: d, tue: d, wed: d, thu: d, fri: d, sat: d, sun: d })
 test("show running: core keeps the operating routes (live or scheduled now), hides the rest of the scope", () => {
   const s = base({ hiddenRoutes: ["R3"], customRoutes: [C1], activeCustom: "c1", prevHidden: ["R2"] });
   eq(operatingIds(s, NOW).sort(), ["R1", "R2"], "R1 and R2 have live buses in the fixture");
-  eq(showRunning(s, ["R1"]), { activeCustom: null, prevHidden: [], hiddenRoutes: ["R2", "R3"] }, "every route in scope: data order");
+  eq(showRunning(s, ["R1"]), { activeCustom: null, prevHidden: [], hiddenRoutes: ["R2", "R3"], timeView: null }, "every route in scope: data order; ends Lines by Time");
   eq(showRunning(base({ hiddenRoutes: ["R3"] }), ["R1"], ["R1", "R2"]).hiddenRoutes, ["R3", "R2"], "station scope: R3 outside it untouched");
   const silent = base({ buses: [], service: { routes: { R3: { days: week(allDay), exceptions: [] } } } });
   eq(operatingIds(silent, NOW), ["R3"], "scheduled now with no live location counts (never hidden by Show running)");

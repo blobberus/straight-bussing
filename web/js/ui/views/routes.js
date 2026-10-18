@@ -119,6 +119,10 @@ export function topBarHTML(state, ui = R) {
       + `<input id="rt-name-in" type="text" data-input="routes-name" maxlength="60" enterkeyhint="done" autocomplete="off" value="${esc(ui.draft || defaultName(state))}">`
       + `<div class="v-actions rt-nameact"><button type="button" class="v-btn v-btn--secondary" data-action="routes:custom-cancel">Cancel</button><button type="button" class="v-btn v-btn--primary" data-action="routes:custom-save">Save</button></div></div>`;
   }
+  const tv = state.timeView;
+  if (tv && tv.name) {   // Lines by Time (views/timepick.js): a temporary custom route, never saved
+    return `<div class="v-note rt-bar" role="status"><span class="v-grow">Showing <strong class="rt-cname">${esc(tv.name)}</strong></span><button type="button" class="v-btn v-btn--quiet" data-action="time:clear" aria-label="Clear ${esc(tv.name)}, show your usual routes">Clear</button></div>`;
+  }
   const c = activeCustomRoute(state);
   if (c && matchesCurrent(state, c)) {
     return `<div class="v-note rt-bar" role="status"><span class="v-grow">Showing <strong class="rt-cname">${esc(c.name)}</strong></span><button type="button" class="v-btn v-btn--quiet" data-action="custom:clear" aria-label="Clear ${esc(c.name)}, show your usual routes">Clear</button></div>`;

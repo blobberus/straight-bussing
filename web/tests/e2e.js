@@ -8,6 +8,7 @@ import { test, eq, ok, near, holdRun, run } from "./lib.js";
 import { shellE2E } from "./ui-shell-e2e.js";
 import { currentTripE2E } from "./e2e-current.js";
 import { WELCOME_KEY } from "../js/ui/feedback.js";
+import { localParts } from "../js/core/schedule.js";
 
 holdRun();
 
@@ -469,6 +470,39 @@ test("settings gear: top-right, labeled, 44px target, clear of the locate button
   ok(/Done/.test(txt(done)) && dr.right > orr.left + orr.width * 0.7 && dr.top < orr.top + 60, "Done button in the top-right corner");
   click(done, "Done");
   await waitFor(() => o.dataset.state === "closed", "Done closes Settings");
+});
+
+test("lines by time: the clock next to the gear opens the menu; Set time shows only those lines; deselecting one drops the name", async () => {
+  const c = $("#timeBtn"), g = $("#settingsBtn");
+  ok(c && c.getAttribute("aria-label") === "Lines by Time" && c.dataset.action === "time:open", "clock button");
+  const r = c.getBoundingClientRect(), gr = g.getBoundingClientRect();
+  ok(r.width >= 44 && r.height >= 44, "44px target: " + r.width + "x" + r.height);
+  ok(Math.abs(r.top - gr.top) < 2 && r.right <= gr.left + 1 && gr.left - r.right < 12, "right next to the gear, same row");
+  click(c, "clock");
+  const o = await waitFor(() => { const x = $("#settingsOverlay"); return x && !x.hidden && x.dataset.state === "open" && x.dataset.kind === "time" ? x : null; }, "Lines by Time open");
+  eq(txt($("#stoTitle")), "Lines by Time");
+  let wed = null;                                          // next Wednesday (Chicago), 5:00 PM: weekday service
+  for (let i = 1; i <= 7 && !wed; i++) { const p = localParts(Date.now() / 1000 + i * 86400); if (p.dow === 2) wed = p; }
+  const key = (el, k, n = 1) => { for (let i = 0; i < n; i++) el.dispatchEvent(new W.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true })); };
+  const col = (id) => o.querySelector("#" + id);
+  key(col("tpMonth"), "Home"); key(col("tpMonth"), "ArrowDown", wed.m - 1);
+  key(col("tpDay"), "Home"); key(col("tpDay"), "ArrowDown", wed.d - 1);
+  key(col("tpHour"), "Home"); key(col("tpHour"), "ArrowDown", 4);
+  key(col("tpMinute"), "Home"); key(col("tpAmpm"), "End");
+  click(o.querySelector('[data-sto="done"]'), "Set time");
+  await waitFor(() => state().timeView && o.dataset.state === "closed", "applied, menu closed");
+  const tv = state().timeView;
+  ok(tv.rids.length > 0 && tv.name.startsWith("Lines active at Wed "), tv.name);
+  await waitFor(() => !$("#ctxbar").hidden && /Lines active at/.test(txt($("#ctxbar"))), "the context bar names it");
+  eq(state().hiddenRoutes.slice().sort(), Object.keys(state().routes).filter((x) => !tv.rids.includes(x)).sort(), "only its lines shown");
+  tab("routes");
+  const rid = tv.rids[0];
+  await waitFor(() => $(`.v-eye[data-id="${rid}"]`), "eye of one of its lines");
+  click($(`.v-eye[data-id="${rid}"]`), "eye");
+  await waitFor(() => state().timeView === null && $("#ctxbar").hidden, "the name is gone");
+  ok(state().hiddenRoutes.includes(rid) && tv.rids.slice(1).every((x) => !state().hiddenRoutes.includes(x)), "the other lines are still shown");
+  SB.store.set({ hiddenRoutes: [], timeView: null });
+  tab("nearby");
 });
 
 shellE2E(shellHelpers, "credit");

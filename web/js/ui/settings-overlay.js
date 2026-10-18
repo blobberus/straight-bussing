@@ -12,6 +12,9 @@
  * The DOM is created from JS and appended to #app, so on desktop it lives inside the scaled iPhone
  * frame (ui/frame.js); positions are measured in #app's layout px (screen px / scale).
  * Content is supplied by the caller (ui/views/settings.js): {render(state), mount(root, ctx), unmount(), refresh()}.
+ * The same shell hosts Lines by Time (ui/views/timepick.js, owner 2026-10-18: "a separate menu that looks like the
+ * settings menu"): openSettingsOverlay's opts give it its own title, a start button (Cancel) and the end button's
+ * label and action (Set time); without them the head is Settings' (title "Settings", Done on the right).
  */
 import { bindActions } from "./actions.js";
 import { bus } from "../core/events.js";
@@ -22,7 +25,7 @@ const REFRESH_MS = 15000;
 const HIDE_MS = 380;
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-let el = null, body = null, heading = null, scrim = null;
+let el = null, body = null, heading = null, scrim = null, startSide = null, endBtn = null, endAction = null;
 let sess = null;      // open session
 let hideTimer = 0;
 let ctxRef = null;
@@ -110,13 +113,15 @@ function ensure() {
   el.setAttribute("aria-labelledby", "stoTitle");
   el.dataset.state = "closed";
   el.hidden = true;
-  el.innerHTML = '<div class="sto-head"><span class="sto-side" aria-hidden="true"></span>'
+  el.innerHTML = '<div class="sto-head"><span class="sto-side" data-sto="start" aria-hidden="true"></span>'
     + '<h2 id="stoTitle" class="sto-title" tabindex="-1">Settings</h2>'
     + '<span class="sto-side sto-side--end"><button type="button" class="sto-done" data-sto="done">Done</button></span></div>'
     + '<div class="sto-body" data-sto="body"></div>';
   body = el.querySelector('[data-sto="body"]');
   heading = el.querySelector("#stoTitle");
-  el.querySelector('[data-sto="done"]').addEventListener("click", () => closeSettingsOverlay());
+  startSide = el.querySelector('[data-sto="start"]');
+  endBtn = el.querySelector('[data-sto="done"]');
+  endBtn.addEventListener("click", () => { if (endAction) endAction(); else closeSettingsOverlay(); });
   bindActions(el, () => ctxRef);   // data-action rows inside (About)
   scrim = document.createElement("div");
   scrim.className = "sto-scrim";
@@ -127,6 +132,26 @@ function ensure() {
   host.appendChild(scrim);
   host.appendChild(el);
   return el;
+}
+
+/** The head for this open: title, optional start button (e.g. Cancel), end button label and action (default Done = close). */
+function setHead(opts) {
+  heading.textContent = opts.title || "Settings";
+  el.dataset.kind = opts.kind || "settings";
+  startSide.textContent = "";
+  startSide.setAttribute("aria-hidden", "true");
+  if (opts.start && opts.start.label) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "sto-done sto-start";
+    b.dataset.sto = "start-btn";
+    b.textContent = opts.start.label;
+    b.addEventListener("click", () => { if (opts.start.onClick) opts.start.onClick(); else closeSettingsOverlay(); });
+    startSide.appendChild(b);
+    startSide.removeAttribute("aria-hidden");
+  }
+  endBtn.textContent = (opts.end && opts.end.label) || "Done";
+  endAction = (opts.end && opts.end.onClick) || null;
 }
 
 function focusables() {
@@ -173,19 +198,32 @@ export function isSettingsOpen() {
 }
 
 /**
+ * Which menu is open: "settings", "time" (Lines by Time), or null when closed.
+ * @returns {string|null}
+ */
+export function overlayKind() {
+  return sess && el ? el.dataset.kind || "settings" : null;
+}
+
+/**
  * Open the overlay (no-op if already open).
  * @param {object} ctx app ctx ({store, setDetent, navigate, toast, now, ...})
  * @param {{render:(state:object)=>string, mount?:(root:Element, ctx:object)=>void, unmount?:()=>void, refresh?:()=>void}} content
- * @param {{trigger?:HTMLElement}} [opts] element that gets focus back on close (default: the gear)
+ * @param {{trigger?:HTMLElement, opener?:HTMLElement|null, title?:string, kind?:string,
+ *          start?:{label:string, onClick?:()=>void}, end?:{label:string, onClick?:()=>void}}} [opts]
+ *   trigger: gets focus back on close (default: the gear); opener: the button whose aria-expanded follows the overlay
+ *   (default the gear); title (default "Settings"); kind: data-kind on the root (CSS); start / end: head buttons
+ *   (no start = none; no end = Done, which closes)
  * @returns {HTMLElement} the overlay root
  */
 export function openSettingsOverlay(ctx, content, opts = {}) {
   ensure();
   if (sess) return el;
   clearTimeout(hideTimer);
-  const sheet = $("sheet"), gear = $("settingsBtn");
-  sess = { ctx, content, trigger: pickTrigger(opts.trigger), prev: sheet?.dataset.detent || null, key: navKey(ctx.store.get()), offs: [], inerted: [] };
+  const sheet = $("sheet"), gear = opts.opener === undefined ? $("settingsBtn") : opts.opener;
+  sess = { ctx, content, trigger: pickTrigger(opts.trigger), prev: sheet?.dataset.detent || null, key: navKey(ctx.store.get()), offs: [], inerted: [], opener: gear };
   ctxRef = ctx;
+  setHead(opts);
   const tyBefore = sheetTy();     // read before the detent change: computed style jumps to the end value
   try { ctx.setDetent?.("full"); } catch (e) { /* no sheet */ }
   try {
@@ -193,7 +231,7 @@ export function openSettingsOverlay(ctx, content, opts = {}) {
     content.mount?.(body, ctx);
   } catch (e) {
     console.error("settings overlay", e);
-    body.innerHTML = '<p class="v-sec">Couldn\'t show Settings. Official service: 773.702.8181.</p>';
+    body.innerHTML = `<p class="v-sec">Couldn't show ${opts.title || "Settings"}. Official service: 773.702.8181.</p>`;
   }
   // Slide up together with the sheet: start as far below as the sheet still has to travel
   // (it was just told to go "full"; sheetTy() is its distance to that position), or from off-screen when it does not move.
@@ -253,7 +291,7 @@ export function closeSettingsOverlay(opts = {}) {
   try { s.content.unmount?.(); } catch (e) { console.error(e); }
   s.inerted.forEach((n) => { n.inert = false; });
   scrim.classList.remove("is-in");
-  $("settingsBtn")?.setAttribute("aria-expanded", "false");
+  s.opener?.setAttribute("aria-expanded", "false");
   el.dataset.state = "closed";
   el.setAttribute("inert", "");
   const target = restore === true ? s.prev : restore || null;

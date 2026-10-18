@@ -106,7 +106,7 @@ test("custom: moveToIndex clamps and fills; showAll/hideAll scope + drop custom 
   eq(C.moveToIndex(s, "c", 0), {});
   eq(C.moveToIndex(s, "zz", 1), {});
   const h = base({ hiddenRoutes: ["a", "b"], activeCustom: "x", prevHidden: ["d"] });
-  eq(C.showAll(h), { activeCustom: null, prevHidden: [], hiddenRoutes: [] });
+  eq(C.showAll(h), { activeCustom: null, prevHidden: [], hiddenRoutes: [], timeView: null }, "also ends Lines by Time");
   eq(C.showAll(h, ["a"]).hiddenRoutes, ["b"]);
   eq(C.hideAll(h).hiddenRoutes.sort(), ["a", "b", "c", "d"]);
   eq(C.hideAll(base({ hiddenRoutes: ["a"] }), ["a", "c"]).hiddenRoutes, ["a", "c"]);
