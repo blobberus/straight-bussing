@@ -11,6 +11,7 @@ per true bus arrival at a stop (schema in arrivals_lib.COLUMNS, docs in docs/DAT
   python tools/truth_logger.py ... --pred-out run_pred.csv          # Passio's prediction 1-30 min ahead per arrival
   python tools/truth_logger.py ... --pred-log p.jsonl --pred-seed old.jsonl   # keep / reload prediction updates
   python tools/truth_logger.py ... --alerts-out run_alerts.csv     # Passio's service alerts, one row per version
+  python tools/truth_logger.py ... --stop-when-idle --live-file l.json   # stop once no bus runs (service_gate.py)
 A failed fetch, bad JSON or a malformed feed entry only skips that feed or entry for one poll; it is
 counted (status line, final 'done:' line, --status-file) and the run keeps going. Service alerts are polled
 in their own thread (AlertLog) with their own counters, so they can never delay or stop the arrival loop.
@@ -409,6 +410,11 @@ def main():
     ap.add_argument("--alerts-every", type=float, default=300, help="seconds between serviceAlerts polls (min 30; "
                                                                      "the first is at start)")
     ap.add_argument("--alerts-timeout", type=float, default=8, help="serviceAlerts request timeout, seconds")
+    ap.add_argument("--stop-when-idle", action="store_true",
+                    help="stop early once service_gate says no bus runs (30 min without a live bus, no route about "
+                         "to start); the run's successor is then an idle run (collect_chain.py sleep)")
+    ap.add_argument("--live-file", help="every minute: what this run saw (service_gate.Activity) as JSON, for the "
+                                        "chain watcher's collect-or-idle choice")
     a = ap.parse_args()
     a.interval = max(5.0, a.interval)
     st = L.Static()
@@ -454,6 +460,13 @@ def main():
             print(f"alerts off for this run ({alerts_setup})", file=sys.stderr, flush=True)
     end = time.time() + a.duration if a.duration else None
     started, polls, summary = time.time(), 0, {}
+    act, idle_stop, gate_at = None, None, started + 60
+    if a.stop_when_idle or a.live_file:          # an unreadable schedule or a gate bug only costs the early stop
+        try:
+            import service_gate as G
+            act = G.Activity(started, G.spans_around(G.load_json(G.SERVICE), started), G.route_names())
+        except Exception as ex:
+            print(f"idle stop off for this run ({type(ex).__name__}: {ex})", file=sys.stderr, flush=True)
     try:
         while True:
             t0 = time.time()
@@ -466,6 +479,23 @@ def main():
             if s is not None:
                 summary = s
             polls += 1
+            if act is not None:
+                try:
+                    act.saw(t0, s)
+                    if t0 >= gate_at:
+                        gate_at = t0 + 60
+                        v = act.verdict(t0)
+                        if a.stop_when_idle and v.mode == "sleep":
+                            idle_stop = v.why
+                        if a.live_file:
+                            tmp = Path(a.live_file + ".tmp")
+                            tmp.write_text(json.dumps(act.to_json(t0, idle_stop)), encoding="utf-8")
+                            tmp.replace(a.live_file)
+                        if idle_stop:
+                            print(f"{datetime.now():%H:%M:%S} stopping early, no bus is running: {idle_stop}", flush=True)
+                            break
+                except Exception as ex:
+                    err("idle check", ex)
             if polls % 6 == 0:
                 feed_txt = " ".join(f"{k}={v}" for k, v in summary.items())
                 bad = (f" errors={err.proc}" if err.proc else "") + (f" fetch_errors={err.fetch}" if err.fetch else "")
@@ -498,7 +528,8 @@ def main():
                     {"started": int(started), "ended": int(time.time()), "duration": a.duration, "polls": polls,
                      "rows": w.n, "errors": err.proc, "fetch_errors": err.fetch, "first_error": err.first,
                      "raw_polls": raw.n if raw else None, "pred_rows": w.np if a.pred_out else None,
-                     "pred_updates": plog.n if plog else None, **(al or {})}),
+                     "pred_updates": plog.n if plog else None, "idle_stop": idle_stop,
+                     "last_bus": act.last_bus if act else None, **(al or {})}),
                     encoding="utf-8")
             except OSError as ex:
                 print(f"could not write {a.status_file}: {ex}", file=sys.stderr)
@@ -508,7 +539,8 @@ def main():
                   f"{al.get('alert_polls', 0)} polls ok" + (f" (last error {al['alert_last_error']})"
                                                             if al.get("alert_last_error") else ""))
     print(f"done: {w.n} rows appended to {a.out}; polls={polls} errors={err.proc} fetch_errors={err.fetch}"
-          + (f"; {w.np} prediction rows to {a.pred_out}" if a.pred_out else "") + al_txt)
+          + (f"; {w.np} prediction rows to {a.pred_out}" if a.pred_out else "") + al_txt
+          + (f"; stopped early (idle): {idle_stop}" if idle_stop else ""))
 
 
 if __name__ == "__main__":

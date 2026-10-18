@@ -17,6 +17,12 @@ import argparse, json, os, random, shutil, signal, subprocess, sys, time, urllib
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:                                             # when to collect (only while buses run); optional for status
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import service_gate as G
+except Exception:
+    G = None
+
 REPO = os.environ.get("SB_REPO", "blobberus/straight-bussing")
 WORKFLOW = "collect.yml"
 CSV = "data/ground_truth/arrivals.csv"
@@ -167,9 +173,17 @@ def has_alerts(run_file):
 
 
 # ---------------------------------------------------------------- status
+def idle_run(r):
+    """An idle run (collect.yml mode sleep, since 2026-10-18): no bus runs, it logs nothing and starts a collect
+    run when buses report or a scheduled start is near. Its run-name says 'idle'; it may last 5 h 40 min."""
+    return str(r.get("display_title") or r.get("displayTitle") or "").lower().startswith("collector idle")
+
+
 def parked(r, now):
     """True when a run's timestamps can't be its logging window: it waited in its concurrency slot behind
     another run (GitHub reports run_started_at = creation time) or its job ran far longer than a normal run."""
+    if idle_run(r):
+        return False
     s = epoch(r.get("run_started_at") or r["created_at"])
     if r["status"] == "in_progress":
         return now - s > RUN_S + 600
@@ -204,12 +218,19 @@ def last_start(runs, now, window_of):
     return last
 
 
-def coverage(runs, now, complete, window=86400):
+def coverage(runs, now, complete, window=86400, idle=True):
     """-> (window_start, fraction covered, [(gap_start, gap_end)]) from successful/in-progress runs.
-    A run with r["log_window"] = (start, end) (from log_window(), set for parked runs) uses it as is."""
+    A run with r["log_window"] = (start, end) (from log_window(), set for parked runs) uses it as is.
+    idle=True: idle runs count as covered (the chain was alive and no bus ran); False: collecting time only."""
     iv = []
     for r in runs:
         s = epoch(r.get("run_started_at") or r["created_at"])
+        if idle_run(r):
+            if idle and r["status"] == "in_progress":
+                iv.append((s, now))
+            elif idle and r["status"] == "completed" and r.get("conclusion") == "success":
+                iv.append((s, epoch(r["updated_at"])))
+            continue
         if r.get("log_window") and r["status"] in ("in_progress", "completed") and r.get("conclusion") in (None, "success"):
             iv.append(tuple(r["log_window"]))
             continue
@@ -292,11 +313,19 @@ def status(ctx, a):
             issues.append((lvl, "no scheduled run has fired yet", DISPATCH))
         else:
             last = last_start(runs, now, lambda r: log_window(r["id"], token, now))
-            print(f"runs      {total} total, newest started logging {age(now - last)} ago")
+            print(f"runs      {total} total, newest started {age(now - last)} ago")
             for r in runs[:a.n]:
                 s = epoch(r.get("run_started_at") or r["created_at"])
-                print(f"  {ts(s)[:16]}  {r['event']:<17} {r['status']:<11} {r['conclusion'] or '':<9} {r['html_url']}")
-            if now - last > 2 * 3600:
+                kind = "idle (no bus)" if idle_run(r) else r["event"]
+                print(f"  {ts(s)[:16]}  {kind:<17} {r['status']:<11} {r['conclusion'] or '':<9} {r['html_url']}")
+            idle_now = next((r for r in runs[:6] if idle_run(r) and r["status"] == "in_progress"
+                             and now - epoch(r.get("run_started_at") or r["created_at"]) < 6 * 3600), None)
+            collecting = [r for r in runs[:6] if not idle_run(r) and r["status"] == "in_progress"]
+            if idle_now and not collecting:
+                since = epoch(idle_now.get("run_started_at") or idle_now["created_at"])
+                print(f"idle      no bus running: an idle run has been watching the feed since {ts(since)[11:16]} "
+                      f"(it starts a collect run when buses report or a scheduled start is 45 min away)")
+            elif now - last > 2 * 3600:
                 issues.append((2, f"no run started for {age(now - last)}", DISPATCH + "; if it keeps happening, take over locally"))
             elif now - last > 50 * 60:
                 issues.append((1, f"no run started for {age(now - last)} (self-chained runs start about every 40 min)",
@@ -310,7 +339,9 @@ def status(ctx, a):
                       and not r.get("log_window")][:12]:
                 r["log_window"] = log_window(r["id"], token, now)   # a few per day; bounded API use
             start, frac, gaps = coverage(runs, now, total <= len(runs))
-            print(f"coverage  {frac:.0%} of the time since {ts(start)[:16]} (approx; successful + running runs)")
+            _, frac_c, _ = coverage(runs, now, total <= len(runs), idle=False)
+            print(f"coverage  {frac:.0%} of the time since {ts(start)[:16]} (approx; successful + running runs: "
+                  f"collecting {frac_c:.0%}, idle with no bus {max(0.0, frac - frac_c):.0%})")
             for g0, g1 in gaps[-5:]:
                 print(f"  gap {ts(g0)[11:16]} - {ts(g1)[11:16]} ({age(g1 - g0)})")
             if now - start > 2 * 3600 and frac < 0.95:
@@ -322,6 +353,17 @@ def status(ctx, a):
         vehicles = len(f.get("entity", []))
         fa = now - (f.get("header", {}).get("timestamp") or now)
         print(f"feed      Passio: {vehicles} vehicles, feed {age(fa)} old")
+        if G is not None:
+            live = G.fresh_buses(f, now)
+            v = G.decide(now, G.spans_around(G.load_json(G.SERVICE), now), None, True, live, G.route_names())
+            print(f"plan      {'collect' if v.mode == 'collect' else 'idle'} now: {v.why} (tools/service_gate.py; one "
+                  f"empty read proves nothing, Passio sends empty lists often)")
+            idle_only = runs and any(idle_run(r) and r["status"] == "in_progress" for r in runs[:6]) and not any(
+                not idle_run(r) and r["status"] in ("in_progress", "queued") for r in runs[:6])
+            if live and idle_only:
+                issues.append((1, f"{live} bus(es) reporting live but only an idle run is active",
+                               "the idle run reads the feed every 2 min and starts a collect run; if this persists "
+                               "10 min: " + DISPATCH))
     except Exception as e:
         print(f"feed      Passio unreachable: {e}")
         issues.append((1, "Passio feed unreachable (nothing to collect)", "wait; check https://passio3.com is up"))
@@ -552,11 +594,23 @@ def local(ctx, a, resume=False):
     overlap = min(120.0, max(D * 0.1, 1.5 * a.interval), D / 2)   # truth_logger stops up to one poll early
     end = time.time() + a.hours * 3600 if a.hours > 0 else None
     active, next_start, beat = [], time.time(), 0
+    gate = G is not None and not a.no_gate        # only while buses run: same rule as CI (collect.yml)
+    idle_why = None
     try:
         while True:
             now = time.time()
             if ctx.stop.exists():
                 stopping.append(1)
+            if gate and not stopping and now >= next_start and (end is None or now < end - 2):
+                ok, buses = G.probe()
+                v = G.decide(now, G.spans_around(G.load_json(G.SERVICE), now), None, ok, buses, G.route_names())
+                if v.mode == "sleep":
+                    if idle_why is None:
+                        log(ctx, f"idle (not collecting): {v.why}; checking the feed every 2 min")
+                    idle_why, next_start = v.why, now + 120
+                elif idle_why is not None:
+                    log(ctx, f"collecting again: {v.why}")
+                    idle_why = None
             if not stopping and now >= next_start and (end is None or now < end - 2):
                 dur = D if end is None else min(D, end - now)
                 path = ctx.runs / f"run-{datetime.now():%Y%m%d-%H%M%S}.csv"
@@ -570,7 +624,8 @@ def local(ctx, a, resume=False):
                                       "--interval", str(a.interval), "--pred-out", str(pred_partner(path)),
                                       "--pred-log", str(ctx.predlog / (path.stem + ".jsonl")),
                                       "--raw-out", str(ctx.raw / (path.stem + ".jsonl")),
-                                      "--alerts-out", str(alerts_partner(path)), "--pred-seed", *seeds],
+                                      "--alerts-out", str(alerts_partner(path)),
+                                      *([] if a.no_gate else ["--stop-when-idle"]), "--pred-seed", *seeds],
                                      cwd=ctx.root, stdout=logf, stderr=subprocess.STDOUT)
                 logf.close()
                 active.append((p, path))
@@ -651,6 +706,8 @@ def main():
     ap.add_argument("--interval", type=float, default=10, help="local: seconds between polls")
     ap.add_argument("--remote", default="origin", help="git remote holding the data branch")
     ap.add_argument("--no-model", action="store_true", help="local: skip refresh_model.py")
+    ap.add_argument("--no-gate", action="store_true",
+                    help="local: collect all the time (default: only while buses run, tools/service_gate.py)")
     ap.add_argument("-n", type=int, default=8, help="status: runs to list")
     ap.add_argument("--wait", type=float, default=90, help="stop: seconds to wait before forcing")
     a = ap.parse_args()

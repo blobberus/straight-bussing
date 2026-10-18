@@ -14,7 +14,8 @@ Passio, the company behind the shuttle tracking, publishes three public feeds th
 A small program runs on GitHub's computers (not on a phone and not on a home PC) and costs nothing. Every
 **10 seconds** it asks Passio "where are the buses and what are you predicting?", and every 5 minutes it checks the
 alerts. Each session runs 70 minutes, and before it ends it starts the next one, so they overlap and nothing is
-missed. A backup alarm restarts the chain if it ever breaks.
+missed. A backup alarm restarts the chain if it ever breaks. Since October 18 it only does this **while buses run**
+(section 9); the rest of the time it just checks every 2 minutes whether they have started.
 
 ## 3. What it writes down
 It watches each bus and notices when it reaches a stop, in one of four ways: Passio's "next stop" changes, the
@@ -60,3 +61,23 @@ from October 10 on were filled in too (1,789 arrivals added).
 
 Still open: a bus that Passio lists under the **wrong route** entirely. The detection exists, but it stays switched
 off until a real case can be confirmed, so it never writes a wrong row.
+
+## 9. Only while buses run (October 18)
+Until now the collector asked Passio every 10 seconds all day and all night, even when no bus was out, for example
+every weekend morning and most nights after about 12:40 AM. Now it only collects when buses run, with extra time on
+both sides because the timetable is not exact:
+- **A bus is out:** it collects, and keeps going until **30 minutes after the last bus** stops reporting. So a bus that
+  runs late, early, or with no timetable at all is still recorded.
+- **A route is about to start:** it starts **45 minutes before** the timetable says a route begins and waits up to
+  **30 minutes after** that, even if no bus has shown up yet. So the first bus of the day, and what Passio predicted
+  before it, are recorded, and a late start is waited for.
+- **When it can't tell** (Passio's feed is down during scheduled hours), it collects, to be safe.
+- **Otherwise it waits.** A small "idle" job checks every 2 minutes whether a bus has appeared (three quick looks,
+  because Passio sometimes answers "no buses" for a moment even in the day) and every 10 minutes whether a service
+  alert changed. As soon as either happens, or a route is 45 minutes from starting, collecting starts again.
+
+Why it trusts the live feed more than the timetable: the timetable says the night routes run until 4:29 AM and one
+route runs on weekends, but the feed showed no bus after about 12:40 AM on most nights and none of that route on
+weekends. Tried on last week's saved feeds (Oct 10 to 16): buses were out 118 of 168 hours; the new rule would have
+collected 130 hours and waited 38 (2 to 4 hours on weekday nights, 10 to 13 hours on weekend days), missing about one
+minute of bus time. While it waits, it asks Passio about 90 small questions an hour instead of about 1,400.

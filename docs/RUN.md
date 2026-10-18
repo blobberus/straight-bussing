@@ -50,8 +50,10 @@ rely on the app then. When no bus reports, the screens show the shuttle operator
 773.702.8181.
 
 ## Arrival data collection
-GitHub Actions `collect.yml` logs observed arrivals around the clock: each 70-minute run starts its own successor
-(`tools/collect_chain.py`), the :07 / :37 cron only restarts the chain. Health checks and fixes: `monitoring.md`
+GitHub Actions `collect.yml` logs observed arrivals while buses run: each 70-minute run starts its own successor
+(`tools/collect_chain.py`), the :07 / :37 cron only restarts the chain. With no bus running (and no route about to
+start) one idle run checks the feed every 2 min instead (`tools/service_gate.py`, docs/DATA.md "When the
+collector runs"). Health checks and fixes: `monitoring.md`
 (`python tools/monitor.py status`); the data: `docs/DATA.md`.
 
 ## Before any public launch

@@ -1,4 +1,4 @@
-# monitoring.md: constant ground-truth collection runbook
+# monitoring.md: ground-truth collection runbook
 
 For Claude. When the owner says **"run monitoring.md"**: do **Run it** top to bottom, fix what it finds,
 then **Report back**. Paths assume the repo at `%USERPROFILE%\Documents\straight-bussing` (Bash: `~/Documents/straight-bussing`);
@@ -30,8 +30,16 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   `data/monitor/predlog/`; prediction logs and position polls (`data/monitor/raw/`) are kept 14 days for the archive).
   Safe to run next to CI. State lives in `data/monitor/` (git-ignored).
   After a collector code change, restart it (`python tools/monitor.py stop`, then `resume`) so it runs the new code.
-- No rows overnight is normal: no shuttles run, so only alerts.csv's `last_seen` times change (still a commit per run
-  while an alert is in the feed).
+- **Only while buses run** (since 2026-10-18, `tools/service_gate.py`; docs/DATA.md "When the collector runs"): a
+  collect run's logger stops once no bus has reported for 30 min and no route starts within 45 min (summary
+  `logger: N min (stopped early, no bus running: ...)`), and the next run is an **idle run** (run name "Collector idle:
+  no buses running"): it logs nothing, reads the feed every 2 min and the alerts every 10 min, and starts a collect run
+  when a bus reports, an alert changes or a scheduled start is 45 min away (its summary: `Idle run: N min,
+  done:dispatched ...`). Idle runs last up to 5 h 40 min, then hand over to the next one. `status` lists them as
+  `idle (no bus)` and prints `idle  no bus running ...` and a `plan` line (collect or idle now, and why); coverage
+  counts idle time as covered and shows the collecting share. Weekday nights about 1 to 4:15 AM and weekends until
+  3:15 PM are normally idle. Force collecting: `gh workflow run collect.yml -f slot=a -f mode=collect`.
+- No rows overnight is normal: no shuttles run, and the collector is idle then, so there are no commits either.
 
 ## Run it
 1. `cd ~/Documents/straight-bussing && python tools/monitor.py status` (exit 0 HEALTHY, 1 DEGRADED, 2 DOWN).
@@ -51,6 +59,7 @@ Git Bash gotcha: it rewrites `rev:path` arguments (`git show origin/data:data/..
 | `no scheduled run has fired yet` / `no run started for ...` | The self-chain stopped (read the last run's **Self-chain** summary line / `::warning::`) and the cron backstop hasn't fired; GitHub delays or drops scheduled runs under load | `python tools/monitor.py dispatch` (uses `GITHUB_TOKEN` or the logged-in `gh` CLI; otherwise it prints the manual steps for the owner). One dispatch restarts the chain. If the chain keeps stopping: `python tools/test_chain.py`, check `vars.COLLECT_CHAIN` is not `off` (`gh variable list`). Check the workflow is on main: `git fetch -q origin && git ls-tree --name-only origin/main .github/workflows/` (must list `collect.yml`). Over 2 h with no run: take over locally, recheck in an hour. |
 | `a run failed` / `the last 3 runs failed` | Python error, GTFS download, git push | Steps of a run: `curl -s https://api.github.com/repos/blobberus/straight-bussing/actions/runs/<run_id>/jobs` (run id is in the URL that status prints; shows each step's conclusion). Full logs need auth: ask the owner to open the run URL, or read it with Claude in Chrome. Reproduce locally: `python tools/truth_logger.py --once`, `python tools/test_truth.py`, `python tools/test_merge.py`. Fix, then **Update the collector**. |
 | `push failed after 5 attempts` (in a run's Merge step) | Many runs racing, or a file > 100 MB | One lost run is covered by the overlap. If repeated: `git fetch origin data && git log --oneline -5 origin/data`; the CSV rotates to `archive/` at 40 MB, so check that the rotation still works. |
+| `N bus(es) reporting live but only an idle run is active` | The idle run's next feed check (every 2 min) has not seen them yet, or Passio sent one odd answer | Wait 5 min and rerun `status`. If it persists: read the idle run's log (`idle run ...` lines), then `gh workflow run collect.yml -f slot=a -f mode=collect`; check `python tools/service_gate.py` and `python tools/test_gate.py`. |
 | `Passio feed unreachable` | Passio outage | Nothing to fix. Note the time. If it lasts > 1 day, check that the feed URL in .claude/rules/project.md still works. |
 | `buses are running but no new arrivals merged for 3 h` | Detector or static data broken (GTFS changed) | During service hours: `python tools/truth_logger.py --duration 120 --out "$TEMP/t.csv"`. `skip row` on stderr means stops are missing from `web/data` (CI rebuilds GTFS each run; check main's `tools/build_gtfs.py`). |
 | `N local run file(s) were never pushed` | Local collector was killed | `python tools/monitor.py resume --hours 0.01` (merges and pushes them, then exits). |

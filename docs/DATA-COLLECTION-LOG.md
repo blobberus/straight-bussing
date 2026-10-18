@@ -19,6 +19,22 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 
 ## Errors
 
+### DC-014 The collector ran all day and night, even while no bus ran (fixed: only while buses run)
+- Found 2026-10-18 (owner: "only run when the bus routes are active ... a buffer for time so that just in case the
+  schedule is not exact"). Since DC-001 the chain logged every 10 s around the clock: on Sunday Oct 18 it had run all
+  morning while the newest arrival was 10.4 h old; weekend mornings and weekday nights after about 00:40 hold no bus.
+- Impact: no rows wrong or missing; wasted runs, feed reads (about 1,400 an hour), raw-poll artifacts and data commits.
+- Fixed: `tools/service_gate.py` (collect while a bus reports or did in the last 30 min, or from 45 min before to
+  30 min after a scheduled route start, or when the feed can't be read during scheduled service), the logger's
+  `--stop-when-idle`, idle runs (`collect.yml` `mode: sleep`, `collect_chain.py sleep`: feed every 2 min with 3 reads,
+  alerts every 10 min), `monitor.py` status (idle runs count as covered, `plan` line, new warning when buses report
+  while only an idle run is active), the local fallback gated the same way (`--no-gate` = always). Also: a logger that
+  ends early (a crash) now hands over at once instead of at minute 40. Tests: test_gate.py (10), test_chain.py (19,
+  incl. a week-long simulation: 99.8% of bus time logged, worst gap 5.7 min while buses run). Replay of Oct 10 to 16:
+  collects 130 of 168 h (buses 118 h), 1 bus-minute missed.
+- Watch: the first idle-to-collect handover on a real day (the 3:15 PM warm-up on weekends, about 4:15 AM on weekdays),
+  and that `status` never reads an idle stretch as DOWN.
+
 ### DC-013 The public data repo synced every 4 to 5 hours, not every 30 min (fixed)
 - Found 2026-10-16 during the verification. github.com/blobberus/straight-bussing-data's `sync.yml` cron is
   `4,34 * * * *`, but GitHub fired it only at 23:35, 03:28, 08:25, 13:26 and 17:36 UTC (Oct 15 to 16), the same

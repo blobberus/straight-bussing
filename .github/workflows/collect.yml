@@ -1,5 +1,15 @@
 name: Collect ground truth
-# Constant collection. Each run logs 70 min and, 40 min in, starts its own successor
+run-name: >-
+  ${{ inputs.mode == 'sleep' && 'Collector idle: no buses running (checks the feed every 2 min)'
+  || inputs.mode == 'collect' && 'Collect ground truth'
+  || github.event_name == 'schedule' && 'Collect ground truth (backstop: collect or idle)'
+  || 'Collect ground truth (manual: collect or idle)' }}
+# Collection while buses run (since 2026-10-18, tools/service_gate.py): a run collects only while a bus reports
+# live (and 30 min after the last report) or from 45 min before to 30 min after a scheduled route start; the
+# rest of the time one idle run (mode sleep) logs nothing, reads the vehicle feed every 2 min (and the alerts
+# every 10 min) and starts a collect run as soon as buses report, an alert changes or a start is near. The live
+# feed decides, not the timetable: night routes stop reporting about 00:40 while the timetable says 4:29 AM.
+# While collecting: each run logs 70 min and, 40 min in, starts its own successor
 # (tools/collect_chain.py), so consecutive runs overlap by ~30 min and no start is ever missed.
 # Why: GitHub fired only ~4 of the ~48 scheduled runs a day (2026-10-09), 30-40 min late. The :07/:37
 # cron stays as a backstop that restarts the chain if it ever stops.
@@ -21,6 +31,11 @@ on:
         type: choice
         options: [a, b]
         default: a
+      mode:
+        description: "auto = collect if buses run or are about to, else hand over to an idle run; collect = log now; sleep = idle run"
+        type: choice
+        options: [auto, collect, sleep]
+        default: auto
 permissions:
   contents: write
   actions: write          # start the next run (self-chain) + keepalive (re-enable after GitHub's 60-day idle rule)
@@ -32,27 +47,58 @@ env:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 95
+    timeout-minutes: ${{ inputs.mode == 'sleep' && 355 || 95 }}   # an idle run hands over at 5 h 40 min
     steps:
       - uses: actions/checkout@v4            # code (tools/ + web/data) always from main
         with: { ref: main }
+      - name: Collect or idle (buses running or about to start?)
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COLLECT_CHAIN: ${{ vars.COLLECT_CHAIN }}
+          MODE: ${{ inputs.mode || 'auto' }}
+        run: |
+          python3 tools/collect_chain.py gate --mode "$MODE" --slot "$SLOT" || {
+            echo "::warning title=Collect gate failed::collecting to be safe"
+            echo "mode=collect" >> "$GITHUB_OUTPUT"
+          }
+      - name: Idle until buses run (logs nothing; reads the feed every 2 min, starts a collect run when needed)
+        if: steps.gate.outputs.mode == 'sleep'
+        timeout-minutes: 352
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COLLECT_CHAIN: ${{ vars.COLLECT_CHAIN }}
+        run: python3 tools/collect_chain.py sleep --slot "$SLOT"
+      - name: The idle run failed, so a collect run takes over (it idles again by itself if no bus runs)
+        if: failure() && steps.gate.outputs.mode == 'sleep'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COLLECT_CHAIN: ${{ vars.COLLECT_CHAIN }}
+        run: python3 tools/collect_chain.py watch --slot "$SLOT" --after 0 --until 900
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.mode == 'collect'
         with: { python-version: "3.11" }
       - name: Start the self-chain watcher (background; may start the next run 40 min from now)
+        if: steps.gate.outputs.mode == 'collect'
         env:
           GH_TOKEN: ${{ github.token }}
           COLLECT_CHAIN: ${{ vars.COLLECT_CHAIN }}
         run: |
+          # --live / --logger-status: the next run collects or idles (service_gate), and starts at once if the
+          # logger stops early (no bus for 30 min, or a crash)
           nohup python tools/collect_chain.py watch --slot "$SLOT" --state "$RUNNER_TEMP/chain.json" \
+            --live "$RUNNER_TEMP/live.json" --logger-status "$RUNNER_TEMP/logger.json" \
             > "$RUNNER_TEMP/chain.log" 2>&1 < /dev/null &
           echo "slot $SLOT, watcher pid $!, COLLECT_CHAIN='${COLLECT_CHAIN}'"
       - name: Refresh static network data
+        if: steps.gate.outputs.mode == 'collect'
         run: |
           python tools/build_gtfs.py || {
             echo "::warning title=GTFS refresh failed::using the committed web/data"
             git checkout -- web/data
           }
       - name: Seed from the shared CSV
+        if: steps.gate.outputs.mode == 'collect'
         run: |
           if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
             # blob-less + shallow: only the one CSV below is downloaded, not the whole data branch
@@ -61,8 +107,9 @@ jobs:
           else
             : > "$RUNNER_TEMP/seed.csv"
           fi
-      - name: Log arrivals (70 min)
+      - name: Log arrivals (70 min, or until no bus has run for 30 min)
         id: log
+        if: steps.gate.outputs.mode == 'collect'
         timeout-minutes: 75
         continue-on-error: true              # rows are flushed as they are found; keep what we have
         run: |
@@ -70,13 +117,14 @@ jobs:
           # --pred-out: Passio's prediction 1 to 30 min ahead of each arrival (predictions.csv, the owner's accuracy goal);
           # --pred-log: every prediction update Passio published (artifact below, for re-analysis);
           # --alerts-out: Passio's service alerts at start and every 5 min, one row per alert version (own thread,
-          # never delays the 10 s loop; merged into data/ground_truth/alerts.csv below)
+          # never delays the 10 s loop; merged into data/ground_truth/alerts.csv below);
+          # --stop-when-idle: stop once no bus has reported for 30 min and no route is about to start (service_gate.py)
           python tools/truth_logger.py --duration 4200 --seed "$RUNNER_TEMP/seed.csv" --out "$RUNNER_TEMP/run.csv" \
             --status-file "$RUNNER_TEMP/logger.json" --raw-out "$RUNNER_TEMP/raw/raw-polls.jsonl" \
             --pred-out "$RUNNER_TEMP/run_pred.csv" --pred-log "$RUNNER_TEMP/pred/pred-updates.jsonl" \
-            --alerts-out "$RUNNER_TEMP/run_alerts.csv"
+            --alerts-out "$RUNNER_TEMP/run_alerts.csv" --stop-when-idle --live-file "$RUNNER_TEMP/live.json"
       - name: Keep the raw position polls (RouteKnower E03; artifact, 90 days, never on the data branch)
-        if: always()
+        if: always() && steps.gate.outputs.mode == 'collect'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -85,7 +133,7 @@ jobs:
           retention-days: 90
           if-no-files-found: ignore
       - name: Keep Passio's prediction updates (artifact, 90 days; re-score any lead or attribution rule later)
-        if: always()
+        if: always() && steps.gate.outputs.mode == 'collect'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -94,7 +142,7 @@ jobs:
           retention-days: 90
           if-no-files-found: ignore
       - name: Check the logging run (annotates problems; the job stays green so the merge always runs)
-        if: always()
+        if: always() && steps.gate.outputs.mode == 'collect'
         env: { OUTCOME: "${{ steps.log.outcome }}" }
         run: |
           python - "$RUNNER_TEMP" <<'EOF'
@@ -111,7 +159,8 @@ jobs:
           warn = []
           if os.environ.get("OUTCOME") != "success":
               warn.append(f"the logging step ended '{os.environ.get('OUTCOME')}'")
-          if ran < 65:
+          idle = (s or {}).get("idle_stop")          # stopped on purpose: no bus ran for 30 min (service_gate.py)
+          if ran < 65 and not idle:
               warn.append(f"logging stopped after {ran:.0f} of 70 min")
           if s is None:
               warn.append("the logger wrote no status file (crashed or killed)")
@@ -120,7 +169,7 @@ jobs:
                   warn.append(f"{s['errors']} processing error(s) were skipped; first: {s.get('first_error')}")
               if s.get("polls") and s.get("fetch_errors", 0) > 0.2 * 2 * s["polls"]:
                   warn.append(f"{s['fetch_errors']} of {2 * s['polls']} feed fetches failed (Passio outage?)")
-          line = f"logger: {ran:.0f} min" + (f", {s['polls']} polls, {s['rows']} rows, {s['errors']} errors, "
+          line = f"logger: {ran:.0f} min" + (f" (stopped early, no bus running: {idle})" if idle else "") + (f", {s['polls']} polls, {s['rows']} rows, {s['errors']} errors, "
                                              f"{s['fetch_errors']} failed fetches" if s else ", no status")
           alert_warn = []                    # service alerts: own counters, never part of the degraded verdict
           if s and "alert_polls" in s:
@@ -139,7 +188,7 @@ jobs:
               f.write(f"**{line}**\n\n" + "".join(f"- warning: {w}\n" for w in warn + alert_warn) + "\n")
           EOF
       - name: Merge into the data branch and push
-        if: always()
+        if: always() && steps.gate.outputs.mode == 'collect'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -194,7 +243,7 @@ jobs:
           curl -fsS -X PUT -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
             "$api/enable" || echo "keepalive call failed (harmless)"
       - name: Self-chain result (waits only while this run still has to start the next one)
-        if: always()
+        if: always() && steps.gate.outputs.mode == 'collect'
         timeout-minutes: 90                  # the wait itself ends at the watcher's deadline (85 min after start)
         run: |
           python tools/collect_chain.py wait --state "$RUNNER_TEMP/chain.json"

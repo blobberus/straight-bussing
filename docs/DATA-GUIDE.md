@@ -23,7 +23,7 @@ up to **Tuesday, October 13, 2026, 4:20 PM** (collection started Thursday, Octob
 | per-day / per-route copies, `latest.csv` | [github.com/blobberus/straight-bussing-data](https://github.com/blobberus/straight-bussing-data) | as `arrivals.csv` | browsing in GitHub | synced every 30 min |
 
 **Where it comes from:** the shuttles' public live tracking feed (Passio, the same data the official app uses).
-A collector checks it every 10 seconds, around the clock (GitHub, with a backup on the owner's PC), and writes a
+A collector checks it every 10 seconds whenever buses run (GitHub, with a backup on the owner's PC), and writes a
 row each time a bus reaches a stop. The files update about every 40 minutes (the browsing copies every 30). They hold bus positions and times
 only: nothing about riders.
 

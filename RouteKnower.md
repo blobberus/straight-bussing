@@ -56,7 +56,7 @@ Riders feel Q3, Q4 and Q5. A good Q1 score with a bad Q3 score is not a win.
 | Piece | File | State |
 |---|---|---|
 | Arrival detector (+-10 s in simulation) | `tools/arrival_detector.py`, `tools/truth_logger.py` | live, collecting |
-| Collection (CI: a 70-min run starts every 40 min, polls every 10 s; + local stopgap) | `.github/workflows/collect.yml`, `tools/monitor.py` | live (see `monitoring.md`) |
+| Collection (CI: while buses run a 70-min run starts every 40 min, polls every 10 s; idle runs otherwise; + local stopgap) | `.github/workflows/collect.yml`, `tools/monitor.py` | live (see `monitoring.md`) |
 | Context collection (weather daily, traffic history) | `.github/workflows/context.yml`, `tools/context_fetch.py` | added 2026-10-08 |
 | Context join (leakage-safe features per arrival) | `tools/context_join.py`, tests `tools/test_context.py` | added 2026-10-08 |
 | Academic calendar regimes | `data/calendar.json` | 2026-27, from the College Catalog |

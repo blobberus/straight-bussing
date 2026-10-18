@@ -5,7 +5,7 @@ predictions and train our own (`tools/model_*.py`, `docs/ALGORITHMS.md`). Unoffi
 
 | File | Where | What |
 |---|---|---|
-| `data/ground_truth/arrivals.csv` | `data` branch only (git-ignored on main) | real arrivals, collected around the clock (every 10 s), merged about every 40 min (once per CI run) |
+| `data/ground_truth/arrivals.csv` | `data` branch only (git-ignored on main) | real arrivals, collected every 10 s while buses run (`tools/service_gate.py`), merged about every 40 min (once per CI run) |
 | `data/ground_truth/predictions.csv` | `data` branch | since 2026-10-12: Passio's prediction 1, 2, 3, 5, 10, 15, 20 and 30 min before each arrival (one row per arrival and lead; schema below), for the owner's "10% rule" |
 | `data/ground_truth/alerts.csv` | `data` branch | since 2026-10-14: the operator's service alerts (Passio `serviceAlerts`), one row per alert version with when our collector first and last saw it (schema below); context for odd days (detours, reduced service), not ground truth about buses |
 | `data/ground_truth/archive/*.csv` | `data` branch | same schemas, rotated when a live file passes 40 MB (arrivals, predictions; alerts.csv never rotates) |
@@ -328,6 +328,37 @@ Actions > Variables), or "Disable workflow" in the Actions tab (the keepalive st
 
 It never pushes to main, so Pages never redeploys. One row per bus per stop visit; no rows overnight
 while no shuttles run.
+
+### When the collector runs (since 2026-10-18)
+Only while buses run, with time buffers because the timetable is not exact (owner: "only run when the bus routes
+are active ... a buffer for time so that just in case the schedule is not exact"). The rule is
+`tools/service_gate.py` (tests `tools/test_gate.py`; `python tools/service_gate.py` prints today's scheduled
+starts and what the collector does now). Collect while ANY of these holds:
+1. a bus reports live (a position on a trip, at most 5 min old), or one did in the last **30 min**;
+2. a route is scheduled to start: from **45 min before** each scheduled span start (`web/data/service.json`,
+   calendar exceptions included) to **30 min after** it, even with an empty feed, so the first bus and Passio's
+   predictions before it are logged and a late start is waited for;
+3. the vehicle feed can't be read during scheduled service: when unsure, collect.
+
+The live feed decides, not the timetable: the timetable says the night routes run until 4:29 AM and FCM runs on
+weekends, but from Oct 8 to 17 the feed showed no bus after about 00:40 on most nights (once until 3:59 AM) and no FCM
+on weekends. Passio also returns an empty vehicle list on about 1 in 3 polls in the day, so one empty answer proves
+nothing: hence the 30-min grace and 3 reads per check.
+
+How: a collect run's logger stops once the rule says idle (`truth_logger.py --stop-when-idle`, status
+`idle_stop`); its watcher then starts the next run at once, and `collect_chain.py watch --live` makes that an
+**idle run** (`collect.yml` input `mode: sleep`, run name "Collector idle: no buses running"). An idle run logs,
+uploads and commits nothing: every 2 min it reads the vehicle feed (up to 3 reads, 10 s apart), every 10 min the
+service alerts, and it starts a collect run as soon as a bus reports, an alert changes (so an alert that comes and
+goes overnight is still recorded) or a scheduled start is 45 min away; after 5 h 40 min it hands over to the next
+idle run (GitHub's job limit is 6 h). The chain rules and bounds above apply to idle runs too (at most 2 runs, one
+dispatch per run). The cron backstop and manual runs use `mode: auto`: they decide at start and, when idle, start an
+idle run only if no other run is active. A logger that ends early for any other reason (a crash) now also hands over
+at once (to a collect run) instead of at minute 40. Force collecting: `gh workflow run collect.yml -f slot=a -f
+mode=collect` (it stops by itself after 30 min without a bus). Replayed over the raw polls of Oct 10 to 16: buses
+reported for 118 of 168 h; the rule collects 130 h (77%), idles 38 h (weekday nights 2 to 4 h, weekends 10 to 13 h),
+1 bus-minute missed; an idle hour makes about 90 small feed reads instead of about 1,400. The local fallback
+(`monitor.py local`) follows the same rule (`--no-gate` = always).
 ```
 git fetch origin data
 git show origin/data:data/ground_truth/arrivals.csv > data/ground_truth/arrivals.csv
@@ -335,7 +366,7 @@ git show origin/data:data/ground_truth/arrivals.csv > data/ground_truth/arrivals
 or download `https://raw.githubusercontent.com/blobberus/straight-bussing/data/data/ground_truth/arrivals.csv`.
 
 **Cost**: free; GitHub Actions minutes are unlimited for public repos (at most 2 runners are busy at any
-time; a private repo would need ~90k min/month vs 2k free, so never make this repo private with the chain on). If the Actions tab ever shows the
+time; while no bus runs, one idle runner; a private repo would need ~90k min/month vs 2k free, so never make this repo private with the chain on). If the Actions tab ever shows the
 workflow disabled, press "Enable workflow" there.
 
 **Raw position polls** (RouteKnower E03, since 2026-10-10): each CI run also keeps every vehiclePositions

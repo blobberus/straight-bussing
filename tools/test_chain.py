@@ -48,6 +48,7 @@ def decide_rules():
 class FakeApi:
     def __init__(self, runs, state="active"):
         self.runs, self.state, self.dispatched, self.fail_list, self.fail_dispatch = runs, state, [], 0, 0
+        self.modes = []
 
     def workflow_state(self):
         return self.state
@@ -61,11 +62,12 @@ class FakeApi:
     def job_started(self, rid):
         return next((r.get("job") for r in self.runs if r["databaseId"] == rid), None)
 
-    def dispatch(self, slot):
+    def dispatch(self, slot, mode="collect"):
         if self.fail_dispatch:
             self.fail_dispatch -= 1
             raise RuntimeError("HTTP 500")
         self.dispatched.append(slot)
+        self.modes.append(mode)
 
 
 def drive(w, t0, t1, step=10):
@@ -153,7 +155,7 @@ def failed_dispatch_that_still_started_a_run_is_not_repeated():
     runs = [dict(run(7, "in_progress", T), job=iso(T))]
     api = FakeApi(runs)
 
-    def flaky(slot):                 # GitHub created the run but the call timed out
+    def flaky(slot, mode="collect"):  # GitHub created the run but the call timed out
         runs.append(run(8, "queued", T + 2400))
         raise RuntimeError("timeout")
     api.dispatch = flaky
@@ -217,7 +219,7 @@ class Sim:
                 r = next(x for x in sim.runs if x["id"] == rid)
                 return iso(r["start"]) if r["start"] is not None and r["status"] == "in_progress" else None
 
-            def dispatch(self, slot):
+            def dispatch(self, slot, mode="collect"):
                 me["dispatches"] += 1
                 sim.create(sim.t, slot, "workflow_dispatch")
         return Api()
@@ -317,6 +319,380 @@ def simulation_stress_crashes_manual_dispatches_stale_api():
         assert all(r["dispatches"] <= 1 for r in s.runs)
         chained = sum(1 for r in s.runs if r["event"] == "workflow_dispatch")
         assert chained <= hours * 3600 / 2400 + 2, (seed, chained)
+
+
+# ------------------------------------------------------------------ only while buses run (2026-10-18)
+import service_gate as G
+
+
+@test
+def watcher_hands_over_to_an_idle_run_as_soon_as_its_logger_stops():
+    T = 1_800_000_000
+    api = FakeApi([run(7, "in_progress", T)])
+    idle = {"stop": False}
+    w = C.Watcher(api, 7, "a", T, choose=lambda now: ("sleep", "no live bus"), early=lambda now: idle["stop"])
+    drive(w, T, T + 1790)
+    assert not api.dispatched and w.state == "sleeping"
+    idle["stop"] = True
+    drive(w, T + 1800, T + 1900)
+    assert api.dispatched == ["b"] and api.modes == ["sleep"] and "idle" in w.why, (api.modes, w.why)
+    api = FakeApi([run(8, "in_progress", T)])                       # no choose: the next run collects
+    drive(C.Watcher(api, 8, "a", T), T, T + 9000)
+    assert api.modes == ["collect"]
+
+
+@test
+def live_choice_collects_when_unsure_and_follows_the_logger_otherwise():
+    d = Path(tempfile.mkdtemp(prefix="sb-live-"))
+    p = d / "live.json"
+    choose, early = C.live_choice(str(p), None)
+    T = 1_800_000_000
+    assert choose(T)[0] == "collect" and not early(T)                                   # no file yet
+    p.write_text(json.dumps({"t": T, "started": T - 3600, "last_bus": T - 2400, "last_ok": T}), encoding="utf-8")
+    assert choose(T + 60)[0] == "sleep"                                                 # 41 min without a bus
+    assert choose(T + 600)[0] == "collect"                                              # stale: the logger hangs
+    p.write_text(json.dumps({"t": T, "started": T - 3600, "last_bus": T - 600, "last_ok": T}), encoding="utf-8")
+    assert choose(T + 60)[0] == "collect"
+    p.write_text(json.dumps({"t": T, "started": T - 3600, "last_bus": T - 2400, "last_ok": T, "idle_stop": "x"}),
+                 encoding="utf-8")
+    assert early(T) and choose(T + 900)[0] == "sleep"                                  # stopped on purpose
+    p.write_text("{oops", encoding="utf-8")
+    assert choose(T)[0] == "collect" and not early(T)
+    done = d / "logger.json"                                                            # the logger exited
+    choose, early = C.live_choice(str(p), None, done_path=str(done))
+    p.write_text(json.dumps({"t": T, "started": T - 600, "last_bus": T - 60, "last_ok": T}), encoding="utf-8")
+    assert not early(T) and choose(T)[0] == "collect"
+    done.write_text("{}", encoding="utf-8")
+    m, why = choose(T + 30)
+    assert early(T) and m == "collect" and "ended early" in why, why
+
+
+def drive_sleeper(s, t0, t1, step=10):
+    t = t0
+    while t <= t1 and not s.done:
+        s.step(t)
+        t += step
+    return t
+
+
+@test
+def sleeper_wakes_a_collect_run_when_buses_report():
+    T = 1_800_000_000
+    api = FakeApi([run(7, "in_progress", T)])
+    calls = []
+
+    def gate(now):
+        calls.append(now)
+        return ("collect", "2 buses reporting live") if now >= T + 3600 else ("sleep", "no live bus")
+    s = C.Sleeper(api, 7, "a", T, gate)
+    drive_sleeper(s, T, T + 3590)
+    assert not api.dispatched and s.state == "idle" and len(calls) == 30, (s.state, len(calls))   # every 2 min
+    drive_sleeper(s, T + 3600, T + 4000)
+    assert api.dispatched == ["b"] and api.modes == ["collect"] and s.state == "done:dispatched", (api.modes, s.state)
+    assert s.woke and s.woke[0] <= T + 3600 + 120
+
+
+@test
+def sleeper_waits_for_an_older_run_then_starts_the_collect_run():
+    T = 1_800_000_000
+    older = dict(run(6, "in_progress", T - 2400), job=iso(T - 2400))
+    api = FakeApi([older, dict(run(7, "in_progress", T), job=iso(T))])
+    s = C.Sleeper(api, 7, "a", T, lambda now: ("collect", "bus"))
+    drive_sleeper(s, T, T + 600)
+    assert s.state == "leader" and not api.dispatched, s.state
+    older["status"] = "completed"
+    drive_sleeper(s, T + 610, T + 1200)
+    assert api.modes == ["collect"]
+
+
+@test
+def sleeper_hands_over_to_the_next_idle_run_before_its_time_limit():
+    T = 1_800_000_000
+    api = FakeApi([run(7, "in_progress", T)])
+    s = C.Sleeper(api, 7, "b", T, lambda now: ("sleep", "no live bus"))
+    drive_sleeper(s, T, T + 20390)
+    assert not api.dispatched
+    drive_sleeper(s, T + 20400, T + 21000)
+    assert api.dispatched == ["a"] and api.modes == ["sleep"] and "idle run" in s.why, s.why
+
+
+@test
+def sleeper_ends_as_follower_when_a_newer_run_leads_and_obeys_the_kill_switches():
+    T = 1_800_000_000
+    runs = [dict(run(7, "in_progress", T), job=iso(T))]
+    api = FakeApi(runs)
+    s = C.Sleeper(api, 7, "a", T, lambda now: ("sleep", "no live bus"))
+    drive_sleeper(s, T, T + 900)
+    assert s.state == "idle"
+    runs.append(dict(run(9, "in_progress", T + 1000), job=iso(T + 1000)))         # a cron run started collecting
+    drive_sleeper(s, T + 910, T + 2000)
+    assert s.state == "done:follower" and not api.dispatched, s.state
+    s = C.Sleeper(FakeApi([run(7, "in_progress", T)]), 7, "a", T, lambda now: ("collect", "x"), enabled=False)
+    assert s.done and s.state == "done:off"
+    api = FakeApi([run(7, "in_progress", T)], state="disabled_manually")
+    s = C.Sleeper(api, 7, "a", T, lambda now: ("collect", "x"))
+    drive_sleeper(s, T, T + 600)
+    assert s.state == "done:off" and not api.dispatched
+
+    def broken(now):
+        raise ValueError("bad schedule")
+    api = FakeApi([run(7, "in_progress", T)])
+    drive_sleeper(C.Sleeper(api, 7, "a", T, broken), T, T + 600)                  # a gate bug: collect
+    assert api.modes == ["collect"]
+
+
+@test
+def live_gate_wakes_on_a_changed_service_alert():
+    sigs = ["A", "A", "B"]
+    gate = C.live_gate(None, probe=lambda: (True, 0), alerts=lambda: sigs.pop(0), every_alerts=600)
+    T = 1_800_000_000
+    assert gate(T)[0] == "sleep"            # baseline A
+    assert gate(T + 120)[0] == "sleep"      # not due
+    assert gate(T + 600)[0] == "sleep"      # A again
+    m, why = gate(T + 1200)
+    assert m == "collect" and "alerts changed" in why, why
+    gate = C.live_gate(None, probe=lambda: (True, 2))
+    assert gate(T)[0] == "collect"
+
+
+@test
+def gate_command_keeps_an_explicit_mode_and_writes_the_step_output():
+    import io, contextlib
+    d = Path(tempfile.mkdtemp(prefix="sb-gate-"))
+    out = d / "out.txt"
+    old = os.environ.get("GITHUB_OUTPUT")
+    os.environ["GITHUB_OUTPUT"] = str(out)
+    try:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            assert C.main(["gate", "--mode", "sleep", "--slot", "a"]) == 0
+        assert out.read_text(encoding="utf-8").strip() == "mode=sleep", out.read_text(encoding="utf-8")
+    finally:
+        if old is None:
+            os.environ.pop("GITHUB_OUTPUT", None)
+        else:
+            os.environ["GITHUB_OUTPUT"] = old
+
+
+class GatedSim:
+    """A week of GitHub Actions with the gate: buses report on a weekday / weekend pattern (with a surprise
+    night bus) unlike the timetable (night routes 'until 4:29', a weekend route that never runs), Passio answers
+    empty on 35% of reads, crons fire rarely and late. Collect runs: 70 min logging that stops when the Activity
+    says idle, Watcher with choose/early. Idle runs: Sleeper with a probing gate. Auto (cron) runs gate first."""
+
+    BASE = int(datetime(2026, 10, 19, tzinfo=G.CT).timestamp())          # a Monday, 00:00 Chicago
+
+    def __init__(self, seed, cron_p=0.1, empty_p=0.35, crash_p=0.0):
+        self.rnd, self.cron_p, self.empty_p, self.crash_p = random.Random(seed), cron_p, empty_p, crash_p
+        self.runs, self.live, self.future, self.next_id, self.t = [], [], [], 1, 0
+        week = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+        self.service = {"routes": {
+            "D": {"days": {k: {"spans": [["05:00", "10:15"]]} for k in week[:5]}, "exceptions": []},
+            "F": {"days": {k: {"spans": [["05:00", "20:55"]]} for k in week}, "exceptions": []},
+            "N": {"days": {k: {"spans": [["16:00", "28:29"]]} for k in week}, "exceptions": []}}}
+        self.spans = sorted(x for k in range(-1, 9) for x in G.day_spans(
+            self.service, (datetime.fromtimestamp(self.BASE, G.CT) + timedelta(days=k)).date()))
+
+    def buses(self, t):
+        """Live buses at sim time t (s from Monday 00:00)."""
+        day, m = int(t // 86400), (t % 86400) / 60
+        prev = (day - 1) % 7
+        if (day % 7) < 5 and 4 * 60 + 50 <= m:
+            return 3
+        if (day % 7) >= 5 and 15 * 60 + 50 <= m:
+            return 2
+        if m < 40 and day > 0:                                               # until 00:40 every night
+            return 1
+        if day % 7 == 3 and 2 * 60 + 40 <= m < 3 * 60 + 50:                  # Thursday: a night bus at 2:40
+            return 1
+        return 0
+
+    def read(self, t):
+        return 0 if self.rnd.random() < self.empty_p else self.buses(t)
+
+    def probe(self):
+        for _ in range(3):
+            n = self.read(self.t)
+            if n:
+                return True, n
+        return True, 0
+
+    def create(self, t, slot, event, mode):
+        for o in self.live:
+            if o["slot"] == slot and o["status"] == "pending":
+                o["status"], o["end"] = "completed", t
+        r = {"id": self.next_id, "slot": slot, "event": event, "mode": mode, "status": "pending", "created": t,
+             "ciso": iso(t), "start": None, "dispatches": 0, "end": None, "log0": None, "log1": None}
+        self.next_id += 1
+        self.runs.append(r)
+        self.live.append(r)
+
+    def api(self, me):
+        sim = self
+
+        class Api:
+            def workflow_state(self):
+                return "active"
+
+            def list_runs(self):
+                return [{"databaseId": r["id"], "status": r["status"], "createdAt": r["ciso"]} for r in sim.runs[-40:]]
+
+            def job_started(self, rid):
+                r = next(x for x in sim.runs if x["id"] == rid)
+                return iso(r["start"]) if r["start"] is not None and r["status"] == "in_progress" else None
+
+            def dispatch(self, slot, mode="collect"):
+                me["dispatches"] += 1
+                sim.create(sim.t, slot, "workflow_dispatch", mode)
+        return Api()
+
+    def gate(self, now):
+        ok, n = self.probe()
+        v = G.decide(self.BASE + now, self.spans, None, ok, n)
+        return v.mode, v.why
+
+    def begin(self, r, t):
+        r["status"], r["start"] = "in_progress", t
+        if r["mode"] == "auto":
+            mode, _ = self.gate(t)
+            if mode == "collect":
+                r["mode"] = "collect"
+            else:
+                verdict, _ = C.check(self.api(r), r["id"])
+                if verdict == "dispatch":
+                    self.api(r).dispatch("b" if r["slot"] == "a" else "a", "sleep")
+                r["mode"], r["finish"] = "none", t + 30
+                return
+        if r["mode"] == "sleep":
+            r["w"] = C.Sleeper(self.api(r), r["id"], r["slot"], t + 15, lambda now: self.gate(now))
+            return
+        r["log0"] = t + self.rnd.uniform(40, 120)
+        r["log_cap"] = r["log0"] + (self.rnd.uniform(60, 4200) if self.rnd.random() < self.crash_p else 4200)
+        r["act"], r["idle"] = None, False
+        sim = self
+
+        def choose(now):
+            if r["act"] is None or (r["log1"] is not None and not r["idle"]):
+                return "collect", "no logger status, or the logger ended early"
+            v = r["act"].verdict(sim.BASE + now)
+            return v.mode, v.why
+        r["w"] = C.Watcher(self.api(r), r["id"], r["slot"], t + 20, choose=choose,
+                           early=lambda now: r["idle"] or r["log1"] is not None)
+
+    def tick(self, t):
+        self.t = t
+        if t % 1800 == 420 and self.rnd.random() < self.cron_p:
+            self.future.append((t + self.rnd.uniform(0, 2400), "a" if t % 3600 == 420 else "b"))
+        for ev in [e for e in self.future if e[0] <= t]:
+            self.future.remove(ev)
+            self.create(t, ev[1], "schedule", "auto")
+        for slot in "ab":
+            busy = any(r["slot"] == slot and r["status"] in ("queued", "in_progress") for r in self.live)
+            pend = [r for r in self.live if r["slot"] == slot and r["status"] == "pending"]
+            if not busy and pend:
+                pend[0]["status"], pend[0]["ready"] = "queued", t + self.rnd.uniform(5, 90)
+        for r in list(self.live):
+            if r["status"] == "queued" and t >= r["ready"]:
+                self.begin(r, t)
+            if r["status"] != "in_progress":
+                continue
+            if r["mode"] == "none":
+                if t >= r["finish"]:
+                    r["status"], r["end"] = "completed", t
+                continue
+            r["w"].step(t)
+            if r["mode"] == "sleep":
+                if r["w"].done or t >= r["start"] + 355 * 60:
+                    r["status"], r["end"] = "completed", t
+                continue
+            if r["log1"] is None and t >= r["log0"]:                       # logging (10 s polls)
+                if r["act"] is None:
+                    r["act"], r["gate_at"] = G.Activity(self.BASE + t, self.spans), t + 60
+                r["act"].saw(self.BASE + t, {"fresh": self.read(t)})
+                if t >= r["gate_at"]:
+                    r["gate_at"] = t + 60
+                    if r["act"].verdict(self.BASE + t).mode == "sleep":
+                        r["idle"], r["log1"] = True, t
+                if r["log1"] is None and t >= r["log_cap"]:
+                    r["log1"] = t
+                if r["log1"] is not None:
+                    r["merged"] = r["log1"] + self.rnd.uniform(20, 240)
+            duty = r["w"].state in C.WAITING and t < r["w"].deadline
+            if (r["log1"] is not None and t >= r["merged"] and not duty) or t >= r["start"] + 95 * 60:
+                if r["log1"] is None and r["log0"] is not None and t >= r["log0"]:
+                    r["log1"] = t
+                r["status"], r["end"] = "completed", t
+        self.live = [r for r in self.live if r["status"] != "completed"]
+
+    def go(self, hours):
+        self.create(0, "a", "manual", "auto")
+        for t in range(0, int(hours * 3600), 10):
+            self.tick(t)
+        return self
+
+    def report(self, t_to):
+        """-> dict: bus time covered, worst gap while buses run, logging hours, runner hours, max running."""
+        n = int(t_to // 10)
+        log_d, run_d = [0] * (n + 2), [0] * (n + 2)
+        for r in self.runs:
+            if r["start"] is None:
+                continue
+            end = r["end"] if r["end"] is not None else t_to
+            run_d[int(r["start"] // 10)] += 1
+            run_d[min(n, int(end // 10))] -= 1
+            if r.get("log0") is not None:
+                l1 = r["log1"] if r["log1"] is not None else end
+                if l1 > r["log0"]:
+                    log_d[int(r["log0"] // 10)] += 1
+                    log_d[min(n, int(l1 // 10))] -= 1
+        cl = cr = bus_bins = covered = gap = worst = mx = log_bins = run_bins = 0
+        for i in range(n):
+            cl, cr = cl + log_d[i], cr + run_d[i]
+            mx, log_bins, run_bins = max(mx, cr), log_bins + cl, run_bins + cr
+            if self.buses(i * 10):
+                bus_bins += 1
+                if cl:
+                    covered, gap = covered + 1, 0
+                else:
+                    gap += 10
+                    worst = max(worst, gap)
+            else:
+                gap = 0
+        return {"bus_cover": covered / max(1, bus_bins), "worst_gap": worst, "log_h": log_bins / 360,
+                "run_h": run_bins / 360, "bus_h": bus_bins / 360, "max_running": mx}
+
+
+from datetime import timedelta
+
+
+@test
+def simulation_a_week_collects_every_bus_and_idles_otherwise():
+    hours = 7 * 24
+    worst, cover, ratio = 0, 1.0, []
+    for seed in range(4):
+        for cron_p in (0.0, 0.1):
+            s = GatedSim(seed, cron_p=cron_p).go(hours)
+            rep = s.report(hours * 3600)
+            assert rep["max_running"] <= 2, (seed, rep)
+            assert all(r["dispatches"] <= 1 for r in s.runs), seed
+            worst, cover = max(worst, rep["worst_gap"]), min(cover, rep["bus_cover"])
+            ratio.append(rep["log_h"] / rep["bus_h"])
+            alive = [r for r in s.runs if r["start"] is not None and r["start"] > hours * 3600 - 6 * 3600]
+            assert alive, (seed, cron_p, "the chain died")
+    print(f"    8 x 1 week: buses {rep['bus_h']:.0f} h, logging {min(ratio):.2f}-{max(ratio):.2f} x the bus time "
+          f"(before: ~{1.75 * hours / rep['bus_h']:.2f} x), runners {rep['run_h']:.0f} h of {hours * 1.75:.0f}, "
+          f"worst gap while buses run {worst / 60:.1f} min, bus time covered >= {cover:.2%}")
+    assert cover >= 0.995 and worst <= 8 * 60, (cover, worst)
+    assert max(ratio) < 2.1, ratio
+
+
+@test
+def simulation_gated_with_crashing_loggers_stays_bounded():
+    for seed in range(3):
+        s = GatedSim(seed, cron_p=0.5, crash_p=0.2).go(72)
+        rep = s.report(72 * 3600)
+        assert rep["max_running"] <= 2 and all(r["dispatches"] <= 1 for r in s.runs), (seed, rep)
+        assert rep["bus_cover"] >= 0.97, (seed, rep)
 
 
 def main():

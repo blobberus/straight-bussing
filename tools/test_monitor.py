@@ -57,14 +57,14 @@ def make_env():
 
 
 def monitor(repo, *args, timeout=180):
-    return subprocess.run([PY, str(repo / "tools" / "monitor.py"), *args, "--no-model"] if args[0] in ("local", "resume")
+    return subprocess.run([PY, str(repo / "tools" / "monitor.py"), *args, "--no-model", "--no-gate"] if args[0] in ("local", "resume")
                           else [PY, str(repo / "tools" / "monitor.py"), *args],
                           cwd=repo, capture_output=True, text=True, timeout=timeout)
 
 
 def spawn(repo, *args):
     kw = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
-    return subprocess.Popen([PY, str(repo / "tools" / "monitor.py"), *args, "--no-model"], cwd=repo,
+    return subprocess.Popen([PY, str(repo / "tools" / "monitor.py"), *args, "--no-model", "--no-gate"], cwd=repo,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
 
 
@@ -137,6 +137,24 @@ def test_coverage_math():
     held["log_window"] = (now - 5400, now - 1200)
     start, frac, gaps = m.coverage([held], now, complete=True)
     assert abs(frac - 4200 / 9000) < 1e-6 and gaps == [(now - 9000, now - 5400), (now - 1200, now)], (frac, gaps)
+
+
+def test_idle_runs_count_as_covered_and_are_never_parked():
+    """2026-10-18: while no bus runs, one idle run (collect.yml mode sleep) watches the feed for up to 5 h 40 min."""
+    m = load_monitor(TOOLS.parent)
+    iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+    now = 1_800_000_000
+    idle = dict(run_started_at=iso(now - 3 * 3600), created_at=iso(now - 3 * 3600), updated_at=iso(now), status="in_progress",
+                conclusion=None, display_title="Collector idle: no buses running (checks the feed every 2 min)")
+    coll = dict(run_started_at=iso(now - 4 * 3600), created_at=iso(now - 4 * 3600), updated_at=iso(now - 3 * 3600),
+                status="completed", conclusion="success", display_title="Collect ground truth")
+    auto = dict(coll, display_title="Collect ground truth (backstop: collect or idle)")
+    assert m.idle_run(idle) and not m.idle_run(coll) and not m.idle_run(auto)
+    assert not m.parked(idle, now)
+    start, frac, gaps = m.coverage([idle, coll], now, complete=True)
+    assert abs(frac - 1.0) < 1e-6 and not gaps, (frac, gaps)
+    _, frac_c, _ = m.coverage([idle, coll], now, complete=True, idle=False)
+    assert abs(frac_c - 0.25) < 1e-6, frac_c                 # collected 1 of the 4 h
 
 
 def test_last_start_queued_run():
