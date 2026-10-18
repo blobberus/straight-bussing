@@ -442,6 +442,52 @@ def sleeper_ends_as_follower_when_a_newer_run_leads_and_obeys_the_kill_switches(
 
 
 @test
+def an_auto_run_with_no_bus_carries_the_chain_after_an_older_run():
+    """2026-10-18 handover: a collector of the old code started an auto run and was done; the auto run found no bus.
+    It must not just end (the chain would die with the older run): it idles itself and hands over at 75 min."""
+    T = 1_800_000_000
+    older = dict(run(6, "in_progress", T - 2400), job=iso(T - 2400))
+    api = FakeApi([older, dict(run(7, "in_progress", T), job=iso(T))])
+    s = C.Sleeper(api, 7, "b", T, lambda now: ("sleep", "no live bus"), until=4500, hard=5100)
+    drive_sleeper(s, T, T + 1800)
+    assert s.state == "idle" and not api.dispatched, s.state
+    older["status"] = "completed"
+    drive_sleeper(s, T + 1810, T + 5100)
+    assert api.dispatched == ["a"] and api.modes == ["sleep"] and s.state == "done:dispatched", (api.modes, s.state)
+
+
+@test
+def gate_command_auto_idles_itself_without_a_bus():
+    import io, contextlib
+    d = Path(tempfile.mkdtemp(prefix="sb-gate-"))
+    out, svc = d / "out.txt", d / "service.json"
+    svc.write_text("{}", encoding="utf-8")
+    old_probe, old_env = C.G.probe, {k: os.environ.get(k) for k in ("GITHUB_OUTPUT", "COLLECT_CHAIN")}
+    os.environ["GITHUB_OUTPUT"] = str(out)
+    os.environ.pop("COLLECT_CHAIN", None)
+    try:
+        for buses, want in ((0, "sleep"), (2, "collect")):
+            C.G.probe = lambda b=buses: (True, b)
+            out.write_text("", encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                assert C.main(["gate", "--mode", "auto", "--slot", "a", "--service", str(svc)]) == 0
+            assert out.read_text(encoding="utf-8").strip() == f"mode={want}", (buses, out.read_text(encoding="utf-8"))
+        os.environ["COLLECT_CHAIN"] = "off"
+        C.G.probe = lambda: (True, 0)
+        out.write_text("", encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            C.main(["gate", "--mode", "auto", "--slot", "a", "--service", str(svc)])
+        assert out.read_text(encoding="utf-8").strip() == "mode=none"
+    finally:
+        C.G.probe = old_probe
+        for k, v in old_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+@test
 def live_gate_wakes_on_a_changed_service_alert():
     sigs = ["A", "A", "B"]
     gate = C.live_gate(None, probe=lambda: (True, 0), alerts=lambda: sigs.pop(0), every_alerts=600)
@@ -553,18 +599,14 @@ class GatedSim:
 
     def begin(self, r, t):
         r["status"], r["start"] = "in_progress", t
-        if r["mode"] == "auto":
+        limits = {}
+        if r["mode"] == "auto":                    # an auto run with no bus becomes a short idle run itself
             mode, _ = self.gate(t)
-            if mode == "collect":
-                r["mode"] = "collect"
-            else:
-                verdict, _ = C.check(self.api(r), r["id"])
-                if verdict == "dispatch":
-                    self.api(r).dispatch("b" if r["slot"] == "a" else "a", "sleep")
-                r["mode"], r["finish"] = "none", t + 30
-                return
+            r["mode"] = mode
+            limits = {"until": 4500, "hard": 5100}
+            r["job_limit"] = 95 * 60
         if r["mode"] == "sleep":
-            r["w"] = C.Sleeper(self.api(r), r["id"], r["slot"], t + 15, lambda now: self.gate(now))
+            r["w"] = C.Sleeper(self.api(r), r["id"], r["slot"], t + 15, lambda now: self.gate(now), **limits)
             return
         r["log0"] = t + self.rnd.uniform(40, 120)
         r["log_cap"] = r["log0"] + (self.rnd.uniform(60, 4200) if self.rnd.random() < self.crash_p else 4200)
@@ -596,13 +638,9 @@ class GatedSim:
                 self.begin(r, t)
             if r["status"] != "in_progress":
                 continue
-            if r["mode"] == "none":
-                if t >= r["finish"]:
-                    r["status"], r["end"] = "completed", t
-                continue
             r["w"].step(t)
             if r["mode"] == "sleep":
-                if r["w"].done or t >= r["start"] + 355 * 60:
+                if r["w"].done or t >= r["start"] + r.get("job_limit", 355 * 60):
                     r["status"], r["end"] = "completed", t
                 continue
             if r["log1"] is None and t >= r["log0"]:                       # logging (10 s polls)

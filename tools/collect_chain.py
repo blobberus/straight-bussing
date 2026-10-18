@@ -375,8 +375,10 @@ def summary(line):
 
 def cmd_gate(a):
     """First step of every run: prints and writes mode=collect|sleep|none to $GITHUB_OUTPUT. An explicit mode
-    (set by the run that started this one) is kept. auto: probe + schedule; idle = start an idle run if this is
-    the only active run (the backstop restarting a stopped chain), else nothing (the chain is alive): 'none'."""
+    (set by the run that started this one) is kept. auto (cron backstop, manual runs, runs started by a collector
+    of before 2026-10-18): probe + schedule; idle = this run becomes a short idle run itself (collect.yml passes
+    --until 4500: its job limit is 95 min), so it carries the chain on whether or not an older run still has to;
+    a newer run makes it a follower and it ends. 'none' only with COLLECT_CHAIN=off."""
     def emit(mode, why):
         print(f"mode {mode}: {why}", flush=True)
         out = os.environ.get("GITHUB_OUTPUT")
@@ -394,20 +396,8 @@ def cmd_gate(a):
     if v.mode == "collect":
         return emit("collect", v.why)
     if not chain_enabled():
-        return emit("none", f"{v.why}; COLLECT_CHAIN is off, so no idle run is started")
-    me, nxt = int(a.run_id or os.environ.get("GITHUB_RUN_ID") or 0), "b" if a.slot == "a" else "a"
-    api = GhApi(a.repo, a.ref)
-    verdict, why = check(api, me)
-    if verdict != "dispatch":
-        return emit("none", f"{v.why}; {why}")
-    if a.dry_run:
-        return emit("none", f"{v.why}; would start an idle run in slot {nxt}")
-    try:
-        api.dispatch(nxt, "sleep")
-    except Exception as ex:
-        print(f"::warning title=Collect chain::could not start an idle run: {str(ex)[:200]} (the cron is the backstop)")
-        return emit("none", f"{v.why}; starting an idle run failed")
-    return emit("none", f"{v.why}; started an idle run in slot {nxt}")
+        return emit("none", f"{v.why}; COLLECT_CHAIN is off, so no idle run either")
+    return emit("sleep", f"{v.why}; this run waits as an idle run")
 
 
 def cmd_sleep(a):

@@ -68,7 +68,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           COLLECT_CHAIN: ${{ vars.COLLECT_CHAIN }}
-        run: python3 tools/collect_chain.py sleep --slot "$SLOT"
+          MODE: ${{ inputs.mode || 'auto' }}
+        run: |
+          # an auto run (cron backstop, manual) that found no bus has the 95-min job limit: it hands over at 75 min
+          LIMITS=""; [ "$MODE" = "sleep" ] || LIMITS="--until 4500 --hard 5100"
+          python3 tools/collect_chain.py sleep --slot "$SLOT" $LIMITS
       - name: The idle run failed, so a collect run takes over (it idles again by itself if no bus runs)
         if: failure() && steps.gate.outputs.mode == 'sleep'
         env:
