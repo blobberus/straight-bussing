@@ -325,6 +325,33 @@ progress": no link to the data repo for now, owner 2026-10-16). Never a UChicago
 Same facts as About's shorter credits. iOS: SettingsView `creditsSection` (a DisclosureGroup in the last section,
 its own list: Apple Maps for the map and walks instead of the web map stack).
 
+### Lines by Time (2026-10-18, owner: "Add a clock symbol next to the settings button ... Select a time to check when certain lines will be active")
+- Entry: `#timeBtn` (clock, 44 px, `data-action="time:open"`, `aria-expanded` follows the menu) left of the gear in the
+  search bar. The menu is the Settings card (`ui/settings-overlay.js`, now with opts `title`, `kind` (data-kind on the
+  root), `start` (a head button, here Cancel) and `end` (label + action, here Set time; default Done = close)),
+  `overlayKind()` says which menu is open; the gear and the clock swap one for the other. Back / Escape / scrim close it.
+- Content `ui/views/timepick.js` (loaded through main.js VIEW_IDS, optional; registers `time:open` only): Date (month +
+  day wheels, no year; the day wheel follows the month, February 29 days) above Time (hour, minute, AM / PM), wheels from
+  `ui/wheel.js` (spinbuttons: arrows, Page Up / Down, Home / End, a tap on a row, swipe with scroll snap; a column's own
+  animation never changes its value). Under the clock the owner's sentence (`TIME_DESC`), then a live result (count +
+  chips, `aria-live`), a note when a trip is in progress (Set time ends the journey so the lines can show), the
+  disclaimer (`TIME_DISCLAIMER`: timetable estimate, holidays / breaks / events / detours / weather / service changes,
+  scheduled night lines that send no bus, unofficial) and last `OFFICIAL_HTML` (phone + official transportation page).
+  Defaults: the time already applied, else now (Chicago).
+- Logic `core/timeactive.js` (pure): `pickedUnix` (the year = the next time that month / day comes, today included;
+  Feb 29 in other years = Feb 28; `chicagoUnix` handles DST), `linesActiveAt(service, routes, at)` =
+  `core/schedule.js isScheduledNow` per route (spans, the previous day's after-midnight tail, calendar exceptions), plus
+  `outsideFeed` + a note when the date is outside `service.feed` (weekly pattern, no holidays). Kit: `TimeActive`.
+- Applying (`core/custom.js applyTimeView`): `store.timeView = {at, name: "Lines active at Sat Oct 24, 9:30 PM", rids,
+  before: {hiddenRoutes, activeCustom, prevHidden}}` (never persisted, not in My Routes; state.js saves `before` while it
+  is on), `hiddenRoutes` = everything else, `activeCustom` null, journey and station filter ended. The context bar shows
+  "Lines active at <time>" + Clear (`time:clear` = `clearTimeView`, which restores `before`, an applied custom route
+  included); the Routes list's bar says "Showing <name>" + Clear. Deselecting (or adding) a line: main.js runs
+  `settleTimeView` on every hiddenRoutes change, which drops the name and keeps the lines (then "Make this a custom
+  route" is offered, as for any hand-made selection). Show all / Hide all / Show running / applying or saving a custom
+  route end it. No line scheduled: `TIME_NONE` in the menu and as a toast, nothing changes.
+- Tests: `tests/core-timeactive.js` (core.test.html), `tests/timepick.test.html`, e2e "lines by time".
+
 ### Beta feedback (2026-10-13, owner)
 `ui/feedback.js`: `FEEDBACK_URL` (the only place the Google Form address appears), `feedbackLinkHTML()` (a real `<a target="_blank" rel="noopener">`, never window.open after an await), the welcome popup (native `<dialog>` like ui/confirm.js: Cancel focused first, Escape / outside tap close, 350 ms double-tap guard) once per browser session (`sessionStorage`; blocked storage = once per page load), opened by main.js after the first painted render (`welcomeAfterPaint`). Settings starts with "Beta feedback" (`views/settings.js feedbackHTML`). Browser tests set the session flag before booting the app (e2e.js, e2e-demo.js).
 
