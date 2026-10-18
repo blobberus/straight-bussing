@@ -218,13 +218,12 @@ extension AppModel {
         }
         busMotion.update(reports, shapes: staticData.shapes, version: staticVersion, now: now,
                          reduce: UIAccessibility.isReduceMotionEnabled || config.demo)
-        publishBuses(step: 0, smooth: false)
+        publishBuses()
     }
 
-    /// The bus markers where `busMotion` draws them now (stale for `now`). A step of a few meters animates in a straight
-    /// line over the step (a normal glide, on the street within about a meter); a longer one (a catch-up) is set as is,
-    /// exactly on the line, like the web's frames.
-    func publishBuses(step: Double, smooth: Bool) {
+    /// The bus markers where `busMotion` draws them now (stale for `now`), set as is: every step is a point on the
+    /// route line (no SwiftUI animation, which would draw a straight line across the block).
+    func publishBuses() {
         let t = now
         let markers = liveState.buses.enumerated().map { i, b -> MapBus in
             let id = b.vehicle.id ?? "bus-\(i)"
@@ -233,12 +232,7 @@ extension AppModel {
             return MapBus(id: id, rid: b.trip.routeId ?? "", label: b.displayLabel, coord: s?.coord ?? b.coord,
                           bearing: bearing, stale: b.timestamp > 0 && t - b.timestamp > 60)
         }
-        guard mapBuses != markers else { return }
-        if smooth && step > 0 && !UIAccessibility.isReduceMotionEnabled {
-            withAnimation(.linear(duration: step)) { mapBuses = markers }
-        } else {
-            mapBuses = markers
-        }
+        if mapBuses != markers { mapBuses = markers }
     }
 
     func startClock() {

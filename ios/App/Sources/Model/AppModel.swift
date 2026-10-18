@@ -282,7 +282,7 @@ final class AppModel {
         self.walkCache = config.demo ? nil : WalkRouteCache(fetch: { a, b in try await AppleWalkDirections.route(a, b) })
         self.placeSearcher = config.demo ? nil : PlaceSearcher()
         self.scheduleStore = config.demo ? nil : ScheduleStore.standard
-        busMotion.onStep = { [weak self] len, smooth in self?.publishBuses(step: len, smooth: smooth) }
+        busMotion.onStep = { [weak self] in self?.publishBuses() }
     }
 
     var colorScheme: ColorScheme? {

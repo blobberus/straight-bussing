@@ -9,11 +9,12 @@ import StraightBussingKit
 /// the heading turns with the street, the short way round (`HeadingCone.unwrap`). Off the line: a short straight
 /// glide, a long move jumps.
 ///
-/// SwiftUI's Map animates an annotation's coordinate in a straight line, so the badge is stepped along the path and
-/// each step is a short linear animation (`AppModel.publishBuses`): about 4 steps a second for a normal glide (a chord
-/// of a few meters, on the street within a meter at a corner), up to 30 a second while catching up. Nothing ticks
-/// when no badge moves, in the background (`pause`), with Reduce Motion (moves at once) or in the `-demo` CI build
-/// (UI tests never wait on a glide).
+/// SwiftUI's Map would animate an annotation's coordinate in a straight line (across the block), so the badge is
+/// stepped along the path and each step is set as is, exactly on the line (`AppModel.publishBuses`, no animation):
+/// a step of at most about 1.5 m (under a pixel at the campus zoom), 4 to 30 steps a second. Plain steps, not a
+/// chain of short animations: an app that is always animating never goes idle (more battery, and XCUITest waits for
+/// idle: a test with simulated buses took 3 to 4 min instead of 50 s). Nothing ticks when no badge moves, in the
+/// background (`pause`), with Reduce Motion (moves at once) or in the `-demo` CI build (UI tests never wait on a glide).
 @MainActor
 final class BusMotion {
     /// One bus report of a poll.
@@ -57,14 +58,12 @@ final class BusMotion {
     private var linesVersion = -1
     private var ticker: Task<Void, Never>?
     private var active = true
-    /// Called after every step with the step's length (s) and whether it is short enough to animate in a straight
-    /// line (a few meters: a normal glide); a long step (a catch-up) is drawn as is, exactly on the line.
-    var onStep: ((Double, Bool) -> Void)?
+    /// Called after every step: the model republishes the markers where the badges are now.
+    var onStep: (() -> Void)?
     /// A web `busHeading` rule: a bus must move this far before its heading comes from its movement.
     static let headingMinM = 15.0
-    /// Steps: a chord of at most about 5 m, between 30 and 4 steps a second; a step animates in a straight line only
-    /// up to `smoothM` (at a corner that stays within about a meter of the street).
-    static let chordM = 5.0, minStep = 1.0 / 30, maxStep = 0.25, smoothM = 8.0
+    /// Steps: at most about `chordM` meters each (at the fastest move's speed), between 30 and 4 steps a second.
+    static let chordM = 1.5, minStep = 1.0 / 30, maxStep = 0.25
 
     private func clock() -> Double { CACurrentMediaTime() }
 
@@ -175,17 +174,15 @@ final class BusMotion {
         return more
     }
 
-    /// The next step: its length (a chord of about `chordM` at the fastest move's speed, 1/30 to 1/4 s) and whether
-    /// every badge moves at most `smoothM` in it.
-    private func nextStep() -> (len: Double, smooth: Bool) {
-        var best = Self.maxStep, top = 0.0
+    /// The next step's length: about `chordM` at the fastest move's speed, 1/30 to 1/4 s.
+    private func nextStep() -> Double {
+        var best = Self.maxStep
         for m in movers.values {
             guard let a = m.anim, a.dur > 0 else { continue }
             let speed = a.total / a.dur * (a.ease ? 2 : 1)     // an eased move runs twice its mean speed at its middle
-            top = Swift.max(top, speed)
             if speed > 0 { best = Swift.min(best, Swift.max(Self.minStep, Self.chordM / speed)) }
         }
-        return (best, top * best <= Self.smoothM)
+        return best
     }
 
     private func startTicking() {
@@ -193,11 +190,11 @@ final class BusMotion {
         ticker = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let next = self.nextStep()
-                try? await Task.sleep(nanoseconds: UInt64(next.len * 1_000_000_000))
+                let len = self.nextStep()
+                try? await Task.sleep(nanoseconds: UInt64(len * 1_000_000_000))
                 if Task.isCancelled { break }
                 let more = self.step(self.clock())
-                self.onStep?(next.len, next.smooth)
+                self.onStep?()
                 if !more { break }
             }
             self?.ticker = nil
@@ -210,7 +207,7 @@ final class BusMotion {
         ticker?.cancel()
         ticker = nil
         _ = step(.infinity)
-        onStep?(0, false)
+        onStep?()
     }
 
     /// Back in the foreground (the next poll starts new moves; a long absence catches up along the line).
