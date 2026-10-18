@@ -21,6 +21,27 @@ public struct Journey: Codable, Hashable, Sendable {
     public init(rids: [String], label: String, kind: Kind = .plan) { self.rids = rids; self.label = label; self.kind = kind }
 }
 
+/// Lines by Time's temporary custom route (owner 2026-10-18; web store.timeView): never saved, not in My Routes.
+/// `before` is what was shown before it, for Clear.
+public struct TimeView: Codable, Hashable, Sendable {
+    public struct Before: Codable, Hashable, Sendable {
+        public var hiddenRoutes: [String]
+        public var activeCustom: String?
+        public var prevHidden: [String]
+        public init(hiddenRoutes: [String], activeCustom: String?, prevHidden: [String]) {
+            self.hiddenRoutes = hiddenRoutes; self.activeCustom = activeCustom; self.prevHidden = prevHidden
+        }
+    }
+    public var at: Double
+    /// "Lines active at Sat Oct 24, 9:30 PM".
+    public var name: String
+    public var rids: [String]
+    public var before: Before
+    public init(at: Double, name: String, rids: [String], before: Before) {
+        self.at = at; self.name = name; self.rids = rids; self.before = before
+    }
+}
+
 /// "Routes to <station>" filter.
 public struct RouteFilter: Codable, Hashable, Sendable {
     public var ids: [String]
@@ -42,6 +63,8 @@ public struct RouteState: Codable, Hashable, Sendable {
     public var favStops: [String] = []
     public var journey: Journey? = nil
     public var routeFilter: RouteFilter? = nil
+    /// Lines by Time on (not persisted; AppModel saves `before` while it is on).
+    public var timeView: TimeView? = nil
     /// Current view id ('route' focuses `routeId`).
     public var view: String = "nearby"
     public var routeId: String? = nil
@@ -64,6 +87,7 @@ public struct RouteState: Codable, Hashable, Sendable {
         if let v = p.prevHidden { prevHidden = v }
         if let v = p.favStops { favStops = v }
         if let v = p.routeFilter { routeFilter = v }
+        if let v = p.timeView { timeView = v }
     }
 
     public func applying(_ p: StatePatch) -> RouteState { var s = self; s.apply(p); return s }
@@ -79,12 +103,14 @@ public struct StatePatch: Hashable, Sendable {
     public var prevHidden: [String]? = nil
     public var favStops: [String]? = nil
     public var routeFilter: RouteFilter?? = nil
+    public var timeView: TimeView?? = nil
 
     public init(hiddenRoutes: [String]? = nil, routeOrder: [String]? = nil, customRoutes: [CustomRoute]? = nil,
                 activeCustom: String?? = nil, prevHidden: [String]? = nil, favStops: [String]? = nil,
-                routeFilter: RouteFilter?? = nil) {
+                routeFilter: RouteFilter?? = nil, timeView: TimeView?? = nil) {
         self.hiddenRoutes = hiddenRoutes; self.routeOrder = routeOrder; self.customRoutes = customRoutes
         self.activeCustom = activeCustom; self.prevHidden = prevHidden; self.favStops = favStops; self.routeFilter = routeFilter
+        self.timeView = timeView
     }
 
     /// `{}`.
@@ -101,6 +127,7 @@ public struct StatePatch: Hashable, Sendable {
         if let v = o.prevHidden { p.prevHidden = v }
         if let v = o.favStops { p.favStops = v }
         if let v = o.routeFilter { p.routeFilter = .some(v) }
+        if let v = o.timeView { p.timeView = .some(v) }
         return p
     }
 }

@@ -89,6 +89,7 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         .sheet(isPresented: $model.showSettings) { SettingsView() }
+        .sheet(isPresented: $model.showTimePick) { TimePickView(start: model.routeState.timeView?.at ?? Date().timeIntervalSince1970) }
         .sheet(isPresented: $model.showLiveActivityPreview) {
             NavigationStack { LiveActivityPreviewView() }
         }
@@ -123,8 +124,8 @@ struct SearchMorphEffect: ViewModifier {
     }
 }
 
-/// Floating "Search for a destination" bar with the Settings gear at its right end. A tap opens Directions: the bar
-/// turns into the Start / Destination card in place, keyboard on Destination.
+/// Floating "Search for a destination" bar with the clock (Lines by Time) and the Settings gear at its right end. A tap
+/// opens Directions: the bar turns into the Start / Destination card in place, keyboard on Destination.
 struct SearchBar: View {
     @Environment(AppModel.self) private var model
     var body: some View {
@@ -142,6 +143,12 @@ struct SearchBar: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("searchBar")
             .accessibilityLabel("Search for a destination")
+            Button { model.showTimePick = true } label: {
+                Image(systemName: "clock").font(.title3).frame(width: 46, height: 50)
+            }
+            .accessibilityIdentifier("timeButton")
+            .accessibilityLabel("Lines by Time")
+            .accessibilityHint("Check which lines the timetable has running at a time you pick")
             Button { model.showSettings = true } label: {
                 Image(systemName: "gearshape").font(.title3).frame(width: 50, height: 50)
             }
@@ -227,7 +234,8 @@ struct ContextBar: View {
     static let maxChips = 4
 
     static func shows(_ m: AppModel) -> Bool {
-        (m.routeState.journey.map { !$0.rids.isEmpty } ?? false) || RouteVisibility.activeCustomRoute(m.routeState) != nil
+        (m.routeState.journey.map { !$0.rids.isEmpty } ?? false) || m.routeState.timeView != nil
+            || RouteVisibility.activeCustomRoute(m.routeState) != nil
     }
 
     var body: some View {
@@ -244,6 +252,15 @@ struct ContextBar: View {
                     Text("Show all").font(.footnote.weight(.bold)).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                 }
                 .accessibilityHint("Shows every route on the map again")
+            } else if let tv = s.timeView {
+                let rest = tv.name.hasPrefix(TimeActive.prefix) ? String(tv.name.dropFirst(TimeActive.prefix.count)).trimmingCharacters(in: .whitespaces) : tv.name
+                (Text(tv.name.hasPrefix(TimeActive.prefix) ? "\(TimeActive.prefix) " : "Showing ").foregroundColor(Palette.text2)
+                    + Text(rest).fontWeight(.semibold)).font(.footnote).lineLimit(2)
+                Spacer(minLength: 0)
+                Button { model.apply(Custom.clearTimeView(model.routeState)) } label: {
+                    Text("Clear").font(.footnote.weight(.bold)).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                }
+                .accessibilityLabel("Clear \(tv.name), show your usual routes")
             } else if let c = RouteVisibility.activeCustomRoute(s) {
                 (Text("My route: ").foregroundColor(Palette.text2) + Text(c.name).fontWeight(.semibold)).font(.footnote).lineLimit(2)
                 Spacer(minLength: 0)

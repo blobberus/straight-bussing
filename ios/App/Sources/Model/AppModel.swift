@@ -228,6 +228,8 @@ final class AppModel {
     /// Location is off and the rider asked for it: offer iOS Settings (RootView alert).
     var showLocationOff = false
     var showSettings = false
+    /// Lines by Time (the clock next to the gear; Views/TimePickView.swift).
+    var showTimePick = false
     var showLiveActivityPreview = false
     var editingOrder = false
     var confirmDelete: CustomRoute?
@@ -301,15 +303,20 @@ final class AppModel {
 
     func savePrefs() {
         guard !loadingPrefs else { return }
-        let s = routeState
-        prefsStore.save(Prefs.Stored(hiddenRoutes: s.hiddenRoutes, routeOrder: s.routeOrder, customRoutes: s.customRoutes,
-                                     activeCustom: s.activeCustom, prevHidden: s.prevHidden, favStops: s.favStops,
+        let s = routeState, b = s.timeView?.before   // Lines by Time is temporary: what was shown before it is saved
+        prefsStore.save(Prefs.Stored(hiddenRoutes: b?.hiddenRoutes ?? s.hiddenRoutes, routeOrder: s.routeOrder, customRoutes: s.customRoutes,
+                                     activeCustom: b != nil ? b?.activeCustom : s.activeCustom, prevHidden: b?.prevHidden ?? s.prevHidden,
+                                     favStops: s.favStops,
                                      notify: notify, theme: theme))
     }
 
     /// Apply a core/custom.js-style patch and persist.
     func apply(_ p: StatePatch) {
         routeState.apply(p)
+        // Lines by Time: the moment the shown lines change (one deselected or added) the "Lines active at" name goes and
+        // the lines stay (web main.js settleTimeView)
+        let settle = Custom.settleTimeView(routeState)
+        if !settle.isEmpty { routeState.apply(settle) }
         savePrefs()
     }
 

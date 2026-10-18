@@ -49,6 +49,7 @@ CAPTIONS = {
     "38-trip-map": "Trip on the map, sheet collapsed: building names around the trip's stops and labels, never over them",
     "39-map-zoomed": "Building names after a pinch zoom: laid out again for the closer view, more tiers (UI test)",
     "40-map-panned": "Building names after a pan (UI test)",
+    "41-lines-by-time": "Lines by Time: date and time wheels, the lines the timetable has running then (UI test)",
 }
 
 STORE_CAPTIONS = {

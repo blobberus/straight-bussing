@@ -195,6 +195,16 @@ struct RoutesView: View {
                     Button("Save") { saveName() }.primaryButtonStyle()
                 }
             }
+        } else if let tv = s.timeView {
+            Section {   // Lines by Time (TimePickView): a temporary custom route, never saved
+                HStack {
+                    (Text("Showing ") + Text(tv.name).bold()).font(.subheadline)
+                    Spacer()
+                    Button("Clear") { model.apply(Custom.clearTimeView(model.routeState)) }.buttonStyle(.borderless)
+                        .accessibilityLabel("Clear \(tv.name), show your usual routes")
+                }
+                .accessibilityElement(children: .contain)
+            }
         } else if let c = RouteVisibility.activeCustomRoute(s) {
             Section {
                 HStack {

@@ -57,6 +57,7 @@ public enum Custom {
         var p = made.patch
         p.activeCustom = .some(made.id)
         p.prevHidden = []
+        p.timeView = .some(nil)
         return (p, made.id)
     }
 
@@ -92,8 +93,10 @@ public enum Custom {
     /// Apply a custom route: show only its routes, remember the previous hidden list, clear the station filter.
     public static func applyCustom(_ s: RouteState, _ id: String) -> StatePatch {
         guard let c = s.customRoutes.first(where: { $0.id == id }) else { return .empty }
-        let prev = s.activeCustom != nil ? s.prevHidden : s.hiddenRoutes
-        return StatePatch(hiddenRoutes: hiddenFor(s, c.rids), activeCustom: .some(id), prevHidden: prev, routeFilter: .some(nil))
+        let b = s.timeView?.before                       // Lines by Time on: what was there before it
+        let prev = b.map { $0.activeCustom != nil ? $0.prevHidden : $0.hiddenRoutes } ?? (s.activeCustom != nil ? s.prevHidden : s.hiddenRoutes)
+        return StatePatch(hiddenRoutes: hiddenFor(s, c.rids), activeCustom: .some(id), prevHidden: prev, routeFilter: .some(nil),
+                          timeView: .some(nil))
     }
 
     /// Stop applying the custom route and restore the hidden list from before.
@@ -134,13 +137,13 @@ public enum Custom {
     /// Show every route (optionally only `rids`), dropping an applied custom route.
     public static func showAll(_ s: RouteState, _ rids: [String]? = nil) -> StatePatch {
         let hidden = rids.map { only in s.hiddenRoutes.filter { !Set(only).contains($0) } } ?? []
-        return StatePatch(hiddenRoutes: hidden, activeCustom: .some(nil), prevHidden: [])
+        return StatePatch(hiddenRoutes: hidden, activeCustom: .some(nil), prevHidden: [], timeView: .some(nil))
     }
 
     /// Hide every route (optionally only `rids`), dropping an applied custom route.
     public static func hideAll(_ s: RouteState, _ rids: [String]? = nil) -> StatePatch {
         let add = rids ?? s.routeIds
-        return StatePatch(hiddenRoutes: unique(s.hiddenRoutes + add), activeCustom: .some(nil), prevHidden: [])
+        return StatePatch(hiddenRoutes: unique(s.hiddenRoutes + add), activeCustom: .some(nil), prevHidden: [], timeView: .some(nil))
     }
 
     /// Show only the routes operating now (owner 2026-10-17, "Show running"; web core/custom.js showRunning):
@@ -150,7 +153,40 @@ public enum Custom {
         let scope = rids ?? s.routeIds
         let inScope = Set(scope), keep = Set(operating)
         let outside = s.hiddenRoutes.filter { !inScope.contains($0) }
-        return StatePatch(hiddenRoutes: unique(outside + scope.filter { !keep.contains($0) }), activeCustom: .some(nil), prevHidden: [])
+        return StatePatch(hiddenRoutes: unique(outside + scope.filter { !keep.contains($0) }), activeCustom: .some(nil), prevHidden: [],
+                          timeView: .some(nil))
+    }
+
+    // MARK: Lines by Time (owner 2026-10-18; web core/custom.js applyTimeView / clearTimeView / settleTimeView)
+
+    /// Apply the temporary "Lines active at <time>" route: only `rids` shown, what was shown before kept for Clear (the
+    /// first "before" when it is on already). Empty patch when no known route is in `rids` (the map does not change).
+    /// A journey is ended by the caller (AppModel.endJourney ends a started trip properly).
+    public static func applyTimeView(_ s: RouteState, at: Double, name: String, rids: [String]) -> StatePatch {
+        let known = Set(s.routeIds)
+        let keep = unique(rids).filter { known.contains($0) }
+        guard !keep.isEmpty else { return .empty }
+        let before = s.timeView?.before ?? TimeView.Before(hiddenRoutes: s.hiddenRoutes, activeCustom: s.activeCustom, prevHidden: s.prevHidden)
+        let label = String(name.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").prefix(80))
+        return StatePatch(hiddenRoutes: hiddenFor(s, keep), activeCustom: .some(nil), prevHidden: [], routeFilter: .some(nil),
+                          timeView: .some(TimeView(at: at, name: label.isEmpty ? "Lines active" : label, rids: keep, before: before)))
+    }
+
+    /// Clear Lines by Time: what was shown before it (an applied custom route stays applied; one deleted meanwhile
+    /// falls back to the routes from before it).
+    public static func clearTimeView(_ s: RouteState) -> StatePatch {
+        guard let b = s.timeView?.before else { return .empty }
+        if let id = b.activeCustom, !s.customRoutes.contains(where: { $0.id == id }) {
+            return StatePatch(hiddenRoutes: b.prevHidden, activeCustom: .some(nil), prevHidden: [], timeView: .some(nil))
+        }
+        return StatePatch(hiddenRoutes: b.hiddenRoutes, activeCustom: .some(b.activeCustom), prevHidden: b.prevHidden, timeView: .some(nil))
+    }
+
+    /// The shown set no longer equals the time's lines (a line deselected or added): drop the name, keep the lines.
+    public static func settleTimeView(_ s: RouteState) -> StatePatch {
+        guard let tv = s.timeView else { return .empty }
+        let known = Set(s.routeIds)
+        return Set(visibleRids(s)) == Set(tv.rids.filter { known.contains($0) }) ? .empty : StatePatch(timeView: .some(nil))
     }
 
     /// Toggle a favorite station.

@@ -93,6 +93,13 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
         app.buttons["settingsDone"].tap()
         XCTAssertTrue(app.buttons["searchBar"].waitForExistence(timeout: 10))
+
+        // Lines by Time (owner 2026-10-18): the clock next to the gear opens its sheet; Cancel changes nothing
+        app.buttons["timeButton"].tap()
+        XCTAssertTrue(app.navigationBars["Lines by Time"].waitForExistence(timeout: 10), "Lines by Time sheet")
+        save(app, "41-lines-by-time-light")
+        app.buttons["timeCancel"].tap()
+        XCTAssertTrue(app.buttons["searchBar"].waitForExistence(timeout: 10))
     }
 
     /// A started trip ends when a stop's Directions picks a new destination (else "Trip to Chipotle" would follow a

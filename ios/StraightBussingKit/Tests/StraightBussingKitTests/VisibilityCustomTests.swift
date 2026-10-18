@@ -109,7 +109,7 @@ final class VisibilityCustomTests: XCTestCase {
         XCTAssertTrue(Custom.moveToIndex(s, "c", 0).isEmpty)
         XCTAssertTrue(Custom.moveToIndex(s, "zz", 1).isEmpty)
         let h = base(hidden: ["a", "b"], active: "x", prev: ["d"])
-        XCTAssertEqual(Custom.showAll(h), StatePatch(hiddenRoutes: [], activeCustom: .some(nil), prevHidden: []))
+        XCTAssertEqual(Custom.showAll(h), StatePatch(hiddenRoutes: [], activeCustom: .some(nil), prevHidden: [], timeView: .some(nil)), "also ends Lines by Time")
         XCTAssertEqual(Custom.showAll(h, ["a"]).hiddenRoutes, ["b"])
         XCTAssertEqual(Custom.hideAll(h).hiddenRoutes?.sorted(), ["a", "b", "c", "d"])
         XCTAssertEqual(Custom.hideAll(base(hidden: ["a"]), ["a", "c"]).hiddenRoutes, ["a", "c"])
@@ -119,7 +119,7 @@ final class VisibilityCustomTests: XCTestCase {
         // owner 2026-10-17 "Show running" (web custom.js showRunning): the operating routes stay, the rest hide
         let h = base(hidden: ["a"], active: "x", prev: ["d"])
         XCTAssertEqual(Custom.showRunning(h, operating: ["a", "c"]),
-                       StatePatch(hiddenRoutes: ["b", "d"], activeCustom: .some(nil), prevHidden: []))
+                       StatePatch(hiddenRoutes: ["b", "d"], activeCustom: .some(nil), prevHidden: [], timeView: .some(nil)))
         // a station filter scope: hidden routes outside it are kept as they are
         XCTAssertEqual(Custom.showRunning(base(hidden: ["d"]), operating: ["a"], ["a", "b"]).hiddenRoutes, ["d", "b"])
         XCTAssertEqual(Custom.showRunning(base(), operating: []).hiddenRoutes?.sorted(), ["a", "b", "c", "d"],
