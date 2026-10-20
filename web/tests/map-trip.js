@@ -47,7 +47,7 @@ test('MapApi.setTrip: on the bus = ring + "You" on its marker, GPS dot steps bac
   const g = el.querySelector('.sb-youicon .sb-you--stop');
   ok(g && g.querySelector('.sb-you-pill').textContent === 'You (est.)');
   // your bus is not drawn (another route in focus): a You marker of its own at the bus position
-  api.drawBuses([], { routes, nowS: 1020 });
+  api.drawBuses([bus('7', 2.5, 2.5), bus('8', 3, 3)], { routes, focus: ['r9'], nowS: 1020 });
   api.setTrip(you());
   ok(el.querySelector('.sb-youicon .sb-you--bus'), 'standalone You on the bus position');
   api.setTrip(null);

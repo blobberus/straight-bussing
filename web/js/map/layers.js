@@ -231,6 +231,12 @@ export const GLIDE_MS = 9000;
 const NORMAL_M = 350, GLIDE_GAP_S = 30;
 /** Off the line, a move longer than this (m) is drawn as a jump: a straight glide would cross the blocks. */
 const STRAIGHT_M = 150;
+/**
+ * A bus missing from a poll while other buses still report keeps its badge this long (s), so a poll that drops it does
+ * not make it blink. A poll with no bus at all clears the map at once (data/live.js already held one odd empty answer),
+ * so the map never shows buses while the status pill says none report.
+ */
+export const MISSING_S = 45;
 
 /**
  * How long a move takes (ms) and whether it eases (a catch-up) or runs at constant speed (a normal poll).
@@ -384,13 +390,14 @@ export function createBusLayer(map, cb, opt = {}) {
   function draw(buses, o = {}) {
     const now = o.nowS ?? Date.now() / 1000;
     const hidden = new Set((o.hidden || []).map(String)), focus = focusSet(o.focus);
-    const seen = new Set();
+    const seen = new Set(), listed = new Set();
     let changed = 0;
     for (const v of buses || []) {
       const id = v?.vehicle?.id ?? v?.vehicle?.label;
       const rid = String(v?.trip?.route_id ?? '');
       const lat = +v?.position?.latitude, lon = +v?.position?.longitude;
       if (id == null || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      listed.add(String(id));
       if (focus ? !focus.has(rid) : hidden.has(rid)) continue;
       const key = String(id);
       seen.add(key);
@@ -439,7 +446,13 @@ export function createBusLayer(map, cb, opt = {}) {
       }
     }
     for (const [key, m] of markers) {
-      if (!seen.has(key)) { group.removeLayer(m.mk); markers.delete(key); changed++; }
+      if (seen.has(key)) { m.gone = null; continue; }
+      // not in this poll while others are (not hidden by the rider): keep it where it is for MISSING_S, then remove it
+      if (!listed.has(key) && listed.size) {
+        if (m.gone == null) m.gone = now;
+        if (now - m.gone <= MISSING_S) continue;
+      }
+      group.removeLayer(m.mk); markers.delete(key); changed++;
     }
     return changed;
   }

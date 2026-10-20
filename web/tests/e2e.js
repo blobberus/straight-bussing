@@ -425,6 +425,9 @@ test("status pill: an empty feed while a route is scheduled says no bus reports 
   try {
     SB.store.set({ service: { routes: { [rid]: days({ first: "00:00", last: "24:00", trips: 1, buses: Array(24).fill(1) }) } } });   // scheduled all day
     poll();
+    // the first empty answer after buses is held for one poll (data/live.js EMPTY_HOLD_S: Passio sends odd empty lists); the next is believed
+    await new Promise((r) => setTimeout(r, 300));
+    poll();
     await waitFor(() => !$("#pill").hidden && txt($("#pillText")) === "No shuttles are reporting live locations", "silent-service pill");
     tab("routes");
     await waitFor(() => /Scheduled, no live location/.test(txt(content())) && /No live locations right now/.test(txt(content())), "Routes: scheduled group + banner");

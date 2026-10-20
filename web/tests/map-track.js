@@ -1,7 +1,7 @@
 /** Tests for map/track.js (buses stay on their route line) and the bus layer's movement along it (needs Leaflet). */
 import { test, eq, ok, near } from './lib.js';
 import { prepareShape, pointAt, walk, locate, follow, headingAt, advance, ON_M } from '../js/map/track.js';
-import { createBusLayer, moveTiming, GLIDE_MS } from '../js/map/layers.js';
+import { createBusLayer, moveTiming, GLIDE_MS, MISSING_S } from '../js/map/layers.js';
 import { distM } from '../js/map/geometry.js';
 import { P, squareLoop } from './map-fixtures.js';
 
@@ -154,5 +154,32 @@ test('bus layer: a normal poll glides along the line at constant speed; reduced 
   r.draw([{ ...bus(pos(300), 1010), vehicle: { id: 9 } }], { routes, shapes, nowS: 1010 });
   near(distM(r.shown(9), pos(300)), 0, 1, 'reduced motion: there at once');
   eq(r.step(16), 0, 'and no frames are scheduled');
+  m.remove();
+});
+
+test('bus layer: a bus missing from a poll keeps its badge for MISSING_S, then continues along the line; no bus at all clears', () => {
+  const m = window.L.map(box('t-track3'), { zoomControl: false, attributionControl: false }).setView(P(2, 1), 15);
+  const routes = { r1: { short: 'CEN', color: '#FF9900' } }, shapes = { r1: [ell()] };
+  const s = prepareShape(shapes.r1)[0], corner = s.cum[1], pos = (x) => pointAt(s.line, s.cum, x);
+  const bus = (p, ts, id = 5) => ({ vehicle: { id }, trip: { route_id: 'r1' }, position: { latitude: p[0], longitude: p[1] }, timestamp: ts });
+  const other = (ts) => bus(pos(50), ts, 6);
+  const layer = manualLayer(m);
+  const count = () => m.getContainer().querySelectorAll('.sb-bus').length;
+  layer.draw([bus(pos(corner - 100), 1000), other(1000)], { routes, shapes, nowS: 1000 });
+  const el = layer.shown(5) && [...m.getContainer().querySelectorAll('.sb-bus')];
+  layer.draw([other(1010)], { routes, shapes, nowS: 1010 });
+  eq(count(), 2, 'one poll without it (others still report): the badge stays');
+  layer.draw([bus(pos(corner + 150), 1040), other(1040)], { routes, shapes, nowS: 1040 });
+  ok([...m.getContainer().querySelectorAll('.sb-bus')].every((x) => el.includes(x)), 'the same badges continue');
+  for (let i = 0; i < 300 && layer.step(16); i++) ok(offLine(ell(), layer.shown(5)) < 2, 'along the line, round the corner');
+  near(distM(layer.shown(5), pos(corner + 150)), 0, 1);
+  layer.draw([other(1050)], { routes, shapes, nowS: 1050 });
+  layer.draw([other(1050 + MISSING_S + 1)], { routes, shapes, nowS: 1050 + MISSING_S + 1 });
+  eq(count(), 1, 'gone for longer than MISSING_S: removed');
+  layer.draw([], { routes, shapes, nowS: 1100 });
+  eq(count(), 0, 'no bus at all in the poll: the map agrees with the pill at once');
+  layer.draw([bus(pos(100), 2000)], { routes, shapes, nowS: 2000 });
+  layer.draw([bus(pos(100), 2000)], { routes, shapes, hidden: ['r1'], nowS: 2001 });
+  eq(count(), 0, 'a route the rider hides goes at once');
   m.remove();
 });

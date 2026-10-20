@@ -1,6 +1,6 @@
 import { test, eq, ok, near } from './lib.js';
 import { createStore } from '../js/core/store.js';
-import { startLive, BASE, parseTrips } from '../js/data/live.js';
+import { startLive, BASE, parseTrips, EMPTY_HOLD_S } from '../js/data/live.js';
 import { res, hang, stubFetch, sleep, setHidden, feeds, feedName } from './data-helpers.js';
 
 const initial = () => createStore({ buses: [], trips: [], alerts: [], feedTs: 0, lastOk: 0, failed: false, liveLoaded: false });
@@ -38,6 +38,34 @@ test('live: success fills buses/trips/alerts/feedTs/lastOk, 3 feeds in parallel,
     eq(s.feedTs, 1700000000);
     near(s.lastOk, Date.now() / 1000, 5);
     eq([s.failed, s.liveLoaded], [false, true]);
+  } finally { live.stop(); }
+});
+
+test('live: one empty vehicle answer in service keeps the last buses (one poll, at most EMPTY_HOLD_S); the next is believed', async () => {
+  const store = initial();
+  const st = { empty: false };
+  const f = stubFetch((url) => {
+    const name = feedName(url), body = feeds()[name];
+    return res(name === 'vehiclePositions' && st.empty ? { ...body, entity: [] } : body);
+  });
+  let T = 1700000000;
+  const live = startLive(store, { ...fast, fetch: f, now: () => T });
+  try {
+    await live.pollNow();
+    eq(store.get().buses.length, 1);
+    st.empty = true; T += 10;
+    await live.pollNow();
+    eq(store.get().buses.length, 1, 'an odd empty answer: the bus stays');
+    eq(store.get().buses[0].timestamp, 1700000000 - 5, 'with its own report time (stale dimming still applies)');
+    T += 10;
+    await live.pollNow();
+    eq(store.get().buses.length, 0, 'a second empty answer in a row is believed');
+    st.empty = false; T += 10;
+    await live.pollNow();
+    eq(store.get().buses.length, 1);
+    st.empty = true; T += EMPTY_HOLD_S + 1;
+    await live.pollNow();
+    eq(store.get().buses.length, 0, 'an empty answer long after the last bus is believed at once');
   } finally { live.stop(); }
 });
 

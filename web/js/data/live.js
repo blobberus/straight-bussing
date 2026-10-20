@@ -9,6 +9,14 @@ import { operatingBuses } from '../core/operating.js';
 export const BASE = 'https://passio3.com/chicago/passioTransit/gtfs/realtime/';
 /** Feed names fetched each poll. */
 export const FEEDS = Object.freeze(['vehiclePositions', 'tripUpdates', 'serviceAlerts']);
+/**
+ * ONE poll that answers with no bus at all, while buses reported at most this long ago (s), keeps the last list:
+ * Passio sometimes sends an empty vehicle list for a poll in the middle of service (DC-015,
+ * docs/DATA-COLLECTION-LOG.md), which would make every bus vanish and jump back 10 s later. The next empty answer is
+ * believed (rider safety: "No shuttles are reporting live locations" is at most one poll late). Each bus keeps its own
+ * report time, so stale dimming and core/operating.js work as before.
+ */
+export const EMPTY_HOLD_S = 30;
 
 const toNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const timeObj = (o) => (o && o.time != null ? { ...o, time: toNum(o.time) } : o);
@@ -71,6 +79,7 @@ export function startLive(store, opts = {}) {
   const keepAlive = () => { try { return typeof opts.keepAlive === 'function' && !!opts.keepAlive(); } catch (e) { return false; } };
   const doc = typeof document !== 'undefined' ? document : null;
   let timer = 0, inflight = null, ctl = null, fails = 0, stopped = false;
+  let lastBuses = [], lastBusesAt = 0;    // the last poll that had buses (EMPTY_HOLD_S); [] once an empty is believed
 
   /** Paused: the page is hidden and nothing needs data in the background. */
   const hidden = () => !!(doc && doc.hidden) && !keepAlive();
@@ -103,7 +112,12 @@ export function startLive(store, opts = {}) {
     const [vp, tu, sa] = res;
     const patch = { liveLoaded: true };
     if (vp.status === 'fulfilled') {
-      patch.buses = parseBuses(vp.value);
+      let list = parseBuses(vp.value);
+      const t = nowFn();
+      if (list.length) { lastBuses = list; lastBusesAt = t; }
+      else if (lastBuses.length && t - lastBusesAt <= EMPTY_HOLD_S) { list = lastBuses; lastBuses = []; }   // one odd empty answer
+      else lastBuses = [];
+      patch.buses = list;
       patch.feedTs = toNum(vp.value.header?.timestamp) || store.get().feedTs || 0;
     }
     if (tu.status === 'fulfilled') {

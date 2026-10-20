@@ -600,4 +600,9 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   The heading triangle turns with the street (`headingAt`, short way round); a new badge with no feed bearing takes the line's
   direction. Frames pause while Leaflet animates a zoom (`zoomstart` / `zoomend`); prefers-reduced-motion moves at once.
   `createBusLayer(map, cb, {clock, frame, reduce})` takes a manual clock and frame queue in tests; `shown(id)` = the drawn spot.
+- When bus data drops out: `data/live.js` keeps the last bus list for ONE poll that answers with no bus at all while buses
+  reported in the last `EMPTY_HOLD_S` (30 s) (Passio sends odd empty lists, DC-015); the next empty answer is believed, so
+  "No shuttles are reporting live locations" is at most one poll late. On the map a bus missing from a poll while others still
+  report keeps its badge for `MISSING_S` (45 s) and then continues along its line; a poll with no bus at all clears the map at
+  once (the map never shows buses while the pill says none report); a route the rider hides goes at once.
 
