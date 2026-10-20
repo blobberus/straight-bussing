@@ -175,8 +175,26 @@ def has_alerts(run_file):
 # ---------------------------------------------------------------- status
 def idle_run(r):
     """An idle run (collect.yml mode sleep, since 2026-10-18): no bus runs, it logs nothing and starts a collect
-    run when buses report or a scheduled start is near. Its run-name says 'idle'; it may last 5 h 40 min."""
-    return str(r.get("display_title") or r.get("displayTitle") or "").lower().startswith("collector idle")
+    run when buses report or a scheduled start is near. Its run-name says 'idle'; it may last 5 h 40 min. An auto
+    run (cron backstop, manual: "collect or idle") that found no bus idles too: r["idle"] (auto_idle) says so."""
+    return bool(r.get("idle")) or str(r.get("display_title") or r.get("displayTitle") or "").lower().startswith("collector idle")
+
+
+def auto_run(r):
+    """A run that decided at start whether to collect or idle (its name ends 'collect or idle')."""
+    return "collect or idle" in str(r.get("display_title") or r.get("displayTitle") or "").lower()
+
+
+def auto_idle(run_id, token):
+    """True when an auto run went idle: its 'Idle until buses run' step ran (jobs API), else False."""
+    try:
+        for j in gh(f"/repos/{REPO}/actions/runs/{run_id}/jobs", token).get("jobs", []):
+            for st in j.get("steps") or []:
+                if str(st.get("name", "")).startswith("Idle until buses run") and st.get("started_at"):
+                    return True
+    except Exception:
+        pass
+    return False
 
 
 def parked(r, now):
@@ -335,6 +353,8 @@ def status(ctx, a):
                 issues.append((2, "the last 3 runs failed", "read the failing step log (see monitoring.md 'Runs failing')"))
             elif any(r["conclusion"] == "failure" and now - epoch(r["created_at"]) < 86400 for r in done):
                 issues.append((1, "a run failed in the last 24 h", "read its log (monitoring.md 'Runs failing')"))
+            for r in [r for r in runs if now - epoch(r["created_at"]) < 86400 + 2 * RUN_S and auto_run(r)][:16]:
+                r["idle"] = auto_idle(r["id"], token)               # a few a day (the cron backstop); bounded API use
             for r in [r for r in runs if now - epoch(r["created_at"]) < 86400 + 2 * RUN_S and parked(r, now)
                       and not r.get("log_window")][:12]:
                 r["log_window"] = log_window(r["id"], token, now)   # a few per day; bounded API use

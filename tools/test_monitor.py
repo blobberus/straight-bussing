@@ -150,6 +150,7 @@ def test_idle_runs_count_as_covered_and_are_never_parked():
                 status="completed", conclusion="success", display_title="Collect ground truth")
     auto = dict(coll, display_title="Collect ground truth (backstop: collect or idle)")
     assert m.idle_run(idle) and not m.idle_run(coll) and not m.idle_run(auto)
+    assert m.auto_run(auto) and not m.auto_run(idle) and m.idle_run(dict(auto, idle=True))   # an auto run that idled
     assert not m.parked(idle, now)
     start, frac, gaps = m.coverage([idle, coll], now, complete=True)
     assert abs(frac - 1.0) < 1e-6 and not gaps, (frac, gaps)
