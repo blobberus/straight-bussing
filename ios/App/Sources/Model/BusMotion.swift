@@ -16,12 +16,19 @@ import StraightBussingKit
 /// XCUITest waits for idle: a test with simulated buses took 3 to 4 min instead of 50 s). Nothing ticks when no badge
 /// moves, in the background or while a sheet covers the map (`pause`), with Reduce Motion (moves at once) or in the
 /// `-demo` CI build (UI tests never wait on a glide).
+///
+/// A data drop-out (web map/layers.js MISSING_S, 2026-10-18): a bus missing from a poll while other buses still report
+/// keeps its marker for `missingS` (45 s), then it is removed; when it comes back it continues along its line. A poll
+/// with no bus at all clears every marker at once (the Kit's `LiveState` already held one odd empty answer), so the map
+/// never shows buses while the status pill says none report; a route the rider hides goes at once (MapScreen filters
+/// `mapBuses` by the hidden routes).
 @MainActor
 final class BusMotion {
     /// One bus report of a poll.
     struct Report {
         let id: String
         let rid: String
+        let label: String
         let coord: LatLon
         let bearing: Double?
         /// The vehicle's own report time (feed clock, 0 = unknown).
@@ -44,6 +51,9 @@ final class BusMotion {
 
     private struct Mover {
         var rid: String
+        var label: String
+        /// When it was first missing from the reports (unix s), nil while reported.
+        var gone: Double?
         var raw: LatLon
         var bearing: Double?
         var vt: Double
@@ -55,6 +65,10 @@ final class BusMotion {
     }
 
     private var movers: [String: Mover] = [:]
+    /// Bus ids in the last reports' order (the markers' order).
+    private var order: [String] = []
+    /// A bus missing from the reports while others still report keeps its marker this long (s).
+    static let missingS = 45.0
     private var lines: [String: [BusTrack.Line]] = [:]
     private var linesVersion = -1
     private var ticker: Task<Void, Never>?
@@ -109,13 +123,16 @@ final class BusMotion {
                 let start = first.to?.pt ?? r.coord
                 // no feed heading: the line's own direction (shapes run the way the buses drive)
                 let hd = r.bearing ?? first.to.flatMap { BusTrack.headingAt(prep[$0.li], $0.pos) }
-                movers[r.id] = Mover(rid: r.rid, raw: r.coord, bearing: r.bearing, vt: r.vt, seen: now, to: first.to,
-                                     disp: start, anim: nil, rot: Self.turned(nil, hd))
+                movers[r.id] = Mover(rid: r.rid, label: r.label, gone: nil, raw: r.coord, bearing: r.bearing, vt: r.vt, seen: now,
+                                     to: first.to, disp: start, anim: nil, rot: Self.turned(nil, hd))
                 continue
             }
+            m.label = r.label
+            m.gone = nil
             if m.raw == r.coord {
                 if m.anim == nil, r.bearing != m.bearing { m.rot = Self.turned(m.rot, r.bearing) }
                 m.bearing = r.bearing
+                if r.vt > 0 { m.vt = r.vt }   // a bus standing still still reports (its stale dimming, the next move's gap)
                 movers[r.id] = m
                 continue
             }
@@ -145,13 +162,45 @@ final class BusMotion {
             }
             movers[r.id] = m
         }
-        for id in movers.keys where !keep.contains(id) { movers[id] = nil }
+        for (id, var m) in movers where !keep.contains(id) {
+            if reports.isEmpty { movers[id] = nil; continue }   // no bus at all: the map agrees with the pill at once
+            if let g = m.gone {
+                if now - g > Self.missingS { movers[id] = nil }
+            } else {
+                m.gone = now
+                movers[id] = m
+            }
+        }
+        order = reports.map(\.id)
         startTicking()
     }
 
     /// Where a bus's badge is drawn now and its heading rotation (unwrapped degrees; nil = no heading yet).
     func shown(_ id: String) -> (coord: LatLon, rotation: Double?)? {
         movers[id].map { ($0.disp, $0.rot) }
+    }
+
+    /// A marker to draw: a reported bus, or one missing from the reports for at most `missingS`.
+    struct Drawn {
+        let id: String
+        let rid: String
+        let label: String
+        let coord: LatLon
+        let rotation: Double?
+        /// The bus's last report time (unix s, 0 = unknown), for stale dimming.
+        let vt: Double
+    }
+
+    /// Every marker, the reported buses first in report order, then the ones briefly missing (by id).
+    func drawn() -> [Drawn] {
+        var out: [Drawn] = [], seen = Set<String>()
+        func add(_ id: String) {
+            guard let m = movers[id], seen.insert(id).inserted else { return }
+            out.append(Drawn(id: id, rid: m.rid, label: m.label, coord: m.disp, rotation: m.rot, vt: m.vt))
+        }
+        order.forEach(add)
+        movers.keys.sorted().forEach(add)
+        return out
     }
 
     /// Advances every move to time t. -> whether any move still runs.

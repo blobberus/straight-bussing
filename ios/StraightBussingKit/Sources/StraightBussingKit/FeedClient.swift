@@ -28,6 +28,16 @@ public struct LiveState: Sendable, Equatable {
     public var lastOk: Double = 0
     public var failed = false
     public var loaded = false
+    /// The last vehicle list that had buses (as parsed, before `Operating`) and when it came (`emptyHoldS`); [] once an
+    /// empty answer is believed.
+    public var lastBusList: [VehiclePosition] = []
+    public var lastBusAt: Double = 0
+    /// ONE poll that answers with no bus at all, while buses reported at most this long ago (s), keeps the last list
+    /// (web data/live.js EMPTY_HOLD_S): Passio sometimes sends an empty vehicle list for a poll in the middle of service
+    /// (DC-015, docs/DATA-COLLECTION-LOG.md), which would make every bus vanish and jump back 10 s later. The next
+    /// empty answer is believed (rider safety: "No shuttles are reporting live locations" is at most one poll late).
+    /// Each bus keeps its own report time, so stale dimming and `Operating` work as before.
+    public static let emptyHoldS = 30.0
     public init() {}
 
     public func staleLevel(now: Double) -> StaleLevel {
@@ -49,7 +59,8 @@ public struct FeedPoll: Sendable {
 extension LiveState {
     /// Merge a poll like data/live.js `run()`: success needs vehiclePositions + tripUpdates; alerts failing
     /// alone is tolerated; failure keeps the last good data and sets `failed`; each feed that did succeed
-    /// is still applied; buses are filtered to operating vehicles.
+    /// is still applied; ONE empty vehicle answer in service keeps the last list (`emptyHoldS`); buses are
+    /// filtered to operating vehicles.
     public func applying(_ poll: FeedPoll, staticData: StaticData?, now: Double) -> LiveState {
         var s = self
         s.loaded = true
@@ -57,7 +68,17 @@ extension LiveState {
         var newBuses: [VehiclePosition]? = nil
         if case .success(let f) = poll.vehicles {
             vpOK = true
-            newBuses = f.entities
+            var list = f.entities
+            if !list.isEmpty {
+                s.lastBusList = list
+                s.lastBusAt = now
+            } else if !s.lastBusList.isEmpty && now - s.lastBusAt <= LiveState.emptyHoldS {
+                list = s.lastBusList   // one odd empty answer (DC-015)
+                s.lastBusList = []
+            } else {
+                s.lastBusList = []
+            }
+            newBuses = list
             s.feedTs = f.timestamp != 0 ? f.timestamp : s.feedTs
         }
         if case .success(let f) = poll.trips {

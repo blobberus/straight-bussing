@@ -214,7 +214,8 @@ extension AppModel {
         // buses ride their route line (Kit BusTrack, BusMotion; web map/track.js): a changed report starts a move from
         // where the badge is now; `-demo` (CI), Reduce Motion and a sheet over the map move at once
         let reports = liveState.buses.enumerated().map { i, b in
-            BusMotion.Report(id: b.vehicle.id ?? "bus-\(i)", rid: b.trip.routeId ?? "", coord: b.coord, bearing: b.bearing, vt: b.timestamp)
+            BusMotion.Report(id: b.vehicle.id ?? "bus-\(i)", rid: b.trip.routeId ?? "", label: b.displayLabel, coord: b.coord,
+                             bearing: b.bearing, vt: b.timestamp)
         }
         busMotion.update(reports, shapes: staticData.shapes, version: staticVersion, now: now,
                          reduce: UIAccessibility.isReduceMotionEnabled || config.demo || mapCovered)
@@ -227,15 +228,12 @@ extension AppModel {
     }
 
     /// The bus markers where `busMotion` draws them now (stale for `now`), set as is: every step is a point on the
-    /// route line (no SwiftUI animation, which would draw a straight line across the block).
+    /// route line (no SwiftUI animation, which would draw a straight line across the block). A bus missing from the
+    /// last poll while others report stays for up to 45 s (`BusMotion.missingS`).
     func publishBuses() {
         let t = now
-        let markers = liveState.buses.enumerated().map { i, b -> MapBus in
-            let id = b.vehicle.id ?? "bus-\(i)"
-            let s = busMotion.shown(id)
-            let bearing: Double? = s != nil ? s!.rotation : b.bearing
-            return MapBus(id: id, rid: b.trip.routeId ?? "", label: b.displayLabel, coord: s?.coord ?? b.coord,
-                          bearing: bearing, stale: b.timestamp > 0 && t - b.timestamp > 60)
+        let markers = busMotion.drawn().map { d in
+            MapBus(id: d.id, rid: d.rid, label: d.label, coord: d.coord, bearing: d.rotation, stale: d.vt > 0 && t - d.vt > 60)
         }
         if mapBuses != markers { mapBuses = markers }
     }
