@@ -235,6 +235,10 @@ final class AppModel {
     /// Lines by Time (the clock next to the gear; Views/TimePickView.swift).
     var showTimePick = false
     var showLiveActivityPreview = false
+    /// A sheet covers the map (Settings, Lines by Time, the Live Activity preview): the bus markers stop gliding and
+    /// move at once until it closes (nothing to see, and no main-thread work for a map nobody looks at). RootView
+    /// calls `mapCoverChanged` when it flips.
+    var mapCovered: Bool { showSettings || showTimePick || showLiveActivityPreview }
     var editingOrder = false
     var confirmDelete: CustomRoute?
     /// Where to land after a confirmed delete: "list" | "detail" | "edit" (web deleteWithConfirm `from`).

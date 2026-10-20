@@ -102,7 +102,7 @@ extension AppModel {
     /// fresh while the first new poll is on its way), then polling, the clock tick, permissions, schedule check.
     func didBecomeActive() {
         inForeground = true
-        busMotion.resume()
+        if !mapCovered { busMotion.resume() }
         pollsSinceActive = 0   // data from before the break is old because nothing polled: not an outage
         now = Date().timeIntervalSince1970
         refreshStatus()
@@ -212,13 +212,18 @@ extension AppModel {
                                  busCount: buses.count, silent: silentService, alerts: activeAlerts.count)
         if statusPill != pill { statusPill = pill }
         // buses ride their route line (Kit BusTrack, BusMotion; web map/track.js): a changed report starts a move from
-        // where the badge is now; `-demo` (CI) and Reduce Motion move at once
+        // where the badge is now; `-demo` (CI), Reduce Motion and a sheet over the map move at once
         let reports = liveState.buses.enumerated().map { i, b in
             BusMotion.Report(id: b.vehicle.id ?? "bus-\(i)", rid: b.trip.routeId ?? "", coord: b.coord, bearing: b.bearing, vt: b.timestamp)
         }
         busMotion.update(reports, shapes: staticData.shapes, version: staticVersion, now: now,
-                         reduce: UIAccessibility.isReduceMotionEnabled || config.demo)
+                         reduce: UIAccessibility.isReduceMotionEnabled || config.demo || mapCovered)
         publishBuses()
+    }
+
+    /// A sheet opened over the map or closed: stop the glides (each bus is drawn where it is going) or let them run again.
+    func mapCoverChanged() {
+        if mapCovered { busMotion.pause() } else if inForeground { busMotion.resume() }
     }
 
     /// The bus markers where `busMotion` draws them now (stale for `now`), set as is: every step is a point on the

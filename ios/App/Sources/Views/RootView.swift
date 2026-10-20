@@ -89,6 +89,7 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         .sheet(isPresented: $model.showSettings) { SettingsView() }
+        .onChange(of: model.mapCovered) { _, _ in model.mapCoverChanged() }   // no bus glides behind a sheet
         .sheet(isPresented: $model.showTimePick) { TimePickView(start: model.routeState.timeView?.at ?? Date().timeIntervalSince1970) }
         .sheet(isPresented: $model.showLiveActivityPreview) {
             NavigationStack { LiveActivityPreviewView() }

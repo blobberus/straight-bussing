@@ -11,10 +11,11 @@ import StraightBussingKit
 ///
 /// SwiftUI's Map would animate an annotation's coordinate in a straight line (across the block), so the badge is
 /// stepped along the path and each step is set as is, exactly on the line (`AppModel.publishBuses`, no animation):
-/// a step of at most about 1.5 m (under a pixel at the campus zoom), 4 to 30 steps a second. Plain steps, not a
-/// chain of short animations: an app that is always animating never goes idle (more battery, and XCUITest waits for
-/// idle: a test with simulated buses took 3 to 4 min instead of 50 s). Nothing ticks when no badge moves, in the
-/// background (`pause`), with Reduce Motion (moves at once) or in the `-demo` CI build (UI tests never wait on a glide).
+/// 4 steps a second for a normal glide (about 3 m a step, under a pixel at the campus zoom), up to 30 while catching up.
+/// Plain steps, not a chain of short animations: an app that is always animating never goes idle (more battery, and
+/// XCUITest waits for idle: a test with simulated buses took 3 to 4 min instead of 50 s). Nothing ticks when no badge
+/// moves, in the background or while a sheet covers the map (`pause`), with Reduce Motion (moves at once) or in the
+/// `-demo` CI build (UI tests never wait on a glide).
 @MainActor
 final class BusMotion {
     /// One bus report of a poll.
@@ -63,7 +64,7 @@ final class BusMotion {
     /// A web `busHeading` rule: a bus must move this far before its heading comes from its movement.
     static let headingMinM = 15.0
     /// Steps: at most about `chordM` meters each (at the fastest move's speed), between 30 and 4 steps a second.
-    static let chordM = 1.5, minStep = 1.0 / 30, maxStep = 0.25
+    static let chordM = 3.0, minStep = 1.0 / 30, maxStep = 0.25
 
     private func clock() -> Double { CACurrentMediaTime() }
 
@@ -201,7 +202,8 @@ final class BusMotion {
         }
     }
 
-    /// The app leaves the foreground: every move ends where it was going, nothing ticks until `resume`.
+    /// The app leaves the foreground, or a sheet covers the map: every move ends where it was going, nothing ticks
+    /// until `resume`.
     func pause() {
         active = false
         ticker?.cancel()
@@ -210,7 +212,8 @@ final class BusMotion {
         onStep?()
     }
 
-    /// Back in the foreground (the next poll starts new moves; a long absence catches up along the line).
+    /// Back in the foreground with the map in view (the next poll starts new moves; a long absence catches up along
+    /// the line).
     func resume() {
         active = true
         startTicking()
