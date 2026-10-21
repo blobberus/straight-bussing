@@ -123,6 +123,8 @@ public struct TripFollow: Hashable, Sendable {
         public var pos: Double
         public var nextId: String
         public var nextName: String
+        /// The stop before `nextId` along the route (the one it last passed), for stopTimes' lead.
+        public var prevId: String?
         public var prevName: String?
         public var lat: Double?
         public var lon: Double?
@@ -332,7 +334,7 @@ public struct TripFollow: Hashable, Sendable {
         let pos: Double = loc.idx < 0 ? -1 : loc.idx >= w.count ? Double(w.count) : at ? Double(loc.idx) : Double(loc.idx) - 1 + frac
         let v = Vehicle(id: bus.vehicle.id, label: bus.vehicle.label ?? bus.vehicle.id ?? "", tripId: bus.trip.tripId, how: how,
                         idx: loc.idx, behind: loc.behind, beyond: loc.beyond, frac: frac, at: at, pos: pos, nextId: next,
-                        nextName: ns.map { $0.name.isEmpty ? next : $0.name } ?? next,
+                        nextName: ns.map { $0.name.isEmpty ? next : $0.name } ?? next, prevId: prevId,
                         prevName: ps.map { $0.name.isEmpty ? (prevId ?? "") : $0.name } ?? prevId,
                         lat: here.isValid ? here.lat : nil, lon: here.isValid ? here.lon : nil, seen: seen,
                         stale: seen != 0 && now - seen > busStaleS)

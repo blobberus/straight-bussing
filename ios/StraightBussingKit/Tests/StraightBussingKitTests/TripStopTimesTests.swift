@@ -28,9 +28,13 @@ final class TripStopTimesTests: XCTestCase {
         l.boardIdx = board; l.alightIdx = alight; l.vehicle = vehicle; l.boardEta = boardEta; l.boardLive = false; l.rideMin = rideMin
         return l
     }
-    func veh(_ idx: Int, frac: Double = 0.5, at: Bool = false) -> TripFollow.Vehicle {
-        TripFollow.Vehicle(id: "v", label: "1", tripId: nil, how: .trip, idx: idx, behind: 0, beyond: 0, frac: frac, at: at,
-                           pos: Double(idx) - 1 + frac, nextId: "b", nextName: "b", prevName: nil, lat: nil, lon: nil, seen: NOW, stale: false)
+    func veh(_ idx: Int, frac: Double = 0.5, at: Bool = false, behind: Int = 0, nextId: String = "b", prevId: String? = nil) -> TripFollow.Vehicle {
+        TripFollow.Vehicle(id: "v", label: "1", tripId: nil, how: .trip, idx: idx, behind: behind, beyond: 0, frac: frac, at: at,
+                           pos: idx < 0 ? -1 : Double(idx) - 1 + frac, nextId: nextId, nextName: nextId, prevId: prevId, prevName: nil,
+                           lat: nil, lon: nil, seen: NOW, stale: false)
+    }
+    func rows(_ ids: [String]) -> [TripFollow.StopRow] {
+        ids.map { TripFollow.StopRow(id: $0, name: $0, role: .ride, state: .upcoming, eta: nil) }
     }
 
     func testStopTimesLiveElseScaledOrAddedScheduleRideNeverBackInTime() {
@@ -55,6 +59,25 @@ final class TripStopTimesTests: XCTestCase {
         let never = TripFollow.stopTimes(leg([NOW - 100, nil], board: 0, alight: 1), now: NOW, ride: { _, _ in 0 })
         XCTAssertEqual(never.map { $0?.t }, [NOW, NOW], "never earlier than now or the stop before")
         XCTAssertEqual(TripFollow.stopTimes(leg([nil, nil], board: 0, alight: 1), now: NOW).map { $0?.t }, [nil, nil], "nothing to go on: nothing shown")
+        // 2026-10-20, Central to Vue53: no Passio predictions at all and the bus 2 stops before the first listed stop
+        let far = ["x": -2, "y": -1, "a": 0, "b": 1, "c": 2]
+        let rideFar: (String, String) -> Double? = { p, q in Double(far[q]! - far[p]!) }
+        var b1 = leg([nil, nil, nil], board: 0, alight: 2)
+        b1.vehicle = veh(-1, frac: 0.5, at: false, behind: 2, nextId: "y", prevId: "x")
+        let behind = TripFollow.stopTimes(b1, now: NOW, ride: rideFar)
+        XCTAssertEqual(behind.map { $0?.t }, [NOW + 90, NOW + 150, NOW + 210], "bus before the list: from its next stop along the route")
+        XCTAssertTrue(behind.allSatisfy { $0?.est == true }, "estimates")
+        var b2 = leg([nil, nil, nil], board: 0, alight: 2, rideMin: 4)
+        b2.vehicle = veh(-1, at: true, behind: 2, nextId: "y", prevId: "x")
+        XCTAssertEqual(TripFollow.stopTimes(b2, now: NOW, ride: { _, _ in nil }).map { $0?.t }, [NOW + 240, NOW + 360, NOW + 480],
+                       "no schedule data: the plan's 2 min a stop from the bus's stop")
+        // a loop listed past the bus's own stop: the minutes keep counting round the lap (a direct ride would take the short way)
+        let loop = ["p", "q", "r", "s"]
+        let rideLoop: (String, String) -> Double? = { x, y in Double((loop.firstIndex(of: y)! - loop.firstIndex(of: x)! + 4) % 4) }
+        var lap = TripFollow.BusStep(rid: "L", boardId: "p", boardName: "p", alightId: "r", alightName: "r")
+        lap.stops = rows(["r", "s", "p", "q", "r"]); lap.boardIdx = 2; lap.alightIdx = 4
+        lap.vehicle = veh(-1, at: true, behind: 1, nextId: "q", prevId: "p")
+        XCTAssertEqual(TripFollow.stopTimes(lap, now: NOW, ride: rideLoop).map { $0.map { ($0.t - NOW) / 60 } }, [1, 2, 3, 4, 5], "counts up round the lap")
     }
 
     /// "N min" / "Now" / "~N min" (web trip-view.js /^(Now|~?\d+ min)$/).
