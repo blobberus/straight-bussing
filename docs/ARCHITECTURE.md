@@ -612,8 +612,10 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   the timeline only had times up to the end of the bus's current trip. `core/tripprogress.js vehicleTimes` merges every update
   that names the followed VEHICLE on the route (never another bus's: trip ids are shared) and `etasAlong` matches them in time order.
 - `stopTimes(leg, now, ride)` gives every upcoming stop a time: Passio's live time, else an estimate (`est:true`) scaled between
-  the live times around it, added from the last one, counted back from the first, from the bus's position, or (no live bus) from
+  the live times around it, added from the last one, counted back from the first, from the bus's position (also while the bus is
+  still before the first listed stop: from its next stop; 2026-10-20, Central had no Passio predictions at all), or (no live bus) from
   the plan's boarding time; `ride` = scheduled minutes between stops (`core/predict.js rideMinutes`, data/segments.json), else the
-  plan's average per stop. Never earlier than now or the stop before. The view (`ui/views/tripprogress.js`) shows "N min" (live)
+  plan's average per stop, added segment by segment along the list (a loop past the bus's own stop counts the full lap). Never
+  earlier than now or the stop before. The view (`ui/views/tripprogress.js`) shows "N min" (live)
   or "~N min est." right of each station name; passed stops say "Passed". iOS: Kit TripFollow (same rules).
 

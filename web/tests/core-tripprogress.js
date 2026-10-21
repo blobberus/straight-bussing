@@ -280,5 +280,20 @@ test("stopTimes: live where Passio has it, else scaled / added schedule ride, ne
   const never = stopTimes({ stops: S([NOW - 100, null]), boardIdx: 0, alightIdx: 1, vehicle: null }, NOW, () => 0);
   eq(never.map((x) => x && x.t), [NOW, NOW], "never earlier than now or the stop before");
   eq(stopTimes({ stops: S([null, null]), boardIdx: 0, alightIdx: 1, vehicle: null }, NOW), [null, null], "nothing to go on: nothing shown");
+  // 2026-10-20, Central to Vue53: no Passio predictions at all and the bus 2 stops before the first listed stop
+  const far = { x: -2, y: -1, a: 0, b: 1, c: 2 }, rideFar = (p, q) => far[q] - far[p];
+  const behind = stopTimes({ stops: S([null, null, null]), boardIdx: 0, alightIdx: 2,
+    vehicle: { idx: -1, behind: 2, nextId: "y", prevId: "x", at: false, frac: 0.5 } }, NOW, rideFar);
+  eq(behind.map((x) => x && x.t), [NOW + 90, NOW + 150, NOW + 210], "bus before the list: from its next stop along the route");
+  ok(behind.every((x) => x.est), "estimates");
+  const behindPlan = stopTimes({ stops: S([null, null, null]), boardIdx: 0, alightIdx: 2, rideMin: 4,
+    vehicle: { idx: -1, behind: 2, nextId: "y", prevId: "x", at: true } }, NOW, () => null);
+  eq(behindPlan.map((x) => x && x.t), [NOW + 240, NOW + 360, NOW + 480], "no schedule data: the plan's 2 min a stop from the bus's stop");
+  // a loop listed past the bus's own stop: the minutes keep counting round the lap (a direct ride would take the short way)
+  const loop = ["p", "q", "r", "s"], li = (x) => loop.indexOf(x);
+  const rideLoop = (x, y) => (li(y) - li(x) + 4) % 4;                 // 1 min a stop, forward round the loop
+  const lap = stopTimes({ stops: ["r", "s", "p", "q", "r"].map((id) => ({ id, state: "upcoming", eta: null })), boardIdx: 2, alightIdx: 4,
+    vehicle: { idx: -1, behind: 1, nextId: "q", prevId: "p", at: true } }, NOW, rideLoop);
+  eq(lap.map((x) => x && (x.t - NOW) / 60), [1, 2, 3, 4, 5], "counts up round the lap");
 });
 

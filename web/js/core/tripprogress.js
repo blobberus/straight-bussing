@@ -151,7 +151,7 @@ function vehicleAt(S, W, w, bus, how, now, preferBehind, tuFor) {
     tripId: bus.trip && bus.trip.trip_id != null ? String(bus.trip.trip_id) : null,
     how, idx: loc.idx, behind: loc.behind || 0, beyond: loc.beyond || 0, frac, at,
     pos: loc.idx < 0 ? -1 : loc.idx >= w.length ? w.length : at ? loc.idx : loc.idx - 1 + frac,
-    nextId, nextName: (ns && ns.name) || nextId, prevName: (ps && ps.name) || prevId || null,
+    nextId, nextName: (ns && ns.name) || nextId, prevId: prevId != null ? String(prevId) : null, prevName: (ps && ps.name) || prevId || null,
     lat: okPt(here) ? here.lat : null, lon: okPt(here) ? here.lon : null,
     seen, stale: !!seen && now - seen > TRIP.BUS_STALE_S, tu,
   };
@@ -358,7 +358,9 @@ function evalBus(l, S, now, ctx) {
  * scheduled ride time between stops, `ride(fromId, toId)` -> minutes or null (core/predict.js rideMinutes on
  * data/segments.json); without it the trip plan's average per stop. In order: a stop between two live times is scaled
  * between them; after the last live time it adds the ride from there; before the first, it counts back from it; with
- * no live time at all, from where the bus is now; with no live bus, from the plan's boarding time. Never earlier than
+ * no live time at all, from where the bus is now (also while it is still before the first listed stop: from its next
+ * stop along the route, 2026-10-20, Central to Vue53 with no Passio predictions at all); with no live bus, from the
+ * plan's boarding time. Never earlier than
  * now or than the stop before it. Passed stops: null.
  * @param {object} leg a bus leg of tripProgress (stops, boardIdx, alightIdx, vehicle, boardEta, boardLive, rideMin)
  * @param {number} now unix seconds
@@ -371,13 +373,28 @@ export function stopTimes(leg, now, ride) {
   const span = Math.max(1, (Number(leg.alightIdx) || 0) - (Number(leg.boardIdx) || 0));
   const perStop = Number(leg.rideMin) > 0 ? Number(leg.rideMin) / span : null;   // plan minutes per stop
   let src = "plan";
-  const mins = (a, b) => {
-    if (a === b) return 0;
-    if (a > b) return null;
-    const x = typeof ride === "function" ? ride(S[a].id, S[b].id) : null;
+  // scheduled minutes between two stop ids `steps` stops apart, else the plan's minutes per stop
+  const rideIds = (fromId, toId, steps) => {
+    if (fromId == null || toId == null) return null;
+    if (String(fromId) === String(toId)) return 0;
+    const x = typeof ride === "function" ? ride(String(fromId), String(toId)) : null;
     const r = x == null || x === "" ? NaN : Number(x);   // null = no schedule data (Number(null) would be 0 min)
     if (isFinite(r) && r >= 0) { src = "schedule"; return r; }
-    return perStop != null ? perStop * (b - a) : null;
+    return perStop != null && steps > 0 ? perStop * steps : null;
+  };
+  // minutes along the listed stops, added segment by segment (a loop listed past the bus's own position is driven a
+  // full lap: a direct "from -> to" ride would take the short way round)
+  const C = [0], fromSched = [false];
+  for (let q = 1; q < S.length; q++) {
+    src = "plan";
+    const r = C[q - 1] == null ? null : rideIds(S[q - 1].id, S[q].id, 1);
+    C.push(r == null ? null : C[q - 1] + r);
+    fromSched.push(src === "schedule");
+  }
+  const mins = (a, b) => {
+    if (a > b || C[a] == null || C[b] == null) return null;
+    for (let q = a + 1; q <= b; q++) if (fromSched[q]) src = "schedule";
+    return C[b] - C[a];
   };
   const live = S.map((s) => (s.state !== "passed" && num(s.eta) ? s.eta : null));
   const v = leg.vehicle;
@@ -402,7 +419,13 @@ export function stopTimes(leg, now, ride) {
       if (r != null) t = live[m] - r * 60;
     } else if (v && num(v.idx) != null && v.idx >= 0 && v.idx <= k && v.idx < S.length) {
       const r = mins(v.idx, k);
-      const lead = v.at ? 0 : v.idx > 0 ? mins(v.idx - 1, v.idx) : perStop;
+      const lead = v.at ? 0 : v.idx > 0 ? mins(v.idx - 1, v.idx) : rideIds(v.prevId, S[0].id, 1);
+      if (r != null) t = now + (lead != null ? lead * (1 - (num(v.frac) != null ? v.frac : 0.5)) * 60 : 0) + r * 60;
+    } else if (v && num(v.idx) != null && v.idx < 0 && v.nextId != null) {
+      // still before the first listed stop (v.behind stops): from its next stop to the first one, then along the list
+      const toFirst = rideIds(v.nextId, S[0].id, Number(v.behind) || 1), along = mins(0, k);
+      const r = toFirst == null || along == null ? null : toFirst + along;
+      const lead = v.at ? 0 : rideIds(v.prevId, v.nextId, 1);
       if (r != null) t = now + (lead != null ? lead * (1 - (num(v.frac) != null ? v.frac : 0.5)) * 60 : 0) + r * 60;
     } else if (!v && num(leg.boardEta) != null && !leg.boardLive && k >= (Number(leg.boardIdx) || 0)) {
       const r = mins(Number(leg.boardIdx) || 0, k);
