@@ -13,6 +13,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 ## Checkups
 | When (Chicago) | Verdict | Coverage | Data | Notes |
 |---|---|---|---|---|
+| 2026-10-20 19:00 | healthy | 100% since Oct 19 18:57 (collecting 87%, idle with no bus 13%); no run failed; no warning besides GitHub's Node.js 20 notice | arrivals: 4,070 (Mon Oct 19, the most of any day so far), 2,912 (Oct 20 by 6:39 PM), 0 duplicates, 0 rows missing stop / bus / route, 90 stations and 13 lines on weekdays; predictions with a 10-min lead for 68% (Oct 19) and 72% (Oct 20) of arrivals; alerts.csv 5 versions, polled live; archive complete through Oct 19 (5 files a day); data repo synced 23:42Z; weather current | collecting only while buses run works: idle Sun night 1:35 to 4:16 AM and Mon night 1:30 to 4:15 AM, 0 arrivals inside an idle window, the first bus of each morning 31 to 44 min after collecting resumed (DC-014 checked); DC-015: 27% of daytime polls empty on Oct 19, some runs 75 to 87% for an hour, but every 30-s window from 5 AM to midnight had a full answer from some run (no data lost); from this PC 24 of 24 polls were full, with or without a cache-buster |
 | 2026-10-19 19:45 | healthy; first full day collecting only while buses run (DC-014) | 100% since Oct 18 14:48 (collecting 80%, idle with no bus 20%) | arrivals.csv ~33,600 rows, newest 81 s old, 16 buses live | idle run took over Sun 10:57 AM, started collecting Sun 3:16 PM (45 min before the 4 PM routes) and Mon 4:16 AM (before the 5 AM first trips); Sun night idle 2:36 to 4:16 AM after the last bus; `status` showed a false 60-min gap for a backstop run that idled (fixed: `monitor.py auto_idle`) |
 | 2026-10-16 12:45 | healthy; verified and backfilled (owner: "make any changes or fixes needed. Update all data collected if needed") | 100% since the last checkup (`monitor.py status` HEALTHY) | fixes DC-009 to DC-012 on main; Oct 10 to 15 replayed with today's code (tools/replay_day.py, validated on Oct 15: 3,431 of 3,431 arrivals identical) and applied (tools/apply_replay.py, data `2db4cbc`): arrivals +576 (Oct 10 +122, 11 +109, 12 +250, 13 +95; GPS pass rows), predictions +2,248 missed rows, -558 previous-lap rows (502 of them predicted over 15 min early), 160 replaced by a fresher copy; 0 duplicates; eta-<day> assets of Oct 10 to 15 re-uploaded and their summary rows rebuilt (data `da1782b`) | Oct 8 / 9 cannot be replayed (no polls were kept); see DC-002, DC-008, DC-010, DC-011 |
 | 2026-10-16 01:11 | healthy | 100% of 31.6 h of actual logging time since the last checkup (83 runs, all succeeded, no gap over 1 min) | arrivals: 3,637 (Oct 14), 3,419 (Oct 15), 0 duplicates, 0 rows missing stop / bus / route, 89 to 90 stations and 13 lines a day; predictions.csv 73,396 rows, 10-min coverage 67% (Oct 13) -> 71% (Oct 14) -> 76% (Oct 15); alerts.csv 3 rows, polled live (last_seen 23 min old); archive through Oct 14 incl. alerts-2026-10-14.csv.gz, Oct 15 due with today's run; data repo synced 03:28Z; weather current | `monitor.py status` HEALTHY; found DC-012; DC-008 checked (watch); DC-011 unchanged; traffic context ends 2026-04-30 (known: the city stopped the dataset, RouteKnower §3.4) |
@@ -29,7 +30,11 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 - Fixed: `service_gate.probe` also reads the trip updates when a read has no position (Passio predicts only while
   buses run) and asks with a cache-buster like the app; the logger counts a predicted bus as live
   (`poll(..., pred_count)`, summary `pred=`); scheduled starts still start collecting regardless. Watch whether riders'
-  phones see it too (the app would show "No shuttles are reporting live locations" for a poll).
+  phones see it too (the app would show "No shuttles are reporting live locations" for a poll); since fd369c3 the app
+  holds ONE such empty answer (`data/live.js EMPTY_HOLD_S`) and the map keeps a missing bus 45 s while others report.
+- Rechecked 2026-10-20 (Oct 19 polls): 27% of daytime polls empty, some runs 75 to 87% for an hour, yet every 30-s window
+  from 5 AM to midnight had a full answer from some run, so no data was lost; this PC got 24 of 24 full answers. Status:
+  watch (it only costs data if the one run collecting alone, about 10 min of every 40, is such a run).
 
 ### DC-014 The collector ran all day and night, even while no bus ran (fixed: only while buses run)
 - Found 2026-10-18 (owner: "only run when the bus routes are active ... a buffer for time so that just in case the
@@ -44,8 +49,9 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   ends early (a crash) now hands over at once instead of at minute 40. Tests: test_gate.py (10), test_chain.py (19,
   incl. a week-long simulation: 99.8% of bus time logged, worst gap 5.7 min while buses run). Replay of Oct 10 to 16:
   collects 130 of 168 h (buses 118 h), 1 bus-minute missed.
-- Watch: the first idle-to-collect handover on a real day (the 3:15 PM warm-up on weekends, about 4:15 AM on weekdays),
-  and that `status` never reads an idle stretch as DOWN.
+- Checked 2026-10-19 / 20: the handovers happened as planned (Sun 3:16 PM, Mon 4:16 AM, Tue 4:15 AM), no arrival fell in
+  an idle window, and `status` counts idle runs as covered (a backstop run that idled read as a 60-min gap until
+  `monitor.py auto_idle`, 2759b8b). Status: fixed.
 
 ### DC-013 The public data repo synced every 4 to 5 hours, not every 30 min (fixed)
 - Found 2026-10-16 during the verification. github.com/blobberus/straight-bussing-data's `sync.yml` cron is
