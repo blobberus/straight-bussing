@@ -216,6 +216,20 @@ public struct TripFollow: Hashable, Sendable {
         return nil
     }
 
+    /// Every live stop time of the followed bus (web core/tripprogress.js vehicleTimes). Passio splits one bus's
+    /// predictions over several trip updates: the trip it is on (often only 1 to 4 stops left) and its next trip
+    /// (2026-10-20: bus 4326 had 1 stop ahead on trip 501595 and 6 on 501597), so a ride across the end of a trip (a
+    /// loop's start) had no time for the stops after it. Merged: the given update plus every update that names the same
+    /// VEHICLE on this route (never another bus's times: several buses share one trip id), matched in time order by
+    /// etasAlong (merged: true).
+    static func vehicleTimes(_ trips: [TripUpdate], _ tu: TripUpdate?, _ vid: String?, _ rid: String) -> (tu: TripUpdate?, merged: Bool) {
+        guard let vid else { return (tu, false) }
+        let own = trips.filter { t in t != tu && t.vehicle.id == vid && !(t.trip.routeId != nil && t.trip.routeId != rid) }
+        if own.isEmpty { return (tu, false) }
+        let all = (tu?.stopTimeUpdates ?? []) + own.flatMap { $0.stopTimeUpdates }
+        return (TripUpdate(trip: tu?.trip ?? TripDescriptor(), vehicle: VehicleDescriptor(id: vid), stopTimeUpdates: all), true)
+    }
+
     /// Operating bus running a trip: the planned vehicle when known, else the bus on that trip id, else the vehicle
     /// named in that trip's update.
     static func busForTrip(_ L: LiveState, _ rid: String, _ tripId: String?, _ vehicleId: String?) -> VehiclePosition? {
@@ -325,11 +339,12 @@ public struct TripFollow: Hashable, Sendable {
         return Placed(v: v, tu: tu)
     }
 
-    /// Live ETAs of a trip update along stop ids, matched in order (nil where none).
-    static func etasAlong(_ tu: TripUpdate?, _ ids: [String], _ from: Int, _ now: Double) -> [Double?] {
+    /// Live ETAs of a trip update along stop ids, matched in order (nil where none). One trip: its stop sequence;
+    /// several trips merged (vehicleTimes): sequences restart per trip, so time order.
+    static func etasAlong(_ tu: TripUpdate?, _ ids: [String], _ from: Int, _ now: Double, merged: Bool = false) -> [Double?] {
         var ups = (tu?.stopTimeUpdates ?? []).map { (id: $0.stopId ?? "null", t: $0.time, seq: $0.stopSequence) }
             .filter { $0.t != 0 && $0.t > now - 30 }
-        if ups.allSatisfy({ $0.seq != nil }) {
+        if !merged && ups.allSatisfy({ $0.seq != nil }) {
             ups = ups.stableSorted { a, b in a.seq! != b.seq! ? a.seq! < b.seq! : a.t < b.t }
         } else {
             ups = ups.stableSorted { $0.t < $1.t }
@@ -485,8 +500,13 @@ public struct TripFollow: Hashable, Sendable {
                 V = v
             }
         }
-        // live ETAs from the followed bus
-        let etas: [Double?] = V.flatMap { v in v.tu.map { etasAlong($0, list, v.v.idx, now) } } ?? list.map { _ in nil }
+        // live ETAs from the followed bus (all of its trip updates on this route, vehicleTimes)
+        let etas: [Double?] = V.flatMap { v in
+            v.tu.map { (tu: TripUpdate) -> [Double?] in
+                let m = vehicleTimes(L.trips, tu, v.v.id, rid)
+                return etasAlong(m.tu, list, v.v.idx, now, merged: m.merged)
+            }
+        } ?? list.map { _ in nil }
         out.stops = list.enumerated().map { k, id in
             var st: StopState = .upcoming
             if done { st = .passed }

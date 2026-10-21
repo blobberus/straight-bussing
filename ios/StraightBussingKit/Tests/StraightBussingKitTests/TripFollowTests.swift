@@ -592,10 +592,12 @@ final class TripTextTests: XCTestCase {
         let c = card("waiting")
         XCTAssertEqual(c.prim, "Bus 101 is 2 stops away")
         XCTAssertEqual(c.sec.first, "Board at Ratner Center in 4 minutes")
-        XCTAssertEqual(TripText.stopEta(leg.stops[0], leg, now: NOW, late: false).text, "Passed", "not color alone")
+        XCTAssertEqual(TripText.stopEta(leg.stops[0], nil, now: NOW, late: false).text, "Passed", "not color alone")
         XCTAssertEqual(TripText.busPill(leg.stops[1], k: 1, leg), "Bus 101 heading here")
-        XCTAssertTrue(TripText.stopSay(leg.stops[0], k: 0, leg, now: NOW, late: false).contains("the bus has passed this stop"))
-        XCTAssertTrue(TripText.stopSay(leg.stops[1], k: 1, leg, now: NOW, late: false).contains("the bus is heading here"))
+        let tm = TripText.stopTimes(leg, now: NOW)
+        XCTAssertTrue(TripText.stopSay(leg.stops[0], k: 0, leg, tm[0], now: NOW, late: false).contains("the bus has passed this stop"))
+        XCTAssertTrue(TripText.stopSay(leg.stops[1], k: 1, leg, tm[1], now: NOW, late: false).contains("the bus is heading here"))
+        XCTAssertTrue(TripText.stopSay(leg.stops[1], k: 1, leg, tm[1], now: NOW, late: false).hasSuffix("bus in 1 minute"), "live time said as is")
         XCTAssertEqual(TripText.whereLine(leg, now: NOW), "Bus 101 is between 56th & Ellis and 57th & Ellis")
     }
 
@@ -608,8 +610,11 @@ final class TripTextTests: XCTestCase {
         let sc = TripFix.follow(TripFix.scene("schedule")), leg = sc.busLegs[0]
         XCTAssertTrue(card("schedule").sec.contains("No live bus data: following the plan's times (estimate)."))
         XCTAssertTrue(card("schedule").prim.hasPrefix("Bus planned for"))
-        let e = TripText.stopEta(leg.stops[leg.boardIdx], leg, now: NOW, late: false)
-        XCTAssertEqual(e.text, "~" + TimeFmt.clock(NOW + 120)); XCTAssertTrue(e.est, "planned clock + est. tag")
+        let tm = TripText.stopTimes(leg, now: NOW)
+        let e = TripText.stopEta(leg.stops[leg.boardIdx], tm[leg.boardIdx], now: NOW, late: false)
+        XCTAssertEqual(e.text, "~2 min"); XCTAssertTrue(e.est, "planned minutes + est. tag (owner 2026-10-20: minutes, not a clock)")
+        XCTAssertTrue(TripText.stopSay(leg.stops[leg.boardIdx], k: leg.boardIdx, leg, tm[leg.boardIdx], now: NOW, late: false)
+            .hasSuffix("bus in about 2 minutes, estimate"))
         XCTAssertTrue(TripText.footnote(sc).hasPrefix("No live data for this bus right now"))
     }
 

@@ -170,13 +170,27 @@ public enum TripText {
         return (v.idx < 0 ? "\(plural(v.behind, "more stop")) before \(s[0].name)" : "\(busName(v)) is starting its trip", false)
     }
 
-    /// ETA text of a stop row ("Passed", "4 min", "~4:12 PM" planned) and whether it is a planned estimate.
-    public static func stopEta(_ s: TripFollow.StopRow, _ leg: TripFollow.BusStep, now: Double, late: Bool) -> (text: String, est: Bool) {
+    /// Minutes for the stops a leg shows (web ui/views/tripprogress.js: a finished leg none, else stopTimes over the
+    /// shown stops). ride: scheduled riding minutes between two stops of the leg's route (nil when unknown).
+    public static func stopTimes(_ leg: TripFollow.BusStep, now: Double, ride: ((String, String) -> Double?)? = nil) -> [TripFollow.StopTime?] {
+        let shown = shownStops(leg)
+        if leg.state == .done { return shown.stops.map { _ in nil } }
+        var l = leg
+        l.stops = shown.stops; l.boardIdx = shown.boardIdx; l.alightIdx = shown.alightIdx
+        return TripFollow.stopTimes(l, now: now, ride: ride)
+    }
+
+    /// An estimate never says "Now": "~1 min" at least.
+    public static func estText(_ t: Double, now: Double) -> String {
+        "~" + String(max(1, TimeFmt.minsUntil(t, from: now))) + " min"
+    }
+
+    /// Minutes right of a station name: "Passed", "4 min" / "Now" (live), "~4 min" + est. tag (estimate), "" when there
+    /// is nothing to go on.
+    public static func stopEta(_ s: TripFollow.StopRow, _ time: TripFollow.StopTime?, now: Double, late: Bool) -> (text: String, est: Bool) {
         if s.state == .passed { return ("Passed", false) }
-        if s.eta != nil { return (etaText(s.eta, now: now, late: late), false) }
-        if s.role == .board, let b = leg.boardEta, !leg.boardLive { return ("~" + TimeFmt.clock(b), true) }
-        if s.role == .alight, let a = leg.alightEta, !leg.alightLive { return ("~" + TimeFmt.clock(a), true) }
-        return ("", false)
+        guard let time else { return ("", false) }
+        return time.est ? (estText(time.t, now: now), true) : (etaText(time.t, now: now, late: late), false)
     }
 
     /// The bus pill on a stop row ("Bus 101 heading here" / "is here"), nil when the bus is not there.
@@ -188,7 +202,7 @@ public enum TripText {
     }
 
     /// VoiceOver label of a stop row.
-    public static func stopSay(_ s: TripFollow.StopRow, k: Int, _ leg: TripFollow.BusStep, now: Double, late: Bool) -> String {
+    public static func stopSay(_ s: TripFollow.StopRow, k: Int, _ leg: TripFollow.BusStep, _ time: TripFollow.StopTime?, now: Double, late: Bool) -> String {
         let showV = leg.state == .active && leg.vehicle != nil && (leg.vehicle!.idx < shownStops(leg).stops.count)
         let passed = s.state == .passed
         var parts = [s.name]
@@ -196,9 +210,10 @@ public enum TripText {
         if passed { parts.append("the bus has passed this stop") }
         else if s.state == .current && showV { parts.append("the bus is at this stop") }
         else if s.state == .next && showV { parts.append("the bus is heading here") }
-        let e = stopEta(s, leg, now: now, late: late)
-        if let t = s.eta, !passed { parts.append("bus \(inMin(t, now: now))\(late ? ", data delayed" : "")") }
-        else if e.est, let t = s.role == .board ? leg.boardEta : leg.alightEta { parts.append("planned about \(TimeFmt.clock(t)), estimate") }
+        if !passed, let time {
+            if time.est { parts.append("bus in about " + plural(max(1, TimeFmt.minsUntil(time.t, from: now)), "minute") + ", estimate") }
+            else { parts.append("bus " + inMin(time.t, now: now) + (late ? ", data delayed" : "")) }
+        }
         return parts.joined(separator: ", ")
     }
 

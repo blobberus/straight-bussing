@@ -181,6 +181,9 @@ struct TripBusLeg: View {
         let name = !(r?.long ?? "").isEmpty ? r!.long : !(r?.short ?? "").isEmpty ? r!.short : "Route"
         let meta = TripText.busMeta(leg)
         let whereLine = TripText.whereLine(leg, now: model.now)
+        // minutes to every station: live where Passio has a time, else an estimate (est.) from the scheduled ride time
+        let predictor = model.predictor, now = model.now, rid = leg.rid
+        let times = TripText.stopTimes(leg, now: now, ride: { a, b in predictor?.rideMinutes(rid: rid, from: a, to: b, when: now).min })
         VStack(alignment: .leading, spacing: 0) {
             Button { model.push(.route(leg.rid)) } label: {
                 HStack(spacing: 8) {
@@ -210,7 +213,9 @@ struct TripBusLeg: View {
                     }
                     ForEach(Array(shown.stops.enumerated()), id: \.element.id) { item in
                         TripStopRow(stop: item.element, k: item.offset, count: shown.stops.count, leg: leg, shown: shown,
-                                    color: color, late: late, hasLead: lead != nil, rowH: rowH, textOn: Color.textOn(hex: r?.color))
+                                    color: color, late: late, hasLead: lead != nil, rowH: rowH,
+                                    time: times.indices.contains(item.offset) ? times[item.offset] : nil,
+                                    textOn: Color.textOn(hex: r?.color))
                     }
                 }
                 if showV, let v {
@@ -251,7 +256,8 @@ struct LeadRow: View {
     }
 }
 
-/// One stop of a bus leg: rail + dot, name with "Board here" / "Get off here" / bus pill, ETA or "Passed".
+/// One stop of a bus leg: rail + dot, name with "Board here" / "Get off here" / bus pill, minutes ("4 min" live,
+/// "~4 min" + est. estimate) or "Passed" on the right (web ui/views/tripprogress.js).
 struct TripStopRow: View {
     @Environment(AppModel.self) private var model
     let stop: TripFollow.StopRow
@@ -263,6 +269,8 @@ struct TripStopRow: View {
     let late: Bool
     let hasLead: Bool
     let rowH: CGFloat
+    /// Minutes to this stop (TripText.stopTimes): live, or an estimate.
+    let time: TripFollow.StopTime?
     /// Text on the route color (white or near-black by luminance).
     var textOn: Color = .white
 
@@ -279,7 +287,7 @@ struct TripStopRow: View {
         let key = stop.role == .board || stop.role == .alight
         let topDim = (k > 0 && dimSeg(k - 1)) || (k == 0 && hasLead)
         let botDim = k < count - 1 && dimSeg(k)
-        let eta = TripText.stopEta(stop, leg, now: model.now, late: late)
+        let eta = TripText.stopEta(stop, time, now: model.now, late: late)
         let pill = TripText.busPill(stop, k: k, leg)
         Button { model.push(.stop(stop.id)) } label: {
             HStack(spacing: 10) {
@@ -320,7 +328,7 @@ struct TripStopRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(TripText.stopSay(stop, k: k, leg, now: model.now, late: late))
+        .accessibilityLabel(TripText.stopSay(stop, k: k, leg, time, now: model.now, late: late))
         .accessibilityAddTraits(.isButton)
     }
 }

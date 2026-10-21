@@ -617,5 +617,7 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   the plan's boarding time; `ride` = scheduled minutes between stops (`core/predict.js rideMinutes`, data/segments.json), else the
   plan's average per stop, added segment by segment along the list (a loop past the bus's own stop counts the full lap). Never
   earlier than now or the stop before. The view (`ui/views/tripprogress.js`) shows "N min" (live)
-  or "~N min est." right of each station name; passed stops say "Passed". iOS: Kit TripFollow (same rules).
+  or "~N min est." right of each station name; passed stops say "Passed". iOS: Kit `TripFollow.vehicleTimes` and
+  `TripStopTimes.swift` (`TripFollow.stopTimes`), `TripText.stopTimes` / `stopEta` / `stopSay`, App `TripTimelineView`
+  (ride minutes from `SchedulePredictor`); tests `TripStopTimesTests`.
 
