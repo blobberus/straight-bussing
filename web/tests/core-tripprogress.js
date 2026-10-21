@@ -1,6 +1,6 @@
 // Tests for core/tripprogress.js (pure; fixtures in trip-fixtures.js).
 import { test, eq, ok, near } from "./lib.js";
-import { tripProgress, TRIP } from "../js/core/tripprogress.js";
+import { tripProgress, TRIP, stopTimes } from "../js/core/tripprogress.js";
 import { NOW, stops, routes, routeStops, baseState, bus, trip, journeyR, journeyXfer, scenes } from "./trip-fixtures.js";
 
 const scene = (id) => scenes().find((s) => s.id === id).state;
@@ -244,3 +244,41 @@ test("shared trip id: Passio gives several buses one trip_id; the planned VEHICL
   const leg = r.options.flatMap((o) => o.legs).find((l) => l.type === "bus" && l.tripId === "tS");
   ok(leg && leg.vehicleId === "v102", "bus leg carries vehicleId: " + JSON.stringify(r.options.map((o) => o.legs.map((l) => l.type === "bus" ? [l.rid, l.board.id, l.alight.id, l.tripId, l.vehicleId, l.waitLive] : ["walk", Math.round(l.m)]))) + " walkOnly " + JSON.stringify(r.walkOnly));
 });
+
+test("split predictions: the bus's next trip lends the later stops their live times (that vehicle only, 2026-10-20)", () => {
+  // Passio: bus v101 has 2 stops left on tR1, the rest of your ride is on its next trip tR1b; another bus v999 on tR1b too
+  const st = baseState({ user: null, journey: journeyR(),
+    buses: [bus("v101", "101", "R", "tR1", "A0", "A1", 0.5)],
+    trips: [trip("tR1", "R", "v101", "101", [["A1", 90], ["A2", 200]]),
+      trip("tR1b", "R", "v101", "101", [["A3", 300], ["A4", 420], ["A5", 520], ["A6", 600], ["A7", 720]]),
+      trip("tR1b", "R", "v999", "999", [["A5", 30], ["A6", 60], ["A7", 90]])] });
+  const b = busLeg(prog(st));
+  eq(b.stops.map((s) => s.eta), [NOW + 90, NOW + 200, NOW + 300, NOW + 420, NOW + 520, NOW + 600, NOW + 720], "every stop has its live time");
+  eq([b.boardLive, b.alightLive, b.alightEta], [true, true, NOW + 720], "the alighting time is live, not planned");
+});
+
+test("stopTimes: live where Passio has it, else scaled / added schedule ride, never back in time; passed = null", () => {
+  const ix = { a: 0, b: 1, c: 2, d: 3, e: 4 }, ride = (x, y) => ix[y] - ix[x];   // 1 min a stop
+  const S = (etas, states) => etas.map((e, i) => ({ id: "abcde"[i], state: states ? states[i] : "upcoming", eta: e }));
+  const leg = { stops: S([null, NOW + 60, null, NOW + 300, null], ["passed", "next", "upcoming", "upcoming", "upcoming"]),
+    boardIdx: 1, alightIdx: 4, vehicle: { idx: 1, at: false, frac: 0.5 }, rideMin: 8 };
+  const out = stopTimes(leg, NOW, ride);
+  eq(out[0], null, "passed");
+  eq(out[1], { t: NOW + 60, est: false, src: "live" });
+  eq(out[2], { t: NOW + 180, est: true, src: "schedule" }, "between two live times: scaled by the scheduled ride");
+  eq(out[3], { t: NOW + 300, est: false, src: "live" });
+  eq(out[4], { t: NOW + 360, est: true, src: "schedule" }, "after the last live time: plus the ride from there");
+  const back = stopTimes({ stops: S([null, NOW + 300]), boardIdx: 0, alightIdx: 1, vehicle: null }, NOW, ride);
+  eq(back[0], { t: NOW + 240, est: true, src: "schedule" }, "before the first live time: counted back from it");
+  const pos = stopTimes({ stops: S([null, null, null]), boardIdx: 1, alightIdx: 2, vehicle: { idx: 1, at: false, frac: 0.5 } }, NOW, ride);
+  eq(pos.map((x) => x && x.t), [null, NOW + 30, NOW + 90], "no live time: from where the bus is (half way to its next stop)");
+  const plan = stopTimes({ stops: S([null, null, null]), boardIdx: 0, alightIdx: 2, vehicle: null, boardEta: NOW + 120, boardLive: false, rideMin: 6 }, NOW);
+  eq(plan.map((x) => x && x.t), [NOW + 120, NOW + 300, NOW + 480], "no live bus, no schedule: the plan's boarding time plus its minutes per stop");
+  eq(plan[1].src, "plan");
+  const unknown = stopTimes({ stops: S([null, null, null]), boardIdx: 0, alightIdx: 2, vehicle: null, boardEta: NOW + 120, boardLive: false, rideMin: 6 }, NOW, () => null);
+  eq(unknown.map((x) => x && x.t), [NOW + 120, NOW + 300, NOW + 480], "a route without schedule data (ride -> null) falls back to the plan, never 0 min");
+  const never = stopTimes({ stops: S([NOW - 100, null]), boardIdx: 0, alightIdx: 1, vehicle: null }, NOW, () => 0);
+  eq(never.map((x) => x && x.t), [NOW, NOW], "never earlier than now or the stop before");
+  eq(stopTimes({ stops: S([null, null]), boardIdx: 0, alightIdx: 1, vehicle: null }, NOW), [null, null], "nothing to go on: nothing shown");
+});
+

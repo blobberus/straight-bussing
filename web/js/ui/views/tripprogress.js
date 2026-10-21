@@ -8,7 +8,8 @@
  * (walk to the stop + when to leave / bus N stops away / N stops to your stop / walk to the
  * destination). Then a vertical timeline: walk rows on a dotted line, each bus leg drawn like the
  * route detail stop timeline (4 px line in the route color, 14 px stop dots, "Board here" / "Get off
- * here", next ETA per stop) with the followed bus as a chip ON the line between the right stops;
+ * here", minutes to every stop right of its name: live, else "~N min est." from the scheduled ride time between stops,
+ * core/tripprogress.js stopTimes, owner 2026-10-20) with the followed bus as a chip ON the line between the right stops;
  * passed stops are dimmed AND say "Passed"; the bus position is also written out (leg head line and
  * row labels), never color alone. A move of the bus slides the chip once (CSS, transform only; none
  * under reduced motion). Then the destination, "Trip steps" (Directions) and an honesty footnote.
@@ -16,7 +17,8 @@
  */
 import { esc, safeColor, textOn } from "../../core/esc.js";
 import { nowS, clock, minsUntil, ago } from "../../core/time.js";
-import { tripNow } from "../../core/tripprogress.js";
+import { tripNow, stopTimes } from "../../core/tripprogress.js";
+import { predict } from "../../core/predict.js";
 import { tripYou, legStatus, busName } from "../../core/tripyou.js";
 import { routeChip, etaBlock, officialLinks } from "../components.js";
 import { isPlanJourney, tripBarHTML } from "./journey.js";
@@ -45,6 +47,10 @@ export function etaText(t, now, late) {
   return m < 1 ? "Now" : (late ? "~" : "") + m + " min";
 }
 const inMin = (t, now) => { const m = minsUntil(t, now); return m < 1 ? "now" : `in ${plural(m, "minute")}`; };
+/** An estimate never says "Now": "~1 min" at least. */
+const estText = (t, now) => `~${Math.max(1, minsUntil(t, now))} min`;
+/** Scheduled riding minutes between two stops of a route (data/segments.json via core/predict.js), or null. */
+const rideFn = (rid, now) => (a, b) => { const r = predict.rideMinutes(rid, a, b, now); return r && r.min != null ? r.min : null; };
 
 /**
  * Where the followed bus is, in words ("Bus 101 is 3 stops away", "Bus 101 is between A and B").
@@ -144,16 +150,17 @@ function busHTML(leg, li, p, state, now) {
     h += `<li class="tp-stop tp-lead is-more"><span class="tp-leadt">${esc(t)}</span></li>`;
   }
   const dimSeg = (j) => j + 1 <= bIdx || (stops[j + 1] && (stops[j + 1].state === "passed" || stops[j + 1].state === "current"));
+  // minutes to every stop: live where Passio has a time, else an estimate (est.) from the scheduled ride time
+  const times = done ? stops.map(() => null) : stopTimes({ ...leg, stops, boardIdx: bIdx, alightIdx: aIdx }, now, rideFn(leg.rid, now));
   stops.forEach((s, k) => {
     const cls = [`is-${s.state}`, `is-${s.role}`];
     if (k === 0 && !lead) cls.push("is-first");
     if (k === stops.length - 1) cls.push("is-last");
     if ((k > 0 && dimSeg(k - 1)) || (k === 0 && lead)) cls.push("dim-top");
     if (k < stops.length - 1 && dimSeg(k)) cls.push("dim-bot");
-    const live = !!s.eta, passed = s.state === "passed";
-    let eta = passed ? "Passed" : live ? etaText(s.eta, now, late) : "", est = "";
-    if (!passed && !live && s.role === "board" && leg.boardEta && !leg.boardLive) { eta = "~" + clock(leg.boardEta); est = tag("est."); }
-    if (!passed && !live && s.role === "alight" && leg.alightEta && !leg.alightLive) { eta = "~" + clock(leg.alightEta); est = tag("est."); }
+    const passed = s.state === "passed", st = passed ? null : times[k], live = !!st && !st.est;
+    const eta = passed ? "Passed" : st ? (live ? etaText(st.t, now, late) : estText(st.t, now)) : "";
+    const est = st && st.est ? tag("est.") : "";
     const tags = [];
     if (s.role === "board") tags.push(`<span class="tp-tag tp-tag--board">Board here</span>`);
     if (s.role === "alight") tags.push(`<span class="tp-tag tp-tag--alight">Get off here</span>`);
@@ -162,7 +169,7 @@ function busHTML(leg, li, p, state, now) {
     }
     const say = [s.name, s.role === "board" ? "board here" : s.role === "alight" ? "get off here" : "",
       passed ? "the bus has passed this stop" : s.state === "current" && showV ? "the bus is at this stop" : s.state === "next" && showV ? "the bus is heading here" : "",
-      live && !passed ? `bus ${inMin(s.eta, now)}${late ? ", data delayed" : ""}` : est ? `planned about ${clock(s.role === "board" ? leg.boardEta : leg.alightEta)}, estimate` : ""].filter(Boolean).join(", ");
+      live ? `bus ${inMin(st.t, now)}${late ? ", data delayed" : ""}` : st ? `bus in about ${plural(Math.max(1, minsUntil(st.t, now)), "minute")}, estimate` : ""].filter(Boolean).join(", ");
     h += `<li class="tp-stop ${cls.join(" ")}"><button type="button" class="tp-sbtn" data-action="stop:open" data-id="${esc(s.id)}" aria-label="${esc(say)}">`
       + `<span class="v-grow"><span class="tp-sname">${esc(s.name)}</span>${tags.length ? `<span class="tp-tags">${tags.join("")}</span>` : ""}</span>`
       + `<span class="tp-eta${eta === "Now" ? " is-now" : ""}${passed ? " is-passed" : ""}">${esc(eta)}${est}</span></button></li>`;

@@ -79,7 +79,7 @@ test("trip view: on the bus (stops left, before-stops gone), arrived (final walk
   const sc = html("schedule");
   ok(sc.includes("No live bus data: following the plan&#39;s times (estimate)."));
   ok(sc.includes("Bus planned for"), "planned, not live");
-  ok(/~\d{1,2}:\d{2}.*?<span class="v-est">est\.<\/span>/.test(sc), "planned clock + est. tag on the board row");
+  ok(/~\d+ min\s*<span class="v-est">est\.<\/span>/.test(sc), "planned minutes + est. tag on the board row");
   ok(sc.includes("No live data for this bus right now"), "footnote honest");
   ok(!sc.includes("tp-track"), "no chip without a live bus");
 });
@@ -183,3 +183,20 @@ test("trip view: journey from the fixture without a trip id still renders (plann
   const h = tripProgressHTML(baseState({ journey: journeyR({ tripId: null }) }), NOW);
   ok(h.includes("Walk 4 min to Ratner Center") && h.includes("No live"));
 });
+
+test("trip view: minutes to every upcoming station, right of its name (live, else ~N min est.; owner 2026-10-20)", () => {
+  const rows = (h) => [...new DOMParser().parseFromString(`<ol>${h}</ol>`, "text/html").querySelectorAll(".tp-stop:not(.tp-lead)")]
+    .map((li) => ({ name: li.querySelector(".tp-sname")?.textContent, eta: li.querySelector(".tp-eta")?.textContent || "", passed: li.classList.contains("is-passed") }));
+  for (const id of ["walk", "waiting", "onbus", "schedule", "stale"]) {
+    const r = rows(html(id));
+    ok(r.length >= 2, id + ": stop rows");
+    for (const x of r) ok(x.passed ? x.eta === "Passed" : /^(Now|~?\d+ min(est\.)?)$/.test(x.eta), `${id}: ${x.name} shows minutes (${JSON.stringify(x.eta)})`);
+  }
+  const live = rows(html("walk"));
+  ok(live.filter((x) => !x.passed).every((x) => !x.eta.includes("est.")), "live times carry no est. tag");
+  const plan = rows(html("schedule"));
+  ok(plan.every((x) => x.passed || x.eta.startsWith("~") && x.eta.endsWith("est.")), "plan times: ~N min est.");
+  const m = plan.filter((x) => !x.passed).map((x) => parseInt(x.eta.replace("~", ""), 10));
+  ok(m.every((v, i) => i === 0 || v > m[i - 1]), "minutes count up along the stops: " + m.join(", "));
+});
+

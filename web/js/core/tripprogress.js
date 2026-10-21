@@ -157,11 +157,27 @@ function vehicleAt(S, W, w, bus, how, now, preferBehind, tuFor) {
   };
 }
 
+/**
+ * Every live stop time of the followed bus. Passio splits one bus's predictions over several trip updates: the trip it
+ * is on (often only 1 to 4 stops left) and its next trip (2026-10-20: bus 4326 had 1 stop ahead on trip 501595 and 6 on
+ * 501597), so a ride across the end of a trip (a loop's start) had no time for the stops after it. Merged: the given
+ * update plus every update that names the same VEHICLE on this route (never another bus's times: several buses can
+ * share one trip id), matched in time order by etasAlong. iOS: Kit TripFollow.vehicleTimes.
+ */
+function vehicleTimes(trips, tu, vid, rid) {
+  if (vid == null) return tu;
+  const own = (trips || []).filter((t) => t && t !== tu && t.vehicle && same(t.vehicle.id, vid)
+    && !(t.trip && t.trip.route_id != null && !same(t.trip.route_id, rid)));
+  if (!own.length) return tu;
+  return { merged: true, stop_time_update: [...((tu && tu.stop_time_update) || []), ...own.flatMap((t) => t.stop_time_update || [])] };
+}
+
 /** Live ETAs of a trip update along stop ids, matched in order (null where none). */
 function etasAlong(tu, ids, from, now) {
   const ups = ((tu && tu.stop_time_update) || []).map((u) => ({ id: String(u.stop_id), t: timeOf(u), seq: Number(u.stop_sequence) }))
     .filter((u) => u.t && u.t > now - 30);
-  if (ups.every((u) => isFinite(u.seq))) ups.sort((a, b) => a.seq - b.seq || a.t - b.t); else ups.sort((a, b) => a.t - b.t);
+  // one trip: its stop sequence; several trips merged (vehicleTimes): sequences restart per trip, so time order
+  if (!(tu && tu.merged) && ups.every((u) => isFinite(u.seq))) ups.sort((a, b) => a.seq - b.seq || a.t - b.t); else ups.sort((a, b) => a.t - b.t);
   const out = ids.map(() => null);
   let j = 0;
   for (let k = Math.max(0, from); k < ids.length; k++) {
@@ -299,8 +315,8 @@ function evalBus(l, S, now, ctx) {
       V.pos = V.idx < 0 ? -1 : V.pos - from;
     }
   }
-  // live ETAs from the followed bus
-  const etas = V && V.tu ? etasAlong(V.tu, list, V.idx, now) : list.map(() => null);
+  // live ETAs from the followed bus (all of its trip updates on this route, vehicleTimes)
+  const etas = V && V.tu ? etasAlong(vehicleTimes(S.trips, V.tu, V.id, rid), list, V.idx, now) : list.map(() => null);
   out.stops = list.map((id, k) => {
     let st = "upcoming";
     if (done) st = "passed";
@@ -332,6 +348,70 @@ function evalBus(l, S, now, ctx) {
   if (out.phase === "walk-to-stop" && ctx.prevWalk) {
     out.walkMin = nearBoard != null ? walkMinM(nearBoard) : Number(ctx.prevWalk.min) || 0;
     if (out.boardEta != null) { out.slackMin = (out.boardEta - now) / 60 - out.walkMin; out.canCatch = out.slackMin >= 0; }
+  }
+  return out;
+}
+
+/**
+ * Minutes to every stop of a bus leg (the Current trip timeline shows them right of each station name, owner
+ * 2026-10-20). Passio's live time where it has one; else an ESTIMATE (est:true) from the times around the stop and the
+ * scheduled ride time between stops, `ride(fromId, toId)` -> minutes or null (core/predict.js rideMinutes on
+ * data/segments.json); without it the trip plan's average per stop. In order: a stop between two live times is scaled
+ * between them; after the last live time it adds the ride from there; before the first, it counts back from it; with
+ * no live time at all, from where the bus is now; with no live bus, from the plan's boarding time. Never earlier than
+ * now or than the stop before it. Passed stops: null.
+ * @param {object} leg a bus leg of tripProgress (stops, boardIdx, alightIdx, vehicle, boardEta, boardLive, rideMin)
+ * @param {number} now unix seconds
+ * @param {(fromId:string, toId:string)=>number|null} [ride] scheduled riding minutes between two stops of the route
+ * @returns {Array<{t:number, est:boolean, src:'live'|'schedule'|'plan'}|null>} one per leg.stops entry
+ */
+export function stopTimes(leg, now, ride) {
+  const S = (leg && leg.stops) || [], out = S.map(() => null);
+  if (!S.length) return out;
+  const span = Math.max(1, (Number(leg.alightIdx) || 0) - (Number(leg.boardIdx) || 0));
+  const perStop = Number(leg.rideMin) > 0 ? Number(leg.rideMin) / span : null;   // plan minutes per stop
+  let src = "plan";
+  const mins = (a, b) => {
+    if (a === b) return 0;
+    if (a > b) return null;
+    const x = typeof ride === "function" ? ride(S[a].id, S[b].id) : null;
+    const r = x == null || x === "" ? NaN : Number(x);   // null = no schedule data (Number(null) would be 0 min)
+    if (isFinite(r) && r >= 0) { src = "schedule"; return r; }
+    return perStop != null ? perStop * (b - a) : null;
+  };
+  const live = S.map((s) => (s.state !== "passed" && num(s.eta) ? s.eta : null));
+  const v = leg.vehicle;
+  let floor = now;
+  for (let k = 0; k < S.length; k++) {
+    if (S[k].state === "passed") continue;
+    if (live[k] != null) { out[k] = { t: Math.max(live[k], now), est: false, src: "live" }; floor = Math.max(floor, live[k]); continue; }
+    src = "plan";
+    let j = -1, m = -1;
+    for (let q = k - 1; q >= 0; q--) if (live[q] != null) { j = q; break; }
+    for (let q = k + 1; q < S.length; q++) if (live[q] != null) { m = q; break; }
+    let t = null;
+    if (j >= 0) {
+      const r = mins(j, k);
+      if (r != null) {
+        t = live[j] + r * 60;
+        const rm = m >= 0 ? mins(j, m) : null;
+        if (rm != null && rm > 0 && live[m] > live[j]) t = live[j] + (live[m] - live[j]) * (r / rm);
+      }
+    } else if (m >= 0) {
+      const r = mins(k, m);
+      if (r != null) t = live[m] - r * 60;
+    } else if (v && num(v.idx) != null && v.idx >= 0 && v.idx <= k && v.idx < S.length) {
+      const r = mins(v.idx, k);
+      const lead = v.at ? 0 : v.idx > 0 ? mins(v.idx - 1, v.idx) : perStop;
+      if (r != null) t = now + (lead != null ? lead * (1 - (num(v.frac) != null ? v.frac : 0.5)) * 60 : 0) + r * 60;
+    } else if (!v && num(leg.boardEta) != null && !leg.boardLive && k >= (Number(leg.boardIdx) || 0)) {
+      const r = mins(Number(leg.boardIdx) || 0, k);
+      if (r != null) t = leg.boardEta + r * 60;
+    }
+    if (t == null || !isFinite(t)) continue;
+    t = Math.max(t, floor, now);
+    floor = t;
+    out[k] = { t, est: true, src };
   }
   return out;
 }
