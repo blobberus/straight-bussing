@@ -13,6 +13,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 ## Checkups
 | When (Chicago) | Verdict | Coverage | Data | Notes |
 |---|---|---|---|---|
+| 2026-10-22 17:15 | healthy | 100% since Oct 21 17:14 (collecting 75%, idle with no bus 25%); the 8 newest runs succeeded, 18 buses live | arrivals: 3,704 (Tue Oct 20), 4,123 (Wed Oct 21, the most of any day so far), 2,487 (Oct 22 by 5:09 PM), ~44,500 rows; 0 duplicates, 0 rows missing stop / bus / route, 90 stations and 13 lines on Oct 20 and 21; predictions with a 10-min lead (joined within 300 s as docs/DATA.md says) for 70% (Oct 20), 61% (Oct 21), 78% (Oct 22 so far) of arrivals, 76% / 70% / 82% without the `gps` rows (no prediction by design, DC-003); alerts.csv 8 versions, polled live (two new today 4:05 PM: North Route, Central & East Night Ride route modified); archive complete through Oct 21 (5 files a day); data repo synced 21:40Z; weather current | no arrivals 00:00 to about 5 AM on Oct 21 and 22: normal (0 to 15 a night even while the collector ran all night, Oct 10 to 17); Oct 21's lower prediction share is mostly Passio's (359 of the 497 non-`gps` arrivals without a row had no Passio prediction 5 to 15 min ahead in the raw archive); found DC-016, DC-017 |
 | 2026-10-20 19:00 | healthy | 100% since Oct 19 18:57 (collecting 87%, idle with no bus 13%); no run failed; no warning besides GitHub's Node.js 20 notice | arrivals: 4,070 (Mon Oct 19, the most of any day so far), 2,912 (Oct 20 by 6:39 PM), 0 duplicates, 0 rows missing stop / bus / route, 90 stations and 13 lines on weekdays; predictions with a 10-min lead for 68% (Oct 19) and 72% (Oct 20) of arrivals; alerts.csv 5 versions, polled live; archive complete through Oct 19 (5 files a day); data repo synced 23:42Z; weather current | collecting only while buses run works: idle Sun night 1:35 to 4:16 AM and Mon night 1:30 to 4:15 AM, 0 arrivals inside an idle window, the first bus of each morning 31 to 44 min after collecting resumed (DC-014 checked); DC-015: 27% of daytime polls empty on Oct 19, some runs 75 to 87% for an hour, but every 30-s window from 5 AM to midnight had a full answer from some run (no data lost); from this PC 24 of 24 polls were full, with or without a cache-buster |
 | 2026-10-19 19:45 | healthy; first full day collecting only while buses run (DC-014) | 100% since Oct 18 14:48 (collecting 80%, idle with no bus 20%) | arrivals.csv ~33,600 rows, newest 81 s old, 16 buses live | idle run took over Sun 10:57 AM, started collecting Sun 3:16 PM (45 min before the 4 PM routes) and Mon 4:16 AM (before the 5 AM first trips); Sun night idle 2:36 to 4:16 AM after the last bus; `status` showed a false 60-min gap for a backstop run that idled (fixed: `monitor.py auto_idle`) |
 | 2026-10-16 12:45 | healthy; verified and backfilled (owner: "make any changes or fixes needed. Update all data collected if needed") | 100% since the last checkup (`monitor.py status` HEALTHY) | fixes DC-009 to DC-012 on main; Oct 10 to 15 replayed with today's code (tools/replay_day.py, validated on Oct 15: 3,431 of 3,431 arrivals identical) and applied (tools/apply_replay.py, data `2db4cbc`): arrivals +576 (Oct 10 +122, 11 +109, 12 +250, 13 +95; GPS pass rows), predictions +2,248 missed rows, -558 previous-lap rows (502 of them predicted over 15 min early), 160 replaced by a fresher copy; 0 duplicates; eta-<day> assets of Oct 10 to 15 re-uploaded and their summary rows rebuilt (data `da1782b`) | Oct 8 / 9 cannot be replayed (no polls were kept); see DC-002, DC-008, DC-010, DC-011 |
@@ -20,6 +21,27 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 | 2026-10-14 17:33 | healthy | 100% of 33.9 h of actual logging time (job start to end), no gaps, 145/145 runs since Oct 11 succeeded | arrivals: 3,469 (Oct 12), 3,640 (Oct 13), 2,473 (Oct 14 so far); predictions.csv 46,386 rows since Oct 12 12:20; no duplicate rows; archive complete through Oct 13 | `monitor.py status` said DEGRADED: DC-004, DC-005 (both false or harmless); the data check found DC-006 to DC-011 |
 
 ## Errors
+
+### DC-017 About 40 arrivals a day get no prediction row although Passio showed one for the same trip (open)
+- Found 2026-10-22 comparing Oct 20 / 21 with the raw `pred-updates` archive: 42 (Oct 20) and 39 (Oct 21) non-`gps`
+  arrivals (1.2% / 1.1%) have no predictions.csv row and no `passio_pred_*`, yet Passio published a prediction for the
+  same bus, stop and trip id 5 to 15 min before, within 5 min of the real arrival.
+- Where (Oct 21): 11 at Midway Metra 57th St. & Metra (SB) (stop index 15, Passio stop_sequence 15), 3 at Downtown
+  Campus Connector Rockefeller Chapel (index 0, sequence 15), 3 at Red Line Logan Center (index 0, sequence 12), the
+  rest 1 or 2 per stop on every line.
+- Suspected cause, not confirmed: the loop-stop rule in `arrival_detector._candidates` keeps only a stop_sequence equal
+  to index + 1, and these are loop ends where Passio numbers the visit differently; the previous-visit rule (DC-011)
+  may take some too.
+- Impact: Passio's scores skip these arrivals (about 1%). Repairable: after a fix, replay the days from the raw
+  archive (`tools/replay_day.py`, 90 days; applying needs the owner's go-ahead).
+- Status: open.
+
+### DC-016 Central had no Passio predictions on the evening of Oct 20 (accepted: Passio's side)
+- Found 2026-10-22: Central's 181 arrivals on Oct 20 (bus 4320, 4 to 11:59 PM) have no prediction row at any lead.
+  The raw archive has 3 updates for that bus between 4 PM and midnight; earlier that day it drove Apostolic and the
+  Downtown Campus Connector with predictions as usual (3,216). Passio published no times for Central that evening,
+  so riders saw none either. Every other line and day since Oct 13 has a row for at least 25% of its arrivals.
+- Impact: none on the record (the arrivals are logged; there was nothing to collect). Status: accepted.
 
 ### DC-015 Some machines get empty vehicle lists from Passio most of the time (watch; the gate no longer depends on them)
 - Found 2026-10-18 while checking why about 1 in 3 polls had no vehicles: on 2026-10-14 16:00 to 16:06 the two
