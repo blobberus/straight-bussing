@@ -130,6 +130,8 @@ under the 10% rule.
 
 ### 3.1 Under the 10% rule (October 13, 2026)
 
+**Newer, with 13 days (October 12 to 24) and broken down by trip, delay, route, stop, hour and weekday:**
+`docs/TEN-PERCENT-SHORTFALLS.md` (E24). The table below is the first look.
 
 Share of predictions within the 10% rule. "Band B" = within 10% too early to 1% too late (the working goal).
 Passio: `predictions.csv`, Monday 12:20 PM to Tuesday 4:20 PM (1.2 days; 900 to 3,700 arrivals per lead).
