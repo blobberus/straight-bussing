@@ -28,7 +28,7 @@ const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce
 function hub() {
   const fns = new Set();
   return { on(fn) { if (typeof fn === 'function') fns.add(fn); return () => fns.delete(fn); },
-    emit(x) { for (const fn of fns) { try { fn(x); } catch (e) { console.error(e); } } } };
+    emit(x) { for (const fn of fns) { try { fn(x); } catch (e) { console.error(e); } } }, size: () => fns.size };
 }
 
 /** Signature of a plan option (legs, ids, geometry sizes). */
@@ -44,7 +44,8 @@ function planSig(o) {
  * Create the map inside element `elId`.
  * @param {string} elId
  * @returns {object} MapApi: setTheme, setBottomInset, drawNetwork, drawBuses, setSelectedStop, drawFavorites,
- *   setUser, setHeading, highlightStops, drawPlan, setTrip, inView, setLandmarks, fitTo, flyTo, onStopTap, onBusTap, onUserMove, onMapTap
+ *   setUser, setHeading, highlightStops, drawPlan, setTrip, inView, setLandmarks, fitTo, flyTo, onStopTap, onBusTap, onLineTap,
+ *   onUserMove, onMapTap
  *   (+ `leaflet` escape hatch)
  */
 export function createMap(elId) {
@@ -57,7 +58,7 @@ export function createMap(elId) {
   for (const [name, z] of Object.entries(PANES)) map.createPane(name).style.zIndex = String(z);
 
   let dark = false, inset = 0, progUntil = 0, lastNet = null, planActive = false;
-  const stopTap = hub(), busTap = hub(), userMove = hub(), mapTap = hub();
+  const stopTap = hub(), busTap = hub(), userMove = hub(), mapTap = hub(), lineTap = hub();
   const basemap = createBasemap(map, dark);
   const credits = createCredits(map, { html: basemap.attribution });
   const network = createNetworkLayer(map, { onStopTap: (id) => stopTap.emit(id) });
@@ -148,10 +149,14 @@ export function createMap(elId) {
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('sb-zooming')));
   });
   map.on('dragstart', () => userMove.emit(center()));
-  // A tap on empty map (not a stop, bus, highlight, plan pin or control; Leaflet sends no click after a drag)
+  // A tap that is not on a stop, bus, highlight, plan pin or control (Leaflet sends no click after a drag): on a route
+  // line, the line drawn on top there (owner 2026-10-27; not while a trip plan is drawn: the network is only a dim
+  // backdrop then), else empty map. Lines stay non-interactive layers: stops and buses keep winning their taps.
   map.on('click', (e) => {
     const t = e.originalEvent && e.originalEvent.target;
     if (t && t.closest && t.closest('.leaflet-interactive, .leaflet-marker-icon, .leaflet-control, .sb-credits, button, a')) return;
+    const rid = !planActive && lineTap.size() && e.containerPoint ? network.lineAt(e.containerPoint) : null;
+    if (rid) return void lineTap.emit(rid);
     mapTap.emit({ lat: e.latlng.lat, lon: e.latlng.lng });
   });
 
@@ -367,9 +372,14 @@ export function createMap(elId) {
     onStopTap: (fn) => stopTap.on(fn),
     /** @param {(bus:{id:string, rid:string, label:string})=>void} fn @returns {()=>void} off */
     onBusTap: (fn) => busTap.on(fn),
+    /**
+     * Fired for a tap on a route line (within a finger's reach), with the route drawn on top there; that tap is then
+     * not an onMapTap. Never while a plan is drawn. @param {(rid:string)=>void} fn @returns {()=>void} off
+     */
+    onLineTap: (fn) => lineTap.on(fn),
     /** Fired when the user drags or zooms the map (not for API fits/flies). @param {(c:{lat, lon, zoom})=>void} fn @returns {()=>void} off */
     onUserMove: (fn) => userMove.on(fn),
-    /** Fired for a tap on empty map (main.js collapses the sheet). @param {(p:{lat, lon})=>void} fn @returns {()=>void} off */
+    /** Fired for a tap on empty map, or on a line with no onLineTap listener (main.js collapses the sheet). @param {(p:{lat, lon})=>void} fn @returns {()=>void} off */
     onMapTap: (fn) => mapTap.on(fn),
   };
   return api;

@@ -12,7 +12,7 @@ import { bus } from "./core/events.js";
 import { nowS } from "./core/time.js";
 import { hav } from "./core/geo.js";
 import { DEMO } from "./core/demo.js";
-import { mapVisibility } from "./core/visibility.js";
+import { mapVisibility, lineTapOpens } from "./core/visibility.js";
 import { settleTimeView } from "./core/custom.js";
 import { createMap } from "./map/map.js";
 import { loadStatic } from "./data/static.js";
@@ -35,7 +35,7 @@ export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "ale
 const OPTIONAL_VIEWS = new Set(["settings", "timepick"]);
 const RENDER_TICK_MS = 15000;
 const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "setSelectedStop", "setUser", "setHeading",
-  "highlightStops", "drawPlan", "drawFavorites", "setTrip", "inView", "setLandmarks", "fitTo", "flyTo", "onStopTap", "onBusTap", "onUserMove", "onMapTap"];
+  "highlightStops", "drawPlan", "drawFavorites", "setTrip", "inView", "setLandmarks", "fitTo", "flyTo", "onStopTap", "onBusTap", "onLineTap", "onUserMove", "onMapTap"];
 const VIS_KEYS = ["hiddenRoutes", "routeFilter", "view", "routeId", "routeOrder", "journey", "activeCustom", "customRoutes"];
 const NET_KEYS = ["routes", "shapes", "routeStops", "stopRoutes", "stops", "theme", ...VIS_KEYS];
 const BUS_KEYS = ["buses", "feedTs", "routes", ...VIS_KEYS];
@@ -367,7 +367,11 @@ async function boot() {
     openStop(id);
   });
   mapCall("onBusTap", (x) => openRoute(x && typeof x === "object" ? x.rid || x.routeId || (x.trip && x.trip.route_id) : x, false));
-  mapCall("onMapTap", () => { if (!sheet.isPanel() && sheet.getDetent() !== "peek") sheet.setDetent("peek"); });   // tap outside the sheet: back to the map
+  const lowerSheet = () => { if (!sheet.isPanel() && sheet.getDetent() !== "peek") sheet.setDetent("peek"); };
+  mapCall("onMapTap", lowerSheet);   // tap outside the sheet: back to the map
+  // a tap on a route line opens the line drawn on top, as choosing it in the Routes list does (owner 2026-10-27);
+  // a pointer shortcut only (the Routes list stays the accessible way); off where the map shows a trip
+  mapCall("onLineTap", (rid) => (lineTapOpens(store.get()) ? openRoute(String(rid)) : lowerSheet()));
   onThemeChange((d) => { mapCall("setTheme", d); syncMap(store.get(), null); });
 
   // data first: stops, routes and the live feed load while the view modules download (slow 4G: next bus ~3 s sooner)

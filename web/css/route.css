@@ -28,6 +28,7 @@
 /* hours & service */
 .r-svc { margin-top: var(--s4); }
 .r-h { margin: 0 0 var(--s2); font-size: var(--fs-row); line-height: var(--lh-row, 1.3); font-weight: 650; }
+.r-stops-h { margin-top: var(--s4); }   /* closed route: the stops heading under Hours & service */
 .r-h3 { margin: var(--s3) 0 var(--s1); font-size: var(--fs-body); line-height: var(--lh-body); font-weight: 600; color: var(--text-2); }
 .r-week { padding: var(--s2) var(--s4); }
 .r-wrow { display: flex; gap: var(--s3); padding: 6px 0; font-size: var(--fs-body); line-height: var(--lh-body); }

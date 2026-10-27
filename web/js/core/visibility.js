@@ -85,3 +85,19 @@ export function mapVisibility(state) {
   const focus = mapFocus(state);
   return { hidden: effectiveHidden(state), focus, order: drawOrder(state, focus) };
 }
+
+/** Views where the map belongs to a trip being planned or picked: a map tap there never leaves the view. */
+const LINE_TAP_OFF_VIEWS = new Set(["directions", "pick"]);
+
+/**
+ * Does a tap on a route line on the map open that route, like choosing it in the Routes list (owner 2026-10-27)?
+ * Not in Directions or Routes to station, and not on the Current trip view while a trip is in progress: there the
+ * map shows the trip, and a map tap keeps meaning "lower the sheet". (While a trip plan is drawn the map itself
+ * reports no line taps at all.)
+ * @param {{view?:string, journey?:{kind?:string}|null}} state
+ * @returns {boolean}
+ */
+export function lineTapOpens(state) {
+  if (!state || LINE_TAP_OFF_VIEWS.has(state.view)) return false;
+  return !(state.view === "nearby" && state.journey && state.journey.kind === "plan");
+}

@@ -9,6 +9,7 @@
 import { safeColor, textOn } from '../core/esc.js';
 import { bearing as geoBearing } from '../core/geo.js';
 import { createChevronLayer, orientedLines } from './chevrons.js';
+import { lineAt as pickLine, LINE_TAP_PX } from './geometry.js';
 import { unwrapDeg } from './geometry.js';
 import { prepareShape, follow, pathCum, pointAt, advance, headingAt } from './track.js';
 
@@ -139,14 +140,15 @@ export function routeLabel(rid, routes) {
  * overlap; stops in their own group shown at zoom >= 14; chevrons along 1-3 focused routes.
  * @param {L.Map} map
  * @param {{onStopTap:(id:string)=>void}} cb
- * @returns {{draw(o:object, dimAll?:boolean):boolean, restyle():void, chevrons():number}}
+ * lineAt(containerPoint) names the route line under a tap: the topmost one drawn (map/geometry.js lineAt).
+ * @returns {{draw(o:object, dimAll?:boolean):boolean, restyle():void, chevrons():number, stopPoints():Array, lineAt(p:{x:number, y:number}):string|null}}
  */
 export function createNetworkLayer(map, cb) {
   const L = window.L;
   const lines = L.layerGroup().addTo(map);
   const stopsG = L.layerGroup();
   const chev = createChevronLayer(map);
-  let last = '', polys = [], stopPts = [];
+  let last = '', polys = [], stopPts = [], hits = [];   // hits: drawn route lines, bottom to top: {rid, ll, bounds}
   const showStops = () => {
     const on = map.getZoom() >= 14;
     if (on && !map.hasLayer(stopsG)) stopsG.addTo(map);
@@ -157,7 +159,7 @@ export function createNetworkLayer(map, cb) {
     const s = networkSig(o, dimAll);
     if (s === last) return false;
     last = s;
-    lines.clearLayers(); stopsG.clearLayers(); polys = []; stopPts = [];
+    lines.clearLayers(); stopsG.clearLayers(); polys = []; stopPts = []; hits = [];
     const routes = o.routes || {}, shapes = o.shapes || {}, hidden = new Set((o.hidden || []).map(String));
     const focus = focusSet(o.focus);
     const w = lineWeight(map.getZoom());
@@ -174,6 +176,7 @@ export function createNetworkLayer(map, cb) {
         const line = L.polyline(pts, { pane, className: 'sb-route', color, weight: w,
           opacity: dim ? 0.25 : 0.92, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(lines);
         polys.push({ casing: casings[i], line, extra: 3 });
+        hits.push({ rid, ll: pts, bounds: L.latLngBounds(pts) });
       });
     }
     const chevRoutes = !dimAll && fronts.length && fronts.length <= 3 ? fronts : [];
@@ -201,7 +204,21 @@ export function createNetworkLayer(map, cb) {
     showStops();
     chev.redraw();
   }
-  return { draw, restyle, chevrons: () => chev.count(), stopPoints: () => stopPts };
+  /**
+   * The route line under a point of the map container (px), the one drawn on top when several are near; null when
+   * none is within reach. Only lines drawn now count (hidden routes are not drawn).
+   * @param {{x:number, y:number}} p
+   * @returns {string|null}
+   */
+  function lineAt(p) {
+    if (!hits.length || !p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+    const width = lineWeight(map.getZoom()) + 3, reach = LINE_TAP_PX + width;   // drawn width = the casing
+    const near = L.latLngBounds(map.containerPointToLatLng([p.x - reach, p.y + reach]), map.containerPointToLatLng([p.x + reach, p.y - reach]));
+    const toPx = (ll) => { const c = map.latLngToContainerPoint(ll); return [c.x, c.y]; };
+    const lines = hits.filter((h) => h.bounds.intersects(near)).map((h) => ({ rid: h.rid, px: h.ll.map(toPx), width }));
+    return pickLine([p.x, p.y], lines);
+  }
+  return { draw, restyle, chevrons: () => chev.count(), stopPoints: () => stopPts, lineAt };
 }
 
 const STALE_S = 60;

@@ -3,8 +3,10 @@
  * Route detail: status line + today's scheduled hours, stop timeline in route order with the next ETA
  * per stop, a parallel "bus rail" showing where each bus is between stops and which way it flows
  * (route order = travel direction, loops wrap), then "Hours & service" from the official schedule
- * (week, calendar changes, route alerts, scheduled buses by hour). The map focuses on the route
- * (core/visibility.js mapFocus); route:open also fits the map to the route shape.
+ * (week, calendar changes, route alerts, scheduled buses by hour). While the route is closed (routeClosed: no bus
+ * running and not scheduled now) "Hours & service" comes first, under a "Stops" heading for the timeline (owner
+ * 2026-10-27). The map focuses on the route (core/visibility.js mapFocus); route:open, and a tap on the route's
+ * line on the map (main.js onLineTap), also fit the map to the route shape.
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -131,6 +133,19 @@ function renderBuses(svc, rid, now) {
   return h + `</div><ul class="v-sec r-bartext">${groups.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>`;
 }
 
+/**
+ * Is the route closed right now (owner 2026-10-27: then "Hours & service" comes before the stops)? No bus of it is
+ * running and the schedule does not say it runs now. A scheduled route whose buses send no location stays open
+ * (its stops come first, under the "can't confirm" note), and so does a running bus outside the timetable.
+ * @param {object} state
+ * @param {string} rid
+ * @param {number} now unix seconds
+ * @returns {boolean}
+ */
+export function routeClosed(state, rid, now) {
+  return !runningCount(state, rid) && isScheduledNow(state.service, rid, now) !== true;
+}
+
 /** Status line under the title: buses running + today's scheduled hours. */
 function statusHtml(state, rid, r, n, now) {
   const unknown = liveUnknown(state, now), quiet = !n && !unknown && noLiveStatus(state, rid, now);   // scheduled, silent: not "not running"
@@ -167,7 +182,9 @@ export function renderRoute(state, now = nowS()) {
     ? '<div class="v-note"><span class="v-grow v-sec">This route is not part of the current journey, so it is hidden on the map.</span></div>'
     : `<div class="v-note"><span class="v-grow v-sec">This route is hidden from the map and arrival times.</span><button type="button" class="v-btn v-btn--quiet" data-action="routes:toggle" data-id="${esc(rid)}">Show</button></div>`;
   if (!n && state.liveLoaded && !(state.buses || []).length) h += noBusHelpHTML(state, now, { rid });
-  if (!ids.length) return h + emptyState("No stops listed", "The schedule has no stops for this route.") + renderService(state, rid, now) + "</div>";
+  const svc = renderService(state, rid, now), first = !!svc && routeClosed(state, rid, now);   // closed: hours before stops
+  if (!ids.length) return h + (first ? svc : "") + emptyState("No stops listed", "The schedule has no stops for this route.") + (first ? "" : svc) + "</div>";
+  if (first) h += svc + '<h2 class="r-h r-stops-h" id="r-stops-h">Stops</h2>';
   const pos = state.liveLoaded ? busPositions(state, rid, now) : [];
   const busAt = new Map(), railAt = new Map();
   for (const b of pos) {
@@ -197,7 +214,7 @@ export function renderRoute(state, now = nowS()) {
   h += "</ol>";
   if (loop) h += `<p class="v-sec r-loop"><span aria-hidden="true">↻ </span>Loop: continues to ${esc(state.stops?.[ids[0]]?.name || ids[0])}</p>`;
   if (state.liveLoaded) h += `<p class="v-foot">${stale ? "Live data delayed. Times and bus positions may be off." : "Times are live predictions. Bus positions are approximate."}</p>`;
-  return h + renderService(state, rid, now) + "</div>";
+  return h + (first ? "" : svc) + "</div>";
 }
 
 registerView("route", {

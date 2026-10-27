@@ -1,8 +1,8 @@
 // ui/views/route.js render tests (bus rail, hours & service).
 import { test, eq, ok } from "./lib.js";
-import { renderRoute, renderService, busPositions } from "../js/ui/views/route.js";
+import { renderRoute, renderService, busPositions, routeClosed } from "../js/ui/views/route.js";
 import { fixture, NOW } from "./views-fixtures.js";
-import { serviceFixture } from "./route-fixtures.js";
+import { serviceFixture, utc } from "./route-fixtures.js";
 
 const D = "to";   // clock ranges: "7:00 AM to 7:25 PM" (no dash characters, docs/DESIGN.md "Copy")
 const svcState = (over = {}) => fixture({ routeId: "R1", service: serviceFixture(), ...over });
@@ -108,4 +108,51 @@ test("route detail: each stop row reads as ONE element: name, next bus in N min 
   eq(labels[0], "Main & 1st, next bus in 2 min");
   ok(/^Library, next bus in 5 min, a bus is heading here, seen \d+ min ago$/.test(labels[1]), labels[1]);
   eq(labels[2], "Hospital, no prediction");
+});
+
+// Owner 2026-10-27: "if a specific route that is running is closed, display the hours and service menu first
+// (before the actual stops)". R1 in the fixture runs weekdays 7:00 AM to 7:25 PM.
+const WED_10AM = utc("2026-10-14T15:00:00Z"), WED_10PM = utc("2026-10-15T03:00:00Z");
+const order = (h) => ({ svc: h.indexOf('class="r-svc"'), tl: h.indexOf('class="v-tl r-tl"'), head: h.indexOf('id="r-stops-h"') });
+
+test("route view: a closed route shows Hours & service before the stops, under a Stops heading", () => {
+  const s = svcState({ buses: [] });
+  eq(routeClosed(s, "R1", WED_10PM), true, "no bus and not scheduled at 10 PM");
+  const h = renderRoute(s, WED_10PM), o = order(h);
+  ok(o.svc > 0 && o.head > o.svc && o.tl > o.head, "hours, then the Stops heading, then the stops: " + JSON.stringify(o));
+  ok(h.includes('<h2 class="r-h r-stops-h" id="r-stops-h">Stops</h2>'), "visible Stops heading");
+  eq((h.match(/class="r-svc"/g) || []).length, 1, "Hours & service once");
+  ok(h.indexOf("Not running right now") < o.svc, "the status line stays on top");
+  ok(!/[–—]/.test(h.replace(/<[^>]*>/g, "")), "no dash characters in the text");
+});
+
+test("route view: a running or scheduled route keeps the stops first", () => {
+  const running = svcState();   // its bus is running
+  eq(routeClosed(running, "R1", WED_10AM), false);
+  let o = order(renderRoute(running, WED_10AM));
+  ok(o.tl > 0 && o.svc > o.tl && o.head < 0, "running: stops, then hours, no extra heading");
+  const silent = svcState({ buses: [] });   // scheduled now, but no bus sends its location: open, stops first
+  eq(routeClosed(silent, "R1", WED_10AM), false, "scheduled now = not closed");
+  o = order(renderRoute(silent, WED_10AM));
+  ok(o.tl > 0 && o.svc > o.tl, "scheduled: stops first");
+  eq(routeClosed(running, "R1", WED_10PM), false, "a bus running outside the timetable = open");
+  o = order(renderRoute(running, WED_10PM));
+  ok(o.tl > 0 && o.svc > o.tl, "extra service: stops first");
+});
+
+test("route view: closed route without listed stops puts the hours above the empty state; no schedule = no change", () => {
+  const s = svcState({ buses: [], routeStops: { R2: ["S3", "S2", "S4", "S3"], R3: ["S1", "S3"] } });
+  const h = renderRoute(s, WED_10PM);
+  ok(h.indexOf('class="r-svc"') > 0 && h.indexOf('class="r-svc"') < h.indexOf("No stops listed"), "hours before the empty state");
+  const none = fixture({ routeId: "R1", buses: [] });   // no service data: nothing to put first
+  const hn = renderRoute(none, WED_10PM);
+  ok(!hn.includes("r-svc") && !hn.includes("r-stops-h"), "no Hours & service, no Stops heading");
+});
+
+test("route view: the order flips at the service boundary and back (render is a pure function of state and time)", () => {
+  const s = svcState({ buses: [] });
+  const before = renderRoute(s, utc("2026-10-15T00:20:00Z")), after = renderRoute(s, utc("2026-10-15T00:30:00Z"));   // 7:20 PM / 7:30 PM CDT
+  ok(order(before).svc > order(before).tl, "7:20 PM: still scheduled, stops first");
+  ok(order(after).svc < order(after).tl, "7:30 PM: closed, hours first");
+  eq(renderRoute(s, utc("2026-10-15T00:30:00Z")), after, "same input, same HTML (no flicker between polls)");
 });

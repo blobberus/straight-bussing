@@ -621,3 +621,22 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   `TripStopTimes.swift` (`TripFollow.stopTimes`), `TripText.stopTimes` / `stopEta` / `stopSay`, App `TripTimelineView`
   (ride minutes from `SchedulePredictor`); tests `TripStopTimesTests`.
 
+
+## Tap a line on the map; a closed route shows its hours first (2026-10-27, owner: "If a user click on a line that is displayed on the actual map, the uppermost line on the layers ... should open as if the user clicked the specific route", "if a specific route that is running is closed, display the hours and service menu first")
+- **Line taps.** Route lines stay non-interactive Leaflet layers (stop halos, buses, favorites and controls keep winning
+  their own taps). `map.js`'s map click asks the network layer `lineAt(containerPoint)`: every drawn route polyline is
+  projected to container pixels (only those whose bounds come near the tap) and `map/geometry.js lineAt` returns the
+  TOPMOST line within `LINE_TAP_PX` (14 px) plus half its drawn width (the casing), in the network's own draw order
+  (`stackOrder`: routeOrder, focused routes above dimmed ones), even where a lower line passes closer. Hidden routes are
+  not drawn, so never tapped. A hit fires `MapApi.onLineTap(rid)` instead of `onMapTap`; with no listener, or while a
+  trip plan is drawn (the network is a dim backdrop then), the tap stays an empty-map tap.
+- `main.js` opens the route like a Routes list tap (`openRoute`: route detail at its detent, map framed on the shape),
+  unless `core/visibility.js lineTapOpens(state)` says no: Directions, Routes to station, and the Current trip view while
+  a trip is in progress keep a map tap as "lower the sheet". A pointer shortcut only: the Routes list stays the
+  accessible path (no hover cursor on desktop).
+- **Closed route.** `ui/views/route.js routeClosed(state, rid, now)` = no bus of the route running and the schedule does
+  not say it runs now (a scheduled route whose buses send no location is open; so is a bus running outside the
+  timetable). Then "Hours & service" renders right after the status line and notes, and the stop timeline follows under
+  a visible "Stops" heading (`.r-stops-h`); otherwise the order is unchanged. The render is a pure function of state and
+  time, so the order flips once at the service boundary. Tests: `web/tests/map-linetap.js` (map.test.html),
+  `route-view.js`. sw `sb-v2-68`.

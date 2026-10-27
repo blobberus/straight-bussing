@@ -1,6 +1,7 @@
 /**
  * map/geometry.js: pure geometry helpers for the map layer (no DOM, no Leaflet). Unit-tested in
- * web/tests/map.test.html. Polylines are [[lat, lon], ...]; points may be [lat, lon] or {lat, lon}.
+ * web/tests/map.test.html. Polylines are [[lat, lon], ...]; points may be [lat, lon] or {lat, lon}. Pixel helpers
+ * (marksAlong, segDistPx, lineAt) take [x, y] pairs.
  */
 
 const R = 6371000;
@@ -342,4 +343,40 @@ export function runsForward(line, stopPts) {
   let up = 0, down = 0;
   for (let i = 1; i < idx.length; i++) { if (idx[i] > idx[i - 1]) up++; else if (idx[i] < idx[i - 1]) down++; }
   return up >= down;
+}
+
+/** Finger-sized reach of a tap on a route line, in pixels, on top of half the drawn line's width. */
+export const LINE_TAP_PX = 14;
+
+/**
+ * Distance in pixels from p to the segment a-b ([x, y] pairs; a zero-length segment is its point).
+ * @param {[number, number]} p
+ * @param {[number, number]} a
+ * @param {[number, number]} b
+ * @returns {number}
+ */
+export function segDistPx(p, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+  const t = L2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2)) : 0;
+  return Math.hypot(a[0] + t * dx - p[0], a[1] + t * dy - p[1]);
+}
+
+/**
+ * The route line a tap lands on (owner 2026-10-27: "the uppermost line on the layers"): the TOPMOST of `lines`
+ * whose polyline passes within tol + width / 2 pixels of the tap, even where a line below it passes closer.
+ * Lines are given bottom to top, in the map's own draw order. Pure: the caller projects the shapes to pixels.
+ * @param {[number, number]} pt the tap, [x, y]
+ * @param {Array<{rid:string, px:Array<[number, number]>, width?:number}>} lines one entry per drawn polyline
+ * @param {number} [tol] reach beyond the line's edge (LINE_TAP_PX)
+ * @returns {string|null} the route id, or null when no line is that near
+ */
+export function lineAt(pt, lines, tol = LINE_TAP_PX) {
+  if (!Array.isArray(pt) || !Array.isArray(lines)) return null;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i], px = l && l.px;
+    if (!Array.isArray(px) || !px.length) continue;
+    const reach = tol + (Number(l.width) || 0) / 2;
+    if (px.length === 1 ? segDistPx(pt, px[0], px[0]) <= reach : px.some((a, j) => j > 0 && segDistPx(pt, px[j - 1], a) <= reach)) return String(l.rid);
+  }
+  return null;
 }
