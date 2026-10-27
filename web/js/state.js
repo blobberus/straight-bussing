@@ -2,10 +2,11 @@
 // Shape is the contract in docs/ARCHITECTURE.md ("App state").
 import { createStore } from './core/store.js';
 import { load, save } from './core/storage.js';
+import { cleanUsage } from './data/usage.js';
 
 /** Storage keys (core/storage.js adds the 'sb:' prefix). */
 export const KEYS = Object.freeze({ hiddenRoutes: 'hiddenRoutes', theme: 'theme', routeOrder: 'routeOrder',
-  customRoutes: 'customRoutes', activeCustom: 'activeCustom', prevHidden: 'prevHidden', favStops: 'favStops', notify: 'notify' });
+  customRoutes: 'customRoutes', activeCustom: 'activeCustom', prevHidden: 'prevHidden', favStops: 'favStops', notify: 'notify', usage: 'usage' });
 
 const THEMES = ['auto', 'light', 'dark'];
 
@@ -103,6 +104,7 @@ export function initialState() {
     prevHidden: cleanHidden(load(KEYS.prevHidden, [])),        // hiddenRoutes before a custom route was applied
     favStops: cleanHidden(load(KEYS.favStops, [])),            // favorite station ids
     notify: cleanNotify(load(KEYS.notify, null)),              // "bus nearing my station" settings
+    usage: cleanUsage(load(KEYS.usage, null)),                 // usage statistics choices {dur, zone} (data/usage.js)
     journey: null,                                             // {rids, label} while "only show relevant routes" is on (not persisted)
     timeView: null,                                            // Lines by Time's temporary route (core/custom.js applyTimeView; not persisted)
     // nav (ui/router.js writes)
@@ -129,13 +131,14 @@ export function persistPrefs(s) {
     if (!changed || tv || changed.has('prevHidden')) save(KEYS.prevHidden, cleanHidden(vis.prevHidden));
     if (!changed || changed.has('favStops')) save(KEYS.favStops, cleanHidden(state.favStops));
     if (!changed || changed.has('notify')) save(KEYS.notify, cleanNotify(state.notify));
+    if (!changed || changed.has('usage')) save(KEYS.usage, cleanUsage(state.usage));
   });
 }
 
 /**
  * The single app store. `store.get()` returns the state above; `store.set(patch)` shallow-merges;
  * `store.subscribe(fn)` is called once per microtask with (state, changedKeys).
- * Prefs (hiddenRoutes, theme, routeOrder, customRoutes, activeCustom, prevHidden, favStops, notify) are loaded from
+ * Prefs (hiddenRoutes, theme, routeOrder, customRoutes, activeCustom, prevHidden, favStops, notify, usage) are loaded from
  * and saved to localStorage via core/storage.js.
  */
 export const store = createStore(initialState());

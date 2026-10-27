@@ -2,13 +2,18 @@
  * @module ui/views/about
  * About: unofficial notice, official phone/link, privacy statements (what leaves the device:
  * typed place text -> photon.komoot.io; rounded walking-leg endpoints -> routing.openstreetmap.de /
- * valhalla1.openstreetmap.de; the beta feedback form on Google Forms, only when tapped), theme control
+ * valhalla1.openstreetmap.de; the beta feedback form on Google Forms, only when tapped; once a receiver is set,
+ * the anonymous usage statistics, data/usage.js), theme control
  * (ui/theme.js mount), data credits and version.
  */
 import { registerView } from "../router.js";
 import * as theme from "../theme.js";
 import { esc } from "../../core/esc.js";
 import { shortDate } from "../../core/time.js";
+import { usageConfigured } from "../../data/usage.js";
+
+/** About > Privacy, once usage statistics are set up (data/usage.js; owner 2026-10-27). */
+export const ABOUT_USAGE = "Usage statistics (website only): when each visit starts is counted with a random number made in this browser, so that repeat visits count once; unless you turn it off in Settings, also how long the visit lasts; only if you turn it on, the name of the stop nearest you. Your identity is never collected: no name, account, email, IP address, device details or location coordinates. The rows go to a Google Sheet through Google Apps Script (script.google.com).";
 
 /** App version shown in About. */
 export const APP_VERSION = "2.0.0";
@@ -32,12 +37,13 @@ export function renderAbout() {
 <div class="v-theme" data-region="theme"></div>
 <h3 class="v-h">Privacy</h3>
 <ul class="v-plain">
-  <li>No account, no ads, no tracking. Your location, if you allow it, is used on this device; your live location is never stored or sent anywhere. The one exception: when you ask for directions, the rounded start of a walking leg can be your location (see Walking directions).</li>
+  <li>No account, no ads${usageConfigured() ? "" : ", no tracking"}. Your location, if you allow it, is used on this device; your live location is never stored or sent anywhere. The one exception: when you ask for directions, the rounded start of a walking leg can be your location (see Walking directions).</li>
   <li>Place search: station names and places within a 30-minute walk of campus stops are searched on your device, including spelling fixes. Only when that finds fewer than 5 matches, or when you tap “Search for … instead”, is text sent to <b>photon.komoot.io</b> (OpenStreetMap geocoder): the text you typed, or its spelling fix when results are shown for the fix, and nothing else.</li>
   <li>Network requests: the public shuttle feeds (<b>passio3.com</b>), map tiles for the area on screen (<b>tiles.openfreemap.org</b>) and the map code (<b>unpkg.com</b>), photon.komoot.io for address search (above), the walking routers and the feedback form (below). The app and its schedule files come from <b>blobberus.github.io</b> (GitHub Pages).</li>
   <li>Walking directions: only the start and end of each walking leg (your location, when a trip starts there), rounded to about 10 m, are sent to <b>routing.openstreetmap.de</b> (or <b>valhalla1.openstreetmap.de</b> if that is down) to follow sidewalks. Nothing else about you or your trip is sent. If both fail, a straight-line estimate is used and labeled “estimate”.</li>
   <li>Beta feedback: only when you tap “Give feedback” in Settings or “Go to Feedback” in the welcome popup does a <b>Google Forms</b> page open in a new tab. Nothing is added to its link, and what you type there is sent only when you press Submit.</li>
-  <li>Settings (theme, hidden routes, custom routes, favorites, bus alert choices) are saved in this browser only.</li>
+${usageConfigured() ? `  <li>${esc(ABOUT_USAGE)}</li>
+` : ""}  <li>Settings (theme, hidden routes, custom routes, favorites, bus alert choices) are saved in this browser only.</li>
 </ul>
 <p class="v-sec"><a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="support.html?contact=1&amp;app=web&amp;v=${esc(encodeURIComponent(APP_VERSION))}" target="_blank" rel="noopener">Contact support</a></p>
 <h3 class="v-h">How times work</h3>

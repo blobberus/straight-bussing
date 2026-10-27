@@ -640,3 +640,21 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   a visible "Stops" heading (`.r-stops-h`); otherwise the order is unchanged. The render is a pure function of state and
   time, so the order flips once at the service boundary. Tests: `web/tests/map-linetap.js` (map.test.html),
   `route-view.js`. sw `sb-v2-68`.
+
+## Anonymous usage statistics (2026-10-27, owner: "track when a distinct user logs on (time of day), track how long they use it, track what locations they use it most often from", anonymously; visit start and distinct users "should collect regardless")
+Website only; built on branch `usage-stats`, off until `USAGE_URL` (web/js/data/usage.js) holds the receiver address.
+Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
+- `data/usage.js` (USAGE): `startUsage(store, {ver})` after the first render (main.js; never in demo mode, from
+  automated browsers or off https). Rows: `start` always (Chicago day / weekday / time to the minute, app kind, version,
+  first visit), `end` = seconds on screen this visit (store `usage.dur`, default on, off by default with Global
+  Privacy Control / Do Not Track), `place` = nearest stop name within 400 m or "Away from stops", once per visit (store
+  `usage.zone`, default off). Each row: `id` (random 128-bit, localStorage `sb:usageId`, `resetId()` for a new one)
+  and `sid` (random per visit; a new visit after 30 min in the background). No coordinates, IP, user agent or
+  identity. Sender: `navigator.sendBeacon` (text/plain, no preflight), else a keepalive no-cors POST; never throws.
+- State: `usage: {dur, zone}` persisted (`cleanUsage`, KEYS.usage).
+- Settings > Usage statistics (only when configured): `USAGE_ALWAYS` (what is always counted; "Your identity is never
+  collected"), switches `usageDur` / `usageZone`, button "Get a new anonymous number". The location note adds
+  `LOC_ZONE_NOTE` while the nearest stop is shared. About adds `ABOUT_USAGE` and drops "no tracking". privacy.html
+  describes it (always / unless you turn it off / only if you turn it on; the iPhone app collects nothing).
+- Receiver `tools/usage/Code.gs` (Apps Script web app, tabs starts / ends / places, format checks, no formulas);
+  report `tools/usage_report.py` (+ test_usage_report.py). Tests: tests/usage.test.html. sw cache bumped.

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Privacy policy: Straight Bussing</title>
-<meta name="description" content="Privacy policy of Straight Bussing, the free unofficial campus shuttle tracker for iPhone and the web. No account, no tracking, nothing collected.">
+<meta name="description" content="Privacy policy of Straight Bussing, the free unofficial campus shuttle tracker for iPhone and the web. No account, no ads. The iPhone app collects nothing; the website counts visits anonymously.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="icons/icon-32.png" sizes="32x32" type="image/png">
 <style>
@@ -27,16 +27,19 @@ footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--hair
 <body>
 <main>
 <h1>Privacy policy</h1>
-<p class="meta">Straight Bussing, for iPhone and the web. Effective October 13, 2026.</p>
+<p class="meta">Straight Bussing, for iPhone and the web. Effective October 27, 2026.</p>
 
 <p>Straight Bussing is a free, unofficial tracker for the campus shuttles in Hyde Park, Chicago, made as a student project.
 It is not affiliated with or endorsed by the University or by Passio. This policy covers the iPhone app and the web app at
 <a href="./">blobberus.github.io/straight-bussing</a>.</p>
 
 <div class="box">
-<p><b>The short version.</b> No account, no ads, no tracking, no analytics. The developer collects nothing, receives
-nothing unless you send a support request or beta feedback, and has no server. Your live location is never sent anywhere; the only location data that leaves your device is
-the rounded start and end of a walking leg, used for walking directions.</p>
+<p><b>The short version.</b> No account, no ads. The <b>iPhone app collects nothing</b>. The <b>website</b> counts visits
+anonymously: when each visit starts and, unless you turn it off, how long it lasts, with a random number made in your
+browser instead of any identity; the name of your nearest stop only if you turn that on. Your identity is never collected.
+Apart from these statistics the developer receives nothing unless you send a support request or beta feedback, and runs
+no server of its own. Your live location is never sent anywhere; the only other location data that leaves your device is the rounded start and
+end of a walking leg, used for walking directions.</p>
 </div>
 
 <h2>What stays on your device</h2>
@@ -59,6 +62,23 @@ push server. Notifications are optional and the app works without them.</li>
 
 <h2>What leaves your device, and to whom</h2>
 <ul>
+<li><b>Anonymous usage statistics (website only).</b> The web app sends small rows to a Google Sheet that only the
+developer can open, through <b>Google Apps Script</b> (script.google.com):
+<ul>
+<li><b>Always:</b> when a visit starts (the Chicago date, weekday and time to the minute), whether it is the installed
+home-screen app or a browser tab, the app version, and a random number made in your browser the first time, so that repeat
+visits from the same browser count as one visitor.</li>
+<li><b>Unless you turn it off</b> in Settings &gt; Usage statistics (&ldquo;Share how long I use the app&rdquo;): how long
+the visit lasted, to the nearest 5 seconds. Off by default if your browser sends Global Privacy Control or Do Not Track.</li>
+<li><b>Only if you turn it on</b> (&ldquo;Include my nearest stop&rdquo;, off by default) and location is on: once per visit,
+the name of the shuttle stop nearest you within 400 m, or &ldquo;Away from stops&rdquo;. Never your coordinates.</li>
+</ul>
+Your identity is never collected: the rows contain no name, account, email, phone number, IP address (the script cannot see
+it), device or browser details, location coordinates, searches or taps, and the random number is not linked to any of
+those. Settings &gt; &ldquo;Get a new anonymous number&rdquo; replaces it at any time. Nothing is sent in demo mode. Like any
+web request, the request itself shows your IP address to Google&rsquo;s servers;
+<a href="https://policies.google.com/privacy">Google&rsquo;s privacy policy</a> applies to that. Rows are kept for at most
+12 months.</li>
 <li><b>Shuttle data.</b> The app downloads the public shuttle feeds from <b>passio3.com</b> (vehicle positions, arrival
 predictions and service alerts). These requests carry no personal data; like any web request, they show your IP address to
 that server.</li>
@@ -92,18 +112,23 @@ details, no location. What you type in it goes to <b>Google Forms</b>, and nothi
 applies to those requests and to the iPhone app&rsquo;s schedule updates.</li>
 </ul>
 <p>These services receive only what is listed above and handle it under their own policies. Straight Bussing contains no
-third-party code for analytics, advertising or crash reporting.</p>
+third-party code for analytics, advertising or crash reporting: the usage statistics are the app&rsquo;s own small script.</p>
 
 <h2>Keeping, deleting and changing your mind</h2>
 <ul>
-<li>The developer stores nothing about you, so there is nothing to look up, export or delete on our side, except a
-support request or feedback you chose to send: ask in a new request to have yours deleted.</li>
+<li>The developer stores nothing about you as a person. The website&rsquo;s usage statistics hold no identity, so they
+cannot be looked up by person; to start over, use Settings &gt; &ldquo;Get a new anonymous number&rdquo; or clear this
+site&rsquo;s data (earlier rows stay, linked to nothing). A support request or feedback you chose to send can be deleted:
+ask in a new request.</li>
 <li>To remove everything the app saved on your device, delete the app (iPhone) or clear this site&rsquo;s data (web).</li>
 <li>Location and notifications can be turned off at any time in iOS Settings or your browser; the app keeps working.</li>
+<li>Visit lengths and your nearest stop can be turned off or on at any time in the web app&rsquo;s Settings &gt; Usage
+statistics.</li>
 </ul>
 
 <h2>Children</h2>
-<p>The app is for everyone and collects no data from anyone, including children.</p>
+<p>The app is for everyone. The iPhone app collects no data from anyone, including children; the website&rsquo;s
+anonymous usage statistics contain no personal information about anyone.</p>
 
 <h2>Changes</h2>
 <p>If a future version needs to send more (for example, bus alerts on a locked phone would need a push server), this page,

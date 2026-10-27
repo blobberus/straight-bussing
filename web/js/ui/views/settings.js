@@ -2,7 +2,8 @@
  * @module ui/views/settings
  * Settings content, shown in its own modal overlay (ui/settings-overlay.js), NOT in the sheet. The
  * top-right gear runs action `settings:open`, which opens (or closes) the overlay:
- * Beta feedback first (a link to the form, ui/feedback.js), appearance (ui/theme.js mount), service alerts inline,
+ * Beta feedback first (a link to the form, ui/feedback.js), appearance (ui/theme.js mount), location, usage statistics
+ * (only once a receiver is set, data/usage.js), service alerts inline,
  * bus alerts ("notify me when my bus is near
  * <station>": station, routes, 2 stops / 1 stop / N min; ONE alert each, a banner while the app is in front or a
  * system notification in the background when allowed, ui/notifier.js deliveryFor; wording as iOS SettingsView),
@@ -33,6 +34,7 @@ import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen, overlayKind } from "../settings-overlay.js";
 import { locPlatform, locEnv, LOC_STEPS, LOC_ORDER, locResultText } from "../../core/lochelp.js";
 import { feedbackLinkHTML } from "../feedback.js";
+import { usageConfigured, resetId, cleanUsage } from "../../data/usage.js";
 
 /** Settings > Beta feedback, first in Settings (the welcome popup says the link is in the settings menu). */
 export const FEEDBACK_LINE = "This is a beta. Tell us what works and what does not.";
@@ -80,7 +82,28 @@ export function locHTML(state, platform) {
     body = '<button type="button" class="v-btn v-btn--primary v-btn--block" data-st="loc-on" data-key="loc-on">Share my location</button>'
       + '<p class="v-sec st-note">Shows the stops and buses near you. Your browser asks for permission first.</p>' + triedHTML;
   }
-  return `<div class="v-card st-loc">${body}<p class="v-sec st-note st-disclaimer">${esc(LOC_DISCLAIMER)}</p></div>`;
+  return `<div class="v-card st-loc">${body}<p class="v-sec st-note st-disclaimer">${esc(locNote(state))}</p></div>`;
+}
+
+/** Added to the location note while the rider includes the nearest stop in the usage statistics. */
+export const LOC_ZONE_NOTE = "You turned on Include my nearest stop: once per visit, the name of the stop nearest you (within 400 m) is sent with the anonymous usage statistics. Your coordinates are never sent.";
+
+/** The location note: always LOC_DISCLAIMER, plus LOC_ZONE_NOTE while the nearest stop is shared. */
+export function locNote(state) {
+  return usageConfigured() && cleanUsage(state.usage).zone ? `${LOC_DISCLAIMER} ${LOC_ZONE_NOTE}` : LOC_DISCLAIMER;
+}
+
+/** Settings > Usage statistics (owner 2026-10-27; data/usage.js). Shown only when a receiver is set. */
+export const USAGE_ALWAYS = "Always counted, anonymously: when each visit starts, with a random number made in this browser so that repeat visits count once. Your identity is never collected: no name, account, email, IP address, device details or location coordinates. Website only; the iPhone app collects nothing.";
+export const USAGE_DUR_SUB = "The length of each visit, to the nearest 5 seconds.";
+export const USAGE_ZONE_SUB = "Once per visit, only the name of the stop nearest you (within 400 m), never your location. Needs location to be on.";
+export const USAGE_RESET = "Get a new anonymous number";
+export function usageHTML(state) {
+  const u = cleanUsage(state.usage);
+  return `<div class="v-card st-usage"><p class="v-sec st-intro">${esc(USAGE_ALWAYS)}</p>`
+    + sw("usageDur", "Share how long I use the app", USAGE_DUR_SUB, u.dur)
+    + sw("usageZone", "Include my nearest stop", USAGE_ZONE_SUB, u.zone)
+    + `<button type="button" class="v-btn v-btn--secondary v-btn--block" data-st="usage-reset" data-key="usage-reset">${esc(USAGE_RESET)}</button></div>`;
 }
 
 const MINUTES = [0, 2, 5, 10];
@@ -290,6 +313,7 @@ export function renderSettings(state, now = nowS()) {
 ${feedbackHTML()}
 <h3 class="v-h">Appearance</h3><div class="st-theme" data-region="theme"></div>
 <h3 class="v-h">Location</h3><div data-region="loc">${locHTML(state)}</div>
+${usageConfigured() ? `<h3 class="v-h">Usage statistics</h3><div data-region="usage">${usageHTML(state)}</div>` : ""}
 <h3 class="v-h">Service alerts${nAlerts ? ` <span class="st-count">${nAlerts} active</span>` : ""}</h3><div data-region="alerts">${alertsHTML(state, now)}</div>
 <h3 class="v-h">Bus alerts</h3><p class="v-sec st-intro">Notify me when my bus is near a station, and on a trip before my bus comes and before I get off. Times are estimates from live predictions.</p>${DEMO ? '<p class="v-foot v-foot--warn" role="note">Bus alerts are off in demo mode: the buses are simulated.</p>' : ""}
 <div data-region="trip">${tripHTML(state, now)}</div>
@@ -405,6 +429,9 @@ function onClick(e, root, ctx) {
     if (open) body?.scrollIntoView?.({ block: "nearest" });
   } else if (what === "perm") {
     requestPermission().then((p) => { patch(root, "perm", permHTML(p)); if (p === "granted") ctx.toast?.("Notifications allowed"); });
+  } else if (what === "usage-reset") {
+    resetId();
+    ctx.toast?.("Done. Your next visit uses a new random number.");
   }
 }
 
@@ -418,6 +445,7 @@ function onChange(e, root, ctx) {
     if (!cur.size) { t.checked = true; ctx.toast?.("Keep at least one route"); return; }
     setNotify(ctx, { rids: [...cur] });
   } else if (k === "minutes") setNotify(ctx, { minutes: Number(t.value) || 0 });
+  else if (k === "usageDur" || k === "usageZone") ctx.store.set({ usage: cleanUsage({ ...cleanUsage(s.usage), [k === "usageDur" ? "dur" : "zone"]: !!t.checked }) });
   else if (k in n) setNotify(ctx, { [k]: !!t.checked });
 }
 
@@ -447,7 +475,8 @@ export function mountSettings(root, ctx) {
     const now = typeof ctx.now === "function" ? ctx.now() : nowS();
     const has = (...k) => !ch || k.some((x) => ch.has(x));
     if (has("alerts", "liveLoaded", "failed")) patch(root, "alerts", alertsHTML(s, now));
-    if (has("user", "locState", "locErr")) patch(root, "loc", locHTML(s));
+    if (has("user", "locState", "locErr", "usage")) patch(root, "loc", locHTML(s));
+    if (has("usage")) patch(root, "usage", usageHTML(s));
     const typing = document.activeElement?.id === "st-q" && root.contains(document.activeElement);
     if (has("notify", "favStops", "user", "stops", "stopRoutes", "addresses") && !typing) patch(root, "station", stationHTML(s));
     if (has("notify", "stopRoutes", "routes", "hiddenRoutes", "journey")) patch(root, "opts", optsHTML(s));

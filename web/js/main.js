@@ -393,6 +393,9 @@ async function boot() {
   tripMap = startTripMap(store, map);   // you in the started trip + follow camera (same evaluation as the card and alerts)
   // beta welcome popup, once per browser session, after this first real render is painted (owner 2026-10-13)
   import("./ui/feedback.js").then((m) => m.welcomeAfterPaint()).catch((e) => console.warn("welcome popup", e));
+  // anonymous usage statistics (owner 2026-10-27; data/usage.js): nothing at all until a receiver is set, never in demo mode
+  if (!DEMO) import("./data/usage.js").then((m) => m.usageConfigured() && import("./ui/views/about.js").then((a) => m.startUsage(store, { ver: a.APP_VERSION })))
+    .catch((e) => console.warn("usage statistics", e));
   if (!DEMO) import("./ui/notifier.js").then((m) => { notifier = m.startNotifier?.(store, { toast }) || null; }).catch(() => {});   // bus-near alerts while the page is open
 
   setInterval(() => {
