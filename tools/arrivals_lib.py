@@ -211,6 +211,8 @@ class Static:
     def dist_between(self, rid, i, j):
         """Metres along the route from stop index i to j (i<j) -> (metres, 'shape'|'haversine')."""
         order = self.route_stops.get(rid) or []
+        if not (0 <= i < len(order) and 0 <= j < len(order)):
+            return None, None     # an index from another timetable version (a day archived after a GTFS change)
         a, b = self.stops.get(order[i]), self.stops.get(order[j])
         hav = hav_m(a["lat"], a["lon"], b["lat"], b["lon"]) if a and b else None
         cum = self.stop_cum(rid)

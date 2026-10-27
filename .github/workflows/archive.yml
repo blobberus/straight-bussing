@@ -30,6 +30,14 @@ jobs:
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/gtfs.zip" \
             https://passio3.com/chicago/passioTransit/gtfs/google_transit.zip \
             || { echo "::warning title=GTFS download failed::timetable columns stay blank"; rm -f "$RUNNER_TEMP/gtfs.zip"; }
+          # stop lists from the same timetable the collector used (it rebuilds them every run; the committed
+          # web/data can be older: on 2026-10-26 Passio added stops to Apostolic and Apostolic/Drexel)
+          if [ -f "$RUNNER_TEMP/gtfs.zip" ]; then
+            python tools/build_gtfs.py --zip "$RUNNER_TEMP/gtfs.zip" || {
+              echo "::warning title=GTFS rebuild failed::using the committed web/data"
+              git checkout -- web/data data/route_patterns.json
+            }
+          fi
           git fetch --no-tags --depth 1 --filter=blob:none origin +refs/heads/data:refs/remotes/origin/data
           git worktree add --no-checkout -f -B data databranch origin/data
           git -C databranch sparse-checkout set --cone data/ground_truth data/eta
