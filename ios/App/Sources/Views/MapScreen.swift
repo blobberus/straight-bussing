@@ -172,9 +172,12 @@ struct MapScreen: View {
             heading.mapTurned(ctx.camera.heading)   // the cone keeps pointing the real way on a rotated map
             model.mapLabels.cameraMoved { layoutLabels(proxy, scale: labelScale) }
         }
-        // a tap on empty map lowers the sheet to peek (web onMapTap). Simultaneous, so it never blocks the stop / bus
-        // buttons; `mapTapped` ignores a tap that also hit one of them.
-        .simultaneousGesture(TapGesture().onEnded { model.mapTapped() })
+        // a tap on a route line opens the line drawn on top (owner 2026-10-27; not while a trip or walk is drawn), a tap
+        // on empty map lowers the sheet to peek (web onMapTap). Simultaneous, so it never blocks the stop / bus buttons;
+        // `mapTapped` ignores a tap that also hit one of them. A pointer shortcut only: VoiceOver uses the Routes list.
+        .simultaneousGesture(SpatialTapGesture(coordinateSpace: .global).onEnded { v in
+            model.mapTapped(line: drawn == nil && walk == nil ? lineHit(v.location, proxy, layers) : nil)
+        })
         .accessibilityLabel("Shuttle map")
         // follow camera (AppModel+Follow.swift), watched by a child view so this body does not re-run on a pan or a
         // settled sheet
@@ -185,6 +188,24 @@ struct MapScreen: View {
             }
         }
         }
+    }
+
+    /// The route line under a tap (web map.js + map/geometry.js lineAt, Kit `LineTap`): only lines whose box comes near
+    /// the tap are projected; the topmost within `LineTap.reach` points plus half its width wins. Hidden routes are not
+    /// in `layers.lines`, so they are never tapped.
+    func lineHit(_ at: CGPoint, _ proxy: MapProxy, _ layers: MapLayers) -> String? {
+        let r = CGFloat(LineTap.reach + 6)
+        let corners = [CGPoint(x: at.x - r, y: at.y - r), CGPoint(x: at.x + r, y: at.y - r),
+                       CGPoint(x: at.x - r, y: at.y + r), CGPoint(x: at.x + r, y: at.y + r)]
+        let c = corners.compactMap { proxy.convert($0, from: .global) }
+        guard c.count == 4, let lat0 = c.map(\.latitude).min(), let lat1 = c.map(\.latitude).max(),
+              let lon0 = c.map(\.longitude).min(), let lon1 = c.map(\.longitude).max() else { return nil }
+        var lines: [LineTap.Line] = []
+        for l in layers.lines where l.maxLat >= lat0 && l.minLat <= lat1 && l.maxLon >= lon0 && l.minLon <= lon1 {
+            let px = l.coords.compactMap { proxy.convert($0, to: .global) }.map { SIMD2(Double($0.x), Double($0.y)) }
+            lines.append(LineTap.Line(rid: l.rid, px: px, width: Double(l.width)))
+        }
+        return LineTap.lineAt(SIMD2(Double(at.x), Double(at.y)), lines: lines)
     }
 
     /// Is every point of the trip's frame inside the visible map (above the sheet, below the chrome)? Then nothing

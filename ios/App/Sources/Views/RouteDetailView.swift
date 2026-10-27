@@ -4,7 +4,9 @@ import StraightBussingKit
 /// Route detail (ui/views/route.js): status + today's hours (calendar exceptions named), where each bus is in
 /// words, the stop timeline in travel order with the next ETA per stop, "Bus N heading here" pills, direction
 /// chevrons and the buses on the rail, the loop note, then "Hours & service" from the official schedule (week,
-/// schedule changes incl. this route's service alerts, scheduled buses by hour).
+/// schedule changes incl. this route's service alerts, scheduled buses by hour). While the route is closed (Kit
+/// `RouteText.closed`: no bus running and not scheduled now) "Hours & service" comes before the stops (owner 2026-10-27,
+/// web route.js routeClosed).
 struct RouteDetailView: View {
     @Environment(AppModel.self) private var model
     let rid: String
@@ -35,6 +37,9 @@ struct RouteDetailView: View {
         let list = model.staticData.routeStops[rid] ?? []
         let loop = list.count > 2 && list.first == list.last
         let spots = model.liveLoaded ? RouteText.busPositions(model.staticData, buses: model.buses, rid: rid, now: model.now) : []
+        let closed = RouteText.closed(running: n, service: svc, rid: rid, now: model.now)
+        let schedule = RouteScheduleView(rid: rid, day: Self.localDay(model.now), t: model.now, alertIds: routeAlerts.map(\.id),
+                                         version: model.staticVersion).equatable()
         return ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
@@ -71,6 +76,7 @@ struct RouteDetailView: View {
                     // this route's own alerts are under Schedule changes; the operator's number, if given, is the primary call
                     NoBusHelp(untiedOnly: true)
                 }
+                if closed { schedule }   // closed: the hours first, then the stops
                 if ids.isEmpty {
                     EmptyStateView(title: "No stops listed", message: "The schedule has no stops for this route.")
                 } else {
@@ -97,8 +103,7 @@ struct RouteDetailView: View {
                             .font(.footnote).foregroundStyle(Palette.text2)
                     }
                 }
-                RouteScheduleView(rid: rid, day: Self.localDay(model.now), t: model.now, alertIds: routeAlerts.map(\.id),
-                                  version: model.staticVersion).equatable()
+                if !closed { schedule }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)

@@ -555,14 +555,29 @@ extension AppModel {
         if j.kind == .plan { endTrip() } else { routeState.journey = nil; apply(StatePatch(routeFilter: .some(nil))) }
     }
 
-    /// A tap on empty map lowers the sheet to peek (web onMapTap), never right after a stop or bus tap.
-    func mapTapped() {
+    /// A tap on the map that is not a stop or bus tap: on a route line (`line`, MapScreen `lineHit`) it opens that
+    /// route as the Routes list does (owner 2026-10-27, web main.js onLineTap), where `lineTapOpens`; else it lowers the
+    /// sheet to peek (web onMapTap). Never right after a stop or bus tap.
+    func mapTapped(line: String? = nil) {
         let at = Date().timeIntervalSince1970
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 180_000_000)
             // a stop / bus tap delivered just before or after this one: that was not the empty map
             guard let self, self.lastAnnotationTap < at - 0.4 else { return }
+            if let rid = line, self.lineTapOpens, self.staticData.routes[rid] != nil, self.page != .route(rid) {
+                self.push(.route(rid))   // the Routes list's tap: the route page, the map framed on the route
+                return
+            }
             if self.detent != .peek { self.detent = .peek }
+        }
+    }
+
+    /// Does a tap on a route line open it (web core/visibility.js lineTapOpens)? Not in Directions or Routes to station,
+    /// and not on Current trip while a trip is in progress: the map shows the trip there and a tap lowers the sheet.
+    var lineTapOpens: Bool {
+        switch page {
+        case .directions?, .pick?: return false
+        default: return !(activeTrip != nil && tab == .current && page == nil)
         }
     }
 

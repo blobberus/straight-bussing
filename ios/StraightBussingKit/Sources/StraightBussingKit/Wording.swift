@@ -396,6 +396,13 @@ public enum RouteText {
         public var text: String
     }
 
+    /// Is the route closed right now (owner 2026-10-27: then "Hours & service" comes before the stops)? No bus of it
+    /// running and the schedule does not say it runs now: a scheduled route whose buses send no location stays open,
+    /// and so does a bus running outside the timetable. Web ui/views/route.js `routeClosed`.
+    public static func closed(running: Int, service: ServiceData?, rid: String, now: Double) -> Bool {
+        running == 0 && Schedule.isScheduledNow(service, rid, now) != true
+    }
+
     /// Ordered unique stop ids of a route (a loop's repeated last stop is dropped).
     public static func stopOrder(_ list: [String]?) -> [String] {
         var out: [String] = []

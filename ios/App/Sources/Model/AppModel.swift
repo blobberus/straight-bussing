@@ -95,12 +95,27 @@ final class MapCameraModel {
     @ObservationIgnored var lastFrameAt: Double = 0
 }
 
-/// A route polyline ready for MapKit (coordinates converted and color parsed once per visibility change).
+/// A route polyline ready for MapKit (coordinates converted and color parsed once per visibility change). `rid` and
+/// the bounding box serve a tap on the line (MapScreen `lineHit`, Kit `LineTap`).
 struct MapLine: Identifiable {
     let id: String
+    let rid: String
     let coords: [CLLocationCoordinate2D]
     let color: Color
     let width: CGFloat
+    let minLat: Double, maxLat: Double, minLon: Double, maxLon: Double
+
+    init(id: String, rid: String, coords: [CLLocationCoordinate2D], color: Color, width: CGFloat) {
+        self.id = id
+        self.rid = rid
+        self.coords = coords
+        self.color = color
+        self.width = width
+        minLat = coords.map(\.latitude).min() ?? 0
+        maxLat = coords.map(\.latitude).max() ?? 0
+        minLon = coords.map(\.longitude).min() ?? 0
+        maxLon = coords.map(\.longitude).max() ?? 0
+    }
 }
 
 struct MapStop: Identifiable {
@@ -464,7 +479,7 @@ final class AppModel {
             let dim = focus.map { !$0.contains(rid) } ?? false
             let color = dim ? Color.dimmed(hex: r.color) : Color(hex: r.color)
             for (i, line) in (S.shapes[rid] ?? []).enumerated() {
-                lines.append(MapLine(id: "\(rid)-\(i)", coords: line.map(\.cl), color: color, width: dim ? 3 : 5))
+                lines.append(MapLine(id: "\(rid)-\(i)", rid: rid, coords: line.map(\.cl), color: color, width: dim ? 3 : 5))
             }
         }
         var ids = Set<String>()
