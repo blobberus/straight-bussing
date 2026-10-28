@@ -59762,4 +59762,4 @@ epoch,ts_utc,local_time,dow,hour,minute_of_day,route_id,route_name,trip_id,vehic
 1793163717,2026-10-28T05:01:57Z,2026-10-28 00:01:57,2,0,1,6126,Apostolic/Drexel,501491,4324,8614,Apostolic Lot,6320 South Dorchester Avenue,41.77961,-87.59301,9,225834,852.0,1793163575,142,6.0,0,1793163599,165,transition
 1793163735,2026-10-28T05:02:15Z,2026-10-28 00:02:15,2,0,2,6126,Apostolic/Drexel,501491,4324,133007,Kenwood & 63rd,East 63rd Street,41.78087,-87.5929,10,,,,,,,,,gps
 1793163816,2026-10-28T05:03:36Z,2026-10-28 00:03:36,2,0,3,6126,Apostolic/Drexel,501492,4324,225833,Kimbark Garage,Kimbark Garage,41.78424,-87.59473,11,,,,,,,,,gps
-1793164036,2026-10-28T05:07:16Z,2026-10-28 00:07:16,2,0,7,6126,Apostolic/Drexel,501492,4324,8612,Goldblatt Pavilion,5801 South Ellis Avenue,41.78774,-87.60361,0,,,,,,70,,,proximity
+1793164033,2026-10-28T05:07:13Z,2026-10-28 00:07:13,2,0,7,6126,Apostolic/Drexel,501492,4324,8612,Goldblatt Pavilion,5801 South Ellis Avenue,41.78774,-87.60361,12,,,,,,,1793164002,162,transition
