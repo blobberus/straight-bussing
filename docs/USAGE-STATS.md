@@ -47,6 +47,11 @@ and drops the rest.
 6. **Watch the first rows.** Open the live site on a phone, wait a minute, switch to another app, then look at the
    sheet: the tabs `starts` and `ends` appear with your visit (and `places` if you turned on the nearest stop).
 
+**"Access Denied" / "You need access"** when opening the URL signed out: the deployment is not open to everyone.
+Deploy > Manage deployments > the pencil > Who has access: **Anyone** > Deploy (the URL stays the same). A university
+Google account (Google Workspace) may only offer "Anyone within ...": then make the Sheet and the script in a personal
+Gmail account instead and send the new URL. Check it in a private browser window: it must show the one-line reply.
+
 Updating the receiver later: edit the script, then Deploy > Manage deployments > edit > Version: New version (the URL
 stays the same).
 
