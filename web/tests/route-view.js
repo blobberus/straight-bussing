@@ -140,6 +140,30 @@ test("route view: a running or scheduled route keeps the stops first", () => {
   ok(o.tl > 0 && o.svc > o.tl, "extra service: stops first");
 });
 
+// Owner 2026-10-29: on a closed route the operator's "UGo Bus Route Assistance" numbers must not come first; the hours
+// and the scheduled buses by hour do. The help stays on the page (rider safety), right after the hours.
+const ASSIST = { id: "a1", header_text: { translation: [{ text: "UGo Bus Route Assistance" }] },
+  description_text: { translation: [{ text: "If you do not see arrival times or buses on route in the app, please contact (773) 573-7201 for assistance." }] },
+  informed_entity: [{ agency_id: "1068" }], active_period: [{ start: 0, end: 4102444800 }] };
+
+test("route view: a closed route shows hours and buses by hour before the route assistance numbers", () => {
+  const s = svcState({ buses: [], alerts: [ASSIST] });
+  const h = renderRoute(s, WED_10PM), o = order(h);
+  const help = Math.min(...["v-opalerts", "v-calls", "v-official"].map((c) => h.indexOf(`class="${c}"`)).filter((i) => i >= 0));
+  ok(help > 0, "the no-bus help is still on the page");
+  ok(h.indexOf("Scheduled buses by hour") > o.svc && h.indexOf("Scheduled buses by hour") < help, "buses by hour before the help");
+  ok(o.svc > 0 && help > o.svc && o.head > help && o.tl > o.head, "status, hours, help, Stops: " + JSON.stringify({ ...o, help }));
+  ok(h.indexOf("Not running right now") < o.svc && h.indexOf('class="r-today"') < o.svc, "the status and Today lines stay on top");
+  ok(h.includes("773.702.8181"), "the official number stays");
+});
+
+test("route view: an open route with no bus reporting keeps the help right after the status", () => {
+  const s = svcState({ buses: [], alerts: [ASSIST] });   // scheduled at 10 AM, no bus sends its location
+  const h = renderRoute(s, WED_10AM), o = order(h);
+  const help = Math.min(...["v-opalerts", "v-calls", "v-official"].map((c) => h.indexOf(`class="${c}"`)).filter((i) => i >= 0));
+  ok(help > 0 && help < o.tl && o.svc > o.tl, "help, stops, hours: " + JSON.stringify({ ...o, help }));
+});
+
 test("route view: closed route without listed stops puts the hours above the empty state; no schedule = no change", () => {
   const s = svcState({ buses: [], routeStops: { R2: ["S3", "S2", "S4", "S3"], R3: ["S1", "S3"] } });
   const h = renderRoute(s, WED_10PM);

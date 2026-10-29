@@ -640,6 +640,7 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   a visible "Stops" heading (`.r-stops-h`); otherwise the order is unchanged. The render is a pure function of state and
   time, so the order flips once at the service boundary. Tests: `web/tests/map-linetap.js` (map.test.html),
   `route-view.js`. sw `sb-v2-68`.
+- 2026-10-29 (owner: on a closed route the operator's route assistance numbers must not come first): closed = status, Today line, Hours & service (week, changes, scheduled buses by hour), then the no-bus help (operator alert, Call bus route help, Safety or urgent 773.702.8181), then Stops. Open routes keep the help right after the status. route.js renderRoute; tests route-view.js; sw sb-v2-70.
 
 ## Anonymous usage statistics (2026-10-27, owner: "track when a distinct user logs on (time of day), track how long they use it, track what locations they use it most often from", anonymously; visit start and distinct users "should collect regardless")
 Website only; on since 2026-10-29 (`USAGE_URL` in web/js/data/usage.js = the owner's Apps Script web app; empty = off).

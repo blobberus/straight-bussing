@@ -5,7 +5,8 @@
  * (route order = travel direction, loops wrap), then "Hours & service" from the official schedule
  * (week, calendar changes, route alerts, scheduled buses by hour). While the route is closed (routeClosed: no bus
  * running and not scheduled now) "Hours & service" comes first, under a "Stops" heading for the timeline (owner
- * 2026-10-27). The map focuses on the route (core/visibility.js mapFocus); route:open, and a tap on the route's
+ * 2026-10-27), and the no-bus help (operator's route assistance number, 773.702.8181) follows it instead of coming
+ * first (owner 2026-10-29: hours and scheduled buses by hour first). The map focuses on the route (core/visibility.js mapFocus); route:open, and a tap on the route's
  * line on the map (main.js onLineTap), also fit the map to the route shape.
  */
 import { registerView } from "../router.js";
@@ -181,10 +182,12 @@ export function renderRoute(state, now = nowS()) {
   if (hidden) h += state.journey
     ? '<div class="v-note"><span class="v-grow v-sec">This route is not part of the current journey, so it is hidden on the map.</span></div>'
     : `<div class="v-note"><span class="v-grow v-sec">This route is hidden from the map and arrival times.</span><button type="button" class="v-btn v-btn--quiet" data-action="routes:toggle" data-id="${esc(rid)}">Show</button></div>`;
-  if (!n && state.liveLoaded && !(state.buses || []).length) h += noBusHelpHTML(state, now, { rid });
-  const svc = renderService(state, rid, now), first = !!svc && routeClosed(state, rid, now);   // closed: hours before stops
-  if (!ids.length) return h + (first ? svc : "") + emptyState("No stops listed", "The schedule has no stops for this route.") + (first ? "" : svc) + "</div>";
-  if (first) h += svc + '<h2 class="r-h r-stops-h" id="r-stops-h">Stops</h2>';
+  const help = !n && state.liveLoaded && !(state.buses || []).length ? noBusHelpHTML(state, now, { rid }) : "";
+  // closed: hours (and scheduled buses by hour), then the no-bus help, then the stops; open: help, stops, hours
+  const svc = renderService(state, rid, now), first = !!svc && routeClosed(state, rid, now);
+  if (!first) h += help;
+  if (!ids.length) return h + (first ? svc + help : "") + emptyState("No stops listed", "The schedule has no stops for this route.") + (first ? "" : svc) + "</div>";
+  if (first) h += svc + help + '<h2 class="r-h r-stops-h" id="r-stops-h">Stops</h2>';
   const pos = state.liveLoaded ? busPositions(state, rid, now) : [];
   const busAt = new Map(), railAt = new Map();
   for (const b of pos) {
