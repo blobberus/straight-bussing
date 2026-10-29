@@ -675,3 +675,7 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   equal to the real first-render graph: a new static import in the boot path must be added there.
 - tests/core-dst.js pins clocks, service days, night tails, Lines by Time and usage times on Nov 1 2026 / Mar 14 2027.
 - Collector and tools: docs/DATA-COLLECTION-LOG.md DC-019. sw cache sb-v2-72.
+- iOS: `BusMotion.startTicking` no longer runs two animation loops after a quick background and back (a generation
+  counter, so each loop clears only its own handle); `LiveActivityController` sends updates and the final end in order
+  (a `lastSend` chain), so the Lock Screen never shows older numbers than the app sent last; Kit `DSTTests` pin Nov 1
+  2026 / Mar 14 2027 (with tools/test_dst.py and tests/core-dst.js). CI 40840132902.
