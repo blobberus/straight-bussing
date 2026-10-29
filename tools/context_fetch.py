@@ -141,6 +141,19 @@ def weather_grid(start, end, today=None):
     return parse_open_meteo(json.loads(get(url, p)))
 
 
+def chicago_epoch(local):
+    """A naive Chicago wall-clock datetime -> Unix seconds. Tries CDT then CST and keeps the one whose wall clock
+    matches, so the hours after a change are right too (the old way took the offset at the wrong instant: on
+    2026-11-01 local 02:00 to 06:00 came out 1 h early, and without zoneinfo it assumed CST all summer; found
+    2026-10-29). The repeated hour of the fall change gets its first (CDT) copy; a skipped spring hour reads as CST."""
+    naive = int(local.replace(tzinfo=timezone.utc).timestamp())
+    for off_h in (-5, -6):
+        e = naive - off_h * 3600
+        if chicago(e).replace(tzinfo=None) == local:
+            return e
+    return naive + 6 * 3600
+
+
 def parse_regions(items):
     """Socrata rows {region_id, day (floating ISO date, Chicago local), hour (0-23), avg_speed, buses, n} -> rows.
     The portal stores local Chicago time without an offset (its record_id carries UTC), so local hours are
@@ -151,9 +164,7 @@ def parse_regions(items):
             local = datetime.strptime(it["day"][:10], "%Y-%m-%d") + timedelta(hours=int(it["hour"]))
         except (KeyError, ValueError, TypeError):
             continue
-        guess = int(local.replace(tzinfo=timezone.utc).timestamp())          # treat as UTC, then fix the offset
-        off = chicago(guess).utcoffset() or timedelta(hours=-6)
-        epoch = int(guess - off.total_seconds())
+        epoch = chicago_epoch(local)
         rid = str(it.get("region_id", ""))
         d = {"epoch": epoch, "region_id": rid, "region": REGIONS.get(rid, ""),
              "speed_mph": round(float(it.get("avg_speed") or 0), 2), "bus_count": it.get("buses", ""), "n_estimates": it.get("n", "")}
