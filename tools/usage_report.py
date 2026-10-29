@@ -54,6 +54,26 @@ def pct(a, b):
     return f"{100 * a / b:.0f}%" if b else ""
 
 
+def logins(S, gap_s=1800):
+    """Logins with reloads folded in, as the Sheet's "logins (30 min)" tab: per visitor in time order, a visit counts
+    again only gap_s or more after that visitor's previous logged login (times from day + start time, Chicago)."""
+    from datetime import datetime
+    by = defaultdict(list)
+    for r in S:
+        try:
+            by[r["anon_id"]].append(datetime.strptime(f"{r['day']} {r['start_time'][:5]}", "%Y-%m-%d %H:%M"))
+        except (KeyError, ValueError):
+            pass
+    n = 0
+    for times in by.values():
+        last = None
+        for t in sorted(times):
+            if last is None or (t - last).total_seconds() >= gap_s:
+                n += 1
+                last = t
+    return n
+
+
 def summarize(starts, ends, places, since=None):
     """-> markdown text."""
     S = [r for r in starts if r.get("session_id") and r.get("anon_id") and not is_test(r) and (not since or r.get("day", "") >= since)]
@@ -76,7 +96,8 @@ def summarize(starts, ends, places, since=None):
     visitors = {r["anon_id"] for r in S}
     days = sorted({r["day"] for r in S})
     by_visitor = Counter(r["anon_id"] for r in S)
-    out += [f"{days[0]} to {days[-1]}: **{len(visitors):,} distinct visitors**, {len(S):,} visits "
+    out += [f"{days[0]} to {days[-1]}: **{len(visitors):,} distinct visitors**, {logins(S):,} logins (a visitor counts "
+            f"again only after 30 minutes), {len(S):,} visits "
             f"({len(S) / len(visitors):.1f} per visitor); {sum(1 for v in by_visitor.values() if v >= 2):,} visitors came back "
             f"at least once; {pct(sum(1 for r in S if r.get('app') == 'home-screen'), len(S))} of visits from the installed "
             f"home-screen app.", "",
