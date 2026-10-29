@@ -173,3 +173,20 @@ test("usage: the start row's reply is kept for Settings; rows leaving the page a
     eq(calls.map((c) => [c.e, c.keep]), [["start", false], ["end", true]]);
   } finally { off(); u?.stop(); _configureUsage({ url: USAGE_URL, force: false, send: null, now: () => Date.now() / 1000 }); useMemoryOverlay(false); }
 });
+
+test("usage: a page opened in the background counts only once it is shown, from that moment", () => {
+  useMemoryOverlay(true);
+  let t = 1_793_106_000;
+  const sent = [];
+  _configureUsage({ url: URL_, force: true, now: () => t, send: (u, body) => { sent.push(JSON.parse(body)); return "ok"; } });
+  const page = fakePage();
+  page.doc.visibilityState = "hidden";
+  const u = startUsage(createStore({ usage: cleanUsage(null, {}), user: null, stops: STOPS }), { doc: page.doc, win: page.win });
+  try {
+    eq(sent.length, 0, "a background tab that was never seen sends nothing");
+    t += 600; page.show();
+    eq(sent.map((r) => [r.e, r.time]), [["start", "08:10"]], "the visit starts when it is first seen");
+    t += 45; page.hide();
+    eq(sent.filter((r) => r.e === "end").map((r) => r.dur), [45]);
+  } finally { u?.stop(); _configureUsage({ url: USAGE_URL, force: false, send: null, now: () => Date.now() / 1000 }); useMemoryOverlay(false); }
+});
