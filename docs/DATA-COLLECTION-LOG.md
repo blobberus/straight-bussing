@@ -27,6 +27,30 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 
 ## Errors
 
+### DC-019 Bug check 2026-10-29: loop-end predictions (DC-017), replay determinism, daylight saving (fixed)
+- Loop-end predictions dropped (DC-017's main case): `arrival_detector._candidates` (and `build_eta_dataset.shown`)
+  wanted Passio's stop_sequence to equal our index + 1 at a loop's end visit; our merged route order includes stops a
+  trip skips (Midway Metra: end at index 15, Passio sequence 15). The end visit now takes the highest sequence Passio
+  gives that stop on the trip. Replays against the same code before the fix: Oct 21 +66 prediction rows (11 arrivals),
+  Oct 27 +74 (11), 0 removed, no other arrival field changed; added rows median error -86 s / -158 s, 86 to 89% within
+  10 min (real predictions for that visit, not another lap). Oct 27's forecast table: 286 of 223,800 rows from "none"
+  to "shown", all at that stop.
+- Replays were not deterministic: the GPS sweep took the first of a set of (route, index) candidates, so a loop
+  terminal's index depended on Python's string hash seed (Apostolic Kenwood & 63rd index 10 one run, 0 the next; the
+  live collector too). Now in route order; replays byte-identical across seeds.
+- Daylight saving (clocks fall back Sun Nov 1 2026): `raw_fetch.service_day` filed 3 to 4 AM CST polls of Nov 1 under
+  Nov 1 (wall clock minus 4 h now, as every other tool); `context_fetch.parse_regions` put local 2 to 6 AM an hour
+  early on change days (`chicago_epoch()`; the dataset ended April 2026, so only stored 2022 to 2026 rows were off, 5
+  hours per change day); `service_gate`'s fallback clock (used only without zoneinfo, not in CI) read the repeated
+  hour as 02:xx. `tools/test_dst.py` pins Nov 1 2026 and Mar 14 2027 across the tools.
+- Right after `arrivals.csv` rotates (40 MB), the next runs seeded with no recent visits: collect.yml and
+  `monitor.refresh_seed` now seed from the newest archive file. (`predictions.csv`, 38 MB, rotates within days; its
+  rotation and the merge after it were simulated and work.)
+- Impact: about 11 arrivals and 70 prediction rows a day recovered from now on; past days can be backfilled with
+  `tools/replay_day.py` + `tools/apply_replay.py` (owner's go-ahead). Status: fixed (commits b99b1b8, 86c08c9, 635b949).
+- Left: the loop-end INDEX choice (`[i for i in idxs if i + 1 in seqs]`): a fix would rewrite 27 (Oct 21) and 13
+  (Oct 27) existing arrival rows, so it waits for review; DC-017's index-0 cases.
+
 ### DC-018 The daily archive failed for Oct 26: a new timetable added stops (fixed)
 - Found 2026-10-27: the archive run of 2026-10-27 stopped on Oct 26 with `IndexError('list index out of range')`
   (`arrivals_lib.dist_between`, called by `build_eta_dataset.build`). Passio published a new GTFS on Oct 26 (feed
@@ -40,7 +64,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   never block the others). Checked locally: Oct 26 builds (221,186 table rows); `test_eta.py` 19/19, `test_truth.py`
   54/54. Status: fixed; archive rerun dispatched.
 
-### DC-017 About 40 arrivals a day get no prediction row although Passio showed one for the same trip (open)
+### DC-017 About 40 arrivals a day get no prediction row although Passio showed one for the same trip (fixed in part 2026-10-29, DC-019)
 - Found 2026-10-22 comparing Oct 20 / 21 with the raw `pred-updates` archive: 42 (Oct 20) and 39 (Oct 21) non-`gps`
   arrivals (1.2% / 1.1%) have no predictions.csv row and no `passio_pred_*`, yet Passio published a prediction for the
   same bus, stop and trip id 5 to 15 min before, within 5 min of the real arrival.
@@ -52,7 +76,10 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
   may take some too.
 - Impact: Passio's scores skip these arrivals (about 1%). Repairable: after a fix, replay the days from the raw
   archive (`tools/replay_day.py`, 90 days; applying needs the owner's go-ahead).
-- Status: open.
+- Cause confirmed and fixed for the main case on 2026-10-29 (DC-019): at a loop's end visit our merged route order holds a
+  stop the trip skips, so Midway Metra's end is index 15 while Passio numbers it 15, never 16. Left open: visits at
+  index 0 whose Passio sequence is the trip's last stop (Downtown Campus Connector Rockefeller Chapel, Red Line Logan
+  Center), which are start-or-end ambiguous and need a decision. Status: fixed in part; past days not backfilled.
 
 ### DC-016 Central had no Passio predictions on the evening of Oct 20 (accepted: Passio's side)
 - Found 2026-10-22: Central's 181 arrivals on Oct 20 (bus 4320, 4 to 11:59 PM) have no prediction row at any lead.

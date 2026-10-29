@@ -663,3 +663,15 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   describes it (always / unless you turn it off / only if you turn it on; the iPhone app collects nothing).
 - Receiver `tools/usage/Code.gs` (Apps Script web app, tabs starts / ends / places, format checks, no formulas);
   report `tools/usage_report.py` (+ test_usage_report.py). Tests: tests/usage.test.html. sw cache bumped.
+
+## Bug check 2026-10-29 (owner: "Run a full bug check and optimization on the app and data collection methods")
+- data/live.js: `parseTrips` drops non-object `stop_time_update` entries (one null used to drop the whole poll), and any
+  error inside a poll sets `failed` + `liveLoaded` and counts as a failed poll (stale-data honesty: never "loading" forever).
+- data/usage.js: a page loaded in the background (restored or pre-opened tab) starts its visit when first shown.
+- sw.js: offline, a page opened with a query string (About's `support.html?contact=1...`) gets that precached page
+  before the app shell; tests/data-pwa.js runs the real fetch handler against a fake cache.
+- index.html: `<link rel="modulepreload">` for the 74 first-render modules (main.js as `js/main.js?v=5`), so they load in
+  parallel instead of 8 import levels deep (2.97 s -> 2.48 s at 150 ms per request over HTTP/1.1); a test keeps the list
+  equal to the real first-render graph: a new static import in the boot path must be added there.
+- tests/core-dst.js pins clocks, service days, night tails, Lines by Time and usage times on Nov 1 2026 / Mar 14 2027.
+- Collector and tools: docs/DATA-COLLECTION-LOG.md DC-019. sw cache sb-v2-72.
