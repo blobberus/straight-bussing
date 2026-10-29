@@ -70,11 +70,15 @@ class Tracker:
             while len(self.trip_seq) > 3000:
                 del self.trip_seq[next(iter(self.trip_seq))]
 
-    def _candidates(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False):
+    def _candidates(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False, loop_last=False):
         """Predictions that can be about THIS arrival, oldest first: (made, predicted).
         This vehicle's own predictions, else the trip's predictions that came without a vehicle id. At a
-        loop stop (in the route twice) only a prediction whose stop_sequence is idx + 1 counts (or that
-        has no sequence): one update predicts the terminal both as stop 1 and as stop N. A prediction of a time
+        loop stop (in the route twice) only a prediction whose stop_sequence names this visit counts (or that
+        has no sequence): one update predicts the terminal both as stop 1 and as stop N. The start visit is
+        stop_sequence idx + 1 (= 1); the end visit (loop_last) is the highest stop_sequence Passio gives the stop
+        on this trip (DC-017, 2026-10-29: our route order can hold stops a trip skips, e.g. Midway Metra's
+        afternoon stop, so idx + 1 was 16 while Passio numbered the loop's end 15 and every such prediction was
+        dropped); when the trip lists the stop only as stop 1, idx + 1 still decides. A prediction of a time
         before, or within PREV_VISIT_GAP_S after, the bus's previous visit to this stop was about that earlier
         visit (a rider reading it saw the bus come then) and is skipped, whatever trip id the previous visit had:
         Passio rolls a bus over to its next trip id early and lists the current lap's times under it (DC-011,
@@ -91,13 +95,19 @@ class Tracker:
         pv = self.visits.get((self._veh(veh), stop_id))
         if pv is not None and not 0 < epoch - pv[0] <= 2 * STATE_TTL:
             pv = None
+        want = idx + 1 if idx is not None else None
+        if loop_stop and loop_last:
+            seqs = (self.trip_seq.get(trip) or {}).get(stop_id) or {x[2] for x in d or () if isinstance(x[2], int)}
+            top = max(seqs) if seqs else None
+            if top is not None and top > 1:
+                want = top
         for made, pred, seq, seen, last in d or ():
-            if loop_stop and seq is not None and idx is not None and seq != idx + 1:
+            if loop_stop and seq is not None and want is not None and seq != want:
                 continue
             if abs(pred - epoch) >= 3600:
                 continue
             if pv is not None and (pred < pv[0] + PREV_VISIT_GAP_S or (pv[1] == trip and made <= pv[0])):
-                if not (seq is not None and idx is not None and seq == idx + 1 and pv[2] != idx):
+                if not (seq is not None and want is not None and seq == want and pv[2] != idx):
                     continue
             yield made, pred, seen, last
 
@@ -107,23 +117,23 @@ class Tracker:
         return not any(k[1] == trip and self._veh(k[0]) != me and abs(s.get("last_t", 0) - epoch) <= 600
                        for k, s in self.v.items())
 
-    def pred_for(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False):
+    def pred_for(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False, loop_last=False):
         """Most recent prediction made >= MIN_PRED_AGE s before epoch -> (pred_epoch, lead_s) | None
         (the arrivals.csv passio_pred_* columns)."""
         best = None
-        for made, pred, seen, last in self._candidates(trip, stop_id, epoch, veh, idx, loop_stop):
+        for made, pred, seen, last in self._candidates(trip, stop_id, epoch, veh, idx, loop_stop, loop_last):
             if seen <= epoch - MIN_PRED_AGE:
                 best = (made, pred)
         return (best[1], epoch - best[0]) if best else None
 
-    def preds_at(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False, leads=PRED_LEADS):
+    def preds_at(self, trip, stop_id, epoch, veh=None, idx=None, loop_stop=False, leads=PRED_LEADS, loop_last=False):
         """For each target lead L, the prediction on display L s before epoch: the newest one made and first seen
         by then, if a poll still showed it within SHOW_GRACE_S of that moment -> {L: (pred_epoch, made, seen)}
         (predictions.csv). No row for L = no prediction on display then (none yet, or Passio had withdrawn it).
         A lead shorter than one this trip id filled may instead take the bus's prediction under the trip id
         Passio re-matched it to meanwhile (_other_trip_preds)."""
         newest = {}
-        for made, pred, seen, last in self._candidates(trip, stop_id, epoch, veh, idx, loop_stop):
+        for made, pred, seen, last in self._candidates(trip, stop_id, epoch, veh, idx, loop_stop, loop_last):
             for lt in leads:
                 if seen <= epoch - lt:
                     newest[lt] = (pred, made, seen, last)
@@ -566,7 +576,9 @@ class Tracker:
 
     def _hits(self, la0, lo0, la1, lo1):
         """Stops whose RADIUS_M circle the segment enters (or crosses), moving with a route's direction there:
-        [(stop_id, {(route, idx)})] (only the route indexes whose direction fits). A segment that starts inside the
+        [(stop_id, [(route, idx)])] (only the route indexes whose direction fits; a list in route order, so a loop
+        terminal (index 0 and the last) is chosen the same way in every run: a set's order follows Python's per-process
+        string hashing, and the same day replayed twice labelled such a visit 0 once and 15 the next). A segment that starts inside the
         circle is the bus leaving: never a hit (a bus already standing there when logging began has no arrival)."""
         kx = 111320.0 * math.cos(math.radians(la0))
         mv = ((lo1 - lo0) * kx, (la1 - la0) * 111320.0)
@@ -587,11 +599,11 @@ class Tracker:
             f = max(0.0, min(1.0, -(ax * mv[0] + ay * mv[1]) / L2))
             if math.hypot(ax + f * mv[0], ay + f * mv[1]) > RADIUS_M:
                 continue
-            fits = set()
+            fits = []
             for route, j in places:
                 hd = self._heading(route, j)
                 if hd is None or hd[0] * mv[0] + hd[1] * mv[1] > 0:
-                    fits.add((route, j))
+                    fits.append((route, j))
             if fits:
                 out.append((sid, fits))
         return out
@@ -812,11 +824,13 @@ class Tracker:
                 sv, av = t, None
             elif sv is not None and av is None:
                 av = t
-        loop_stop = self.st.route_stops[route].count(sid) > 1
+        rs = self.st.route_stops[route]
+        loop_stop = rs.count(sid) > 1
+        loop_last = loop_stop and idx == len(rs) - 1 - rs[::-1].index(sid)   # the loop's end visit (DC-017)
         s["pend"] = {"epoch": epoch, "route": route, "trip": key[1], "veh": key[0], "idx": idx, "source": source,
                      "prev": prev, "dwell": None,
-                     "pred": self.pred_for(key[1], sid, epoch, veh=key[0], idx=idx, loop_stop=loop_stop),
-                     "preds": self.preds_at(key[1], sid, epoch, veh=key[0], idx=idx, loop_stop=loop_stop),
+                     "pred": self.pred_for(key[1], sid, epoch, veh=key[0], idx=idx, loop_stop=loop_stop, loop_last=loop_last),
+                     "preds": self.preds_at(key[1], sid, epoch, veh=key[0], idx=idx, loop_stop=loop_stop, loop_last=loop_last),
                      "stop_vt": sv, "after_vt": av}
         vk = (self._veh(key[0]), sid)
         if epoch > self.visits.get(vk, (0,))[0]:      # after the lookups: they need the previous visit

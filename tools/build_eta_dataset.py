@@ -333,15 +333,24 @@ def build(day, arrivals, preds, raw=None, timetable=None, st=None, step=STEP_S, 
             i += 1
         return True
 
-    def shown(veh, trip, sid, t, seq_want, loop, ep=None):
+    tops = {}                                # (veh, trip, stop) -> the highest stop_sequence Passio gave it
+
+    def shown(veh, trip, sid, t, seq_want, loop, ep=None, loop_last=False):
         """Passio's update on display at t for this bus's next visit -> (status, entry|None). ep: that visit's
-        arrival, to check the time against the bus's visit to the stop before it (any trip id, as the detector)."""
+        arrival, to check the time against the bus's visit to the stop before it (any trip id, as the detector).
+        loop_last: the loop's end visit, which is Passio's highest stop_sequence for the stop on this trip (the
+        detector's DC-017 rule: our route order can hold stops a trip skips, so idx + 1 can miss it)."""
         key = (veh, trip, sid)
         if key not in preds:
             key = (None, trip, sid)
             if key not in preds or not only_bus(trip, veh, t):
                 return "none", None
         lst, i = preds[key], bisect.bisect_right(pred_seen[key], t)
+        if loop and loop_last:
+            if key not in tops:
+                tops[key] = max((x[4] for x in lst if isinstance(x[4], int)), default=None)
+            if tops[key] is not None and tops[key] > 1:
+                seq_want = tops[key]
         best = None
         while i > 0:                          # newest first seen by t (at a loop stop: the matching stop_sequence)
             e = lst[i - 1]
@@ -427,7 +436,8 @@ def build(day, arrivals, preds, raw=None, timetable=None, st=None, step=STEP_S, 
                         crosses = True
                 status, e = ("none", None)
                 if rank == 1:
-                    status, e = shown(veh, trip, sid, t, idx + 1, loop, ep)
+                    last_i = loop and idx == len(rs) - 1 - rs[::-1].index(sid)
+                    status, e = shown(veh, trip, sid, t, idx + 1, loop, ep, loop_last=last_i)
                     if status == "shown":
                         own.add((veh, ep, sid))
                     elif not loop and (veh, ep, sid) in own:     # a lead the own trip id left empty (DC-010)
