@@ -642,7 +642,7 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   `route-view.js`. sw `sb-v2-68`.
 
 ## Anonymous usage statistics (2026-10-27, owner: "track when a distinct user logs on (time of day), track how long they use it, track what locations they use it most often from", anonymously; visit start and distinct users "should collect regardless")
-Website only; built on branch `usage-stats`, off until `USAGE_URL` (web/js/data/usage.js) holds the receiver address.
+Website only; on since 2026-10-29 (`USAGE_URL` in web/js/data/usage.js = the owner's Apps Script web app; empty = off).
 Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
 - `data/usage.js` (USAGE): `startUsage(store, {ver})` after the first render (main.js; never in demo mode, from
   automated browsers or off https). Rows: `start` always (Chicago day / weekday / time to the minute, app kind, version,

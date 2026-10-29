@@ -5,10 +5,8 @@ it, and where they use it from. Visit start and distinct visitors are collected 
 length is on with an opt-out, and the nearest stop is opt-in. Code: `web/js/data/usage.js`. Receiver:
 `tools/usage/Code.gs`. Report: `tools/usage_report.py`.
 
-**Status: built, not turned on.** The receiver (`tools/usage/Code.gs`), this guide and the report tool are on
-`main`. The app part (`web/js/data/usage.js`, Settings > Usage statistics, About, the rewritten privacy page) is on the
-branch `usage-stats` and goes live together with the receiver address: the privacy page there describes the statistics,
-so it must not go live before they run. Until then nothing is sent and the app looks as before.
+**Status: on since October 29, 2026.** `USAGE_URL` in `web/js/data/usage.js` holds the owner's Apps Script web app
+address; the live site counts visits as below. Setting it back to `""` (and restoring the old privacy wording) turns it off.
 
 ## What is collected, and why it is anonymous
 
