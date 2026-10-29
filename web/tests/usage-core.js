@@ -3,7 +3,8 @@ import { test, eq, ok } from "./lib.js";
 import { createStore } from "../js/core/store.js";
 import { useMemoryOverlay } from "../js/core/storage.js";
 import { USAGE_URL, AWAY, MAX_SESSION_S, NEW_SESSION_S, chicagoParts, placeName, nearestPlace, cleanUsage, privacySignal,
-  buildRow, startUsage, anonId, resetId, usageConfigured, _configureUsage } from "../js/data/usage.js";
+  buildRow, startUsage, anonId, resetId, usageConfigured, lastSend, _configureUsage } from "../js/data/usage.js";
+import { bus } from "../js/core/events.js";
 
 const URL_ = "https://script.google.com/macros/s/TEST/exec";
 const STOPS = {
@@ -153,4 +154,22 @@ test("usage: a new anonymous number from the next visit on; length capped at 3 h
     ok(second.id !== first && second.nu === 1, "a new number, counted as a new visitor");
     eq(anonId().id, second.id, "remembered");
   } finally { r.done(); }
+});
+
+test("usage: the start row's reply is kept for Settings; rows leaving the page ask for keepalive", async () => {
+  useMemoryOverlay(true);
+  let t = 1_793_106_000;
+  const calls = [];
+  const seen = [];
+  const off = bus.on("usage:sent", (x) => seen.push(x));
+  _configureUsage({ url: URL_, force: true, now: () => t, send: (u, body, o) => { calls.push({ e: JSON.parse(body).e, keep: !!(o && o.keep) }); return Promise.resolve("ok"); } });
+  const page = fakePage();
+  const u = startUsage(createStore({ usage: cleanUsage(null, {}), user: null, stops: STOPS }), { doc: page.doc, win: page.win });
+  try {
+    await tick(); await tick();
+    eq(lastSend(), { at: t, res: "ok" });
+    eq(seen.length, 1, "Settings is told");
+    t += 60; page.hide();
+    eq(calls.map((c) => [c.e, c.keep]), [["start", false], ["end", true]]);
+  } finally { off(); u?.stop(); _configureUsage({ url: USAGE_URL, force: false, send: null, now: () => Date.now() / 1000 }); useMemoryOverlay(false); }
 });

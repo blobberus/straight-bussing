@@ -34,7 +34,8 @@ import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen, overlayKind } from "../settings-overlay.js";
 import { locPlatform, locEnv, LOC_STEPS, LOC_ORDER, locResultText } from "../../core/lochelp.js";
 import { feedbackLinkHTML } from "../feedback.js";
-import { usageConfigured, resetId, cleanUsage } from "../../data/usage.js";
+import { usageConfigured, resetId, cleanUsage, lastSend } from "../../data/usage.js";
+import { bus } from "../../core/events.js";
 
 /** Settings > Beta feedback, first in Settings (the welcome popup says the link is in the settings menu). */
 export const FEEDBACK_LINE = "This is a beta. Tell us what works and what does not.";
@@ -98,9 +99,18 @@ export const USAGE_ALWAYS = "Always counted, anonymously: when each visit starts
 export const USAGE_DUR_SUB = "The length of each visit, to the nearest 5 seconds.";
 export const USAGE_ZONE_SUB = "Once per visit, only the name of the stop nearest you (within 400 m), never your location. Needs location to be on.";
 export const USAGE_RESET = "Get a new anonymous number";
+/** This visit's count, as the receiver answered (data/usage.js lastSend). */
+export function usageStatusText(ls = lastSend()) {
+  if (!ls) return "";
+  const t = clock(ls.at);
+  if (ls.res === "ok") return `This visit was counted at ${t}.`;
+  if (ls.res === "failed") return `This visit could not be counted: the counter did not answer (${t}). The app works the same.`;
+  return `The counter did not accept this visit (${t}).`;
+}
 export function usageHTML(state) {
-  const u = cleanUsage(state.usage);
+  const u = cleanUsage(state.usage), st = usageStatusText();
   return `<div class="v-card st-usage"><p class="v-sec st-intro">${esc(USAGE_ALWAYS)}</p>`
+    + (st ? `<p class="v-sec st-usage-status" role="status">${esc(st)}</p>` : "")
     + sw("usageDur", "Share how long I use the app", USAGE_DUR_SUB, u.dur)
     + sw("usageZone", "Include my nearest stop", USAGE_ZONE_SUB, u.zone)
     + `<button type="button" class="v-btn v-btn--secondary v-btn--block" data-st="usage-reset" data-key="usage-reset">${esc(USAGE_RESET)}</button></div>`;
@@ -110,7 +120,7 @@ const MINUTES = [0, 2, 5, 10];
 const MAX_RESULTS = 6;
 const ui = { picking: false, query: "" };
 const OK = '<svg class="st-ok" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
-let offStore = null, abort = null, live = null;
+let offStore = null, offUsage = null, abort = null, live = null;
 
 /** Current notify settings, validated. */
 const N = (state) => cleanNotify(state.notify);
@@ -471,6 +481,8 @@ export function mountSettings(root, ctx) {
     patch(root, "results", resultsHTML(ctx.store.get(), ui.query));
   }, sig);
   offStore?.();
+  offUsage?.();
+  offUsage = bus.on("usage:sent", () => patch(root, "usage", usageHTML(ctx.store.get())));   // this visit's count arrived
   offStore = ctx.store.subscribe((s, ch) => {
     const now = typeof ctx.now === "function" ? ctx.now() : nowS();
     const has = (...k) => !ch || k.some((x) => ch.has(x));
@@ -496,7 +508,7 @@ export function refreshSettings() {
 
 /** Stop the store subscription and listeners of the mounted settings content. */
 export function unmountSettings() {
-  offStore?.(); offStore = null; abort?.abort(); abort = null; live = null;
+  offStore?.(); offStore = null; offUsage?.(); offUsage = null; abort?.abort(); abort = null; live = null;
 }
 
 /** Content adapter for ui/settings-overlay.js. */

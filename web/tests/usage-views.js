@@ -2,7 +2,7 @@
 import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
 import { bindActions } from "../js/ui/actions.js";
-import { renderSettings, mountSettings, unmountSettings, locHTML, LOC_DISCLAIMER, LOC_ZONE_NOTE, USAGE_ALWAYS, USAGE_RESET } from "../js/ui/views/settings.js";
+import { renderSettings, mountSettings, unmountSettings, locHTML, LOC_DISCLAIMER, LOC_ZONE_NOTE, USAGE_ALWAYS, USAGE_RESET, usageStatusText } from "../js/ui/views/settings.js";
 import { renderAbout, ABOUT_USAGE } from "../js/ui/views/about.js";
 import { cleanNotify } from "../js/state.js";
 import { useMemoryOverlay, load } from "../js/core/storage.js";
@@ -79,4 +79,13 @@ test("usage views: privacy.html says what is always sent, what can be turned off
   ok(page.includes("The <b>iPhone app collects nothing</b>"), "the iPhone app's label stays Data Not Collected");
   ok(page.includes("Never your coordinates"));
   ok(!page.includes("no tracking, no analytics"), "the old promise is gone");
+});
+
+test("usage views: Settings says whether this visit was counted, from the receiver's reply", () => {
+  eq(usageStatusText(null), "");
+  const at = 1_793_106_000;   // 8:00 AM Chicago
+  ok(/^This visit was counted at 8:00/.test(usageStatusText({ at, res: "ok" })), usageStatusText({ at, res: "ok" }));
+  ok(usageStatusText({ at, res: "failed" }).includes("could not be counted") && usageStatusText({ at, res: "failed" }).includes("The app works the same"));
+  ok(usageStatusText({ at, res: "dropped" }).startsWith("The counter did not accept this visit"));
+  for (const r of ["ok", "failed", "dropped"]) ok(!DASH.test(usageStatusText({ at, res: r })), "no dash characters");
 });

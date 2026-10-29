@@ -50,6 +50,18 @@ Deploy > Manage deployments > the pencil > Who has access: **Anyone** > Deploy (
 Google account (Google Workspace) may only offer "Anyone within ...": then make the Sheet and the script in a personal
 Gmail account instead and send the new URL. Check it in a private browser window: it must show the one-line reply.
 
+**Receiver version 2 (2026-10-29).** `tools/usage/Code.gs` now formats the Sheet: a **Summary** tab first (visitors and
+visits today, last 7 days and all time, typical visit length, home-screen share, a per-day table for 30 days, visits by
+hour, places), rebuilt at most every 5 minutes as rows arrive and whenever the Sheet is opened (also menu Straight Bussing
+> Refresh summary); the raw tabs get readable headers, Chicago time, dates, weekday names and Yes / No. Test rows (version
+`receivercheck` / `selftest`, or a visitor number of all zeros) never count. Version 1 tabs are converted the first time
+version 2 receives a row. `GET <url>?seen=<visit number>` answers yes / no for one visit (used to check the setup).
+Tests: `python tools/test_usage_receiver.py`.
+
+**Is my visit counted?** Open the site, then Settings > Usage statistics: the app reads the receiver's reply and says
+"This visit was counted at ..." (or why not). In the Sheet look at the **starts** tab (or Summary), not Sheet1. In the
+Apps Script editor, **Executions** lists every doPost with its time and status.
+
 Updating the receiver later: edit the script, then Deploy > Manage deployments > edit > Version: New version (the URL
 stays the same).
 

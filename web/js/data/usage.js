@@ -32,6 +32,7 @@ import { DEMO } from "../core/demo.js";
 import { hav } from "../core/geo.js";
 import { ZONE } from "../core/time.js";
 import { load, save, remove } from "../core/storage.js";
+import { bus } from "../core/events.js";
 
 /** The receiver: the owner's Apps Script web app (tools/usage/Code.gs; docs/USAGE-STATS.md). Empty: nothing is ever sent. */
 export const USAGE_URL = "https://script.google.com/macros/s/AKfycbzNBpOOftjp3sVA_UuyIGgFGsKFhMo3e_iP0u9NFwUJT3FeR8b6NwSgJMiBo7UGzWUr/exec";
@@ -151,15 +152,32 @@ function appKind() {
   return "browser";
 }
 
-/** Fire and forget: a beacon (survives the page closing), else a keepalive POST. Never throws. */
-function defaultSend(url, body) {
+/** The last "start" row's outcome, for Settings: {at, res} with res "ok" | "dropped" | "error" | "failed", or null. */
+let last = null;
+/** @returns {{at:number, res:string}|null} */
+export function lastSend() {
+  return last;
+}
+
+/**
+ * Send one row and read the receiver's one-word reply ("ok", "dropped", "error"). A plain text POST (no preflight)
+ * without cookies (credentials "omit": nothing ties the row to a browser login); Google answers through a redirect
+ * that allows any origin, so the reply is readable. keepalive for rows sent while the page goes away. If fetch
+ * itself fails, one beacon is tried and the result is "failed" (unconfirmed). Never throws.
+ * @param {string} url
+ * @param {string} body
+ * @param {{keep?:boolean}} [o]
+ * @returns {Promise<string>}
+ */
+async function defaultSend(url, body, o = {}) {
   try {
-    if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob([body], { type: "text/plain;charset=UTF-8" }))) return true;
-  } catch (e) { /* */ }
-  try {
-    fetch(url, { method: "POST", mode: "no-cors", keepalive: true, headers: { "Content-Type": "text/plain;charset=UTF-8" }, body }).catch(() => {});
-    return true;
-  } catch (e) { return false; }
+    const r = await fetch(url, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      credentials: "omit", redirect: "follow", cache: "no-store", keepalive: !!o.keep });
+    return (await r.text()).trim().slice(0, 20) || "error";
+  } catch (e) {
+    try { navigator.sendBeacon?.(url, new Blob([body], { type: "text/plain;charset=UTF-8" })); } catch (e2) { /* */ }
+    return "failed";
+  }
 }
 
 /** May this page send at all (receiver set, real site, not demo, not an automated browser)? */
@@ -213,7 +231,14 @@ export function startUsage(store, o = {}) {
   function post(e) {
     if (!visit) return;
     const row = buildRow(e, visit.who, visit, { app, ver: o.ver });
-    try { send(cfg.url, JSON.stringify(row)); } catch (err) { /* never break the app */ }
+    let p;
+    try { p = send(cfg.url, JSON.stringify(row), { keep: e !== "start" }); } catch (err) { p = "failed"; }   // never break the app
+    if (e === "start") {
+      Promise.resolve(p).then((res) => {
+        last = { at: cfg.now(), res: typeof res === "string" ? res : "ok" };
+        bus.emit("usage:sent", last);
+      }, () => {});
+    }
     if (e === "end") visit.sentDur = row.dur;
     if (e === "place") visit.placeSent = true;
   }

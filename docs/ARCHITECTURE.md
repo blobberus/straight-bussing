@@ -651,7 +651,11 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   Privacy Control / Do Not Track), `place` = nearest stop name within 400 m or "Away from stops", once per visit (store
   `usage.zone`, default off). Each row: `id` (random 128-bit, localStorage `sb:usageId`, `resetId()` for a new one)
   and `sid` (random per visit; a new visit after 30 min in the background). No coordinates, IP, user agent or
-  identity. Sender: `navigator.sendBeacon` (text/plain, no preflight), else a keepalive no-cors POST; never throws.
+  identity. Sender (2026-10-29): `fetch` text/plain POST (no preflight) with `credentials: "omit"` (no cookies, so no
+  browser login rides along), redirect followed; Google's reply ("ok" / "dropped" / "error") is readable (the 302 and the
+  echo both allow any origin). keepalive for rows sent while the page goes away; one beacon only if fetch throws (result
+  "failed"). The start row's outcome: `lastSend()` + bus `usage:sent`, shown in Settings (`usageStatusText`: "This visit was
+  counted at ..."). Never throws.
 - State: `usage: {dur, zone}` persisted (`cleanUsage`, KEYS.usage).
 - Settings > Usage statistics (only when configured): `USAGE_ALWAYS` (what is always counted; "Your identity is never
   collected"), switches `usageDur` / `usageZone`, button "Get a new anonymous number". The location note adds
