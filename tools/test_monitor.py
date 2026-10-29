@@ -117,6 +117,38 @@ def load_monitor(repo):
     return m
 
 
+def test_seed_falls_back_to_the_newest_archive_after_a_rotation():
+    """Right after merge_arrivals rotated arrivals.csv to archive/, the data branch's arrivals.csv is only the header:
+    the next chunk seeds from the newest archive file (collect.yml does the same)."""
+    d, bare, repo = make_env()
+    try:
+        dd = d / "databranch"                       # build the data branch in its own repo, push it to the remote
+        sh("git", "init", "-q", "-b", "data", str(dd))
+        for k, v in (("user.name", "t"), ("user.email", "t@t"), ("core.autocrlf", "false")):
+            sh("git", "config", k, v, cwd=dd)
+        gt = dd / "data" / "ground_truth"
+        (gt / "archive").mkdir(parents=True)
+        sys.path.insert(0, str(TOOLS))
+        from arrivals_lib import COLUMNS
+        head = ",".join(COLUMNS) + "\n"
+        line = lambda trip, ep: ",".join({"epoch": str(ep), "vehicle_id": "V1", "trip_id": trip, "stop_id": "A",
+                                          "stop_index": "0", "source": "transition"}.get(c, "") for c in COLUMNS) + "\n"
+        (gt / "arrivals.csv").write_text(head, encoding="utf-8")
+        (gt / "archive" / "arrivals-20261101-0100.csv").write_text(head + line("OLD", 1000), encoding="utf-8")
+        (gt / "archive" / "arrivals-20261201-0100.csv").write_text(head + line("NEWEST", 2000), encoding="utf-8")
+        sh("git", "add", "-A", cwd=dd)
+        sh("git", "commit", "-qm", "data", cwd=dd)
+        sh("git", "push", "-q", str(bare), "data", cwd=dd)
+        m = load_monitor(repo)
+        ctx = m.Ctx(repo)
+        ctx.seed.parent.mkdir(parents=True, exist_ok=True)
+        m.refresh_seed(ctx)
+        text = ctx.seed.read_text(encoding="utf-8")
+        assert "NEWEST" in text and "OLD" not in text, text
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_coverage_math():
     m = load_monitor(TOOLS.parent)
     iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
