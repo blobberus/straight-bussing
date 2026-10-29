@@ -6,7 +6,7 @@ import StraightBussingKit
 /// chevrons and the buses on the rail, the loop note, then "Hours & service" from the official schedule (week,
 /// schedule changes incl. this route's service alerts, scheduled buses by hour). While the route is closed (Kit
 /// `RouteText.closed`: no bus running and not scheduled now) "Hours & service" comes before the stops (owner 2026-10-27,
-/// web route.js routeClosed).
+/// web route.js routeClosed) and before the no-bus help numbers (owner 2026-10-29); open routes keep the help first.
 struct RouteDetailView: View {
     @Environment(AppModel.self) private var model
     let rid: String
@@ -72,11 +72,12 @@ struct RouteDetailView: View {
                         }
                     }
                 }
+                // closed: the hours and buses by hour first, then the help numbers, then the stops (owner 2026-10-29)
+                if closed { schedule }
                 if n == 0 && model.liveLoaded && model.buses.isEmpty {
                     // this route's own alerts are under Schedule changes; the operator's number, if given, is the primary call
                     NoBusHelp(untiedOnly: true)
                 }
-                if closed { schedule }   // closed: the hours first, then the stops
                 if ids.isEmpty {
                     EmptyStateView(title: "No stops listed", message: "The schedule has no stops for this route.")
                 } else {
