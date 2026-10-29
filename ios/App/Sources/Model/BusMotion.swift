@@ -72,6 +72,8 @@ final class BusMotion {
     private var lines: [String: [BusTrack.Line]] = [:]
     private var linesVersion = -1
     private var ticker: Task<Void, Never>?
+    /// Which ticker `ticker` is: a cancelled one that wakes up after `pause` + `resume` must not clear the new one's handle.
+    private var tickerGen = 0
     private var active = true
     /// Called after every step: the model republishes the markers where the badges are now.
     var onStep: (() -> Void)?
@@ -237,6 +239,8 @@ final class BusMotion {
 
     private func startTicking() {
         guard active, ticker == nil, movers.values.contains(where: { $0.anim != nil }) else { return }
+        tickerGen += 1
+        let gen = tickerGen
         ticker = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -247,7 +251,9 @@ final class BusMotion {
                 self.onStep?()
                 if !more { break }
             }
-            self?.ticker = nil
+            // only its own handle: after pause() + resume() a newer ticker owns `ticker` (clearing it would let the
+            // next update start a second ticker beside it, and pause() would then stop only one of them)
+            if let self, self.tickerGen == gen { self.ticker = nil }
         }
     }
 

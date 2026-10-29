@@ -6,6 +6,9 @@ import StraightBussingKit
 @MainActor
 final class LiveActivityController {
     private var activity: Activity<TripActivityAttributes>?
+    /// The last update / end sent: each one waits for the previous, so the Lock Screen never ends on older content
+    /// (separate Tasks may finish in any order, e.g. a poll's update overtaking the flush on the way to the background).
+    private var lastSend: Task<Void, Never>?
 
     var isSupported: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
     var isRunning: Bool { activity != nil }
@@ -28,7 +31,8 @@ final class LiveActivityController {
     func update(_ state: LiveTripSnapshot) {
         guard let activity else { return }
         let content = Self.content(state)
-        Task { await activity.update(content) }
+        let prev = lastSend
+        lastSend = Task { await prev?.value; await activity.update(content) }
     }
 
     /// The content with its stale date (Kit `LiveTripSnapshot.staleDate`): 120 s after the data, or when the arrival
@@ -43,7 +47,8 @@ final class LiveActivityController {
         guard let activity else { return }
         self.activity = nil
         let content = state.map { ActivityContent(state: $0, staleDate: nil) }
-        Task { await activity.end(content, dismissalPolicy: .after(Date().addingTimeInterval(15 * 60))) }
+        let prev = lastSend
+        lastSend = Task { await prev?.value; await activity.end(content, dismissalPolicy: .after(Date().addingTimeInterval(15 * 60))) }
     }
 
     /// Live Activities left over from an earlier run (the app was closed, killed or crashed during a trip). Nothing
