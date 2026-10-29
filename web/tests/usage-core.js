@@ -34,7 +34,9 @@ function rig(state = {}) {
 }
 
 test("usage: off until a receiver is set; no number is made then", () => {
-  eq(USAGE_URL, "", "ships empty: nothing is sent until the owner sets the receiver");
+  ok(/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(USAGE_URL), "the owner's Apps Script receiver");
+  ok(usageConfigured());
+  _configureUsage({ url: "" });
   ok(!usageConfigured());
   useMemoryOverlay(true);
   try {

@@ -33,8 +33,8 @@ import { hav } from "../core/geo.js";
 import { ZONE } from "../core/time.js";
 import { load, save, remove } from "../core/storage.js";
 
-/** The receiver (docs/USAGE-STATS.md "Turning it on"). Empty: nothing is ever sent. */
-export const USAGE_URL = "";
+/** The receiver: the owner's Apps Script web app (tools/usage/Code.gs; docs/USAGE-STATS.md). Empty: nothing is ever sent. */
+export const USAGE_URL = "https://script.google.com/macros/s/AKfycbzNBpOOftjp3sVA_UuyIGgFGsKFhMo3e_iP0u9NFwUJT3FeR8b6NwSgJMiBo7UGzWUr/exec";
 /** Background time after which coming back counts as a new visit. */
 export const NEW_SESSION_S = 30 * 60;
 /** Longest visit length sent (a tab left open on a desktop must not count as a day of use). */

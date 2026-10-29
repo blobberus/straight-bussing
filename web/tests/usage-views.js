@@ -11,7 +11,7 @@ import { USAGE_URL, cleanUsage, anonId, _configureUsage } from "../js/data/usage
 const DASH = /[–—]/;
 const base = (over = {}) => ({ notify: cleanNotify(null), favStops: [], journey: null, usage: cleanUsage(null, {}), ...over });
 const on = () => _configureUsage({ url: "https://script.google.com/macros/s/TEST/exec" });
-const off = () => _configureUsage({ url: USAGE_URL });
+const off = () => _configureUsage({ url: "" });
 const click = (el) => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 const change = (el, set) => { set(el); el.dispatchEvent(new Event("change", { bubbles: true })); };
 
