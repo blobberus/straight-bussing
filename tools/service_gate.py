@@ -54,6 +54,13 @@ def _chicago():
 
             def tzname(self, dt):
                 return "CDT" if self.dst(dt) else "CST"
+
+            def fromutc(self, dt):          # from the UTC rule: the CST copy of the repeated hour is 01:xx, not 02:xx
+                u = dt.replace(tzinfo=None)
+                y = u.year
+                a = datetime(y, 3, 8 + (6 - date(y, 3, 8).weekday()) % 7, 8)    # 02:00 CST = 08:00 UTC
+                b = datetime(y, 11, 1 + (6 - date(y, 11, 1).weekday()) % 7, 7)  # 02:00 CDT = 07:00 UTC
+                return (u + timedelta(hours=-5 if a <= u < b else -6)).replace(tzinfo=self)
         return _CT()
 
 

@@ -11,6 +11,7 @@ so vehicles are deduped on (vehicle, vt) and each day file is sorted by poll tim
 reports are kept on a line). Downloads stay local (data/.gitignore); download again before they expire.
 """
 import argparse, io, json, subprocess, sys, zipfile
+from datetime import timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -36,8 +37,10 @@ def artifacts(repo):
 
 
 def service_day(epoch):
-    """Chicago date, with the night service (before 04:00) counted to the previous day."""
-    return L.chicago(epoch - 4 * 3600).strftime("%Y-%m-%d")
+    """Chicago date, with the night service (before 04:00) counted to the previous day: the wall clock minus 4 h,
+    as build_eta_dataset.service_day_of. (Subtracting 4 h of elapsed time first filed 03:00 to 04:00 CST on the
+    night clocks fall back, Nov 1 2026, into the next day: found 2026-10-29.)"""
+    return (L.chicago(epoch) - timedelta(hours=4)).strftime("%Y-%m-%d")
 
 
 def merge_into_days(lines, days_dir):
