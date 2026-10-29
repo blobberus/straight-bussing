@@ -26,7 +26,8 @@
  * Never sent: coordinates, IP address (the receiver cannot see it), user agent, screen, referrer, searches, taps.
  * Never sent at all: demo mode, automated browsers, pages not served over https. The iPhone app has no part in this
  * (its App Privacy label stays Data Not Collected).
- * A visit ends after 30 min in the background (NEW_SESSION_S): coming back later is a new visit.
+ * A visit ends after 30 min in the background (NEW_SESSION_S): coming back later is a new visit. A page that loads in
+ * the background (a restored or pre-opened tab) starts its visit the first time it is actually shown, never before.
  */
 import { DEMO } from "../core/demo.js";
 import { hav } from "../core/geo.js";
@@ -265,7 +266,7 @@ export function startUsage(store, o = {}) {
   }
   function onShow() {
     const now = cfg.now();
-    if (hiddenAt !== null && now - hiddenAt >= NEW_SESSION_S) { hiddenAt = null; begin(); return; }
+    if (!visit || (hiddenAt !== null && now - hiddenAt >= NEW_SESSION_S)) { hiddenAt = null; begin(); return; }
     hiddenAt = null;
     if (visibleSince === null) visibleSince = now;
   }
@@ -275,7 +276,7 @@ export function startUsage(store, o = {}) {
   const off = store.subscribe((s, ch) => {
     if (!ch || ch.has("user") || ch.has("stops") || ch.has("usage")) placeOnce(s);
   });
-  begin();
+  if (doc.visibilityState !== "hidden") begin();   // a page opened in the background counts only once it is seen
   return {
     stop() { doc.removeEventListener("visibilitychange", onVis); win.removeEventListener("pagehide", onHide); off?.(); },
     visit: () => ({ ...visit }),
