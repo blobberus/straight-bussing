@@ -64,7 +64,7 @@ apart", done with a Google Sheets formula on the collected data, not by the scri
 tab (version 1 or 2 columns) and recalculates as rows arrive: per visitor in time order, a page load counts as a new login
 only 30 minutes or more after that visitor's previous logged login; reloads and quick returns fold into it ("Page loads
 folded in"). Newest first; columns Login (Chicago time), Weekday, Visitor, App, New visitor, Page loads folded in; test
-rows are left out. The tab must be named anything but the source tab must be called `starts`. `tools/usage_report.py`
+rows are left out. The new tab can have any name; the data tab must be called `starts`. `tools/usage_report.py`
 prints the same login count. Visit lengths stay in the **ends** tab (joining them in a formula is left out on purpose).
 
 **Is my visit counted?** Open the site, then Settings > Usage statistics: the app reads the receiver's reply and says
