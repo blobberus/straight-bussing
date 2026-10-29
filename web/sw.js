@@ -153,7 +153,9 @@ self.addEventListener('fetch', (e) => {
         return r;
       })
       .catch(async () => {
-        const hit = await caches.match(req, { cacheName: CACHE }) || (nav ? null : await caches.match(req, { cacheName: CACHE, ignoreSearch: true }));
+        // offline: this URL, else the same file without its query (About's "Contact support" opens
+        // support.html?contact=1&app=web&v=..., precached as support.html), else for a page load the app shell
+        const hit = await caches.match(req, { cacheName: CACHE }) || await caches.match(req, { cacheName: CACHE, ignoreSearch: true });
         if (hit) return hit;
         if (nav) {
           const shell = await caches.match('index.html', { cacheName: CACHE }) || await caches.match('./', { cacheName: CACHE });
