@@ -58,12 +58,14 @@ hour, places), rebuilt at most every 5 minutes as rows arrive and whenever the S
 version 2 receives a row. `GET <url>?seen=<visit number>` answers yes / no for one visit (used to check the setup).
 Tests: `python tools/test_usage_receiver.py`.
 
-**Logins tab (version 3, 2026-10-29, owner: "only logs logins from the same user if they happened 30 minutes apart",
-to drop duplicates from reloads).** The second tab, **logins (30 min)**, is rebuilt with the Summary, newest first: per
-visitor in time order, a page load counts as a new login only 30 minutes or more after that visitor's previous logged
-login; reloads and quick returns fold into it ("Page loads folded in", lengths added up in "Length (minutes)"). The
-Summary adds "Logins today / last 7 days / all time" next to the raw visit counts, and `tools/usage_report.py` prints the
-same login count. The raw **starts** tab keeps every page load.
+**Logins with reloads folded in (2026-10-29, owner: "only logs logins from the same user if they happened 30 minutes
+apart", done with a Google Sheets formula on the collected data, not by the script).** Make a new tab, for example
+**logins (30 min)**, and paste the formula from `tools/usage/logins-formula.txt` into cell **A1**. It reads the **starts**
+tab (version 1 or 2 columns) and recalculates as rows arrive: per visitor in time order, a page load counts as a new login
+only 30 minutes or more after that visitor's previous logged login; reloads and quick returns fold into it ("Page loads
+folded in"). Newest first; columns Login (Chicago time), Weekday, Visitor, App, New visitor, Page loads folded in; test
+rows are left out. The tab must be named anything but the source tab must be called `starts`. `tools/usage_report.py`
+prints the same login count. Visit lengths stay in the **ends** tab (joining them in a formula is left out on purpose).
 
 **Is my visit counted?** Open the site, then Settings > Usage statistics: the app reads the receiver's reply and says
 "This visit was counted at ..." (or why not). In the Sheet look at the **starts** tab (or Summary), not Sheet1. In the

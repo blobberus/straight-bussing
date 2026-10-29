@@ -1,6 +1,6 @@
 /** @OnlyCurrentDoc  (the script may touch only the spreadsheet it is attached to) */
 /**
- * Straight Bussing: receiver for the website's anonymous usage statistics (web/js/data/usage.js), version 3.
+ * Straight Bussing: receiver for the website's anonymous usage statistics (web/js/data/usage.js), version 2.
  * A Google Apps Script web app bound to a Google Sheet that only the owner can open. Setup and the meaning of every
  * column: docs/USAGE-STATS.md. Apps Script never sees the visitor's IP address, so none is stored.
  *
@@ -8,9 +8,6 @@
  *   Summary  rebuilt at most every 5 minutes when rows arrive, and when the sheet is opened: totals, visitors per day,
  *            visits by hour, visit length, places. Test rows (version receivercheck / selftest, or an all-zero visitor
  *            number) are left out.
- *   logins (30 min)  rebuilt with the Summary, newest first: one row per login, where a visitor counts again only 30
- *            minutes or more after their previous logged login (reloads and quick returns fold into it; owner 2026-10-29),
- *            with how many page loads were folded in and their total length
  *   starts   one row per visit (always sent): when, visitor number, visit number, day, weekday, start time, app,
  *            version, first visit of that browser
  *   ends     the visit's length (riders can turn it off; may repeat per visit with a growing length: the largest counts)
@@ -34,10 +31,6 @@ var HEX32 = /^[0-9a-f]{32}$/;
 var MAX_BODY = 600;
 var SUMMARY_EVERY_S = 300;
 var HEAD_BG = "#00A894", HEAD_FG = "#FFFFFF";
-var LOGIN_GAP_S = 30 * 60;   // a visitor's next login counts only this long after their previous logged one
-var LOGINS_TAB = "logins (30 min)";
-var LOGIN_HEADERS = ["Login (Chicago time)", "Visitor (anonymous number)", "Day", "Weekday", "Start time", "App", "New visitor",
-  "Page loads folded in", "Length (minutes)"];
 
 /* ---------------------------------------------------------------- web app */
 
@@ -129,60 +122,6 @@ function dayText(v) {
   return String(v || "").slice(0, 10);
 }
 
-/** A row's received moment: a Date, or a version 1 ISO text. */
-function whenOf(v) {
-  if (v instanceof Date) return v;
-  var d = v ? new Date(v) : null;
-  return d && !isNaN(d.getTime()) ? d : null;
-}
-
-function weekdayText(v) {
-  return /^\d$/.test(String(v)) ? DAYS[Number(v)] : String(v || "");
-}
-
-/**
- * Logins with reloads folded in (owner 2026-10-29: "only logs logins from the same user if they happened 30 minutes
- * apart"): per visitor in time order, a start is a new login when it came gapS or more after that visitor's previous
- * logged login; otherwise it folds into it (page loads + total length). Test rows are left out. Newest first.
- * @param {Array[]} starts rows of the starts tab
- * @param {Array[]} ends rows of the ends tab
- * @param {number} [gapS]
- * @returns {Array[]} rows in LOGIN_HEADERS order
- */
-function dedupeLogins(starts, ends, gapS) {
-  gapS = gapS || LOGIN_GAP_S;
-  var len = {};
-  ends.forEach(function (r) {
-    var sid = String(r[2]), sec = Number(r[3]);
-    if (sec >= 0) len[sid] = Math.max(len[sid] || 0, sec);
-  });
-  var by = {};
-  starts.forEach(function (r) {
-    if (!r[2] || isTestRow(r[1], r[7])) return;
-    var t = whenOf(r[0]);
-    if (t) (by[String(r[1])] = by[String(r[1])] || []).push({ t: t, r: r });
-  });
-  var out = [];
-  Object.keys(by).forEach(function (vis) {
-    var cur = null;
-    by[vis].sort(function (a, b) { return a.t - b.t; }).forEach(function (x) {
-      if (!cur || (x.t - cur.t) / 1000 >= gapS) {
-        cur = { t: x.t, r: x.r, loads: 0, secs: 0, hasLen: false, isNew: false };
-        out.push(cur);
-      }
-      cur.loads++;
-      var sid = String(x.r[2]);
-      if (len[sid] !== undefined) { cur.secs += len[sid]; cur.hasLen = true; }
-      if (x.r[8] === "Yes" || x.r[8] === 1 || x.r[8] === "1") cur.isNew = true;
-    });
-  });
-  out.sort(function (a, b) { return b.t - a.t; });
-  return out.map(function (c) {
-    return [c.t, String(c.r[1]), dayText(c.r[3]), weekdayText(c.r[4]), timeText(c.r[5]), String(c.r[6]),
-      c.isNew ? "Yes" : "No", c.loads, c.hasLen ? Math.round(c.secs / 6) / 10 : ""];
-  });
-}
-
 function isTestRow(visitor, version) {
   return /^0+$/.test(String(visitor)) || TEST_VERSIONS[String(version)] === 1;   // Sheets may store 000...0 as 0
 }
@@ -231,14 +170,10 @@ function summarize(starts, ends, places, now) {
   var todays = visits.filter(function (v) { return v.day === today; });
   var week = visits.filter(function (v) { return v.day >= weekAgo && v.day <= today; });
   var home = visits.filter(function (v) { return v.app === "home-screen"; }).length;
-  var logins = dedupeLogins(starts, ends);
-  var loginsOn = function (from, to) { return logins.filter(function (l) { return l[2] >= from && l[2] <= to; }).length; };
   var totals = [
-    ["Distinct visitors today", uniq(todays)], ["Logins today (a visitor counts again after 30 min)", loginsOn(today, today)],
-    ["Visits today (every page load)", todays.length],
-    ["Distinct visitors, last 7 days", uniq(week)], ["Logins, last 7 days (30 min rule)", loginsOn(weekAgo, today)],
-    ["Visits, last 7 days", week.length],
-    ["Distinct visitors, all time", uniq(visits)], ["Logins, all time (30 min rule)", logins.length], ["Visits, all time", visits.length],
+    ["Distinct visitors today", uniq(todays)], ["Visits today", todays.length],
+    ["Distinct visitors, last 7 days", uniq(week)], ["Visits, last 7 days", week.length],
+    ["Distinct visitors, all time", uniq(visits)], ["Visits, all time", visits.length],
     ["Typical visit length, all time (median minutes)", mins(visits)],
     ["Visits from the installed home-screen app", visits.length ? Math.round(100 * home / visits.length) + "%" : ""]
   ];
@@ -257,7 +192,7 @@ function summarize(starts, ends, places, now) {
   Object.keys(where).forEach(function (sid) { (byPlace[where[sid]] = byPlace[where[sid]] || []).push(sessions[sid]); });
   var placeRows = Object.keys(byPlace).map(function (p) { return [p, byPlace[p].length, uniq(byPlace[p])]; })
     .sort(function (a, b) { return b[1] - a[1]; }).slice(0, 20);
-  return { totals: totals, days: days, hours: hours, places: placeRows, logins: logins, updated: Utilities.formatDate(now, CHI, "yyyy-MM-dd h:mm a") };
+  return { totals: totals, days: days, hours: hours, places: placeRows, updated: Utilities.formatDate(now, CHI, "yyyy-MM-dd h:mm a") };
 }
 
 /* ---------------------------------------------------------------- sheets */
@@ -389,26 +324,6 @@ function refreshSummary() {
   put([["Nearest stop", "Visits", "Distinct visitors"]], "head");
   put(s.places.length ? s.places : [["None yet", "", ""]]);
   sh.setFrozenRows(0);
-  writeLogins(ss, s.logins);
-}
-
-/** The logins (30 min) tab, second after the Summary, newest first. */
-function writeLogins(ss, rows) {
-  var sh = ss.getSheetByName(LOGINS_TAB) || ss.insertSheet(LOGINS_TAB, 1);
-  if (sh.getIndex() !== 2) { ss.setActiveSheet(sh); ss.moveActiveSheet(2); }
-  sh.clear();
-  var n = LOGIN_HEADERS.length;
-  sh.getRange(1, 1, 1, n).setValues([LOGIN_HEADERS]).setFontWeight("bold").setBackground(HEAD_BG).setFontColor(HEAD_FG)
-    .setWrap(true).setVerticalAlignment("middle");
-  sh.setFrozenRows(1);
-  sh.setRowHeight(1, 36);
-  [170, 270, 100, 80, 90, 100, 95, 110, 110].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
-  if (!rows.length) { sh.getRange(2, 1).setValue("No logins yet"); return; }
-  sh.getRange(2, 2, rows.length, 2).setNumberFormat("@");
-  sh.getRange(2, 5, rows.length, 1).setNumberFormat("@");
-  sh.getRange(2, 1, rows.length, n).setValues(rows);
-  sh.getRange(2, 1, rows.length, 1).setNumberFormat("yyyy-mm-dd h:mm:ss am/pm");
-  sh.getRange(2, 9, rows.length, 1).setNumberFormat("0.0");
 }
 
 function reply(text) {

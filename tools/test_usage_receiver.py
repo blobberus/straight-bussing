@@ -60,35 +60,14 @@ try {
   var places = [[NOW, A, S1, "Reynolds Club"], [NOW, A, S2, "Reynolds Club"], [NOW, B, S3, "'=x"]];
   var s = summarize(starts, ends, places, NOW);
   var t = {}; s.totals.forEach(function (r) { t[r[0]] = r[1]; });
-  check("totals: today 2 visitors / 3 visits (test row out), week 3 / 4", t["Distinct visitors today"] === 2 && t["Visits today (every page load)"] === 3
+  check("totals: today 2 visitors / 3 visits (test row out), week 3 / 4", t["Distinct visitors today"] === 2 && t["Visits today"] === 3
     && t["Distinct visitors, last 7 days"] === 3 && t["Visits, last 7 days"] === 4 && t["Distinct visitors, all time"] === 3, t);
-  check("summary carries the 30-minute logins", Array.isArray(s.logins) && t["Logins, all time (30 min rule)"] === s.logins.length, t);
   check("median visit length in minutes (largest end per visit)", t["Typical visit length, all time (median minutes)"] === 2.3, t);
   check("home-screen share", t["Visits from the installed home-screen app"] === "25%", t);
   check("per day newest first with weekday, visitors, visits, new", JSON.stringify(s.days[0]) === JSON.stringify(["2026-10-29", "Thu", 2, 3, 2, 4]) && s.days[1][0] === "2026-10-26", s.days);
   check("hours in 12-hour clock", JSON.stringify(s.hours) === JSON.stringify([["8 AM", 2, 2], ["9 AM", 1, 1], ["5 PM", 1, 1]]), s.hours);
   check("places by visits, guard removed", JSON.stringify(s.places) === JSON.stringify([["Reynolds Club", 2, 1], ["=x", 1, 1]]), s.places);
   check("updated stamp in Chicago time", s.updated === "2026-10-29 1:30 PM", s.updated);
-  // the 30-minute rule: per visitor, a start counts again only 30 min or more after the previous LOGGED login
-  var at = function (hhmm) { var p = hhmm.split(":"); return new Date(Date.UTC(2026, 9, 29, 13 + Number(p[0]) - 8, Number(p[1]))); };   // CDT clock time
-  var sid = function (n) { return String(n).repeat(32).slice(0, 31) + "f"; };
-  var st = [
-    [at("08:00"), A, sid(1), day("2026-10-29"), "Thu", "08:00", "browser", "2.0.0", "Yes"],
-    [at("08:10"), A, sid(2), day("2026-10-29"), "Thu", "08:10", "browser", "2.0.0", "No"],   // reload: folds in
-    [at("08:29"), A, sid(3), day("2026-10-29"), "Thu", "08:29", "browser", "2.0.0", "No"],   // 29 min: folds in
-    [at("08:31"), A, sid(4), day("2026-10-29"), "Thu", "08:31", "browser", "2.0.0", "No"],   // 31 min after 08:00: a new login
-    [at("09:10"), A, sid(5), day("2026-10-29"), "Thu", "09:10", "home-screen", "2.0.0", "No"],   // 39 min after 08:31
-    [at("08:05"), B, sid(6), day("2026-10-29"), "Thu", "08:05", "browser", "2.0.0", "Yes"],
-    [at("08:06"), 0, sid(7), day("2026-10-29"), "Thu", "08:06", "browser", "receivercheck", "No"]   // test row: out
-  ];
-  var en = [[NOW, A, sid(1), 60, 1], [NOW, A, sid(2), 90, 1.5], [NOW, A, sid(2), 120, 2], [NOW, B, sid(6), 30, 0.5]];
-  var L = dedupeLogins(st, en);
-  check("30-minute logins: 4 rows, newest first", L.length === 4 && L.map(function (r) { return r[4]; }).join(",") === "09:10,08:31,08:05,08:00", L.map(function (r) { return r[4]; }));
-  var first = L[3];
-  check("folded login: 3 page loads, lengths summed (60 + 120 s = 3 min), new visitor kept", first[1] === A && first[7] === 3 && first[8] === 3 && first[6] === "Yes" && first[2] === "2026-10-29" && first[3] === "Thu", first);
-  check("a login without any length shows blank, app kept", L[0][8] === "" && L[0][5] === "home-screen", L[0]);
-  check("exactly 30 minutes later counts again", dedupeLogins([[at("10:00"), C, sid(8), "2026-10-29", 4, "10:00", "browser", "2.0.0", 0],
-    [at("10:30"), C, sid(9), "2026-10-29", 4, "10:30", "browser", "2.0.0", 0]], []).length === 2);
 } catch (e) { check("no exception", false, String(e && e.stack || e)); }
 document.getElementById("out").textContent = results.join("\n");
 document.title = "RESULT fail=" + fail;
