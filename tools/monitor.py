@@ -437,12 +437,23 @@ def fetch_data(ctx):
 
 
 def refresh_seed(ctx):
+    """The data branch's arrivals.csv as the next chunk's seed. Right after merge_arrivals rotated it to archive/
+    it holds only the header, so the newest archive file seeds instead (truth_logger reads only its tail): without
+    rows the first chunks after a rotation would start with no recent visits (same rule as collect.yml)."""
     try:
         if remote_has_data(ctx):
             fetch_data(ctx)
             with open(ctx.seed, "wb") as f:
                 subprocess.run(["git", "show", f"{ctx.remote}/data:{CSV}"], cwd=ctx.root, stdout=f,
                                stderr=subprocess.DEVNULL)
+            if ctx.seed.read_bytes().count(b"\n") <= 1:
+                names = subprocess.run(["git", "ls-tree", "--name-only", f"{ctx.remote}/data", "data/ground_truth/archive/"],
+                                       cwd=ctx.root, capture_output=True, text=True).stdout.split()
+                arch = sorted(n for n in names if Path(n).name.startswith("arrivals-") and n.endswith(".csv"))
+                if arch:
+                    with open(ctx.seed, "wb") as f:
+                        subprocess.run(["git", "show", f"{ctx.remote}/data:{arch[-1]}"], cwd=ctx.root, stdout=f,
+                                       stderr=subprocess.DEVNULL)
         elif not ctx.seed.exists():
             ctx.seed.write_text("", encoding="utf-8")
     except Exception as e:

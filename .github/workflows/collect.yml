@@ -108,6 +108,12 @@ jobs:
             # blob-less + shallow: only the one CSV below is downloaded, not the whole data branch
             git fetch --no-tags --depth 1 --filter=blob:none origin +refs/heads/data:refs/remotes/origin/data
             git show origin/data:data/ground_truth/arrivals.csv > "$RUNNER_TEMP/seed.csv" 2>/dev/null || : > "$RUNNER_TEMP/seed.csv"
+            # just after merge_arrivals.py rotated arrivals.csv to archive/ it holds only the header: seed from the
+            # newest archive file instead (the logger reads its tail), so the next runs still know the recent visits
+            if [ "$(wc -l < "$RUNNER_TEMP/seed.csv")" -le 1 ]; then
+              last=$(git ls-tree --name-only origin/data data/ground_truth/archive/ 2>/dev/null | grep '/arrivals-.*\.csv$' | sort | tail -1)
+              if [ -n "$last" ]; then git show "origin/data:$last" > "$RUNNER_TEMP/seed.csv" 2>/dev/null || :; echo "seeded from $last"; fi
+            fi
           else
             : > "$RUNNER_TEMP/seed.csv"
           fi
