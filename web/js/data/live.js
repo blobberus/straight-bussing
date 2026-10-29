@@ -39,6 +39,7 @@ export function parseBuses(j) {
 export function parseTrips(j) {
   return (Array.isArray(j?.entity) ? j.entity : []).map((e) => e && e.trip_update).filter(Boolean)
     .map((t) => ({ ...t, stop_time_update: (Array.isArray(t.stop_time_update) ? t.stop_time_update : [])
+      .filter((u) => u && typeof u === 'object')   // one malformed entry must not drop the whole poll
       .map((u) => ({ ...u, arrival: timeObj(u.arrival), departure: timeObj(u.departure) })) }));
 }
 
@@ -149,7 +150,10 @@ export function startLive(store, opts = {}) {
     if (inflight) return inflight;
     clearTimeout(timer);
     timer = 0;
-    inflight = run().catch((e) => { console.warn('live poll error', e); })
+    inflight = run().catch((e) => {
+      console.warn('live poll error', e);
+      if (!stopped) { fails++; store.set({ liveLoaded: true, failed: true }); }   // an unreadable poll is a failed one: never "loading" forever
+    })
       .finally(() => { inflight = null; ctl = null; schedule(); });
     return inflight;
   }
