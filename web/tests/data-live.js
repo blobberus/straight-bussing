@@ -1,6 +1,6 @@
 import { test, eq, ok, near } from './lib.js';
 import { createStore } from '../js/core/store.js';
-import { startLive, BASE, parseTrips, EMPTY_HOLD_S } from '../js/data/live.js';
+import { startLive, BASE, parseTrips, parseBuses, parseAlerts, EMPTY_HOLD_S } from '../js/data/live.js';
 import { res, hang, stubFetch, sleep, setHidden, feeds, feedName } from './data-helpers.js';
 
 const initial = () => createStore({ buses: [], trips: [], alerts: [], feedTs: 0, lastOk: 0, failed: false, liveLoaded: false });
@@ -243,4 +243,38 @@ test('live: stop() halts polling and ignores late results', async () => {
 test('live: parseTrips tolerates missing fields', () => {
   eq(parseTrips({ entity: [{ trip_update: { trip: {} } }, {}, null] }), [{ trip: {}, stop_time_update: [] }]);
   eq(parseTrips(null), []);
+});
+
+// Bug check 2026-10-29: one malformed prediction entry (null) used to throw inside parseTrips, so the whole poll was
+// dropped without a word: no new buses, no failed flag, and on the first poll liveLoaded stayed false (loading forever).
+test('live: parseTrips drops malformed prediction entries instead of throwing', () => {
+  const j = { entity: [{ trip_update: { trip: { trip_id: 't', route_id: 'r' }, stop_time_update: [null, 'x', { stop_id: 's', arrival: { time: '1800000100' } }] } }] };
+  const out = parseTrips(j);
+  eq(out.length, 1);
+  eq(out[0].stop_time_update, [{ stop_id: 's', arrival: { time: 1800000100 }, departure: undefined }]);
+  eq(parseBuses({ entity: [null, { vehicle: null }, { vehicle: { position: null } }, { vehicle: { position: { latitude: 1, longitude: 2 }, timestamp: '7' } }] }),
+    [{ position: { latitude: 1, longitude: 2 }, timestamp: 7 }]);
+  eq(parseAlerts({ entity: [null, {}, { alert: { header_text: 'x' } }] }), [{ header_text: 'x' }]);
+});
+
+test('live: a poll that cannot be read still marks the data as failed and loaded', async () => {
+  const st = initial();
+  const bad = stubFetch((url) => res(feedName(url) === 'tripUpdates' ? { entity: { notAnArray: true }, header: { timestamp: 'x' } } : feeds()[feedName(url)]));
+  const l = startLive(st, { fetch: bad, intervalMs: 999999, operating: false });
+  await l.pollNow();
+  ok(st.get().liveLoaded, 'loaded either way');
+  l.stop();
+});
+
+test('live: an unexpected error inside a poll flags the data as failed (never a silent drop)', async () => {
+  const st = initial();
+  let boom = true;
+  const l = startLive(st, { fetch: modal('ok'), intervalMs: 999999, now: () => { if (boom) throw new Error('clock'); return 1800000000; } });
+  await l.pollNow();
+  eq([st.get().liveLoaded, st.get().failed], [true, true]);
+  eq(l.failures(), 1);
+  boom = false;
+  await l.pollNow();
+  eq(st.get().failed, false, 'recovers on the next good poll');
+  l.stop();
 });
