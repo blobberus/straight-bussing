@@ -19,12 +19,35 @@ DAYS = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 LENGTH_BINS = ((60, "under 1 min"), (180, "1 to 3 min"), (600, "3 to 10 min"), (1800, "10 to 30 min"), (10 ** 9, "30 min or more"))
 
 
+# receiver version 2 headers (readable) -> the version 1 names used below; values normalized too
+V2 = {"Visitor (anonymous number)": "anon_id", "Visit": "session_id", "Day": "day", "Weekday": "weekday",
+      "Start time": "start_time", "App": "app", "Version": "version", "New visitor": "new_user",
+      "Length (seconds)": "duration_s", "Nearest stop": "zone", "Received (Chicago time)": "received"}
+
+
+def normalize(r):
+    out = {V2.get(k, k): (v or "").strip() for k, v in r.items() if k}
+    if out.get("weekday") in DAYS:
+        out["weekday"] = str(DAYS.index(out["weekday"]))
+    if out.get("new_user") in ("Yes", "No"):
+        out["new_user"] = "1" if out["new_user"] == "Yes" else "0"
+    if out.get("day"):
+        out["day"] = out["day"][:10]
+    if out.get("start_time"):
+        out["start_time"] = out["start_time"].zfill(5)[:5] if ":" in out["start_time"] else out["start_time"]
+    return out
+
+
+def is_test(r):
+    return set(r.get("anon_id", "")) <= {"0"} or r.get("version") in ("receivercheck", "selftest")
+
+
 def read(path):
     p = Path(path)
     if not p.exists():
         return []
     with open(p, encoding="utf-8-sig", newline="") as f:
-        return list(csv.DictReader(f))
+        return [normalize(r) for r in csv.DictReader(f)]
 
 
 def pct(a, b):
@@ -33,7 +56,7 @@ def pct(a, b):
 
 def summarize(starts, ends, places, since=None):
     """-> markdown text."""
-    S = [r for r in starts if r.get("session_id") and r.get("anon_id") and (not since or r.get("day", "") >= since)]
+    S = [r for r in starts if r.get("session_id") and r.get("anon_id") and not is_test(r) and (not since or r.get("day", "") >= since)]
     sids = {r["session_id"] for r in S}
     dur = {}
     for r in ends:

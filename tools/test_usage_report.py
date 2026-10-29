@@ -67,6 +67,23 @@ def since_filters_by_day_and_empty_data_is_fine():
     assert "No visit lengths yet." in U.summarize(STARTS, [], [])
 
 
+@test
+def reads_receiver_version_2_headers_and_skips_test_rows():
+    import csv, tempfile
+    with tempfile.TemporaryDirectory() as d:
+        rows = [["Received (Chicago time)", "Visitor (anonymous number)", "Visit", "Day", "Weekday", "Start time", "App", "Version", "New visitor"],
+                ["2026-10-29 8:15:02 AM", A, S1, "2026-10-29", "Thu", "8:15", "browser", "2.0.0", "Yes"],
+                ["2026-10-29 9:00:00 AM", "0", S2, "2026-10-29", "Thu", "00:00", "browser", "receivercheck", "No"]]
+        with open(Path(d) / "starts.csv", "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows(rows)
+        with open(Path(d) / "ends.csv", "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows([["Received (Chicago time)", "Visitor (anonymous number)", "Visit", "Length (seconds)", "Length (minutes)"],
+                                     ["x", A, S1, "125", "2.1"]])
+        r = U.summarize(U.read(Path(d) / "starts.csv"), U.read(Path(d) / "ends.csv"), [])
+    assert "**1 distinct visitors**, 1 visits" in r, r
+    assert "| 2026-10-29 | Thu | 1 | 1 | 1 |" in r and "| 8 AM | 1 |" in r and "Median **2.1 min**" in r, r
+
+
 if __name__ == "__main__":
     fails = 0
     for t in tests:
