@@ -413,6 +413,43 @@ def loop_terminal_prediction_matches_the_visit_index():
 
 
 @test
+def loop_end_prediction_when_our_route_order_holds_a_stop_the_trip_skips():
+    """DC-017 (2026-10-29): our route order can hold a stop a trip skips (Midway Metra's afternoon stop), so the loop's
+    end is index 5 here while Passio numbers it 5 on the trip, not idx + 1 = 6. The end visit takes Passio's highest
+    stop_sequence for the stop; the start visit still takes stop_sequence 1."""
+    import truth_logger as TL
+    st = fake_static()
+    st.route_stops["M"] = ["A", "B", "C", "X", "D", "A"]       # X: a variant's stop this trip never serves
+    st.routes["M"] = {"short": "M", "long": "Variant Loop"}
+    reps, truth = simulate(st, ["A", "B", "C", "D", "A"], route="M")
+    made = T0 - 300
+    last = int(truth[4]) + 4
+    tr = Tracker(st)
+    # the update lists the terminal only as the trip's last stop (5): with stop 1 listed too, the visit index itself
+    # would come out 0 (Tracker index choice, the same idx + 1 assumption; reported, left as is: it rewrites rows)
+    TL.store_predictions(tr, {"entity": [tu_entity("T1", made, [("B", 2, int(truth[1])), ("C", 3, int(truth[2])),
+                                                                ("D", 4, int(truth[3])), ("A", 5, last)], veh="V1")]}, made)
+    ev = run(tr, reps)
+    assert [e["idx"] for e in ev] == [0, 1, 2, 4, 5], [e["idx"] for e in ev]
+    assert ev[-1]["pred"] is not None and ev[-1]["pred"][0] == last, (ev[-1]["pred"], last)
+    assert tr.pred_for("T1", "A", ev[-1]["epoch"], veh="V1", idx=5, loop_stop=True) is None, "without loop_last: dropped, as before"
+
+
+@test
+def gps_sweep_candidates_are_in_route_order():
+    """A loop terminal fits a route at index 0 and at the last index: the sweep's candidates are a list in route
+    order, never a set (a set's order follows Python's per-process string hashing, so the same day replayed twice
+    labelled such a visit 0 once and 4 the next; found 2026-10-29)."""
+    st = fake_static()
+    tr = Tracker(st)
+    b = st.stops["B"]
+    hits = tr._hits(b["lat"], b["lon"] - 0.0025, b["lat"], b["lon"] + 0.0001)   # driving east (route order) into B
+    got = dict(hits).get("B")
+    assert isinstance(got, list), type(got)
+    assert got == sorted(got, key=lambda x: (list(st.route_stops).index(x[0]), x[1])), got
+
+
+@test
 def predictions_at_every_target_lead():
     """predictions.csv (owner goal 2026-10-12, the 10% rule): for each target lead L the newest prediction made
     at least L before the arrival; leads with none are left out."""
