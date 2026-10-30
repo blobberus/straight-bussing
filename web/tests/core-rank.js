@@ -1,7 +1,7 @@
 // Tests for core/rank.js (trip option ranking: least walking, then earliest arrival, then shortest
 // wait, then how many criteria an option meets) and its use by core/planner.js.
 import { test, eq, ok } from "./lib.js";
-import { CRITERIA, optionStats, rankOptions, criteriaText, pickOptions, walkTotals } from "../js/core/rank.js";
+import { CRITERIA, optionStats, rankOptions, criteriaText, pickOptions, walkTotals, walkFirst, WALK_FIRST_MIN } from "../js/core/rank.js";
 import { plan } from "../js/core/planner.js";
 
 const T = 1_800_000_000;
@@ -90,4 +90,35 @@ test("planner: the least-walking stop pair is its own option and ranks first", (
   ok(r.options[1].meets.includes("arrive") && !r.options[1].meets.includes("walk"));
   ok(r.options[0].walkMin < r.options[1].walkMin && r.options[0].arrive > r.options[1].arrive, "a real trade-off");
   eq(new Set(r.options.map((o) => o.key)).size, r.options.length, "unique keys");
+});
+
+// Walk first (owner 2026-10-30: "if the distance is very close, it is ok to just suggest the user to walk on their first travel option")
+const T0 = 1_800_000_000, FROM = { lat: 41.79, lon: -87.6 }, TO = { lat: 41.795, lon: -87.6 };
+const busOpt = (key, arriveMin) => ({ key, arrive: T0 + arriveMin * 60, total: arriveMin, totalMin: arriveMin, legs: [{ type: "bus", rid: "R", wait: 1 }] });
+
+test("walk first: 10 min or less puts a walk option first, bus options keep their order", () => {
+  eq(WALK_FIRST_MIN, 10);
+  const r = walkFirst([busOpt("a", 6), busOpt("b", 8)], { m: 800, min: 10, source: "router", coords: [[0, 0]] }, { from: FROM, to: TO, t0: T0 });
+  eq(r.map((o) => o.key), ["walk", "a", "b"], "exactly 10 min counts as close");
+  const w = r[0];
+  ok(w.walkOnly && w.legs.length === 1 && w.legs[0].type === "walk" && w.legs[0].from === FROM && w.legs[0].to === TO);
+  eq([w.walkMin, w.walkM, w.totalMin, w.arrive, w.legs[0].source], [10, 800, 10, T0 + 600, "router"]);
+  ok(Array.isArray(w.legs[0].coords), "the sidewalk route is drawn");
+});
+
+test("walk first: longer walks lead only when they arrive no later than the best bus", () => {
+  const walk = { m: 1000, min: 12.5 };
+  eq(walkFirst([busOpt("a", 12)], walk, { from: FROM, to: TO, t0: T0 }).map((o) => o.key), ["a"], "12.5 min walk vs a 12 min bus: bus only");
+  eq(walkFirst([busOpt("a", 13)], walk, { from: FROM, to: TO, t0: T0 }).map((o) => o.key), ["walk", "a"], "walking arrives first");
+  eq(walkFirst([busOpt("a", 12.5)], walk, { from: FROM, to: TO, t0: T0 }).map((o) => o.key), ["walk", "a"], "a tie: walk first");
+});
+
+test("walk first: never without a bus option (the no-route screen keeps its help), capped, one walk option", () => {
+  eq(walkFirst([], { m: 100, min: 1 }, { from: FROM, to: TO, t0: T0 }), [], "no bus options: unchanged (empty)");
+  eq(walkFirst([busOpt("a", 9)], null, { from: FROM, to: TO, t0: T0 }).map((o) => o.key), ["a"]);
+  const four = ["a", "b", "c", "d"].map((k, i) => busOpt(k, 5 + i));
+  eq(walkFirst(four, { m: 400, min: 5 }, { from: FROM, to: TO, t0: T0 }).map((o) => o.key), ["walk", "a", "b", "c"], "walk + 3 bus = max 4");
+  const again = walkFirst(walkFirst([busOpt("a", 9)], { m: 400, min: 5 }, { from: FROM, to: TO, t0: T0 }), { m: 480, min: 6 }, { from: FROM, to: TO, t0: T0 });
+  eq(again.map((o) => o.key), ["walk", "a"], "an earlier walk option is replaced, never doubled");
+  eq(again[0].walkMin, 6);
 });

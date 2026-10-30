@@ -123,3 +123,29 @@ export function pickOptions(cands, { t0, walkOnlyMin, max = 4, xferGainMin = 2 }
   }
   return rankOptions(out).slice(0, max);
 }
+
+/** Walk first: walking the whole way this many minutes or less puts the walk option first (owner 2026-10-30). */
+export const WALK_FIRST_MIN = 10;
+
+/**
+ * Walk first (owner 2026-10-30: "if the distance is very close, it is ok to just suggest the user to walk on their first
+ * travel option"): when there is at least one bus option and walking the whole way takes WALK_FIRST_MIN minutes or less,
+ * or arrives no later than the best bus option, a walk option (key "walk", walkOnly true, one walk leg) goes first and
+ * the bus options follow in their ranked order; otherwise the bus options unchanged. Capped at max. Pure.
+ * @param {Array<Object>} options ranked bus options (a walk option already in the list is replaced)
+ * @param {{m:number, min:number, coords?:Array, source?:string}|null} walk walking the whole way (planner walkOnly)
+ * @param {{from:{lat:number, lon:number}, to:{lat:number, lon:number}, t0:number, max?:number}} ctx
+ * @returns {Array<Object>}
+ */
+export function walkFirst(options, walk, { from, to, t0, max = 4 } = {}) {
+  const list = (options || []).filter((o) => o && Array.isArray(o.legs) && !o.walkOnly);
+  if (!list.length || !walk || !(Number(walk.min) > 0)) return list.slice(0, max);
+  const min = Number(walk.min), arrive = t0 + min * 60;
+  const bestBus = Math.min(...list.map((o) => (Number.isFinite(Number(o.arrive)) ? Number(o.arrive) : Infinity)));
+  if (!(min <= WALK_FIRST_MIN + EPS || arrive <= bestBus + EPS)) return list.slice(0, max);
+  const m = Math.round(Number(walk.m) || 0);
+  const leg = { type: "walk", from, to, m, min, source: walk.source === "router" ? "router" : "estimate" };
+  if (walk.coords) leg.coords = walk.coords;
+  const w = { key: "walk", walkOnly: true, total: min, totalMin: Math.max(1, Math.round(min)), arrive, t0, walkMin: min, walkM: m, meets: [], legs: [leg] };
+  return [w, ...list].slice(0, max);
+}

@@ -20,10 +20,12 @@
  *  - options slower than max(2 x walking, walking + 15 min) are dropped; transfers must beat the
  *    best direct option by 2 min; ranked by core/rank.js (least walking, then earliest arrival,
  *    then shortest wait, then how many of those an option meets); max 4. Options carry `meets`.
+ *  - walk first (owner 2026-10-30, core/rank.js walkFirst): when walking the whole way takes 10 min or less, or
+ *    arrives no later than the best bus, a walk option {key:'walk', walkOnly:true, legs:[walk]} leads the list.
  */
 import { hav, WALK_M_PER_MIN as WALK_M_MIN, WALK_DETOUR as DETOUR } from "./geo.js";
 import { nowS } from "./time.js";
-import { pickOptions, walkTotals } from "./rank.js";
+import { pickOptions, walkTotals, walkFirst } from "./rank.js";
 
 const MAX_WALK = 800, MAX_WALK_FAR = 1600, XFER_M = 150, BUS_M_MIN = 18000 / 60;
 const MAX_OPTS = 4, MIN_WALK_LEG = 1, GRACE_S = 15, HEADWAY_CAP = 30, XFER_GAIN_MIN = 2;
@@ -300,6 +302,7 @@ export function plan({ from, to, now, data, predict, walkMins } = {}) {
   result.options = pickOptions(candidates(C, seqs, from, to, t0, MAX_WALK), sel);
   // Nothing within 800 m of one end: allow longer end walks (same ranking).
   if (!result.options.length) result.options = pickOptions(candidates(C, seqs, from, to, t0, MAX_WALK_FAR), sel);
+  result.options = walkFirst(result.options, result.walkOnly, { from, to, t0, max: MAX_OPTS });
   return result;
 }
 

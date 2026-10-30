@@ -28,7 +28,7 @@ import { alertBanner, noBusHelpHTML } from "./alerts.js";
 import { stopWalkMin } from "./tripinfo.js";
 import { FAV_MAX, isStale, nameOf, guidedRow, pickArrivals, favoritesHTML, soonest } from "./nearby-cards.js";
 import { isPlanJourney } from "./journey.js";
-import { tripProgressHTML } from "./tripprogress.js";
+import { tripProgressHTML, tripMetaText } from "./tripprogress.js";
 
 export { FAV_MAX, guidedRow, pickArrivals, favoritesHTML };   // their home is ./nearby-cards.js (tests import them from here)
 
@@ -211,12 +211,14 @@ export function renderNearby(state, now = nowS()) {
 }
 
 /**
- * Right side of the sheet title line at Nearby (router def.meta), e.g. "53RD · 4 min".
+ * Right side of the sheet title line at Nearby (router def.meta), e.g. "53RD · 4 min"; while a trip is in progress the
+ * trip's own line instead (ui/views/tripprogress.js tripMetaText: "Arriving In: 4 min", "Walk 6 min").
  * @param {object} state
  * @param {number} [now]
  * @returns {string} plain text ('' when unknown)
  */
 export function metaNearby(state, now = nowS()) {
+  if (isPlanJourney(state)) return tripMetaText(state, now);   // a trip in progress: "Arriving In: 4 min" / "Walk 6 min" (owner 2026-10-30)
   const point = state.user || N.anchor;
   if (!point || !state.staticLoaded || !state.liveLoaded) return "";
   const hidden = effectiveHidden(state);
@@ -234,6 +236,7 @@ export function metaNearby(state, now = nowS()) {
  * @returns {string} plain text ('' when unknown)
  */
 export function peekNearby(state, now = nowS()) {
+  if (isPlanJourney(state)) return tripMetaText(state, now);
   const point = state.user || N.anchor;
   if (!point || !state.staticLoaded) return "";
   const s = stopsNear(state, point, { maxM: NEARBY_MAX_M, max: 1, hidden: effectiveHidden(state) })[0];

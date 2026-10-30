@@ -6,6 +6,7 @@ import { P, placeDeps, renderPick, mountPick, unmountPick, setMode, resetPick, o
 import { D, deps, renderDirections, mountDirections, unmountDirections, NOTE, computeSugs, setEndpoint } from "../js/ui/views/directions.js";
 import { COVER_TEXT, COVER_ADVICE } from "../js/core/coverage.js";
 import { plan as realPlan, refineWalking as realRefine } from "../js/core/planner.js";
+import { walkFirst } from "../js/core/rank.js";
 import { N, renderNearby, mountNearby, unmountNearby } from "../js/ui/views/nearby.js";
 
 const USER = { lat: 41.7899, lon: -87.6001 };
@@ -134,7 +135,8 @@ function resetDir() { Object.assign(D, { from: null, to: null, fromText: "", toT
 function stubDeps(planImpl, refineImpl) {
   deps.plan = planImpl;
   deps.refineWalking = refineImpl || (async (o) => ({ ...o, legs: o.legs.map((l) => (l.type === "walk" ? { ...l, source: "router", coords: [[0, 0], [1, 1]] } : l)) }));
-  deps.walkRoute = async (a, b) => ({ m: 900, min: 11.25, coords: [[a.lat, a.lon], [b.lat, b.lon]], source: "router" });
+  // 16 min: not close enough for the walk option (core/rank.js walkFirst: 10 min or no later than the best bus)
+  deps.walkRoute = async (a, b) => ({ m: 1280, min: 16, coords: [[a.lat, a.lon], [b.lat, b.lon]], source: "router" });
   deps.predict = null;
 }
 const ep = (s) => ({ lat: s.lat, lon: s.lon, name: s.name, id: s.id });
@@ -210,6 +212,32 @@ test("directions: no service shows walk-only fallback and official contact", asy
   const last = ctx.calls.drawPlan[ctx.calls.drawPlan.length - 1];
   ok(last && last.legs.length === 1 && last.legs[0].type === "walk", "walk-only drawn");
   unmountDirections(); el.remove();
+});
+
+test("directions: a very close destination puts Walk first (owner 2026-10-30), selected, startable as a trip with no bus", async () => {
+  resetDir();
+  // like the real planner (core/planner.js plan applies walkFirst to its own options)
+  stubDeps(() => ({ now: NOW, options: walkFirst([fakeOption("a", 12, "R1"), fakeOption("b", 15, "R3")], { m: 400, min: 5 },
+    { from: D.from, to: D.to, t0: NOW }), walkOnly: { m: 400, min: 5 } }));
+  deps.walkRoute = async (a, b) => ({ m: 420, min: 5.25, coords: [[a.lat, a.lon], [b.lat, b.lon]], source: "router" });
+  const ctx = makeCtx({ view: "directions" });
+  D.from = { lat: 41.79, lon: -87.6, label: "Main & 1st" }; D.to = { lat: 41.7935, lon: -87.6, label: "Library" };
+  const el = mountWith(ctx, renderDirections, mountDirections);
+  await tick(10);
+  const cards = [...el.querySelectorAll(".v-opt")];
+  eq(cards.length, 3, "walk + both bus options");
+  ok(cards[0].classList.contains("v-opt--walk") && cards[0].classList.contains("is-on"), "walk first and selected");
+  ok(cards[0].textContent.includes("Close enough to walk") && cards[0].textContent.includes("Walk the whole way") && cards[0].textContent.includes("420 m"), cards[0].textContent);
+  ok(cards[0].querySelector(".v-otot").textContent.startsWith("5"), "its walking time");
+  ok(!el.textContent.includes("Walking the whole way:"), "no duplicate walking footnote");
+  ok(!/[–—]/.test(el.textContent), "no dash characters");
+  const last = ctx.calls.drawPlan[ctx.calls.drawPlan.length - 1];
+  ok(last && last.legs.length === 1 && last.legs[0].type === "walk", "the walk is drawn");
+  runAction("dir:start", {}, null, ctx);
+  const j = ctx.store.get().journey;
+  ok(j && j.kind === "plan" && j.rids.length === 0 && j.legs[0].type === "walk", "a trip with no bus: " + JSON.stringify(j));
+  unmountDirections(); el.remove();
+  ctx.store.set({ journey: null });
 });
 
 test("directions: missed bus after refine drops the option", async () => {

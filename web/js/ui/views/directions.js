@@ -28,7 +28,7 @@ import { staleLevel, liveUnknown } from "../../core/arrivals.js";
 import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { plan, refineWalking, PLANNER } from "../../core/planner.js";
-import { rankOptions, criteriaText } from "../../core/rank.js";
+import { rankOptions, criteriaText, walkFirst } from "../../core/rank.js";
 import { walkRoute } from "../../core/walk.js";
 import { createThrottle } from "../../core/throttle.js";
 import { predict } from "../../core/predict.js";
@@ -138,6 +138,20 @@ function optionHTML(o, i, now, state) {
 }
 
 /**
+ * The walk option (core/rank.js walkFirst, owner 2026-10-30: very close = walk first): walking time, arrival, the
+ * distance, and when selected the step and Start (a trip with no bus).
+ */
+function walkOptionHTML(o, i, now, state) {
+  const on = i === D.sel, l = o.legs[0] || {};
+  const wtag = tag(l.source === "router" ? "sidewalk route" : "estimate");
+  const aria = `Option ${i + 1}: walk the whole way, ${walkMins(o.walkMin)} minutes, ${Math.round(o.walkM || 0)} meters, arrive ${clock(o.arrive)}. Close enough to walk.`.replace(/<1 minutes/g, "under 1 minute");
+  const start = on && !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Follow your walk in Current trip.</p>' : "";
+  return `<div class="v-opt v-opt--walk${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}">`
+    + `<span class="j-crit">Close enough to walk</span><span class="v-otop"><span class="v-otot">${esc(walkMins(o.walkMin))}<small> min</small></span>${wtag}<span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span>`
+    + `<span class="v-osum"><span class="v-wk">${WALK_IC}Walk the whole way</span><span class="v-sec">${Math.round(o.walkM || 0)} m</span></span></button>${on ? stepsHTML(o, now, state) + start : ""}</div>`;
+}
+
+/**
  * Results region (hint, loading, options, walk-only, no service). A destination outside the shuttle area
  * (core/coverage.js) gets the coverage note first, then the trip options as usual.
  * @param {object} state
@@ -163,8 +177,8 @@ export function resHTML(state, now = nowS()) {
     h += `<div class="v-opt is-on"><div class="v-optmain"><span class="v-otop"><span class="v-otot">${mins(w.min)}<small> min</small></span>${walkTag}<span class="v-oarr">Arrive ${esc(clock(now + (w.min || 0) * 60))}</span></span><span class="v-osum"><span class="v-wk">${WALK_IC}Walk the whole way</span><span class="v-sec">${Math.round(w.m || 0)} m</span></span></div></div>`;
     return h + (running ? "" : noBusHelpHTML(state, now));
   }
-  h += r.options.slice(0, PLANNER.MAX_OPTS).map((o, i) => optionHTML(o, i, now, state)).join("");
-  h += `<p class="v-foot">Walking the whole way: ${mins(w.min)} min (${Math.round(w.m || 0)} m) ${walkTag}</p>`;
+  h += r.options.slice(0, PLANNER.MAX_OPTS).map((o, i) => (o.walkOnly ? walkOptionHTML(o, i, now, state) : optionHTML(o, i, now, state))).join("");
+  if (!r.options[0]?.walkOnly) h += `<p class="v-foot">Walking the whole way: ${mins(w.min)} min (${Math.round(w.m || 0)} m) ${walkTag}</p>`;
   if (D.refining) h += '<p class="v-foot" role="status">Checking sidewalk routes&hellip;</p>';
   return h + `<p class="v-foot v-estnote">${esc(NOTE)}</p>`;
 }
@@ -236,16 +250,18 @@ export async function replan({ fresh = false } = {}) {
   try { r = deps.plan({ from, to, now, data, predict: deps.predict }); } catch (e) { r = null; }
   if (!r || !Array.isArray(r.options)) { const m = hav(from, to) * 1.2; r = { options: [], walkOnly: { m, min: m / 80 } }; }
   if (fresh || !D.result) { D.result = r; D.missed = false; D.refining = true; pickSel(fresh); patchRes(); drawSel(fresh); }
-  const top = r.options.slice(0, PLANNER.MAX_OPTS);
+  const top = r.options.filter((o) => !o.walkOnly).slice(0, PLANNER.MAX_OPTS);   // the walk option is rebuilt below
   const [settled, walk] = await Promise.all([
     Promise.allSettled(top.map((o) => deps.refineWalking(o, { walkRoute: deps.walkRoute, now, data, from, to, predict: deps.predict }))),
     Promise.resolve().then(() => deps.walkRoute(from, to)).catch(() => null),
   ]);
   if (token !== D.token) return;
   const opts = settled.map((s, i) => (s.status === "fulfilled" ? s.value : top[i])).filter((o) => o && Array.isArray(o.legs));
-  const ranked = rankOptions(opts);   // sidewalk times can change who walks least
+  const walkOnly = walk ? { m: walk.m, min: walk.min, coords: walk.coords, source: walk.source } : r.walkOnly;
+  // sidewalk times can change who walks least; very close = walk first (core/rank.js walkFirst, owner 2026-10-30)
+  const ranked = walkFirst(rankOptions(opts), walkOnly, { from, to, t0: now, max: PLANNER.MAX_OPTS });
   D.missed = top.length > 0 && !ranked.length;
-  D.result = { ...r, options: ranked, walkOnly: walk ? { m: walk.m, min: walk.min, coords: walk.coords, source: walk.source } : r.walkOnly };
+  D.result = { ...r, options: ranked, walkOnly };
   D.refining = false; pickSel(fresh); syncJourney(); patchRes(); drawSel(fresh);
 }
 
@@ -261,7 +277,7 @@ export function startTrip() {
   ctxRef.store.set({ journey: j });
   // trip alerts (2026-10-13): Start is when to ask (conversion to appstore.md section 7), only if never answered,
   // straight from the tap (browsers ask only for a user gesture); without it alerts are an in-app banner
-  if (!DEMO && ctxRef.store.get().notify?.trip !== false && notificationSupport() === "default") requestPermission().catch(() => {});
+  if (!DEMO && j.rids.length && ctxRef.store.get().notify?.trip !== false && notificationSupport() === "default") requestPermission().catch(() => {});   // a walk has no bus to alert about
   drawSel(true);
   let moved = false;
   try { moved = ctxRef.navigate?.("nearby", { detent: "full" }) === true; } catch (e) { moved = false; }

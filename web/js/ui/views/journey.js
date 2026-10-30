@@ -50,7 +50,8 @@ export function journeyLegs(o, toLabel) {
 }
 
 /**
- * Journey for a directions option, or null when it has no bus legs (walk-only trips hide nothing).
+ * Journey for a directions option, or null when it has no bus legs, except the walk option (core/rank.js walkFirst,
+ * owner 2026-10-30): a trip with no bus, rids [] (it hides no route) and one walk leg.
  * Besides {rids, label, kind} it carries what the Current trip timeline needs to follow the trip
  * (ui/views/tripprogress.js): `to` (destination name), `t0` (when the plan was made, unix s) and
  * `legs` (journeyLegs). Not persisted.
@@ -61,7 +62,7 @@ export function journeyLegs(o, toLabel) {
  */
 export function planJourney(o, toLabel) {
   const rids = optionRids(o);
-  if (!rids.length) return null;
+  if (!rids.length && !(o && o.walkOnly)) return null;
   const to = toLabel || "destination";
   const j = { rids, label: "To " + to, kind: "plan", to, t0: numOr(o && o.t0), legs: journeyLegs(o, to) };
   const legs = (o && o.legs) || [], last = legs[legs.length - 1];
@@ -121,7 +122,8 @@ export function tripBarHTML(state) {
   const chips = j.rids.map((r) => routeChip(r, state.routes)).join("");
   return `<div class="j-trip" role="region" aria-label="Trip in progress"><span class="j-dot" aria-hidden="true"></span>`
     + `<span class="v-grow"><span class="v-prim j-title" tabindex="-1">Trip ${esc(j.label.replace(/^To /, "to "))}</span>`
-    + `<span class="v-sec j-sub">Map shows only ${j.rids.length > 1 ? "these routes" : "this route"} <span class="j-chips">${chips}</span></span></span>`
+    + (j.rids.length ? `<span class="v-sec j-sub">Map shows only ${j.rids.length > 1 ? "these routes" : "this route"} <span class="j-chips">${chips}</span></span></span>`
+      : '<span class="v-sec j-sub">Walking the whole way, no bus</span></span>')
     + `<button type="button" class="v-btn v-btn--secondary j-end" data-action="journey:end">End trip</button></div>`;
 }
 

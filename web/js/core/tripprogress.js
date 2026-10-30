@@ -500,6 +500,37 @@ export function tripProgress(journey, state, nowS) {
   };
 }
 
+/**
+ * Walking minutes left to a point: from your location when both are known (straight line x detour, like the planner),
+ * else the plan's minutes.
+ * @param {object} state store state (user)
+ * @param {{lat:number, lon:number}|null|undefined} dest
+ * @param {number} planMin the plan's walking minutes
+ * @returns {number}
+ */
+export function walkLeft(state, dest, planMin) {
+  const u = state && state.user;
+  return okPt(u) && okPt(dest) ? walkMinM(hav(u, dest)) : Math.max(0, Number(planMin) || 0);
+}
+
+/**
+ * A started trip with no bus (Directions' walk option, owner 2026-10-30): where to, walking minutes left and the
+ * estimated arrival; null for any other journey. Pure.
+ * @param {object|null} journey store.journey
+ * @param {object} state store state (user)
+ * @param {number} nowS unix seconds
+ * @returns {{to:string, min:number, minNow:number, arriveT:number}|null}
+ */
+export function walkTrip(journey, state, nowS) {
+  const J = journey, now = num(nowS) != null ? nowS : Date.now() / 1000;
+  if (!J || J.kind !== "plan" || !Array.isArray(J.legs)) return null;
+  const legs = J.legs.filter(Boolean);
+  if (!legs.length || legs.some((l) => l.type === "bus") || !legs.some((l) => l.type === "walk")) return null;
+  const min = legs.reduce((sum, l) => sum + (l.type === "walk" ? Number(l.min) || 0 : 0), 0);
+  const minNow = walkLeft(state, J.dest, min);
+  return { to: J.to || (J.label || "").replace(/^To /, "") || "destination", min, minNow, arriveT: now + minNow * 60 };
+}
+
 let memo = null;
 /**
  * tripProgress(state.journey, state, now) evaluated ONCE per data change: the Current trip card and timeline,

@@ -17,7 +17,7 @@
  */
 import { esc, safeColor, textOn } from "../../core/esc.js";
 import { nowS, clock, minsUntil, ago } from "../../core/time.js";
-import { tripNow, stopTimes } from "../../core/tripprogress.js";
+import { tripNow, stopTimes, walkTrip, walkLeft } from "../../core/tripprogress.js";
 import { predict } from "../../core/predict.js";
 import { tripYou, legStatus, busName } from "../../core/tripyou.js";
 import { routeChip, etaBlock, officialLinks } from "../components.js";
@@ -66,6 +66,41 @@ export function busWords(leg, now) {
   let where = v.at ? `${who} is at ${v.nextName}` : v.prevName ? `${who} is between ${v.prevName} and ${v.nextName}` : `${who} is heading to ${v.nextName}`;
   if (v.stale && v.seen) where += `, location from ${ago(v.seen, now)}`;
   return { status, where };
+}
+
+/**
+ * Right side of the sheet title on Current trip while a trip is on (owner 2026-10-30; main.js shows the view's meta
+ * at every detent, so also when the sheet is minimized). The same evaluation as the card (tripNow), so the two never
+ * disagree:
+ *  - waiting at the stop: "Arriving In: 4 min" until the bus reaches your boarding stop; on the bus: until it reaches
+ *    the stop where you get off. "Arriving In: Now" under a minute, "~4 min" while live data is delayed (as the card).
+ *    No live prediction but a planned time: "Arriving In: ~4 min est."; no time at all: "No live bus time yet".
+ *  - walking (to the stop, after the last bus, or a trip with no bus): "Walk 6 min", the walking time left.
+ *  - off the last bus with no walk left: "Arrived". No trip: "".
+ * @param {object} state store state
+ * @param {number} [now] unix seconds
+ * @returns {string} plain text
+ */
+export function tripMetaText(state, now = nowS()) {
+  if (!isPlanJourney(state)) return "";
+  const p = tripNow(state, now);
+  if (!p) {
+    const w = walkTrip(state.journey, state, now);
+    return w ? `Walk ${walkMins(w.minNow)} min` : "";
+  }
+  const leg = p.legs[p.active];
+  if (p.phase === "arrived") {
+    return leg && leg.type === "walk" ? `Walk ${walkMins(walkLeft(state, state.journey && state.journey.dest, leg.min))} min` : "Arrived";
+  }
+  if (p.phase === "walk-to-stop") {
+    const wl = p.legs.find((l) => l.type === "walk" && l.state === "active");
+    const m = wl ? (wl.minNow != null ? wl.minNow : wl.min) : leg.walkMin;
+    return `Walk ${walkMins(m)} min`;
+  }
+  const onBus = p.phase === "on-bus";
+  const t = onBus ? leg.alightEta : leg.boardEta, live = onBus ? leg.alightLive : leg.boardLive;
+  if (!t) return "No live bus time yet";
+  return live ? `Arriving In: ${etaText(t, now, !!p.stale)}` : `Arriving In: ${estText(t, now)} est.`;
 }
 
 /** The planned bus left without you: never promise a next bus that is not there (iOS TripText.missedNote). */
@@ -202,7 +237,15 @@ export function tripProgressHTML(state, now = nowS(), opts = {}) {
   const steps = '<button type="button" class="v-btn v-btn--secondary tp-steps-btn" data-action="nav" data-view="directions">Trip steps</button>'
     + (typeof opts.actionsHTML === "string" ? opts.actionsHTML : "");
   const p = tripNow(state, now);   // the same evaluation as the map's You marker and the trip alerts
-  if (!p) return tripBarHTML(state) + `<div class="tp-acts">${steps}</div>`;
+  if (!p) {
+    const w = walkTrip(state.journey, state, now);   // a trip with no bus: Directions' walk option (owner 2026-10-30)
+    if (!w) return tripBarHTML(state) + `<div class="tp-acts">${steps}</div>`;
+    return `<section class="tp" aria-label="Trip in progress"><div class="tp-head"><span class="v-grow"><span class="tp-title" tabindex="-1">${esc("Trip to " + w.to)}</span>`
+      + `<span class="v-sec tp-arrive">Arrive about ${esc(clock(w.arriveT))} ${tag("est.")}</span></span>`
+      + `<button type="button" class="v-btn v-btn--secondary tp-end" data-action="journey:end">End trip</button></div>`
+      + `<div class="tp-now tp-now--walk"><span class="tp-wic" aria-hidden="true">${WALK_IC}</span><span class="v-grow"><span class="v-prim tp-nowprim">${esc(`Walk ${walkMins(w.minNow)} min to ${w.to}`)}</span>`
+      + `<span class="v-sec">No bus needed: it is close enough to walk.</span></span></div><div class="tp-acts">${steps}</div></section>`;
+  }
   const left = p.arriveT ? Math.max(0, Math.round((p.arriveT - now) / 60)) : null;
   const arrive = p.arriveT ? `Arrive about ${esc(clock(p.arriveT))}${left != null && p.phase !== "arrived" ? ` · ${left < 1 ? "under a minute" : left + " min"}` : ""} ${tag("est.")}` : "Arrival time unknown";
   let h = `<section class="tp" aria-label="Trip in progress">`

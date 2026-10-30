@@ -111,7 +111,9 @@ test("predict.rideMinutes used when no live same-trip time", () => {
 
 test("absurdly slow bus options are dropped (vs walking)", () => {
   const args = { from: near_("L1"), to: near_("L0"), now: T, data: data() };
-  ok(plan(args).options.length === 1, "long way round still reasonable without predict");
+  const r0 = plan(args), bus0 = r0.options.filter((o) => !o.walkOnly);
+  ok(bus0.length === 1, "long way round still reasonable without predict");
+  eq(!!r0.options[0].walkOnly, r0.walkOnly.min <= 10 || T + r0.walkOnly.min * 60 <= bus0[0].arrive, "walk option first only when close or no later than the bus");
   const slow = plan({ ...args, predict: { rideMinutes: () => ({ min: 60, source: "schedule", conf: 0.4 }) } });
   eq(slow.options.length, 0);
   ok(slow.walkOnly.min > 10);
