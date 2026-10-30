@@ -695,3 +695,21 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   where it has no prediction; pills / rail markers say "Bus 2". main.js clears busId when the route page closes or the
   bus is no longer shown. State: `busId` (nav, not persisted). Tests: core-busnum.js, route-busnum.js, map-layers.js,
   e2e.js (a bus tap picks it, back clears it).
+
+## Arriving In, trips with no bus, walk first (2026-10-30, owner: "the time that is shown when the menu is minimized ... should show the time until the next bus will arrive at their stop. Call it Arriving In: ... rather show the current walking time or the duration of the next step if the user's trip has no bus", "if the distance is very close, it is ok to just suggest the user to walk on their first travel option")
+- Current trip header (main.js shows the view's meta at every detent, so also minimized): while a plan journey is on,
+  nearby.js metaNearby / peekNearby return ui/views/tripprogress.js `tripMetaText`, from the same `tripNow` as the card:
+  waiting = "Arriving In: 4 min" (bus at your boarding stop), on the bus = to the stop where you get off; "Arriving In:
+  Now" under a minute; "~4 min" while live data is delayed (etaText, as the card); a planned time without live data
+  = "Arriving In: ~4 min est." (never "Now"); no time = "No live bus time yet"; walking to the stop / after the last bus
+  / a trip with no bus = "Walk 6 min" (walking minutes left: from your location to the stop or destination when known,
+  else the plan's); off the last bus with no walk = "Arrived". No trip: the nearest stop's next bus, as before.
+- Walk first: core/rank.js `walkFirst` (WALK_FIRST_MIN 10), applied by core/planner.js plan and again in Directions
+  after the sidewalk refine: with at least one bus option, when walking the whole way takes 10 min or less or arrives
+  no later than the best bus, a walk option {key:'walk', walkOnly:true, legs:[walk]} leads (selected first, "Close
+  enough to walk", walking time, arrival, distance, its step and Start); bus options keep their ranked order; max 4 in
+  all; the "Walking the whole way" footnote is dropped then. No bus option = the no-route screen and its help, unchanged.
+- Trips with no bus: planJourney accepts the walk option (rids [], one walk leg, dest); it hides no route; the trip bar
+  says "Walking the whole way, no bus"; Current trip shows "Trip to X", "Walk N min to X", "No bus needed: it is close
+  enough to walk.", End trip, Trip steps (core/tripprogress.js `walkTrip` / `walkLeft`); no notification prompt.
+- Tests: tests/trip-arriving.js (8), core-rank.js walk first (3), views-flows.js walk option. sw sb-v2-74.
