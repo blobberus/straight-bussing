@@ -185,7 +185,9 @@ export function lastSend() {
  * Send one row and read the receiver's one-word reply ("ok", "dropped", "error"). A plain text POST (no preflight)
  * without cookies (credentials "omit": nothing ties the row to a browser login); Google answers through a redirect
  * that allows any origin, so the reply is readable. keepalive for rows sent while the page goes away. If fetch
- * itself fails, one beacon is tried and the result is "failed" (unconfirmed). Never throws.
+ * itself fails the result is "failed" (unconfirmed); only a row sent while the page goes away (keep) then tries one
+ * beacon. A start row never gets a second copy: when the receiver got it but the reply could not be read, a beacon
+ * would count the visit twice (owner 2026-10-30). Never throws.
  * @param {string} url
  * @param {string} body
  * @param {{keep?:boolean}} [o]
@@ -197,7 +199,7 @@ async function defaultSend(url, body, o = {}) {
       credentials: "omit", redirect: "follow", cache: "no-store", keepalive: !!o.keep });
     return (await r.text()).trim().slice(0, 20) || "error";
   } catch (e) {
-    try { navigator.sendBeacon?.(url, new Blob([body], { type: "text/plain;charset=UTF-8" })); } catch (e2) { /* */ }
+    if (o.keep) { try { navigator.sendBeacon?.(url, new Blob([body], { type: "text/plain;charset=UTF-8" })); } catch (e2) { /* */ } }
     return "failed";
   }
 }
