@@ -1,0 +1,9 @@
+route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,last_stop_id,last_stop_name,last_seen_epoch,trip_id,staying_vehicles,sched_buses_hour,sched_buses_next_hour,expected,moved_to_route,returned_min,lasting,returning
+5704,Downtown Campus Connector,1793381843,2026-10-30 12:37:23,drop,5,4,4538,8612,Goldblatt Pavilion,1793381843,874028,12643;12646;12647;4327,6,6,0,,,1,
+5704,Downtown Campus Connector,1793381860,2026-10-30 12:37:40,drop,4,3,4327,140009,55th Street & University,1793381860,874028,12643;12646;12647,6,6,0,,,1,
+5704,Downtown Campus Connector,1793383087,2026-10-30 12:58:07,add,3,4,12648,,,1793383387,874028,12643;12646;12647,6,6,0,,,,0
+6126,Apostolic/Drexel,1793383090,2026-10-30 12:58:10,drop,2,1,4319,8612,Goldblatt Pavilion,1793383090,501470,4328,2,2,0,,33,1,
+5704,Downtown Campus Connector,1793383777,2026-10-30 13:09:37,drop,4,3,12648,140009,55th Street & University,1793383777,874028,12643;12646;12647,6,6,0,,,1,
+5704,Downtown Campus Connector,1793384174,2026-10-30 13:16:14,add,3,4,12645,,,1793384493,874028,12643;12646;12647,6,6,0,,,,0
+5699,Red Line/Arts Block,1793384493,2026-10-30 13:21:33,add,1,2,4315,,,1793384793,690470,4331,1,1,0,,,,0
+6126,Apostolic/Drexel,1793384655,2026-10-30 13:24:15,add,1,2,4319,,,1793384955,501471,4328,2,2,0,,,,1
