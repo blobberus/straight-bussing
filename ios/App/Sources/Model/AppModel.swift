@@ -146,7 +146,8 @@ struct MapBus: Identifiable, Equatable {
     var number: Int? = nil
 }
 
-/// The numbered bus whose own times the route page shows (owner 2026-10-30).
+/// The bus picked on its route page: each station shows that bus's own time (owner 2026-10-30, web store.busId).
+/// `vehicleId` is the bus key (`BusNumbers.key`: vehicle id, else label), the map marker's id.
 struct SelectedBus: Equatable {
     let rid: String
     let vehicleId: String
@@ -263,10 +264,13 @@ final class AppModel {
     /// calls `mapCoverChanged` when it flips.
     var mapCovered: Bool { showSettings || showTimePick || showLiveActivityPreview }
     var editingOrder = false
-    /// The numbered bus whose own times its route page shows instead of the next bus at each stop (owner 2026-10-30):
-    /// set by tapping a numbered bus on the map or its row on the route page; cleared when that page closes or the bus
-    /// is gone.
+    /// The bus whose own times its route page shows instead of the next bus at each stop (owner 2026-10-30): set by
+    /// tapping a bus on the map or its row on the route page (again = unpick); cleared when that page closes or the map
+    /// no longer draws the bus (it keeps a bus missing from one poll for 45 s, and the pick with it).
     var selectedBus: SelectedBus?
+    /// "Bus 1", "Bus 2" per route (route id -> bus key -> number), from the buses the map draws (Kit `BusNumbers`),
+    /// written only when it changes.
+    var busNumbers: [String: [String: Int]] = [:]
     var confirmDelete: CustomRoute?
     /// Where to land after a confirmed delete: "list" | "detail" | "edit" (web deleteWithConfirm `from`).
     var confirmDeleteFrom = "list"

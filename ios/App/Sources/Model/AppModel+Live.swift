@@ -214,7 +214,7 @@ extension AppModel {
         // buses ride their route line (Kit BusTrack, BusMotion; web map/track.js): a changed report starts a move from
         // where the badge is now; `-demo` (CI), Reduce Motion and a sheet over the map move at once
         let reports = liveState.buses.enumerated().map { i, b in
-            BusMotion.Report(id: b.vehicle.id ?? "bus-\(i)", rid: b.trip.routeId ?? "", label: b.displayLabel, coord: b.coord,
+            BusMotion.Report(id: BusNumbers.key(b) ?? "bus-\(i)", rid: b.trip.routeId ?? "", label: b.displayLabel, coord: b.coord,
                              bearing: b.bearing, vt: b.timestamp)
         }
         busMotion.update(reports, shapes: staticData.shapes, version: staticVersion, now: now,
@@ -232,8 +232,12 @@ extension AppModel {
     /// last poll while others report stays for up to 45 s (`BusMotion.missingS`).
     func publishBuses() {
         let t = now
-        let nums = BusNumbers.byRoute(buses)   // "Bus 1", "Bus 2" on routes showing two or more (owner 2026-10-30)
-        let markers = busMotion.drawn().map { d in
+        let drawn = busMotion.drawn()
+        // "Bus 1", "Bus 2" on routes the map shows with two or more buses (owner 2026-10-30): numbered from what is drawn,
+        // so a bus missing from one poll (kept 45 s) keeps its number and its pick
+        let nums = BusNumbers.byRoute(drawn.map { (rid: $0.rid, key: Optional($0.id)) })
+        if busNumbers != nums { busNumbers = nums }
+        let markers = drawn.map { d in
             MapBus(id: d.id, rid: d.rid, label: d.label, coord: d.coord, bearing: d.rotation, stale: d.vt > 0 && t - d.vt > 60,
                    number: nums[d.rid]?[d.id])
         }
@@ -584,12 +588,12 @@ extension AppModel {
     }
 
     /// A bus tapped on the map opens its route WITHOUT moving the map (web main.js openRoute(rid, false)).
-    /// A bus tapped on the map opens its route; a numbered bus (its route shows two or more, owner 2026-10-30) opens it
-    /// with that bus selected, so each station shows that bus's own time. Already on that route page: only the selection.
+    /// A bus tapped on the map opens its route with THAT bus picked: each station shows its own time (owner 2026-10-30,
+    /// web main.js onBusTap). Already on that route page: only the pick.
     func busTapped(_ rid: String, vehicleId: String? = nil) {
         lastAnnotationTap = Date().timeIntervalSince1970
         guard staticData.routes[rid] != nil else { return }
-        selectedBus = vehicleId.flatMap { v in BusNumbers.byRoute(buses)[rid]?[v] != nil ? SelectedBus(rid: rid, vehicleId: v) : nil }
+        selectedBus = vehicleId.map { SelectedBus(rid: rid, vehicleId: $0) }
         if page == .route(rid) { return }
         paths[tab, default: []].append(.route(rid))   // the sheet keeps its state (owner 2026-10-12)
         syncMapFocus()

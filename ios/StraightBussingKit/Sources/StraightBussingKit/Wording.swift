@@ -386,12 +386,14 @@ public enum StationSearch {
 /// Route detail words (web ui/views/route.js busPositions).
 public enum RouteText {
     public struct BusSpot: Hashable, Sendable {
-        /// "2" for a numbered bus (`BusNumbers`, owner 2026-10-30), else the vehicle's own label.
+        /// The rail marker's text: "Bus 2" for a numbered bus (`BusNumbers`, owner 2026-10-30), else the fleet label.
         public var label: String
-        /// The vehicle (selecting a numbered bus shows its own times).
-        public var vehicleId: String? = nil
+        /// The bus key (`BusNumbers.key`: vehicle id, else label): picking it shows that bus's own times.
+        public var key: String? = nil
         /// Its number when the route shows two or more buses.
         public var number: Int? = nil
+        /// "Bus 2" / "Bus 101" / "This bus" (`BusNumbers.name`).
+        public var name: String = "This bus"
         /// Index (in the route's unique stop order) of the stop it heads to; `prev` the one before (nil at a line start).
         public var next: Int
         public var prev: Int?
@@ -415,8 +417,8 @@ public enum RouteText {
         return out
     }
 
-    /// Where each live bus of a route is along the stop order, with a sentence for each. `numbers` (vehicle id ->
-    /// number, `BusNumbers`) names a route's buses "Bus 1", "Bus 2" when it shows two or more.
+    /// Where each live bus of a route is along the stop order, with a sentence for each. `numbers` (bus key -> number,
+    /// `BusNumbers`) names a route's buses "Bus 1", "Bus 2" when it shows two or more (web route.js busPositions).
     public static func busPositions(_ S: StaticData, buses: [VehiclePosition], rid: String, now: Double,
                                     numbers: [String: Int] = [:]) -> [BusSpot] {
         let list = S.routeStops[rid] ?? [], ids = stopOrder(list)
@@ -432,11 +434,12 @@ public enum RouteText {
                 if dp + dn > 0 { frac = min(0.9, max(0.1, dp / (dp + dn))) }
             }
             let seen = b.timestamp, stale = seen != 0 && now - seen > 60
-            let num = b.vehicle.id.flatMap { numbers[$0] }
-            let label = num.map(String.init) ?? b.vehicle.label ?? b.vehicle.id ?? ""
-            var text = "Bus \(label) " + (prev == nil ? "approaching \(name(next))" : "between \(name(prev!)) and \(name(next)), heading to \(name(next))")
+            let key = BusNumbers.key(b), num = key.flatMap { numbers[$0] }
+            let called = BusNumbers.name(number: num, label: b.vehicle.label ?? b.vehicle.id)
+            let label = num != nil ? called : b.vehicle.label ?? b.vehicle.id ?? ""
+            var text = "\(called) " + (prev == nil ? "approaching \(name(next))" : "between \(name(prev!)) and \(name(next)), heading to \(name(next))")
             if stale { text += ", location from \(TimeFmt.ago(seen, from: now))" }
-            out.append(BusSpot(label: label, vehicleId: b.vehicle.id, number: num, next: next, prev: prev, frac: frac, stale: stale, seen: seen, text: text))
+            out.append(BusSpot(label: label, key: key, number: num, name: called, next: next, prev: prev, frac: frac, stale: stale, seen: seen, text: text))
         }
         return out
     }

@@ -141,7 +141,7 @@ struct MapScreen: View {
                 Annotation(b.label, coordinate: b.coord.cl, anchor: .center) {
                     Button { model.busTapped(b.rid, vehicleId: b.id) } label: {
                         BusMarker(route: model.route(b.rid), bearing: b.bearing, stale: b.stale, youText: isYou ? you?.text : nil,
-                                  number: b.number)
+                                  number: b.number, picked: model.selectedBus == SelectedBus(rid: b.rid, vehicleId: b.id))
                             .frame(minWidth: 44, minHeight: 44)
                     }
                     .buttonStyle(.plain)
@@ -439,6 +439,8 @@ struct BusMarker: View {
     var youText: String? = nil
     /// "Bus 2": a small number on the badge when the route shows two or more buses (Kit `BusNumbers`, owner 2026-10-30).
     var number: Int? = nil
+    /// The bus picked on its route page (its own times are shown there): an accent ring, like the web's highlight.
+    var picked = false
     var body: some View {
         ZStack {
             if youText != nil {
@@ -447,6 +449,11 @@ struct BusMarker: View {
                     .frame(width: 44, height: 38)
                     .background(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(.white, lineWidth: 7))
                 YouPill(text: "You").offset(y: -34)
+            }
+            if picked && youText == nil {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Palette.accentFill, lineWidth: 3)
+                    .frame(width: 40, height: 34)
             }
             if let bearing {
                 Image(systemName: "triangle.fill")
@@ -477,7 +484,7 @@ struct BusMarker: View {
         }
         .opacity(stale ? 0.5 : 1)
         .accessibilityLabel((youText ?? (number.map { "Bus \($0), \(route?.displayName ?? "Shuttle")" } ?? "\(route?.displayName ?? "Shuttle") bus"))
-                            + (stale ? ", location may be old" : ""))
+                            + (picked ? ", showing its times" : "") + (stale ? ", location may be old" : ""))
     }
 }
 

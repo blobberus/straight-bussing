@@ -16,12 +16,29 @@ final class BusNumbersTests: XCTestCase {
     }
 
     func testNumericOrderWhenBothAreNumbers() {
-        // text order would put "12644" first; numbers put it last
+        // text order would put "12644" first; numbers put it last (web core-busnum.js: 4320 before 12644)
         XCTAssertEqual(BusNumbers.numbers(["12644", "4320", "4325"]), ["4320": 1, "4325": 2, "12644": 3])
         XCTAssertEqual(BusNumbers.numbers(["bus-b", "bus-a"]), ["bus-a": 1, "bus-b": 2], "text ids: text order")
         XCTAssertEqual(BusNumbers.numbers(["a7", "10"]), ["10": 1, "a7": 2], "mixed: text order")
-        XCTAssertEqual(BusNumbers.name(2), "Bus 2")
-        XCTAssertNil(BusNumbers.name(nil))
+    }
+
+    func testKeyAndName() {
+        XCTAssertEqual(BusNumbers.key(VehiclePosition(vehicle: .init(id: "4320", label: "101"), latitude: 41.79, longitude: -87.6)), "4320")
+        XCTAssertEqual(BusNumbers.key(VehiclePosition(vehicle: .init(id: "", label: "101"), latitude: 41.79, longitude: -87.6)), "101",
+                       "no vehicle id: its label")
+        XCTAssertNil(BusNumbers.key(VehiclePosition(vehicle: .init(), latitude: 41.79, longitude: -87.6)))
+        XCTAssertEqual(BusNumbers.name(number: 2, label: "101"), "Bus 2")
+        XCTAssertEqual(BusNumbers.name(number: nil, label: "101"), "Bus 101", "a single bus keeps its fleet label")
+        XCTAssertEqual(BusNumbers.name(number: nil, label: nil), "This bus")
+        let b = TripFix.bus("v102", "102", "R", "t2", "A2", "A3")
+        XCTAssertEqual(BusNumbers.name(b, numbers: ["v102": 2]), "Bus 2")
+        XCTAssertEqual(BusNumbers.name(b, numbers: [:]), "Bus 102")
+    }
+
+    func testByRouteFromDrawnPairs() {
+        // the app numbers what its map draws (a bus missing from one poll is still drawn for 45 s)
+        XCTAssertEqual(BusNumbers.byRoute([(rid: "R", key: "v2"), (rid: "R", key: "v1"), (rid: "G", key: "v9"), (rid: "", key: "x")]),
+                       ["R": ["v1": 1, "v2": 2]])
     }
 
     func testByRouteNumbersEachRouteOnItsOwn() {
@@ -35,25 +52,30 @@ final class BusNumbersTests: XCTestCase {
     func testRouteBusWordsUseTheNumbers() {
         let b = [TripFix.bus("v102", "102", "R", "t2", "A2", "A3"), TripFix.bus("v101", "101", "R", "t1", "A0", "A1")]
         let spots = RouteText.busPositions(TripFix.S, buses: b, rid: "R", now: NOW, numbers: BusNumbers.byRoute(b)["R"] ?? [:])
-        XCTAssertEqual(spots.map(\.label), ["2", "1"])
+        XCTAssertEqual(spots.map(\.label), ["Bus 2", "Bus 1"], "the rail marker says Bus 2 (web route.js label)")
+        XCTAssertEqual(spots.map(\.name), ["Bus 2", "Bus 1"])
         XCTAssertEqual(spots.map(\.number), [2, 1])
-        XCTAssertEqual(spots.map(\.vehicleId), ["v102", "v101"])
+        XCTAssertEqual(spots.map(\.key), ["v102", "v101"])
         XCTAssertTrue(spots[0].text.hasPrefix("Bus 2 between 57th & Ellis and Regenstein Library"), spots[0].text)
         // without numbers: the vehicle's own label, as before
-        XCTAssertEqual(RouteText.busPositions(TripFix.S, buses: [b[0]], rid: "R", now: NOW).map(\.label), ["102"])
+        let one = RouteText.busPositions(TripFix.S, buses: [b[0]], rid: "R", now: NOW)
+        XCTAssertEqual(one.map(\.label), ["102"])
+        XCTAssertTrue(one[0].text.hasPrefix("Bus 102 between"), one[0].text)
     }
 
-    // MARK: a selected bus's own times
+    // MARK: a picked bus's own times
 
-    func testBusTimesAreThatBusOnlyEarliestUpcomingPerStop() {
-        let mine = [TripFix.trip("tR1", "R", "v101", "101", [("A3", 60), ("A4", 180)]),
-                    TripFix.trip("tR2", "R", "v101", "101", [("A4", 900), ("A5", 1000), ("A0", -120)])]   // its next trip; one past time
-        let other = TripFix.trip("tR3", "R", "v102", "102", [("A3", 30), ("A6", 200)])
-        let otherRoute = TripFix.trip("tG1", "G", "v101", "101", [("B0", 50)])
-        let t = Arrivals.busTimes(trips: mine + [other, otherRoute], vehicleId: "v101", routeId: "R", now: NOW)
-        XCTAssertEqual(t, ["A3": NOW + 60, "A4": NOW + 180, "A5": NOW + 1000], "earliest per stop, split trips merged, never another bus or route")
-        XCTAssertNil(t["A6"], "a stop this bus has no prediction for shows no time")
-        XCTAssertEqual(Arrivals.busTimes(trips: [other], vehicleId: "v101", routeId: "R", now: NOW), [:])
+    func testBusArrivalIsThatBusOnly() {
+        let trips = [TripFix.trip("tR1", "R", "v101", "101", [("A3", 60), ("A4", 180)]),
+                     TripFix.trip("tR2", "R", "v101", "101", [("A4", 900), ("A5", 1000)]),   // its next trip
+                     TripFix.trip("tR3", "R", "v102", "102", [("A3", 30), ("A6", 200)])]
+        func at(_ sid: String) -> [Arrival] { Arrivals.arrivalsFor(trips: trips, stopId: sid, routeId: "R", now: NOW) }
+        XCTAssertEqual(at("A3").first?.vehicleId, "v102", "the next bus at A3 is the other bus")
+        XCTAssertEqual(BusNumbers.busArrival(at("A3"), vehicleId: "v101")?.t, NOW + 60, "the picked bus's own time")
+        XCTAssertEqual(BusNumbers.busArrival(at("A4"), vehicleId: "v101")?.t, NOW + 180, "its earliest at that stop")
+        XCTAssertEqual(BusNumbers.busArrival(at("A5"), vehicleId: "v101")?.t, NOW + 1000, "from its next trip too")
+        XCTAssertNil(BusNumbers.busArrival(at("A6"), vehicleId: "v101"), "no prediction from this bus there: no time")
+        XCTAssertNil(BusNumbers.busArrival(at("A3"), vehicleId: nil))
     }
 
     // MARK: Arriving In
