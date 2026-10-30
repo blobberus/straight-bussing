@@ -695,6 +695,7 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   where it has no prediction; pills / rail markers say "Bus 2". main.js clears busId when the route page closes or the
   bus is no longer shown. State: `busId` (nav, not persisted). Tests: core-busnum.js, route-busnum.js, map-layers.js,
   e2e.js (a bus tap picks it, back clears it).
+- 2026-10-30 (later): a picked bus left out of a feed poll keeps its pick for `PICK_HOLD_S` (45 s, like the map's badge, MISSING_S); leaving the route page still lets go at once (`busnum.pickCheck`, main.js). sw sb-v2-75.
 
 ## Arriving In, trips with no bus, walk first (2026-10-30, owner: "the time that is shown when the menu is minimized ... should show the time until the next bus will arrive at their stop. Call it Arriving In: ... rather show the current walking time or the duration of the next step if the user's trip has no bus", "if the distance is very close, it is ok to just suggest the user to walk on their first travel option")
 - Current trip header (main.js shows the view's meta at every detent, so also minimized): while a plan journey is on,

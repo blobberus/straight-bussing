@@ -90,3 +90,22 @@ export function busArrival(arrivals, vehicleId) {
   if (id == null) return null;
   return (arrivals || []).find((a) => a && a.vehicleId === id) || null;
 }
+
+/** A picked bus missing from the feed keeps its pick this long: as long as the map keeps its badge (map/layers.js MISSING_S). */
+export const PICK_HOLD_S = 45;
+
+/**
+ * Should the picked bus be let go now? At once when the rider leaves its route page; when it is missing from the feed,
+ * only after PICK_HOLD_S (Passio's lists sometimes leave a running bus out for a poll or two, DC-015).
+ * @param {object} state store state
+ * @param {number} goneSince when the picked bus was first missing (0 = it is shown)
+ * @param {number} now unix seconds
+ * @returns {{clear:boolean, goneSince:number}}
+ */
+export function pickCheck(state, goneSince, now) {
+  if (!state || state.busId == null) return { clear: false, goneSince: 0 };
+  if (state.view !== "route") return { clear: true, goneSince: 0 };
+  if (selectedBus(state)) return { clear: false, goneSince: 0 };
+  const since = goneSince || now;
+  return now - since >= PICK_HOLD_S ? { clear: true, goneSince: 0 } : { clear: false, goneSince: since };
+}

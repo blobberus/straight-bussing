@@ -1,6 +1,6 @@
 // core/busnum.js (core.test.html): bus numbers on a line, the picked bus, its own times (owner 2026-10-30).
 import { test, eq, ok } from "./lib.js";
-import { busKey, compareIds, busNumbers, busName, selectedBus, busArrival } from "../js/core/busnum.js";
+import { busKey, compareIds, busNumbers, busName, selectedBus, busArrival, pickCheck, PICK_HOLD_S } from "../js/core/busnum.js";
 
 const bus = (id, rid, label) => ({ vehicle: { id, label }, trip: { route_id: rid }, position: { latitude: 41.79, longitude: -87.6 } });
 
@@ -52,4 +52,19 @@ test("busnum: a bus's own time at a stop, never another bus's", () => {
   eq(busArrival(arr, "v2").t, 200);
   eq(busArrival(arr, "v3"), null, "no prediction for that bus: no time");
   eq(busArrival(arr, null), null);
+});
+
+test("busnum: a picked bus left out of a poll keeps its pick for PICK_HOLD_S; leaving the route page lets go at once", () => {
+  const bus = { id: "4320", vehicle: { id: "4320" }, trip: { route_id: "R1" } };
+  const on = { view: "route", routeId: "R1", busId: "4320", buses: [bus] };
+  const gone = { ...on, buses: [] };
+  eq(pickCheck(on, 0, 1000), { clear: false, goneSince: 0 });
+  let r = pickCheck(gone, 0, 1000);
+  eq(r, { clear: false, goneSince: 1000 }, "first poll without it: keep, start the clock");
+  r = pickCheck(gone, r.goneSince, 1000 + PICK_HOLD_S - 1);
+  eq(r.clear, false, "still within the hold");
+  eq(pickCheck(on, r.goneSince, 1000 + 20), { clear: false, goneSince: 0 }, "back again: the clock resets");
+  eq(pickCheck(gone, 1000, 1000 + PICK_HOLD_S).clear, true, "missing for the whole hold: let go");
+  eq(pickCheck({ ...on, view: "nearby" }, 0, 1000).clear, true, "left the route page: let go at once");
+  eq(pickCheck({ view: "route", busId: null }, 0, 1000), { clear: false, goneSince: 0 });
 });

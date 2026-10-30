@@ -14,7 +14,7 @@ import { hav } from "./core/geo.js";
 import { DEMO } from "./core/demo.js";
 import { mapVisibility, lineTapOpens } from "./core/visibility.js";
 import { settleTimeView } from "./core/custom.js";
-import { busKey, selectedBus } from "./core/busnum.js";
+import { busKey, selectedBus, pickCheck } from "./core/busnum.js";
 import { createMap } from "./map/map.js";
 import { loadStatic } from "./data/static.js";
 import { startLive } from "./data/live.js";
@@ -393,8 +393,10 @@ async function boot() {
   mountContextBar(el.ctxbar, store);
 
   store.subscribe((s, changed) => { syncMap(s, changed); scheduleRender(); syncHistory(); });
-  // the picked bus goes when the rider leaves its route page or it is no longer shown (back to the next bus at each stop)
-  store.subscribe((s) => { if (s.busId != null && !selectedBus(s)) store.set({ busId: null }); });
+  // the picked bus goes when the rider leaves its route page, or when it has been missing from the feed for PICK_HOLD_S
+  // (a bus left out of one or two polls keeps its pick, as the map keeps its badge); then back to the next bus at each stop
+  let pickGone = 0;
+  store.subscribe((s) => { const r = pickCheck(s, pickGone, nowS()); pickGone = r.goneSince; if (r.clear) store.set({ busId: null }); });
   // Lines by Time: the moment the shown lines change (one deselected or added), the "Lines active at" name goes and the lines stay
   store.subscribe((s, changed) => { if (s.timeView && (!changed || changed.has("hiddenRoutes") || changed.has("routes"))) { const p = settleTimeView(s); if (Object.keys(p).length) store.set(p); } });
   render();
