@@ -34,7 +34,7 @@ def counts_distinct_visitors_and_visits():
     r = U.summarize(STARTS, ENDS, PLACES)
     assert "**3 distinct visitors**, 4 logins (a visitor counts again only after 30 minutes), 4 visits" in r, r
     assert "1 visitors came back" in r
-    assert "| 2026-10-27 | Tue | 2 | 3 | 2 |" in r and "| 2026-10-26 | Mon | 1 | 1 | 0 |" in r
+    assert "| 2026-10-27 | Tue | 2 | 3 | 2 |" in r and "| 2026-10-26 | Mon | 1 | 1 | 1 |" in r, r   # C is new on its first day
 
 
 @test
@@ -88,6 +88,13 @@ def reads_receiver_version_2_headers_and_skips_test_rows():
 def logins_fold_reloads_within_30_minutes():
     S = [start(A, S1, t="08:00"), start(A, S2, t="08:10"), start(A, S3, t="08:31"), start(B, S4, t="08:05")]
     assert U.logins(S) == 3, U.logins(S)   # A: 08:00 (+08:10 folded), 08:31; B: 08:05
+
+
+@test
+def a_visitor_is_new_once_whatever_the_flags_say():
+    rows = [start(A, S1, day="2026-10-26", wd="1", nu="1"), start(A, S2, nu="1"), start(A, S3, nu="1"), start(B, S4, nu="0")]
+    r = U.summarize(rows, [], [])
+    assert "| 2026-10-26 | Mon | 1 | 1 | 1 |" in r and "| 2026-10-27 | Tue | 2 | 3 | 1 |" in r, r   # A new on 10-26 only; B new on 10-27
 
 
 if __name__ == "__main__":

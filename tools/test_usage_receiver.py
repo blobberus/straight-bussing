@@ -68,6 +68,22 @@ try {
   check("hours in 12-hour clock", JSON.stringify(s.hours) === JSON.stringify([["8 AM", 2, 2], ["9 AM", 1, 1], ["5 PM", 1, 1]]), s.hours);
   check("places by visits, guard removed", JSON.stringify(s.places) === JSON.stringify([["Reynolds Club", 2, 1], ["=x", 1, 1]]), s.places);
   check("updated stamp in Chicago time", s.updated === "2026-10-29 1:30 PM", s.updated);
+  // new visitor = first appearance of the anonymous number, counted once (owner 2026-10-30)
+  var t0 = new Date(Date.UTC(2026, 9, 26, 13)), t1 = new Date(Date.UTC(2026, 9, 29, 13)), t2 = new Date(Date.UTC(2026, 9, 29, 14));
+  var rowsNV = [
+    [t1, A, S1, day("2026-10-29"), "Thu", "08:00", "browser", "2.0.0", "Yes"],   // A again (flag wrong): No
+    [t2, A, S2, day("2026-10-29"), "Thu", "09:00", "browser", "2.0.0", "Yes"],   // A again: No
+    [t0, A, S3, day("2026-10-26"), "Mon", "08:00", "browser", "2.0.0", "No"],    // A's first visit (appended later): Yes
+    [t1, B, S4, day("2026-10-29"), "Thu", "08:00", "browser", "2.0.0", "No"],    // B's first visit (flag missing): Yes
+    [t1, B, "5".repeat(31) + "a", day("2026-10-29"), "Thu", "08:00", "browser", "2.0.0", 1],   // same moment, later row: No
+    [t1, 0, "6".repeat(31) + "a", day("2026-10-29"), "Thu", "08:00", "browser", "receivercheck", "Yes"]   // test row: No
+  ];
+  check("new visitor flags: each number's earliest row only", newVisitorFlags(rowsNV).join(",") === "No,No,Yes,Yes,No,No", newVisitorFlags(rowsNV));
+  var sNV = summarize(rowsNV, [], [], NOW), tNV = {};
+  sNV.totals.forEach(function (r) { tNV[r[0]] = r[1]; });
+  var dNV = {}; sNV.days.forEach(function (r) { dNV[r[0]] = r[4]; });
+  check("summary: new visitors by first day, never twice for one number", dNV["2026-10-29"] === 1 && dNV["2026-10-26"] === 1
+    && tNV["New visitors today (first visit ever)"] === 1 && tNV["New visitors, last 7 days"] === 2, { days: dNV, totals: tNV });
 } catch (e) { check("no exception", false, String(e && e.stack || e)); }
 document.getElementById("out").textContent = results.join("\n");
 document.title = "RESULT fail=" + fail;

@@ -16,6 +16,10 @@
  * GET ?seen=<visit number> answers yes / no: whether that one visit arrived (for checking the setup; a visit number
  * is a random 32-digit hex value, so this reveals nothing about anyone).
  * Version 1 tabs (headers like received_utc) are converted the first time version 2 runs.
+ * New visitor (owner 2026-10-30: "do not double count users that have the same id"): Yes only on the first row of
+ * each anonymous number. Decided here, not by the browser: a start row is new only if its number is not in starts yet,
+ * and every summary refresh re-marks the whole column (each number's earliest row Yes, all others No) and counts the
+ * flags it corrected. The Summary counts new visitors by the day each number first appeared.
  */
 var CHI = "America/Chicago";
 var HEADERS = {
@@ -45,6 +49,7 @@ function doPost(e) {
     lock.waitLock(10000);
     try {
       ensureSetup();
+      if (d.e === "start") row[8] = knownVisitor(String(d.id)) ? "No" : "Yes";   // new = this number never seen before
       tab(d.e).appendRow(row);
       maybeRefreshSummary();
     } finally {
@@ -110,6 +115,39 @@ function toRow(d, now) {
   return [now, d.id, d.sid, zone];
 }
 
+/** Is this anonymous number already in the starts tab? */
+function knownVisitor(id) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TAB_NAMES.start);
+  if (!sh || sh.getLastRow() < 2) return false;
+  return !!sh.getRange(2, 2, sh.getLastRow() - 1, 1).createTextFinder(id).matchEntireCell(true).findNext();
+}
+
+/** A row's received moment: a Date, or a version 1 ISO text; null if unreadable. */
+function whenOf(v) {
+  if (v instanceof Date) return v;
+  var d = v ? new Date(v) : null;
+  return d && !isNaN(d.getTime()) ? d : null;
+}
+
+/**
+ * The New visitor column as it should be: "Yes" on each anonymous number's earliest row (received time; sheet order
+ * breaks ties), "No" on every other row and on test rows. Pure.
+ * @param {Array[]} starts rows of the starts tab
+ * @returns {string[]}
+ */
+function newVisitorFlags(starts) {
+  var first = {};
+  starts.forEach(function (r, i) {
+    if (!r[2] || isTestRow(r[1], r[7])) return;
+    var t = whenOf(r[0]), ms = t ? t.getTime() : Infinity, key = String(r[1]);
+    if (!(key in first) || ms < first[key].ms) first[key] = { ms: ms, i: i };
+  });
+  return starts.map(function (r, i) {
+    var f = first[String(r[1])];
+    return f && f.i === i ? "Yes" : "No";
+  });
+}
+
 /** "HH:mm" for a text time or a time Sheets turned into a clock value. */
 function timeText(v) {
   if (v instanceof Date) return Utilities.formatDate(v, CHI, "HH:mm");
@@ -147,7 +185,7 @@ function summarize(starts, ends, places, now) {
   starts.forEach(function (r) {
     if (!r[2] || isTestRow(r[1], r[7])) return;
     var v = { visitor: String(r[1]), sid: String(r[2]), day: dayText(r[3]), weekday: String(r[4]),
-      hour: parseInt(timeText(r[5]).slice(0, 2), 10), app: String(r[6]), isNew: r[8] === "Yes" || r[8] === 1 || r[8] === "1" };
+      hour: parseInt(timeText(r[5]).slice(0, 2), 10), app: String(r[6]) };
     if (/^\d$/.test(v.weekday)) v.weekday = DAYS[Number(v.weekday)];   // version 1 rows
     visits.push(v);
     sessions[v.sid] = v;
@@ -167,12 +205,17 @@ function summarize(starts, ends, places, now) {
     var m = median(list.filter(function (v) { return len[v.sid] !== undefined; }).map(function (v) { return len[v.sid]; }));
     return m === null ? "" : Math.round(m / 6) / 10;
   };
+  var firstDay = {};   // each anonymous number's first day: a visitor is new once (owner 2026-10-30)
+  visits.forEach(function (v) { if (!firstDay[v.visitor] || v.day < firstDay[v.visitor]) firstDay[v.visitor] = v.day; });
+  var newOn = function (from, to) {
+    return Object.keys(firstDay).filter(function (k) { return firstDay[k] >= from && firstDay[k] <= to; }).length;
+  };
   var todays = visits.filter(function (v) { return v.day === today; });
   var week = visits.filter(function (v) { return v.day >= weekAgo && v.day <= today; });
   var home = visits.filter(function (v) { return v.app === "home-screen"; }).length;
   var totals = [
-    ["Distinct visitors today", uniq(todays)], ["Visits today", todays.length],
-    ["Distinct visitors, last 7 days", uniq(week)], ["Visits, last 7 days", week.length],
+    ["Distinct visitors today", uniq(todays)], ["New visitors today (first visit ever)", newOn(today, today)], ["Visits today", todays.length],
+    ["Distinct visitors, last 7 days", uniq(week)], ["New visitors, last 7 days", newOn(weekAgo, today)], ["Visits, last 7 days", week.length],
     ["Distinct visitors, all time", uniq(visits)], ["Visits, all time", visits.length],
     ["Typical visit length, all time (median minutes)", mins(visits)],
     ["Visits from the installed home-screen app", visits.length ? Math.round(100 * home / visits.length) + "%" : ""]
@@ -181,7 +224,7 @@ function summarize(starts, ends, places, now) {
   visits.forEach(function (v) { (byDay[v.day] = byDay[v.day] || []).push(v); });
   var days = Object.keys(byDay).sort().reverse().slice(0, 30).map(function (d) {
     var list = byDay[d];
-    return [d, list[0].weekday, uniq(list), list.length, list.filter(function (v) { return v.isNew; }).length, mins(list)];
+    return [d, list[0].weekday, uniq(list), list.length, newOn(d, d), mins(list)];
   });
   var hours = [];
   for (var h = 0; h < 24; h++) {
@@ -286,9 +329,36 @@ function rowsOf(ss, kind) {
   return sh.getRange(2, 1, sh.getLastRow() - 1, HEADERS[kind].length).getValues();
 }
 
+/**
+ * Re-mark the starts tab's New visitor column (newVisitorFlags): runs with every summary refresh, so repeated "Yes"
+ * flags for the same number (old rows, races, imported data) are cleaned automatically. Writes only when something
+ * changes and adds the count to the document property newFixed.
+ * @returns {number} flags corrected now
+ */
+function cleanNewVisitors(ss) {
+  var sh = ss.getSheetByName(TAB_NAMES.start);
+  if (!sh || sh.getLastRow() < 2) return 0;
+  var n = sh.getLastRow() - 1;
+  var rows = sh.getRange(2, 1, n, HEADERS.start.length).getValues();
+  var flags = newVisitorFlags(rows), fixed = 0, changed = 0;
+  var col = rows.map(function (r, i) {
+    var was = r[8] === "Yes" || r[8] === 1 || r[8] === "1" ? "Yes" : "No";   // version 1 rows hold 1 / 0
+    if (was !== flags[i]) fixed++;
+    if (String(r[8]) !== flags[i]) changed++;
+    return [flags[i]];
+  });
+  if (!changed) return 0;
+  sh.getRange(2, 9, n, 1).setValues(col);
+  var props = PropertiesService.getDocumentProperties();
+  props.setProperty("newFixed", String(Number(props.getProperty("newFixed") || 0) + fixed));
+  return fixed;
+}
+
 /** Menu item: rebuild the Summary tab (first tab) from the raw tabs. */
 function refreshSummary() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  cleanNewVisitors(ss);
+  var fixed = Number(PropertiesService.getDocumentProperties().getProperty("newFixed") || 0);
   var s = summarize(rowsOf(ss, "start"), rowsOf(ss, "end"), rowsOf(ss, "place"), new Date());
   var sh = ss.getSheetByName("Summary") || ss.insertSheet("Summary", 0);
   if (sh.getIndex() !== 1) { ss.setActiveSheet(sh); ss.moveActiveSheet(1); }
@@ -308,6 +378,7 @@ function refreshSummary() {
   };
   put([["Straight Bussing website: anonymous visitors"]], "title");
   put([["Updated " + s.updated + " (Chicago time). A visitor is a random number made in one browser; identity is never collected. Test rows are left out."]], "note");
+  put([["New visitor = the first visit of that anonymous number, counted once. Repeated new-visitor flags corrected so far: " + fixed + "."]], "note");
   r++;
   put([["Totals", "Count"]], "head");
   put(s.totals);

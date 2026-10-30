@@ -67,6 +67,15 @@ folded in"). Newest first; columns Login (Chicago time), Weekday, Visitor, App, 
 rows are left out. The new tab can have any name; the data tab must be called `starts`. `tools/usage_report.py`
 prints the same login count. Visit lengths stay in the **ends** tab (joining them in a formula is left out on purpose).
 
+**New visitors are counted once (2026-10-30, owner: "do not double count users that have the same id", automated).** A
+visitor is new only on the first visit of their anonymous number. The receiver decides this itself instead of trusting
+the browser's flag: a start row is "New visitor: Yes" only if its number is not in **starts** yet. Every summary
+refresh (every 5 minutes with new rows, and on opening the Sheet) re-marks the whole New visitor column (each number's
+earliest row Yes, all others No), so older rows and any repeats are cleaned automatically; the Summary shows how many
+flags it has corrected. The Summary's "New visitors" (per day, today, last 7 days) count each number on the day it
+first appeared. The logins formula works its New visitor column out the same way (a visitor's earliest login), and
+`tools/usage_report.py` too.
+
 **Is my visit counted?** Open the site, then Settings > Usage statistics: the app reads the receiver's reply and says
 "This visit was counted at ..." (or why not). In the Sheet look at the **starts** tab (or Summary), not Sheet1. In the
 Apps Script editor, **Executions** lists every doPost with its time and status.

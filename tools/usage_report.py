@@ -105,13 +105,18 @@ def summarize(starts, ends, places, since=None):
 
     out += ["## When people open it", "", "### Per day", "", "| day | weekday | distinct visitors | visits | new visitors |",
             "|---|---|---:|---:|---:|"]
+    # a visitor is new once: on the day their anonymous number first appears, whatever the browser flagged (owner 2026-10-30)
+    first_day = {}
+    for r in S:
+        if r["anon_id"] not in first_day or r["day"] < first_day[r["anon_id"]]:
+            first_day[r["anon_id"]] = r["day"]
     per_day = defaultdict(list)
     for r in S:
         per_day[r["day"]].append(r)
     for d in days:
         rs = per_day[d]
         wd = DAYS[int(rs[0]["weekday"])] if str(rs[0].get("weekday", "")).isdigit() else ""
-        out.append(f"| {d} | {wd} | {len({r['anon_id'] for r in rs}):,} | {len(rs):,} | {sum(1 for r in rs if str(r.get('new_user')) == '1'):,} |")
+        out.append(f"| {d} | {wd} | {len({r['anon_id'] for r in rs}):,} | {len(rs):,} | {sum(1 for f in first_day.values() if f == d):,} |")
     out += ["", "### By hour of the day (Chicago time the visit started)", "", "| hour | visits | share | distinct visitors |",
             "|---|---:|---:|---:|"]
     by_hour = defaultdict(list)
