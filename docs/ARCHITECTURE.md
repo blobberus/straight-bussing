@@ -679,3 +679,19 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   counter, so each loop clears only its own handle); `LiveActivityController` sends updates and the final end in order
   (a `lastSend` chain), so the Lock Screen never shows older numbers than the app sent last; Kit `DSTTests` pin Nov 1
   2026 / Mar 14 2027 (with tools/test_dst.py and tests/core-dst.js). CI 40840132902.
+
+## Numbered buses; a picked bus's own times (2026-10-30, owner: "if there are multiple buses on a line, name them with a number so that if a user clicks on a particular bus it will show their arrival times at each station instead of the closest one while that bus is clicked")
+- core/busnum.js (pure; iOS Kit mirrors it): `busNumbers(store.buses)` names a route's buses 1, 2, ... only when it
+  shows 2 or more, in vehicle id order (numeric when both ids are numbers, else text), so names stay put while the same
+  buses run; `busKey` (vehicle id, else label), `busName` ("Bus 2" / "Bus <fleet label>" / "This bus"),
+  `selectedBus(state)` (store.busId, only on that route's page and while the bus is shown), `busArrival` (one vehicle
+  id's own prediction at a stop, never another bus's).
+- Map (map/layers.js createBusLayer): a white disc with the number at the top right of the bus badge, updated in place
+  (no rebuild, the motion of map/track.js continues); name/aria-label "Bus 2, <route name>"; the picked bus gets the
+  `is-picked` ring. main.js passes `selected` with drawBuses (BUS_KEYS has busId).
+- A bus tap opens its route with that bus picked (main.js onBusTap -> openRoute + store.busId); in the route page
+  "Where the buses are" rows are buttons (`route:bus`, again = unpick, 44 px, aria-pressed). Picked: "Showing Bus 2's
+  times" + "Show the next bus at each stop" (`route:allbuses`); every station's time is that bus's own (busArrival), none
+  where it has no prediction; pills / rail markers say "Bus 2". main.js clears busId when the route page closes or the
+  bus is no longer shown. State: `busId` (nav, not persisted). Tests: core-busnum.js, route-busnum.js, map-layers.js,
+  e2e.js (a bus tap picks it, back clears it).

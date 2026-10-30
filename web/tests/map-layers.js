@@ -109,6 +109,29 @@ test('bus layer: in-place updates, recreate only on route change, stale + hidden
   m.remove();
 });
 
+test('bus layer: numbered buses (2 or more on a line), their names, the picked bus (owner 2026-10-30)', () => {
+  const m = bareMap('t-busnum');
+  const taps = [];
+  const layer = createBusLayer(m, { onBusTap: (b) => taps.push(b) });
+  const o = { routes, hidden: [], focus: null, nowS: 1010 };
+  layer.draw([bus(12, 'r1', 1, 1), bus(4, 'r1', 2, 2), bus(7, 'r2', 3, -2)], o);
+  const els = () => [...m.getContainer().querySelectorAll('.sb-busicon')];
+  const byName = (t) => els().find((e) => e.getAttribute('aria-label') === t);
+  ok(byName('Bus 1, Central') && byName('Bus 2, Central'), 'r1 has two buses: Bus 1 (id 4) and Bus 2 (id 12)');
+  eq(byName('Bus 1, Central').querySelector('.sb-bus-num').textContent, '1');
+  ok(byName('Route N bus') || els().some((e) => !e.querySelector('.sb-bus-num')), 'the only bus on r2 has no number');
+  const el12 = byName('Bus 2, Central');
+  layer.draw([bus(12, 'r1', 1, 1), bus(4, 'r1', 2, 2), bus(7, 'r2', 3, -2)], { ...o, selected: '12' });
+  ok(el12.querySelector('.sb-bus').classList.contains('is-picked'), 'the picked bus is highlighted');
+  ok(el12.isConnected, 'same marker element (no rebuild)');
+  layer.draw([bus(12, 'r1', 1, 1), bus(7, 'r2', 3, -2)], o);
+  ok(!el12.querySelector('.sb-bus-num') && el12.getAttribute('aria-label') === 'Route CEN bus', 'one bus left: the number goes, in place');
+  ok(!el12.querySelector('.sb-bus').classList.contains('is-picked'));
+  el12.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  eq(taps[0]?.id, '12', 'the tap carries the bus key');
+  m.remove();
+});
+
 test('MapApi: theme, network diff, plan, highlights, flyTo offset by inset', async () => {
   box('t-api');
   const api = createMap('t-api');

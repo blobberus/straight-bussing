@@ -14,6 +14,7 @@ import { hav } from "./core/geo.js";
 import { DEMO } from "./core/demo.js";
 import { mapVisibility, lineTapOpens } from "./core/visibility.js";
 import { settleTimeView } from "./core/custom.js";
+import { busKey, selectedBus } from "./core/busnum.js";
 import { createMap } from "./map/map.js";
 import { loadStatic } from "./data/static.js";
 import { startLive } from "./data/live.js";
@@ -38,7 +39,7 @@ const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "
   "highlightStops", "drawPlan", "drawFavorites", "setTrip", "inView", "setLandmarks", "fitTo", "flyTo", "onStopTap", "onBusTap", "onLineTap", "onUserMove", "onMapTap"];
 const VIS_KEYS = ["hiddenRoutes", "routeFilter", "view", "routeId", "routeOrder", "journey", "activeCustom", "customRoutes"];
 const NET_KEYS = ["routes", "shapes", "routeStops", "stopRoutes", "stops", "theme", ...VIS_KEYS];
-const BUS_KEYS = ["buses", "feedTs", "routes", ...VIS_KEYS];
+const BUS_KEYS = ["buses", "feedTs", "routes", "busId", ...VIS_KEYS];
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -90,7 +91,8 @@ function syncMap(s, changed) {
   const { hidden, focus, order } = mapVisibility(s);   // journey > custom route / hidden list; see core/visibility.js
   if (NET_KEYS.some(has)) mapCall("drawNetwork", { routes: s.routes, shapes: s.shapes, routeStops: s.routeStops,
     stopRoutes: s.stopRoutes, stops: s.stops, hidden, focus, order, dark: isDark() });
-  if (BUS_KEYS.some(has)) mapCall("drawBuses", s.buses || [], { routes: s.routes, shapes: s.shapes, hidden, focus, nowS: nowS() });
+  if (BUS_KEYS.some(has)) mapCall("drawBuses", s.buses || [], { routes: s.routes, shapes: s.shapes, hidden, focus, nowS: nowS(),
+    selected: busKey(selectedBus(s)) });   // the bus picked on the route page is highlighted
   if (has("view") || has("stopId") || has("stops")) {
     const st = s.view === "stop" && s.stopId && s.stops ? s.stops[s.stopId] : null;
     mapCall("setSelectedStop", st ? { id: s.stopId, lat: st.lat, lon: st.lon } : null);
@@ -366,7 +368,12 @@ async function boot() {
     if (def && typeof def.onStopTap === "function" && safe(() => def.onStopTap(String(id), ctx), false)) return;
     openStop(id);
   });
-  mapCall("onBusTap", (x) => openRoute(x && typeof x === "object" ? x.rid || x.routeId || (x.trip && x.trip.route_id) : x, false));
+  // a bus tap opens its route with THAT bus picked: the route page shows its own time at each station (owner 2026-10-30)
+  mapCall("onBusTap", (x) => {
+    const rid = x && typeof x === "object" ? x.rid || x.routeId || (x.trip && x.trip.route_id) : x;
+    openRoute(rid, false);
+    if (x && typeof x === "object" && x.id != null && store.get().view === "route") store.set({ busId: String(x.id) });
+  });
   const lowerSheet = () => { if (!sheet.isPanel() && sheet.getDetent() !== "peek") sheet.setDetent("peek"); };
   mapCall("onMapTap", lowerSheet);   // tap outside the sheet: back to the map
   // a tap on a route line opens the line drawn on top, as choosing it in the Routes list does (owner 2026-10-27);
@@ -386,6 +393,8 @@ async function boot() {
   mountContextBar(el.ctxbar, store);
 
   store.subscribe((s, changed) => { syncMap(s, changed); scheduleRender(); syncHistory(); });
+  // the picked bus goes when the rider leaves its route page or it is no longer shown (back to the next bus at each stop)
+  store.subscribe((s) => { if (s.busId != null && !selectedBus(s)) store.set({ busId: null }); });
   // Lines by Time: the moment the shown lines change (one deselected or added), the "Lines active at" name goes and the lines stay
   store.subscribe((s, changed) => { if (s.timeView && (!changed || changed.has("hiddenRoutes") || changed.has("routes"))) { const p = settleTimeView(s); if (Object.keys(p).length) store.set(p); } });
   render();

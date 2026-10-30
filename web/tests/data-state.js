@@ -8,7 +8,7 @@ const CONTRACT_KEYS = ['routes', 'stops', 'shapes', 'routeStops', 'stopRoutes', 
   'buses', 'trips', 'alerts', 'feedTs', 'lastOk', 'failed', 'liveLoaded',
   'user', 'locState', 'locErr', 'hiddenRoutes', 'theme', 'service', 'landmarks',
   'routeOrder', 'customRoutes', 'activeCustom', 'prevHidden', 'favStops', 'notify', 'usage', 'journey', 'timeView',
-  'view', 'prevView', 'stopId', 'routeId', 'routeFilter'];
+  'view', 'prevView', 'stopId', 'routeId', 'routeFilter', 'busId'];
 
 /** Run fn with the persisted prefs saved/restored around it. */
 async function withPrefs(fn) {

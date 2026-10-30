@@ -8,6 +8,10 @@
  * 2026-10-27), and the no-bus help (operator's route assistance number, 773.702.8181) follows it instead of coming
  * first (owner 2026-10-29: hours and scheduled buses by hour first). The map focuses on the route (core/visibility.js mapFocus); route:open, and a tap on the route's
  * line on the map (main.js onLineTap), also fit the map to the route shape.
+ * Bus numbers (owner 2026-10-30, core/busnum.js): a route with 2 or more buses names them "Bus 1", "Bus 2"; a bus
+ * tapped on the map (main.js onBusTap) or in "Where the buses are" is picked (store.busId): every station then shows
+ * THAT bus's own next live time (none where it has no prediction), under "Showing Bus 2's times" with "Show the next
+ * bus at each stop". Leaving the page or the bus going away clears it (main.js).
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -20,6 +24,7 @@ import { serviceHoursAt, isScheduledNow, weekSummary, upcomingChanges, busesByHo
 import { emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { noLiveStatus } from "../../core/operating.js";
 import { noBusHelpHTML } from "./alerts.js";
+import { busKey, busNumbers, busName, selectedBus, busArrival } from "../../core/busnum.js";
 
 const STALE_BUS_S = 60;
 const DAY_NAME = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
@@ -61,7 +66,7 @@ export function busPositions(state, rid, now) {
   const list = state.routeStops?.[rid] || [], ids = stopOrder(list);
   const loop = list.length > 2 && list[0] === list[list.length - 1];
   const name = (i) => state.stops?.[ids[i]]?.name || ids[i];
-  const out = [];
+  const out = [], nums = busNumbers(state.buses);
   for (const b of state.buses || []) {
     if (b?.trip?.route_id !== rid || !b.stop_id) continue;
     const next = ids.indexOf(b.stop_id);
@@ -75,17 +80,18 @@ export function busPositions(state, rid, now) {
       if (dp + dn > 0) frac = Math.min(0.9, Math.max(0.1, dp / (dp + dn)));
     }
     const seen = Number(b.timestamp) || 0, stale = !!seen && now - seen > STALE_BUS_S;
-    const label = String(b.vehicle?.label || b.vehicle?.id || "");
-    let text = `Bus ${label} ` + (prev === null ? `approaching ${name(next)}` : `between ${name(prev)} and ${name(next)}, heading to ${name(next)}`);
+    const num = nums.get(busKey(b)) || 0, called = busName(b, nums);
+    const label = num ? called : String(b.vehicle?.label || b.vehicle?.id || "");
+    let text = `${called} ` + (prev === null ? `approaching ${name(next)}` : `between ${name(prev)} and ${name(next)}, heading to ${name(next)}`);
     if (stale) text += `, location from ${ago(seen, now)}`;
-    out.push({ label, next, prev, frac, stale, seen, text });
+    out.push({ key: busKey(b), num, name: called, label, next, prev, frac, stale, seen, text });
   }
   return out;
 }
 
 /** One rail marker (decorative: the bus list above the timeline carries the same text). */
-function busMarker(b, color, fg, top) {
-  return `<span class="r-bus${b.stale ? " is-stale" : ""}" style="top:${top};background:${color};color:${fg}" aria-hidden="true">${esc(b.label || "Bus")}</span>`;
+function busMarker(b, color, fg, top, picked) {
+  return `<span class="r-bus${b.stale ? " is-stale" : ""}${picked ? " is-picked" : ""}" style="top:${top};background:${color};color:${fg}" aria-hidden="true">${esc(b.label || "Bus")}</span>`;
 }
 
 /**
@@ -197,20 +203,24 @@ export function renderRoute(state, now = nowS()) {
     if (!railAt.has(host)) railAt.set(host, []);
     railAt.get(host).push(b);
   }
-  if (pos.length) h += `<ul class="r-buslist" aria-label="Where the buses are">${pos.map((b) => `<li${b.stale ? ' class="is-stale"' : ""}><span class="r-dot" style="background:${color}" aria-hidden="true"></span>${esc(b.text)}</li>`).join("")}</ul>`;
+  const picked = selectedBus(state), pk = busKey(picked), pname = picked ? busName(picked, busNumbers(state.buses)) : "";
+  if (picked) h += `<div class="v-note r-busnote" role="status"><span class="v-grow v-sec">${esc(`Showing ${pname}'s times`)}</span><button type="button" class="v-btn v-btn--quiet" data-action="route:allbuses">Show the next bus at each stop</button></div>`;
+  if (pos.length) h += `<ul class="r-buslist" aria-label="Where the buses are">${pos.map((b) => `<li${b.stale ? ' class="is-stale"' : ""}><button type="button" class="r-busbtn${b.key === pk ? " is-picked" : ""}" data-action="route:bus" data-id="${esc(b.key)}" aria-pressed="${b.key === pk}" aria-label="${esc(`${b.text}. ${b.key === pk ? "Showing its times" : "Show its times"}`)}"><span class="r-dot" style="background:${color}" aria-hidden="true"></span><span class="v-grow">${esc(b.text)}</span></button></li>`).join("")}</ul>`;
   h += `<ol class="v-tl r-tl" style="--rc:${color}" aria-label="Stops on ${esc(r.long || r.short || "route")}, in travel order">`;
   ids.forEach((sid, i) => {
-    const a = state.liveLoaded ? arrivalsFor(state, sid, { routeId: rid, nowS: now })[0] : null;
+    const all = state.liveLoaded ? arrivalsFor(state, sid, { routeId: rid, nowS: now }) : [];
+    const a = picked ? busArrival(all, pk) : all[0];   // a picked bus: its own time only, never another bus's
     const eta = etaLabel(a?.t, now, stale), name = state.stops?.[sid]?.name || sid;
     const here = busAt.get(i) || [];
-    const pill = here.map((b) => `<span class="v-tlbus${b.stale ? " is-stale" : ""}" style="background:${color};color:${fg}">Bus ${esc(b.label)} heading here${b.stale ? ` &middot; seen ${esc(ago(b.seen, now))}` : ""}</span>`).join("");
+    const pill = here.map((b) => `<span class="v-tlbus${b.stale ? " is-stale" : ""}${b.key === pk ? " is-picked" : ""}" style="background:${color};color:${fg}">${esc(b.name)} heading here${b.stale ? ` &middot; seen ${esc(ago(b.seen, now))}` : ""}</span>`).join("");
     // one element for screen readers (iOS RouteDetailView): name, "next bus in N min" / "no prediction", the bus heading here
-    const old = here.find((b) => b.stale), label = `${name}${eta ? ", next bus " + (eta === "Now" ? "now" : "in " + eta.replace("~", "about ")) : ", no prediction"}${here.length ? ", a bus is heading here" + (old ? `, seen ${ago(old.seen, now)}` : "") : ""}`;
+    const who = picked ? pname : "next bus";
+    const old = here.find((b) => b.stale), label = `${name}${eta ? `, ${who} ` + (eta === "Now" ? "now" : "in " + eta.replace("~", "about ")) : picked ? `, no prediction for ${pname}` : ", no prediction"}${here.length ? ", a bus is heading here" + (old ? `, seen ${ago(old.seen, now)}` : "") : ""}`;
     const last = i === ids.length - 1;
     let rail = last && !loop ? "" : `<span class="r-seg" aria-hidden="true">${CHEVRON}</span>`;
     for (const b of railAt.get(i) || []) {
       const top = b.prev === null ? "18%" : last ? `calc(50% + ${Math.round(b.frac * 50)}%)` : `calc(50% + ${Math.round(b.frac * 100)}%)`;
-      rail += busMarker(b, color, fg, top);
+      rail += busMarker(b, color, fg, top, b.key === pk);
     }
     h += `<li class="v-tlstop${here.length ? " has-bus" : ""}${last && loop ? " is-loopend" : ""}">${rail}<button type="button" class="v-tlbtn" data-action="stop:open" data-id="${esc(sid)}" aria-label="${esc(label)}"><span class="v-grow"><span class="v-prim">${esc(name)}</span>${pill}</span><span class="v-tleta${eta === "Now" ? " is-now" : ""}">${esc(eta)}</span></button></li>`;
   });
@@ -227,6 +237,13 @@ registerView("route", {
   tab: "routes",
   render: (state) => renderRoute(state),
 });
+
+// pick a bus in "Where the buses are" (again = back to the next bus at each stop)
+registerAction("route:bus", (ds, ev, ctx) => {
+  const s = ctx.store.get(), id = ds.id != null ? String(ds.id) : null;
+  if (id) ctx.store.set({ busId: s.busId === id ? null : id });
+});
+registerAction("route:allbuses", (ds, ev, ctx) => ctx.store.set({ busId: null }));
 
 registerAction("route:open", (ds, ev, ctx) => {
   const s = ctx.store.get();

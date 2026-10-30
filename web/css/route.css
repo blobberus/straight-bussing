@@ -8,7 +8,15 @@
 
 /* where the buses are (text, also the accessible description of the rail) */
 .r-buslist { list-style: none; margin: var(--s2) 0; padding: 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
-.r-buslist li { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; }
+.r-buslist li { display: block; padding: 0; }
+/* each bus is a button: pick it to see its own time at every station (core/busnum.js; 44 px target) */
+.r-busbtn { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 4px 8px; margin: 0; box-sizing: border-box;
+  border: 0; border-radius: var(--r-sm, 8px); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.r-busbtn:active { background: var(--fill-press, rgba(127,127,127,.12)); }
+.r-busbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.r-busbtn.is-picked { color: var(--text); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.r-busnote .v-btn { flex: none; }
+.r-bus.is-picked, .v-tlbus.is-picked { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .r-dot { flex: none; width: 8px; height: 8px; border-radius: 2px; transform: translateY(-1px); }
 

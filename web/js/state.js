@@ -109,6 +109,7 @@ export function initialState() {
     timeView: null,                                            // Lines by Time's temporary route (core/custom.js applyTimeView; not persisted)
     // nav (ui/router.js writes)
     view: 'nearby', prevView: null, stopId: null, routeId: null,
+    busId: null,                                               // the bus picked on the route page (core/busnum.js selectedBus; not persisted)
     routeFilter: null,
   };
 }

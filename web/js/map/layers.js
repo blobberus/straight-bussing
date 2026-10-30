@@ -12,6 +12,7 @@ import { createChevronLayer, orientedLines } from './chevrons.js';
 import { lineAt as pickLine, LINE_TAP_PX } from './geometry.js';
 import { unwrapDeg } from './geometry.js';
 import { prepareShape, follow, pathCum, pointAt, advance, headingAt } from './track.js';
+import { busKey, busNumbers } from '../core/busnum.js';
 
 const ids = new WeakMap();
 let nextId = 1;
@@ -84,9 +85,9 @@ export function networkSig(o, dimAll = false) {
  * Per-marker signature for a bus (position, heading, stale, label, color, focused).
  * @returns {string}
  */
-export function busSig(rid, lat, lon, bearing, stale, label, color, focused = false) {
+export function busSig(rid, lat, lon, bearing, stale, label, color, focused = false, num = 0, selected = false) {
   return sig(rid, lat.toFixed(6), lon.toFixed(6), Number.isFinite(bearing) ? Math.round(bearing) : '', stale ? 1 : 0, label, color,
-    focused ? 1 : 0);
+    focused ? 1 : 0, num || 0, selected ? 1 : 0);
 }
 
 /** A bus must move this far before its heading is derived from movement (no feed bearing). */
@@ -223,7 +224,7 @@ export function createNetworkLayer(map, cb) {
 
 const STALE_S = 60;
 
-function busIcon(color, label) {
+function busIcon(color, label, num = 0) {
   const root = document.createElement('div');
   root.className = 'sb-bus';
   root.style.setProperty('--c', color);
@@ -232,7 +233,16 @@ function busIcon(color, label) {
   const tx = document.createElement('span'); tx.className = 'sb-bus-tx'; tx.textContent = label;
   if (label.length > 3) tx.classList.add('sb-bus-tx-sm');
   root.append(hd, tx);
+  setNum(root, num);
   return window.L.divIcon({ className: 'sb-busicon', html: root, iconSize: [28, 28], iconAnchor: [14, 14] });
+}
+
+/** The bus number badge (core/busnum.js: routes with 2 or more buses) on a bus marker; 0 removes it. */
+function setNum(root, num) {
+  let b = root.querySelector('.sb-bus-num');
+  if (!num) { b?.remove(); return; }
+  if (!b) { b = document.createElement('span'); b.className = 'sb-bus-num'; b.setAttribute('aria-hidden', 'true'); root.append(b); }
+  if (b.textContent !== String(num)) b.textContent = String(num);
 }
 
 /** Restart the one-shot pulse ring (CSS animation) on a fresh position. */
@@ -388,7 +398,15 @@ export function createBusLayer(map, cb, opt = {}) {
       const t = document.createElement('span'); t.className = 'sb-you-pill'; t.textContent = 'You';
       el.append(r, t);
     } else if (!on && ring) { ring.remove(); el.querySelector('.sb-you-pill')?.remove(); }
-    m.mk.getElement()?.setAttribute('title', on ? `You are on this Route ${m.label} bus` : `Route ${m.label} bus`);
+    nameMarker(m);
+  }
+
+  /** The marker's name: "Bus 2, Red Line/Arts Block" when its route shows several buses, else "Route RED bus". */
+  function nameMarker(m) {
+    const base = m.num ? `Bus ${m.num}, ${m.name}` : `Route ${m.label} bus`;
+    const text = m.key === youId ? `You are on this bus: ${base}` : base;
+    const el = m.mk.getElement();
+    if (el) { el.setAttribute('title', text); el.setAttribute('aria-label', text); }
   }
 
   /** The bus you are on (vehicle id) or null. @returns {boolean} that bus is drawn */
@@ -407,10 +425,11 @@ export function createBusLayer(map, cb, opt = {}) {
   function draw(buses, o = {}) {
     const now = o.nowS ?? Date.now() / 1000;
     const hidden = new Set((o.hidden || []).map(String)), focus = focusSet(o.focus);
+    const nums = busNumbers(buses), sel = o.selected != null ? String(o.selected) : null;
     const seen = new Set(), listed = new Set();
     let changed = 0;
     for (const v of buses || []) {
-      const id = v?.vehicle?.id ?? v?.vehicle?.label;
+      const id = busKey(v);
       const rid = String(v?.trip?.route_id ?? '');
       const lat = +v?.position?.latitude, lon = +v?.position?.longitude;
       if (id == null || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
@@ -424,7 +443,9 @@ export function createBusLayer(map, cb, opt = {}) {
       const brg = busHeading(feed, m && m.rid === rid ? m.ll : null, [lat, lon], m ? m.brg : NaN, (a, b) => map.distance(a, b));
       const stale = v.timestamp ? now - v.timestamp > STALE_S : false;
       const focused = !!focus?.has(rid);
-      const s = busSig(rid, lat, lon, brg, stale, label, color, focused);
+      const num = nums.get(key) || 0, picked = key === sel;
+      const name = o.routes?.[rid]?.long || o.routes?.[rid]?.short || label;
+      const s = busSig(rid, lat, lon, brg, stale, label, color, focused, num, picked);
       if (m && m.s === s) continue;
       changed++;
       const prep = prepareShape(o.shapes?.[rid]);
@@ -434,14 +455,15 @@ export function createBusLayer(map, cb, opt = {}) {
         if (m) group.removeLayer(m.mk);
         const r0 = follow(prep, null, null, [lat, lon], { bearing: feed });   // a new badge starts on its line
         const start = r0.to ? r0.to.pt : [lat, lon];
-        const mk = L.marker(start, { icon: busIcon(color, label), zIndexOffset: 500, keyboard: false,
-          title: `Route ${label} bus`, riseOnHover: true });
+        const mk = L.marker(start, { icon: busIcon(color, label, num), zIndexOffset: 500, keyboard: false,
+          title: num ? `Bus ${num}, ${name}` : `Route ${label} bus`, riseOnHover: true });
         const info = { id: key, rid, label: v.vehicle?.label != null ? String(v.vehicle.label) : '' };
         mk.on('click', () => cb.onBusTap(info));
         mk.addTo(group);
-        m = { rid, color, label, mk, s: '', ll: [lat, lon], brg: NaN, disp: start, to: r0.to, anim: null, vt, seen: now, rot: NaN };
+        m = { key, rid, color, label, name, num, sel: false, mk, s: '', ll: [lat, lon], brg: NaN, disp: start, to: r0.to, anim: null, vt, seen: now, rot: NaN };
         markers.set(key, m);
         if (key === youId) markYou(m, true);
+        nameMarker(m);
         // no feed heading: the line's own direction (shapes run the way the buses drive)
         turn(m, Number.isFinite(brg) ? brg : r0.to ? headingAt(prep[r0.to.li], r0.to.pos) : NaN);
         moved = true;
@@ -455,7 +477,10 @@ export function createBusLayer(map, cb, opt = {}) {
       m.ll = [lat, lon]; m.s = s; m.brg = brg; m.seen = now;
       if (Number.isFinite(vt)) m.vt = vt;
       const el = m.mk.getElement()?.firstElementChild;
+      if (m.num !== num || m.name !== name) { m.num = num; m.name = name; if (el) setNum(el, num); nameMarker(m); }
+      if (m.sel !== picked) { m.sel = picked; m.mk.setZIndexOffset(picked ? 650 : m.key === youId ? 700 : 500); }
       if (el) {
+        el.classList.toggle('is-picked', picked);
         el.classList.toggle('is-stale', stale);
         el.classList.toggle('no-hd', !Number.isFinite(m.rot));
         el.classList.toggle('is-focus', focused);

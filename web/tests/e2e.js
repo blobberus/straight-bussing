@@ -554,8 +554,12 @@ test("tap outside the sheet: empty map collapses it to peek; stops and buses sti
     await waitFor(() => state().view === "route" || null, "a bus tap opens its route");
     eq(moves, [], "a bus tap moves no camera");
     eq(await after(), before, "a bus tap keeps the map view");
+    // owner 2026-10-30: the tapped bus is picked; the route page then shows its own times
+    await waitFor(() => state().busId != null || null, "the tapped bus is picked");
+    await waitFor(() => $("#content .r-busnote") || null, "Showing its times note");
     click($("#back"), "back");
     await waitFor(() => state().view !== "route" || null, "back from the route");
+    eq(state().busId, null, "leaving the route page clears the picked bus");
     tab("nearby");
     await waitFor(() => state().view === "nearby" || null, "back to Current trip");
   }
