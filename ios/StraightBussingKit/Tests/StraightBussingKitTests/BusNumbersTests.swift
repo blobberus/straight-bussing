@@ -85,8 +85,11 @@ final class BusNumbersTests: XCTestCase {
     func testArrivingInBeforeBoardingAndOnBoard() {
         let walking = follow("walk")
         XCTAssertEqual(walking.phase, .walkToStop)
-        XCTAssertEqual(TripText.arrivingIn(walking, now: NOW), "Arriving In: 7 min", "walking to the stop: the bus's time at the boarding stop")
-        XCTAssertEqual(TripText.arrivingIn(follow("waiting"), now: NOW), "Arriving In: 4 min")
+        let wl = walking.legs.compactMap(\.walk).first { $0.state == .active }
+        XCTAssertNotNil(wl)
+        XCTAssertEqual(TripText.arrivingIn(walking, now: NOW), "Walk \(TripInfo.walkMins(wl?.minNow ?? wl?.min)) min",
+                       "walking to the stop: the walking time left (web tripMetaText)")
+        XCTAssertEqual(TripText.arrivingIn(follow("waiting"), now: NOW), "Arriving In: 4 min", "waiting: the bus's time at the boarding stop")
         let riding = follow("onbus")
         XCTAssertEqual(riding.phase, .onBus)
         XCTAssertEqual(TripText.arrivingIn(riding, now: NOW), "Arriving In: 3 min", "on board: the time at the stop you get off at")
@@ -98,7 +101,7 @@ final class BusNumbersTests: XCTestCase {
         XCTAssertEqual(TripText.arrivingIn(p, now: NOW), "Arriving In: Now")
         if case .bus(var b) = p.legs[p.active] { b.boardEta = nil; p.legs[p.active] = .bus(b) }
         XCTAssertEqual(TripText.arrivingIn(p, now: NOW), "No live bus time yet", "no time: the card's words, never a number")
-        XCTAssertEqual(TripText.arrivingIn(follow("schedule"), now: NOW), "Arriving In: ~2 min", "a planned time is marked approximate")
+        XCTAssertEqual(TripText.arrivingIn(follow("schedule"), now: NOW), "Arriving In: ~2 min est.", "a planned time is an estimate")
         XCTAssertTrue(TripText.arrivingIn(follow("stale"), now: NOW).hasPrefix("Arriving In: ~"), "delayed live data is marked approximate")
     }
 
@@ -106,6 +109,11 @@ final class BusNumbersTests: XCTestCase {
         let done = follow("arrived")
         XCTAssertEqual(done.phase, .arrived)
         XCTAssertEqual(TripText.arrivingIn(done, now: NOW), "Walk 3 min", "after the bus: the walk to the destination")
+        let off = TripFollow(to: "Medical Center", label: "To Medical Center", phase: .arrived, active: 0, arriveT: nil, arriveLive: false,
+                             live: true, stale: .fresh,
+                             legs: [.bus(.init(rid: "R", boardId: "A4", boardName: "Ratner Center", alightId: "A7", alightName: "Medical Center",
+                                               planTripId: nil, source: .live, state: .done, phase: .done))])
+        XCTAssertEqual(TripText.arrivingIn(off, now: NOW), "Arrived", "off the last bus with no walk left")
         let walkOnly = TripFollow(to: "Cafe", label: "To Cafe", phase: .walkToStop, active: 0, arriveT: nil, arriveLive: false, live: false,
                                   stale: .fresh, legs: [.walk(.init(min: 6.2, minNow: nil, toName: "Cafe", final: true, state: .active))])
         XCTAssertEqual(TripText.arrivingIn(walkOnly, now: NOW), "Walk 6 min", "a trip without a bus: the walking time")

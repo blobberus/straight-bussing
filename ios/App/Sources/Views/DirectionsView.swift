@@ -239,9 +239,10 @@ struct DirectionsView: View {
                 // or arrives no later than the best bus (Kit Rank.walkFirst)
                 let walkFirst = Rank.walkFirst(r)
                 if walkFirst {
-                    walkOnlyCard(r).accessibilityIdentifier("dirWalkFirst")
+                    walkOnlyCard(r, caption: "Close enough to walk").accessibilityIdentifier("dirWalkFirst")
                 }
-                ForEach(Array(r.options.prefix(Planner.maxOpts).enumerated()), id: \.element.key) { item in
+                // the walk counts as one of the (at most 4) options, like the web list
+                ForEach(Array(r.options.prefix(Planner.maxOpts - (walkFirst ? 1 : 0)).enumerated()), id: \.element.key) { item in
                     OptionCard(option: item.element, index: item.offset, showCriteria: r.options.count > 1,
                                selected: item.offset == model.dir.selected)
                 }
@@ -290,10 +291,14 @@ struct DirectionsView: View {
         }
     }
 
-    /// Walk-only fallback (directions.js): minutes + source tag, arrival clock, "Walk the whole way", meters.
-    func walkOnlyCard(_ r: PlanResult) -> some View {
+    /// Walk-only fallback (directions.js): minutes + source tag, arrival clock, "Walk the whole way", meters. `caption`:
+    /// the walk-first card's line on top ("Close enough to walk", web walkOptionHTML).
+    func walkOnlyCard(_ r: PlanResult, caption: String? = nil) -> some View {
         Card {
             VStack(alignment: .leading, spacing: 4) {
+                if let caption {
+                    Text(caption).font(.caption.weight(.semibold)).foregroundStyle(Palette.text2)
+                }
                 let mins = Text("\(TripInfo.mins(r.walkOnlyMin))").font(.title2.weight(.bold)).monospacedDigit()
                 let arrive = Text("Arrive \(TimeFmt.clock(model.now + r.walkOnlyMin * 60))").font(.subheadline.weight(.semibold))
                 ViewThatFits(in: .horizontal) {   // large text: the arrival under the minutes, never broken inside the clock

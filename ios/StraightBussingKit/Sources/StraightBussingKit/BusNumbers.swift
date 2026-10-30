@@ -67,30 +67,29 @@ public enum BusNumbers {
 }
 
 extension TripText {
-    /// The collapsed sheet's right side during a trip (owner 2026-10-30, "Arriving In"): minutes until the trip's bus
-    /// reaches your stop, the boarding stop before you board and the stop you get off at on board, from the same
-    /// evaluation as the Current trip card. "Arriving In: Now" under a minute; "~" while the time is planned rather than
-    /// live, or live data is delayed. No time yet: the card's words ("No live bus time yet"), never a number. No bus in
-    /// the current step (the last walk, or a trip without a bus): the walking time, "Walk 6 min".
+    /// The sheet header's right side on Current trip during a trip (owner 2026-10-30, web ui/views/tripprogress.js
+    /// tripMetaText), from the same evaluation as the card:
+    ///  - waiting at the stop: "Arriving In: 4 min" until the bus reaches your boarding stop; on the bus: until it reaches
+    ///    the stop where you get off. "Arriving In: Now" under a minute, "~4 min" while live data is delayed. A planned
+    ///    time only: "Arriving In: ~4 min est."; no time at all: "No live bus time yet".
+    ///  - walking (to the stop, after the last bus, or a trip with no bus): "Walk 6 min", the walking time left.
+    ///  - off the last bus with no walk left: "Arrived".
     public static func arrivingIn(_ p: TripFollow, now: Double) -> String {
-        func walk(_ w: TripFollow.WalkStep) -> String {
-            let m = w.state == .active ? (w.minNow ?? w.min) : w.min
-            return "Walk \(TripInfo.walkMins(m)) min"
-        }
+        func walk(_ m: Double) -> String { "Walk \(TripInfo.walkMins(m)) min" }
         let step = p.legs.indices.contains(p.active) ? p.legs[p.active] : nil
         if p.phase == .arrived {
-            if let w = step?.walk, w.state != .done { return walk(w) }
-            return ""
+            if let w = step?.walk { return walk(w.minNow ?? w.min) }
+            return "Arrived"
         }
-        guard let leg = step?.bus else {
-            if let w = step?.walk { return walk(w) }
-            return ""
+        if p.phase == .walkToStop {
+            if let w = p.legs.compactMap(\.walk).first(where: { $0.state == .active }) { return walk(w.minNow ?? w.min) }
+            return walk(step?.bus?.walkMin ?? 0)
         }
+        guard let leg = step?.bus else { return step?.walk.map { walk($0.minNow ?? $0.min) } ?? "" }
         let onBus = p.phase == .onBus
         guard let t = onBus ? leg.alightEta : leg.boardEta else { return "No live bus time yet" }
         let live = onBus ? leg.alightLive : leg.boardLive
-        let m = TimeFmt.minsUntil(t, from: now)
-        return "Arriving In: " + (m < 1 ? "Now" : (p.stale != .fresh || !live ? "~" : "") + "\(m) min")
+        return live ? "Arriving In: " + etaText(t, now: now, late: p.stale != .fresh) : "Arriving In: " + estText(t, now: now) + " est."
     }
 }
 
