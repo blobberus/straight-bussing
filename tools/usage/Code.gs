@@ -20,6 +20,10 @@
  * each anonymous number. Decided here, not by the browser: a start row is new only if its number is not in starts yet,
  * and every summary refresh re-marks the whole column (each number's earliest row Yes, all others No) and counts the
  * flags it corrected. The Summary counts new visitors by the day each number first appeared.
+ * One row per visit (owner 2026-10-30: a visitor was double counted): a start or place row whose Visit number is
+ * already in its tab is not added again (a retry, or a second copy the browser sent when it could not read the first
+ * reply), every summary refresh deletes such repeats left from before and counts them, and the Summary counts visits
+ * by Visit number.
  */
 var CHI = "America/Chicago";
 var HEADERS = {
@@ -49,6 +53,7 @@ function doPost(e) {
     lock.waitLock(10000);
     try {
       ensureSetup();
+      if (d.e !== "end" && knownIn(TAB_NAMES[d.e], 3, String(d.sid))) return reply("ok");   // this visit is already in: never twice
       if (d.e === "start") row[8] = knownVisitor(String(d.id)) ? "No" : "Yes";   // new = this number never seen before
       tab(d.e).appendRow(row);
       maybeRefreshSummary();
@@ -115,11 +120,31 @@ function toRow(d, now) {
   return [now, d.id, d.sid, zone];
 }
 
+/** Is this value in column col (1-based) of the named tab, below the header? */
+function knownIn(name, col, value) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  if (!sh || sh.getLastRow() < 2) return false;
+  return !!sh.getRange(2, col, sh.getLastRow() - 1, 1).createTextFinder(value).matchEntireCell(true).findNext();
+}
+
 /** Is this anonymous number already in the starts tab? */
 function knownVisitor(id) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TAB_NAMES.start);
-  if (!sh || sh.getLastRow() < 2) return false;
-  return !!sh.getRange(2, 2, sh.getLastRow() - 1, 1).createTextFinder(id).matchEntireCell(true).findNext();
+  return knownIn(TAB_NAMES.start, 2, id);
+}
+
+/**
+ * Rows that repeat an earlier row's Visit number (column C), by 0-based index: the first copy stays. Pure.
+ * @param {Array[]} rows
+ * @returns {number[]}
+ */
+function repeatedVisitRows(rows) {
+  var seen = {}, out = [];
+  rows.forEach(function (r, i) {
+    var sid = String(r[2] || "");
+    if (!sid) return;
+    if (seen[sid]) out.push(i); else seen[sid] = 1;
+  });
+  return out;
 }
 
 /** A row's received moment: a Date, or a version 1 ISO text; null if unreadable. */
@@ -183,7 +208,7 @@ function summarize(starts, ends, places, now) {
   var weekAgo = Utilities.formatDate(new Date(now.getTime() - 6 * 86400000), CHI, "yyyy-MM-dd");
   var visits = [], sessions = {};
   starts.forEach(function (r) {
-    if (!r[2] || isTestRow(r[1], r[7])) return;
+    if (!r[2] || isTestRow(r[1], r[7]) || sessions[String(r[2])]) return;   // one visit per Visit number
     var v = { visitor: String(r[1]), sid: String(r[2]), day: dayText(r[3]), weekday: String(r[4]),
       hour: parseInt(timeText(r[5]).slice(0, 2), 10), app: String(r[6]) };
     if (/^\d$/.test(v.weekday)) v.weekday = DAYS[Number(v.weekday)];   // version 1 rows
@@ -330,6 +355,28 @@ function rowsOf(ss, kind) {
 }
 
 /**
+ * Delete rows of the starts and places tabs that repeat an earlier row's Visit number (from before the receiver
+ * refused repeats); the first copy stays. Adds the count to the document property repeatsRemoved.
+ * @returns {number} rows deleted now
+ */
+function removeRepeatedVisits(ss) {
+  var gone = 0;
+  ["start", "place"].forEach(function (kind) {
+    var sh = ss.getSheetByName(TAB_NAMES[kind]);
+    if (!sh || sh.getLastRow() < 2) return;
+    var rows = sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues();
+    var rep = repeatedVisitRows(rows);
+    for (var k = rep.length - 1; k >= 0; k--) sh.deleteRow(rep[k] + 2);   // bottom up, so the indexes stay right
+    gone += rep.length;
+  });
+  if (gone) {
+    var props = PropertiesService.getDocumentProperties();
+    props.setProperty("repeatsRemoved", String(Number(props.getProperty("repeatsRemoved") || 0) + gone));
+  }
+  return gone;
+}
+
+/**
  * Re-mark the starts tab's New visitor column (newVisitorFlags): runs with every summary refresh, so repeated "Yes"
  * flags for the same number (old rows, races, imported data) are cleaned automatically. Writes only when something
  * changes and adds the count to the document property newFixed.
@@ -357,8 +404,10 @@ function cleanNewVisitors(ss) {
 /** Menu item: rebuild the Summary tab (first tab) from the raw tabs. */
 function refreshSummary() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  removeRepeatedVisits(ss);
   cleanNewVisitors(ss);
-  var fixed = Number(PropertiesService.getDocumentProperties().getProperty("newFixed") || 0);
+  var props = PropertiesService.getDocumentProperties();
+  var fixed = Number(props.getProperty("newFixed") || 0), repeats = Number(props.getProperty("repeatsRemoved") || 0);
   var s = summarize(rowsOf(ss, "start"), rowsOf(ss, "end"), rowsOf(ss, "place"), new Date());
   var sh = ss.getSheetByName("Summary") || ss.insertSheet("Summary", 0);
   if (sh.getIndex() !== 1) { ss.setActiveSheet(sh); ss.moveActiveSheet(1); }
@@ -378,7 +427,7 @@ function refreshSummary() {
   };
   put([["Straight Bussing website: anonymous visitors"]], "title");
   put([["Updated " + s.updated + " (Chicago time). A visitor is a random number made in one browser; identity is never collected. Test rows are left out."]], "note");
-  put([["New visitor = the first visit of that anonymous number, counted once. Repeated new-visitor flags corrected so far: " + fixed + "."]], "note");
+  put([["New visitor = the first visit of that anonymous number, counted once. Repeated new-visitor flags corrected so far: " + fixed + ". Repeated copies of a visit removed so far: " + repeats + "."]], "note");
   r++;
   put([["Totals", "Count"]], "head");
   put(s.totals);

@@ -84,6 +84,20 @@ try {
   var dNV = {}; sNV.days.forEach(function (r) { dNV[r[0]] = r[4]; });
   check("summary: new visitors by first day, never twice for one number", dNV["2026-10-29"] === 1 && dNV["2026-10-26"] === 1
     && tNV["New visitors today (first visit ever)"] === 1 && tNV["New visitors, last 7 days"] === 2, { days: dNV, totals: tNV });
+  // one row per visit: repeats of a Visit number (a second copy of the same start row) never count twice
+  var dupRows = [
+    [t1, A, S1, day("2026-10-29"), "Thu", "08:00", "browser", "2.0.0", "Yes"],
+    [t1, A, S1, day("2026-10-29"), "Thu", "08:00", "browser", "2.0.0", "Yes"],   // same visit sent twice
+    [t2, A, S2, day("2026-10-29"), "Thu", "09:00", "browser", "2.0.0", "No"],
+    [t2, B, S4, day("2026-10-29"), "Thu", "09:00", "browser", "2.0.0", "Yes"],
+    [t2, B, S4, day("2026-10-29"), "Thu", "09:00", "browser", "2.0.0", "Yes"]    // and again
+  ];
+  check("repeated visit rows found (first copy stays)", repeatedVisitRows(dupRows).join(",") === "1,4", repeatedVisitRows(dupRows));
+  var sD = summarize(dupRows, [], [], NOW), tD = {};
+  sD.totals.forEach(function (r) { tD[r[0]] = r[1]; });
+  check("summary counts each visit once and each visitor once", tD["Visits today"] === 3 && tD["Distinct visitors today"] === 2
+    && tD["New visitors today (first visit ever)"] === 2 && sD.days[0][3] === 3, tD);
+  check("new visitor flags with a repeated visit: only the very first row", newVisitorFlags(dupRows).join(",") === "Yes,No,No,Yes,No", newVisitorFlags(dupRows));
 } catch (e) { check("no exception", false, String(e && e.stack || e)); }
 document.getElementById("out").textContent = results.join("\n");
 document.title = "RESULT fail=" + fail;

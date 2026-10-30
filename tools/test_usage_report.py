@@ -97,6 +97,13 @@ def a_visitor_is_new_once_whatever_the_flags_say():
     assert "| 2026-10-26 | Mon | 1 | 1 | 1 |" in r and "| 2026-10-27 | Tue | 2 | 3 | 1 |" in r, r   # A new on 10-26 only; B new on 10-27
 
 
+@test
+def a_repeated_copy_of_a_visit_counts_once():
+    rows = [start(A, S1), start(A, S1), start(B, S3)]
+    r = U.summarize(rows, [], [])
+    assert "**2 distinct visitors**, 2 logins (a visitor counts again only after 30 minutes), 2 visits" in r, r
+
+
 if __name__ == "__main__":
     fails = 0
     for t in tests:

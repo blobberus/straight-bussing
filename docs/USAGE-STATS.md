@@ -76,6 +76,13 @@ flags it has corrected. The Summary's "New visitors" (per day, today, last 7 day
 first appeared. The logins formula works its New visitor column out the same way (a visitor's earliest login), and
 `tools/usage_report.py` too.
 
+**One row per visit (2026-10-30, owner: a visitor such as 39adf573... was double counted).** Two causes, both fixed:
+(1) the app reloads itself in the background after an update (ui/update.js), and a reload began a new visit: the visit
+is now kept in this tab's sessionStorage and a reload within 30 minutes continues it, with no second start row; (2) when
+the browser could not read the receiver's first reply it sent a second copy of the same row: the receiver now ignores
+a start or place row whose Visit number is already in its tab, every summary refresh deletes repeats left from before
+(the Summary shows how many), and visits are counted by Visit number everywhere (Summary, report).
+
 **Is my visit counted?** Open the site, then Settings > Usage statistics: the app reads the receiver's reply and says
 "This visit was counted at ..." (or why not). In the Sheet look at the **starts** tab (or Summary), not Sheet1. In the
 Apps Script editor, **Executions** lists every doPost with its time and status.

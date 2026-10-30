@@ -21,6 +21,11 @@ function fakePage() {
   return { doc, win, hide() { doc.visibilityState = "hidden"; doc.dispatchEvent(new Event("visibilitychange")); },
     show() { doc.visibilityState = "visible"; doc.dispatchEvent(new Event("visibilitychange")); } };
 }
+/** An in-memory sessionStorage (this tab's saved visit). */
+function memTab() {
+  const m = new Map();
+  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => void m.set(k, String(v)), removeItem: (k) => void m.delete(k), m };
+}
 /** A configured, forced setup with a fake clock and a capturing sender; restores everything in done(). */
 function rig(state = {}) {
   useMemoryOverlay(true);
@@ -29,7 +34,7 @@ function rig(state = {}) {
   _configureUsage({ url: URL_, force: true, now: () => t, send: (u, body) => sent.push({ u, row: JSON.parse(body) }) });
   const store = createStore({ usage: cleanUsage(null, {}), user: null, stops: STOPS, ...state });
   const page = fakePage();
-  const u = startUsage(store, { ver: "2.0.0", doc: page.doc, win: page.win });
+  const u = startUsage(store, { ver: "2.0.0", doc: page.doc, win: page.win, tab: memTab() });
   return { u, store, page, sent, rows: (e) => sent.filter((x) => x.row.e === e).map((x) => x.row), adv: (s) => { t += s; },
     done() { u?.stop(); _configureUsage({ url: USAGE_URL, force: false, send: null, now: () => Date.now() / 1000 }); useMemoryOverlay(false); } };
 }
@@ -164,7 +169,7 @@ test("usage: the start row's reply is kept for Settings; rows leaving the page a
   const off = bus.on("usage:sent", (x) => seen.push(x));
   _configureUsage({ url: URL_, force: true, now: () => t, send: (u, body, o) => { calls.push({ e: JSON.parse(body).e, keep: !!(o && o.keep) }); return Promise.resolve("ok"); } });
   const page = fakePage();
-  const u = startUsage(createStore({ usage: cleanUsage(null, {}), user: null, stops: STOPS }), { doc: page.doc, win: page.win });
+  const u = startUsage(createStore({ usage: cleanUsage(null, {}), user: null, stops: STOPS }), { doc: page.doc, win: page.win, tab: memTab() });
   try {
     await tick(); await tick();
     eq(lastSend(), { at: t, res: "ok" });
@@ -181,12 +186,38 @@ test("usage: a page opened in the background counts only once it is shown, from 
   _configureUsage({ url: URL_, force: true, now: () => t, send: (u, body) => { sent.push(JSON.parse(body)); return "ok"; } });
   const page = fakePage();
   page.doc.visibilityState = "hidden";
-  const u = startUsage(createStore({ usage: cleanUsage(null, {}), user: null, stops: STOPS }), { doc: page.doc, win: page.win });
+  const u = startUsage(createStore({ usage: cleanUsage(null, {}), user: null, stops: STOPS }), { doc: page.doc, win: page.win, tab: memTab() });
   try {
     eq(sent.length, 0, "a background tab that was never seen sends nothing");
     t += 600; page.show();
     eq(sent.map((r) => [r.e, r.time]), [["start", "08:10"]], "the visit starts when it is first seen");
     t += 45; page.hide();
     eq(sent.filter((r) => r.e === "end").map((r) => r.dur), [45]);
+  } finally { u?.stop(); _configureUsage({ url: USAGE_URL, force: false, send: null, now: () => Date.now() / 1000 }); useMemoryOverlay(false); }
+});
+
+test("usage: a reload in the same tab continues the visit: no second start row (owner: users were double counted)", () => {
+  useMemoryOverlay(true);
+  let t = 1_793_106_000;
+  const sent = [];
+  _configureUsage({ url: URL_, force: true, now: () => t, send: (u, body) => { sent.push(JSON.parse(body)); return "ok"; } });
+  const tab = memTab(), store = () => createStore({ usage: cleanUsage(null, {}), user: null, stops: STOPS });
+  let page = fakePage(), u = startUsage(store(), { doc: page.doc, win: page.win, tab });
+  try {
+    const sid = sent[0].sid;
+    t += 90; page.hide(); u.stop();   // the app reloads itself in the background (ui/update.js), or the rider reloads
+    t += 120; page = fakePage(); u = startUsage(store(), { doc: page.doc, win: page.win, tab });
+    eq(sent.filter((r) => r.e === "start").length, 1, "one start row for the visit, reload or not");
+    eq(u.visit().sid, sid, "the same visit continues");
+    t += 30; page.hide();
+    eq(sent.filter((r) => r.e === "end").map((r) => r.dur), [90, 120], "its length keeps adding up under the same visit");
+    u.stop();
+    t += NEW_SESSION_S + 1; page = fakePage(); u = startUsage(store(), { doc: page.doc, win: page.win, tab });
+    eq(sent.filter((r) => r.e === "start").length, 2, "30 min later a reload is a new visit");
+    ok(u.visit().sid !== sid);
+    u.stop();
+    resetId();
+    t += 5; page = fakePage(); u = startUsage(store(), { doc: page.doc, win: page.win, tab });
+    eq(sent.filter((r) => r.e === "start").length, 3, "a new anonymous number never resumes the old number's visit");
   } finally { u?.stop(); _configureUsage({ url: USAGE_URL, force: false, send: null, now: () => Date.now() / 1000 }); useMemoryOverlay(false); }
 });

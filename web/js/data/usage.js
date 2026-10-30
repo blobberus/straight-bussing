@@ -28,6 +28,9 @@
  * (its App Privacy label stays Data Not Collected).
  * A visit ends after 30 min in the background (NEW_SESSION_S): coming back later is a new visit. A page that loads in
  * the background (a restored or pre-opened tab) starts its visit the first time it is actually shown, never before.
+ * A reload in the same tab (by hand, or the app updating itself in the background, ui/update.js) continues the visit:
+ * the visit is kept in sessionStorage (VISIT_KEY, this tab only) and resumed when it was active under 30 min ago, so no
+ * second start row is sent (owner 2026-10-30: users were double counted).
  */
 import { DEMO } from "../core/demo.js";
 import { hav } from "../core/geo.js";
@@ -50,6 +53,8 @@ const MAX_ACCURACY_M = 500;
 /** An "end" row is sent again only when the length grew by at least this much. */
 const RESEND_S = 5;
 const ID_KEY = "usageId";
+/** sessionStorage key (this tab only): the current visit, so a reload continues it instead of starting a new one. */
+export const VISIT_KEY = "sb-usage-visit";
 const HEX32 = /^[0-9a-f]{32}$/;
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -145,6 +150,22 @@ export function resetId() {
   remove(ID_KEY);
 }
 
+function tabStorage() {
+  try { return window.sessionStorage; } catch (e) { return null; }   // the getter itself throws when storage is blocked
+}
+
+/** The visit this tab saved, if it is well formed. */
+function loadVisit(st) {
+  try {
+    const v = JSON.parse((st && st.getItem(VISIT_KEY)) || "null");
+    return v && HEX32.test(String(v.sid)) && v.who && HEX32.test(String(v.who.id)) && Number.isFinite(v.lastActive) ? v : null;
+  } catch (e) { return null; }
+}
+
+function saveVisit(st, v, lastActive) {
+  try { if (st && v) st.setItem(VISIT_KEY, JSON.stringify({ ...v, lastActive })); } catch (e) { /* private mode, quota */ }
+}
+
 /** The installed home-screen app, or a browser tab. */
 function appKind() {
   try {
@@ -218,12 +239,14 @@ export function buildRow(e, who, visit, extra = {}) {
  * Start counting visits for this page. Returns null (and does nothing) unless a receiver is set and this page may
  * send. The rider's choices are read from store.get().usage at every send.
  * @param {{get():object, subscribe(fn:Function):Function}} store
- * @param {{ver?:string, doc?:Document, win?:Window}} [o]
+ * @param {{ver?:string, doc?:Document, win?:Window, tab?:Storage|null}} [o] tab: where this tab's visit is kept
+ *   (default sessionStorage; null = never resume)
  * @returns {{stop():void, visit():object}|null}
  */
 export function startUsage(store, o = {}) {
   if (!allowedHere()) return null;
   const doc = o.doc || document, win = o.win || window;
+  const tab = "tab" in o ? o.tab : tabStorage();
   const send = cfg.send || defaultSend;
   const app = appKind();
   let visit = null, visibleSince = null, hiddenAt = null;
@@ -235,8 +258,11 @@ export function startUsage(store, o = {}) {
     let p;
     try { p = send(cfg.url, JSON.stringify(row), { keep: e !== "start" }); } catch (err) { p = "failed"; }   // never break the app
     if (e === "start") {
+      const v = visit;
       Promise.resolve(p).then((res) => {
         last = { at: cfg.now(), res: typeof res === "string" ? res : "ok" };
+        v.reply = last;   // a reload of this tab shows the same answer in Settings
+        if (v === visit) saveVisit(tab, visit, cfg.now());
         bus.emit("usage:sent", last);
       }, () => {});
     }
@@ -250,10 +276,19 @@ export function startUsage(store, o = {}) {
   }
   function begin() {
     const now = cfg.now();
-    // the visit keeps the number it started with (a reset in Settings applies from the next visit)
-    visit = { who: anonId(), sid: randomHex(16), startS: now, dur: 0, zone: "", sentDur: -1, placeSent: false };
+    const who = anonId(), prev = loadVisit(tab);
     visibleSince = doc.visibilityState === "hidden" ? null : now;
-    post("start");   // always: visit start and distinct users are counted regardless of the switches (owner)
+    if (prev && prev.who.id === who.id && now - prev.lastActive >= -60 && now - prev.lastActive < NEW_SESSION_S) {
+      // the same visit after a reload of this tab: no second start row (it would count the rider twice)
+      visit = { ...prev };
+      delete visit.lastActive;
+      if (visit.reply) { last = visit.reply; bus.emit("usage:sent", last); }
+    } else {
+      // the visit keeps the number it started with (a reset in Settings applies from the next visit)
+      visit = { who, sid: randomHex(16), startS: now, dur: 0, zone: "", sentDur: -1, placeSent: false };
+      post("start");   // always: visit start and distinct users are counted regardless of the switches (owner)
+    }
+    saveVisit(tab, visit, now);
     placeOnce(store.get());
   }
   function onHide() {
@@ -263,12 +298,14 @@ export function startUsage(store, o = {}) {
     visibleSince = null;
     hiddenAt = now;
     if (prefs().dur && Math.round(visit.dur) - visit.sentDur >= RESEND_S) post("end");
+    saveVisit(tab, visit, now);
   }
   function onShow() {
     const now = cfg.now();
     if (!visit || (hiddenAt !== null && now - hiddenAt >= NEW_SESSION_S)) { hiddenAt = null; begin(); return; }
     hiddenAt = null;
     if (visibleSince === null) visibleSince = now;
+    saveVisit(tab, visit, now);
   }
   const onVis = () => (doc.visibilityState === "hidden" ? onHide() : onShow());
   doc.addEventListener("visibilitychange", onVis);

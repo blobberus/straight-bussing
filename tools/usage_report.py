@@ -76,7 +76,11 @@ def logins(S, gap_s=1800):
 
 def summarize(starts, ends, places, since=None):
     """-> markdown text."""
-    S = [r for r in starts if r.get("session_id") and r.get("anon_id") and not is_test(r) and (not since or r.get("day", "") >= since)]
+    S, seen_sid = [], set()
+    for r in starts:   # one visit per Visit number: a repeated copy of a start row never counts twice (owner 2026-10-30)
+        if r.get("session_id") and r.get("anon_id") and not is_test(r) and (not since or r.get("day", "") >= since)                 and r["session_id"] not in seen_sid:
+            seen_sid.add(r["session_id"])
+            S.append(r)
     sids = {r["session_id"] for r in S}
     dur = {}
     for r in ends:

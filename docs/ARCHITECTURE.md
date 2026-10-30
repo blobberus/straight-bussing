@@ -656,6 +656,9 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   echo both allow any origin). keepalive for rows sent while the page goes away; one beacon only if fetch throws (result
   "failed"). The start row's outcome: `lastSend()` + bus `usage:sent`, shown in Settings (`usageStatusText`: "This visit was
   counted at ..."). Never throws.
+- A reload in the same tab (by hand, or ui/update.js reloading after an update) continues the visit: sessionStorage
+  `VISIT_KEY` holds it and `begin()` resumes it when it was active under 30 min ago (no second start row; owner
+  2026-10-30: double counted visitors). The receiver also refuses a repeated Visit number and cleans old repeats.
 - State: `usage: {dur, zone}` persisted (`cleanUsage`, KEYS.usage).
 - Settings > Usage statistics (only when configured): `USAGE_ALWAYS` (what is always counted; "Your identity is never
   collected"), switches `usageDur` / `usageZone`, button "Get a new anonymous number". The location note adds
