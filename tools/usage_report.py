@@ -38,6 +38,21 @@ def normalize(r):
     return out
 
 
+def received(r):
+    """Seconds of the row's received time (version 2 "2026-10-30 8:15:02 AM", version 1 ISO), else None."""
+    from datetime import datetime
+    v = (r.get("received") or r.get("received_utc") or "").strip()
+    for fmt in ("%Y-%m-%d %I:%M:%S %p", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(v, fmt).timestamp()
+        except ValueError:
+            pass
+    try:
+        return datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
 def is_test(r):
     return set(r.get("anon_id", "")) <= {"0"} or r.get("version") in ("receivercheck", "selftest")
 
@@ -76,11 +91,21 @@ def logins(S, gap_s=1800):
 
 def summarize(starts, ends, places, since=None):
     """-> markdown text."""
-    S, seen_sid = [], set()
-    for r in starts:   # one visit per Visit number: a repeated copy of a start row never counts twice (owner 2026-10-30)
-        if r.get("session_id") and r.get("anon_id") and not is_test(r) and (not since or r.get("day", "") >= since)                 and r["session_id"] not in seen_sid:
-            seen_sid.add(r["session_id"])
-            S.append(r)
+    S, seen_sid, kept_at = [], set(), {}
+    for r in sorted(starts, key=lambda r: received(r) or 0):
+        # one visit per Visit number, and the two-minute rule: a visitor's start less than 2 minutes after their
+        # previous kept start is the same visit (owner 2026-10-30), as the receiver does
+        if not (r.get("session_id") and r.get("anon_id")) or is_test(r) or (since and r.get("day", "") < since):
+            continue
+        if r["session_id"] in seen_sid:
+            continue
+        t = received(r)
+        if t is not None and r["anon_id"] in kept_at and 0 <= t - kept_at[r["anon_id"]] < 120:
+            continue
+        seen_sid.add(r["session_id"])
+        if t is not None:
+            kept_at[r["anon_id"]] = t
+        S.append(r)
     sids = {r["session_id"] for r in S}
     dur = {}
     for r in ends:

@@ -104,6 +104,20 @@ def a_repeated_copy_of_a_visit_counts_once():
     assert "**2 distinct visitors**, 2 logins (a visitor counts again only after 30 minutes), 2 visits" in r, r
 
 
+@test
+def two_minute_rule_folds_a_quick_second_start():
+    import csv, tempfile
+    head = ["Received (Chicago time)", "Visitor (anonymous number)", "Visit", "Day", "Weekday", "Start time", "App", "Version", "New visitor"]
+    rows = [head, ["2026-10-30 8:00:00 AM", A, S1, "2026-10-30", "Fri", "08:00", "browser", "2.0.0", "Yes"],
+            ["2026-10-30 8:00:50 AM", A, S2, "2026-10-30", "Fri", "08:00", "browser", "2.0.0", "No"],
+            ["2026-10-30 8:03:00 AM", A, S3, "2026-10-30", "Fri", "08:03", "browser", "2.0.0", "No"]]
+    with tempfile.TemporaryDirectory() as d:
+        with open(Path(d) / "starts.csv", "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows(rows)
+        r = U.summarize(U.read(Path(d) / "starts.csv"), [], [])
+    assert "**1 distinct visitors**, 1 logins (a visitor counts again only after 30 minutes), 2 visits" in r, r
+
+
 if __name__ == "__main__":
     fails = 0
     for t in tests:

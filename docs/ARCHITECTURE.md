@@ -659,6 +659,9 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
 - A reload in the same tab (by hand, or ui/update.js reloading after an update) continues the visit: sessionStorage
   `VISIT_KEY` holds it and `begin()` resumes it when it was active under 30 min ago (no second start row; owner
   2026-10-30: double counted visitors). The receiver also refuses a repeated Visit number and cleans old repeats.
+- Two-minute rule (owner 2026-10-30): a start less than `QUICK_REPEAT_S` (120 s) after this browser's last start row
+  (localStorage `sb:usageLastStart`, any tab) continues that visit; the receiver also folds a number's start within 2 min
+  of its previous one (alias for later rows) and cleans old ones at each summary refresh.
 - State: `usage: {dur, zone}` persisted (`cleanUsage`, KEYS.usage).
 - Settings > Usage statistics (only when configured): `USAGE_ALWAYS` (what is always counted; "Your identity is never
   collected"), switches `usageDur` / `usageZone`, button "Get a new anonymous number". The location note adds

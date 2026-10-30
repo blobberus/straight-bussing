@@ -98,6 +98,20 @@ try {
   check("summary counts each visit once and each visitor once", tD["Visits today"] === 3 && tD["Distinct visitors today"] === 2
     && tD["New visitors today (first visit ever)"] === 2 && sD.days[0][3] === 3, tD);
   check("new visitor flags with a repeated visit: only the very first row", newVisitorFlags(dupRows).join(",") === "Yes,No,No,Yes,No", newVisitorFlags(dupRows));
+  // the two-minute rule: a visitor's start within 2 min of their previous kept start folds into it
+  var at2 = function (sec) { return new Date(Date.UTC(2026, 9, 30, 13, 0, sec)); };
+  var qid = function (c) { return c.repeat(31) + "b"; };
+  var qrows = [
+    [at2(0), A, qid("1"), day("2026-10-30"), "Fri", "08:00", "browser", "2.0.0", "Yes"],
+    [at2(30), A, qid("2"), day("2026-10-30"), "Fri", "08:00", "browser", "2.0.0", "No"],
+    [at2(119), A, qid("3"), day("2026-10-30"), "Fri", "08:01", "browser", "2.0.0", "No"],
+    [at2(121), A, qid("4"), day("2026-10-30"), "Fri", "08:02", "browser", "2.0.0", "No"],
+    [at2(10), B, qid("5"), day("2026-10-30"), "Fri", "08:00", "browser", "2.0.0", "Yes"],
+    [at2(20), 0, qid("6"), day("2026-10-30"), "Fri", "08:00", "browser", "receivercheck", "No"]
+  ];
+  var q = quickRepeats(qrows);
+  check("two-minute rule: rows 1 and 2 fold into row 0, 121 s later is a new visit, others untouched",
+    q.drop.join(",") === "1,2" && q.alias[qid("2")] === qid("1") && q.alias[qid("3")] === qid("1") && !q.alias[qid("4")] && !q.alias[qid("5")], q);
 } catch (e) { check("no exception", false, String(e && e.stack || e)); }
 document.getElementById("out").textContent = results.join("\n");
 document.title = "RESULT fail=" + fail;

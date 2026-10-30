@@ -221,3 +221,24 @@ test("usage: a reload in the same tab continues the visit: no second start row (
     eq(sent.filter((r) => r.e === "start").length, 3, "a new anonymous number never resumes the old number's visit");
   } finally { u?.stop(); _configureUsage({ url: USAGE_URL, force: false, send: null, now: () => Date.now() / 1000 }); useMemoryOverlay(false); }
 });
+
+test("usage: two-minute rule: another tab of the same browser within 2 min continues the visit; later, a new one", () => {
+  useMemoryOverlay(true);
+  let t = 1_793_106_000;
+  const sent = [];
+  _configureUsage({ url: URL_, force: true, now: () => t, send: (u, body) => { sent.push(JSON.parse(body)); return "ok"; } });
+  const store = () => createStore({ usage: cleanUsage(null, {}), user: null, stops: STOPS });
+  const p1 = fakePage(), u1 = startUsage(store(), { doc: p1.doc, win: p1.win, tab: memTab() });
+  let p2, u2, p3, u3;
+  try {
+    t += 60;
+    p2 = fakePage(); u2 = startUsage(store(), { doc: p2.doc, win: p2.win, tab: memTab() });   // a second tab, 1 min later
+    eq(sent.filter((r) => r.e === "start").length, 1, "one start row within 2 minutes");
+    eq(u2.visit().sid, u1.visit().sid, "the second tab continues the same visit");
+    t += 30; p2.hide();
+    eq(sent.filter((r) => r.e === "end").map((r) => r.sid), [u1.visit().sid], "its length goes with that visit");
+    t += 60;   // 150 s after the first start
+    p3 = fakePage(); u3 = startUsage(store(), { doc: p3.doc, win: p3.win, tab: memTab() });
+    eq(sent.filter((r) => r.e === "start").length, 2, "2 minutes later a new tab is a new visit");
+  } finally { u1?.stop(); u2?.stop(); u3?.stop(); _configureUsage({ url: USAGE_URL, force: false, send: null, now: () => Date.now() / 1000 }); useMemoryOverlay(false); }
+});

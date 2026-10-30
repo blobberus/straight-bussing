@@ -83,6 +83,8 @@ the browser could not read the receiver's first reply it sent a second copy of t
 a start or place row whose Visit number is already in its tab, every summary refresh deletes repeats left from before
 (the Summary shows how many), and visits are counted by Visit number everywhere (Summary, report).
 
+**Two-minute rule (2026-10-30, owner: "if a request was made within two minutes, it will manually check the user ID to make it not double count").** The receiver checks the anonymous number of every start row: if that number started a visit less than 2 minutes earlier, the row is not added and its later length or place rows go with the earlier visit; every summary refresh folds such repeats already in the Sheet (the Summary shows how many). The app does the same before sending: a page of this browser, in any tab, continues a visit this browser started under 2 minutes ago. `tools/usage_report.py` applies the rule too.
+
 **Is my visit counted?** Open the site, then Settings > Usage statistics: the app reads the receiver's reply and says
 "This visit was counted at ..." (or why not). In the Sheet look at the **starts** tab (or Summary), not Sheet1. In the
 Apps Script editor, **Executions** lists every doPost with its time and status.

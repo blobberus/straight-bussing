@@ -24,6 +24,10 @@
  * already in its tab is not added again (a retry, or a second copy the browser sent when it could not read the first
  * reply), every summary refresh deletes such repeats left from before and counts them, and the Summary counts visits
  * by Visit number.
+ * Two-minute rule (owner 2026-10-30: "if a request was made within two minutes, it will manually check the user ID to
+ * make it not double count"): a start row whose anonymous number already started a visit less than QUICK_REPEAT_S ago
+ * is not added; its later length and place rows are filed under that earlier visit (an alias kept in the document
+ * properties for 2 days). Every summary refresh folds such quick repeats left from before the same way.
  */
 var CHI = "America/Chicago";
 var HEADERS = {
@@ -39,6 +43,8 @@ var HEX32 = /^[0-9a-f]{32}$/;
 var MAX_BODY = 600;
 var SUMMARY_EVERY_S = 300;
 var HEAD_BG = "#00A894", HEAD_FG = "#FFFFFF";
+var QUICK_REPEAT_S = 120;   // a visitor's start within 2 min of their previous one is the same visit
+var ALIAS_KEEP_MS = 2 * 86400000;
 
 /* ---------------------------------------------------------------- web app */
 
@@ -47,14 +53,23 @@ function doPost(e) {
     var body = (e && e.postData && e.postData.contents) || "";
     if (body.length > MAX_BODY) return reply("too long");
     var d = JSON.parse(body);
-    var row = toRow(d, new Date());
+    var now = new Date();
+    var row = toRow(d, now);
     if (!row) return reply("dropped");
     var lock = LockService.getScriptLock();
     lock.waitLock(10000);
     try {
       ensureSetup();
-      if (d.e !== "end" && knownIn(TAB_NAMES[d.e], 3, String(d.sid))) return reply("ok");   // this visit is already in: never twice
-      if (d.e === "start") row[8] = knownVisitor(String(d.id)) ? "No" : "Yes";   // new = this number never seen before
+      if (d.e === "start") {
+        if (knownIn(TAB_NAMES.start, 3, String(d.sid))) return reply("ok");   // this visit is already in: never twice
+        var earlier = recentStart(String(d.id), now);   // the two-minute rule: the same visitor just started a visit
+        if (earlier) { setAlias(String(d.sid), earlier); return reply("ok"); }
+        row[8] = knownVisitor(String(d.id)) ? "No" : "Yes";   // new = this number never seen before
+      } else {
+        var kept = aliasOf(String(d.sid));
+        if (kept) row[2] = kept;   // a length or place of a folded quick repeat goes with the visit it repeated
+        if (d.e === "place" && knownIn(TAB_NAMES.place, 3, String(row[2]))) return reply("ok");
+      }
       tab(d.e).appendRow(row);
       maybeRefreshSummary();
     } finally {
@@ -145,6 +160,59 @@ function repeatedVisitRows(rows) {
     if (seen[sid]) out.push(i); else seen[sid] = 1;
   });
   return out;
+}
+
+/**
+ * The visit (Visit number) this anonymous number started less than QUICK_REPEAT_S before now, or "". Looks at the last
+ * 300 start rows only (two minutes of visits are always among them).
+ */
+function recentStart(id, now) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TAB_NAMES.start);
+  if (!sh || sh.getLastRow() < 2) return "";
+  var n = Math.min(300, sh.getLastRow() - 1), from = sh.getLastRow() - n + 1;
+  var rows = sh.getRange(from, 1, n, 3).getValues();
+  for (var i = rows.length - 1; i >= 0; i--) {
+    var t = whenOf(rows[i][0]);
+    if (String(rows[i][1]) === id && t && (now - t) / 1000 < QUICK_REPEAT_S && now - t >= -60000) return String(rows[i][2]);
+  }
+  return "";
+}
+
+function setAlias(sid, kept) {
+  PropertiesService.getDocumentProperties().setProperty("alias_" + sid, kept + "|" + Date.now());
+}
+
+/** The earlier visit a folded quick repeat belongs to, or "". */
+function aliasOf(sid) {
+  var v = PropertiesService.getDocumentProperties().getProperty("alias_" + sid);
+  return v ? v.split("|")[0] : "";
+}
+
+/**
+ * Quick repeats in the starts rows (pure): per anonymous number in received order, a start less than gapS after the
+ * number's previous KEPT start folds into it. Test rows are left alone.
+ * @param {Array[]} rows starts rows
+ * @param {number} [gapS]
+ * @returns {{drop:number[], alias:Object<string,string>}} drop: 0-based row indexes; alias: folded Visit -> kept Visit
+ */
+function quickRepeats(rows, gapS) {
+  gapS = gapS || QUICK_REPEAT_S;
+  var by = {};
+  rows.forEach(function (r, i) {
+    if (!r[2] || isTestRow(r[1], r[7])) return;
+    var t = whenOf(r[0]);
+    if (t) (by[String(r[1])] = by[String(r[1])] || []).push({ t: t, i: i, sid: String(r[2]) });
+  });
+  var drop = [], alias = {};
+  Object.keys(by).forEach(function (k) {
+    var kept = null;
+    by[k].sort(function (a, b) { return a.t - b.t || a.i - b.i; }).forEach(function (x) {
+      if (kept && (x.t - kept.t) / 1000 < gapS) { drop.push(x.i); alias[x.sid] = kept.sid; }
+      else kept = x;
+    });
+  });
+  drop.sort(function (a, b) { return a - b; });
+  return { drop: drop, alias: alias };
 }
 
 /** A row's received moment: a Date, or a version 1 ISO text; null if unreadable. */
@@ -377,6 +445,32 @@ function removeRepeatedVisits(ss) {
 }
 
 /**
+ * The two-minute rule on rows already in the Sheet: delete start rows that quickRepeats folds, move their length and
+ * place rows to the visit they repeated, and drop expired aliases. Adds the count to the property quickFolded.
+ * @returns {number} start rows folded now
+ */
+function foldQuickRepeats(ss) {
+  var props = PropertiesService.getDocumentProperties(), all = props.getProperties(), cut = Date.now() - ALIAS_KEEP_MS;
+  Object.keys(all).forEach(function (k) {
+    if (k.indexOf("alias_") === 0 && Number(String(all[k]).split("|")[1] || 0) < cut) props.deleteProperty(k);
+  });
+  var sh = ss.getSheetByName(TAB_NAMES.start);
+  if (!sh || sh.getLastRow() < 2) return 0;
+  var q = quickRepeats(sh.getRange(2, 1, sh.getLastRow() - 1, HEADERS.start.length).getValues());
+  if (!q.drop.length) return 0;
+  ["end", "place"].forEach(function (kind) {
+    var t = ss.getSheetByName(TAB_NAMES[kind]);
+    if (!t || t.getLastRow() < 2) return;
+    var col = t.getRange(2, 3, t.getLastRow() - 1, 1), vals = col.getValues(), moved = false;
+    vals.forEach(function (v) { if (q.alias[String(v[0])]) { v[0] = q.alias[String(v[0])]; moved = true; } });
+    if (moved) col.setValues(vals);
+  });
+  for (var k = q.drop.length - 1; k >= 0; k--) sh.deleteRow(q.drop[k] + 2);
+  props.setProperty("quickFolded", String(Number(props.getProperty("quickFolded") || 0) + q.drop.length));
+  return q.drop.length;
+}
+
+/**
  * Re-mark the starts tab's New visitor column (newVisitorFlags): runs with every summary refresh, so repeated "Yes"
  * flags for the same number (old rows, races, imported data) are cleaned automatically. Writes only when something
  * changes and adds the count to the document property newFixed.
@@ -405,9 +499,11 @@ function cleanNewVisitors(ss) {
 function refreshSummary() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   removeRepeatedVisits(ss);
+  foldQuickRepeats(ss);
   cleanNewVisitors(ss);
   var props = PropertiesService.getDocumentProperties();
   var fixed = Number(props.getProperty("newFixed") || 0), repeats = Number(props.getProperty("repeatsRemoved") || 0);
+  var quick = Number(props.getProperty("quickFolded") || 0);
   var s = summarize(rowsOf(ss, "start"), rowsOf(ss, "end"), rowsOf(ss, "place"), new Date());
   var sh = ss.getSheetByName("Summary") || ss.insertSheet("Summary", 0);
   if (sh.getIndex() !== 1) { ss.setActiveSheet(sh); ss.moveActiveSheet(1); }
@@ -427,7 +523,7 @@ function refreshSummary() {
   };
   put([["Straight Bussing website: anonymous visitors"]], "title");
   put([["Updated " + s.updated + " (Chicago time). A visitor is a random number made in one browser; identity is never collected. Test rows are left out."]], "note");
-  put([["New visitor = the first visit of that anonymous number, counted once. Repeated new-visitor flags corrected so far: " + fixed + ". Repeated copies of a visit removed so far: " + repeats + "."]], "note");
+  put([["New visitor = the first visit of that anonymous number, counted once. Repeated new-visitor flags corrected so far: " + fixed + ". Repeated copies of a visit removed so far: " + repeats + ". Visits started within 2 minutes of the same visitor's previous one, folded in: " + quick + "."]], "note");
   r++;
   put([["Totals", "Count"]], "head");
   put(s.totals);

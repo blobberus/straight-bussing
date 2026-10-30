@@ -30,7 +30,9 @@
  * the background (a restored or pre-opened tab) starts its visit the first time it is actually shown, never before.
  * A reload in the same tab (by hand, or the app updating itself in the background, ui/update.js) continues the visit:
  * the visit is kept in sessionStorage (VISIT_KEY, this tab only) and resumed when it was active under 30 min ago, so no
- * second start row is sent (owner 2026-10-30: users were double counted).
+ * second start row is sent (owner 2026-10-30: users were double counted). And the two-minute rule (owner 2026-10-30):
+ * a page of this browser, in any tab, that would start a visit less than QUICK_REPEAT_S after this browser's last start
+ * row continues that visit instead (localStorage 'sb:usageLastStart'); the receiver applies the same rule by number.
  */
 import { DEMO } from "../core/demo.js";
 import { hav } from "../core/geo.js";
@@ -53,6 +55,10 @@ const MAX_ACCURACY_M = 500;
 /** An "end" row is sent again only when the length grew by at least this much. */
 const RESEND_S = 5;
 const ID_KEY = "usageId";
+/** A start less than this long after this browser's last start row continues that visit (the two-minute rule). */
+export const QUICK_REPEAT_S = 120;
+/** localStorage key (all tabs): this browser's last start row {id, sid, at, startS}. */
+const LAST_START_KEY = "usageLastStart";
 /** sessionStorage key (this tab only): the current visit, so a reload continues it instead of starting a new one. */
 export const VISIT_KEY = "sb-usage-visit";
 const HEX32 = /^[0-9a-f]{32}$/;
@@ -148,6 +154,12 @@ export function anonId() {
 /** Settings > "Get a new anonymous number": forget this browser's number; the next visit makes a new one. */
 export function resetId() {
   remove(ID_KEY);
+}
+
+/** Is ls (this browser's last start row) a start of this number less than QUICK_REPEAT_S ago? */
+function quick(ls, who, now) {
+  return !!ls && ls.id === who.id && HEX32.test(String(ls.sid)) && Number.isFinite(ls.at) && Number.isFinite(ls.startS)
+    && now - ls.at >= -60 && now - ls.at < QUICK_REPEAT_S;
 }
 
 function tabStorage() {
@@ -285,10 +297,15 @@ export function startUsage(store, o = {}) {
       visit = { ...prev };
       delete visit.lastActive;
       if (visit.reply) { last = visit.reply; bus.emit("usage:sent", last); }
+    } else if (quick(load(LAST_START_KEY, null), who, now)) {
+      // the two-minute rule: this browser started a visit (another tab, or a page that did not keep it) moments ago
+      const ls = load(LAST_START_KEY, null);
+      visit = { who, sid: ls.sid, startS: ls.startS, dur: 0, zone: "", sentDur: -1, placeSent: true };
     } else {
       // the visit keeps the number it started with (a reset in Settings applies from the next visit)
       visit = { who, sid: randomHex(16), startS: now, dur: 0, zone: "", sentDur: -1, placeSent: false };
       post("start");   // always: visit start and distinct users are counted regardless of the switches (owner)
+      save(LAST_START_KEY, { id: who.id, sid: visit.sid, at: now, startS: now });
     }
     saveVisit(tab, visit, now);
     placeOnce(store.get());
