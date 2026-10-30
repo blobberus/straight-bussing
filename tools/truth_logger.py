@@ -163,10 +163,11 @@ class RawPolls:
         self.n += 1
 
 
-def poll(tr, w, now, err, get=fetch, raw=None, pred_count=None):
+def poll(tr, w, now, err, get=fetch, raw=None, pred_count=None, changes=None):
     """One poll of both feeds. Any failure (network, bad JSON, a malformed entry, a detector bug, the raw
     poll file) goes to err() and only skips that feed or entry for this poll, never the run.
     pred_count(feed, now) -> buses Passio predicts for (service_gate.predicted_buses): added as summary["pred"].
+    changes: a bus_changes.BusChanges fed with the poll's reports and new arrivals (bus count drops / adds per route).
     -> feed_summary or None."""
     pred = 0
     try:
@@ -193,13 +194,14 @@ def poll(tr, w, now, err, get=fetch, raw=None, pred_count=None):
             raw.write(now, feed)
         except Exception as ex:
             err("raw polls", ex)
-    summary, ev = None, []
+    summary, ev, reps = None, [], []
     try:
         summary = feed_summary(feed)
     except Exception as ex:
         err("vehiclePositions summary", ex)
     try:
         for rep in reports(feed, err):
+            reps.append(rep)
             try:
                 ev += tr.update(rep, now)
             except Exception as ex:
@@ -210,6 +212,11 @@ def poll(tr, w, now, err, get=fetch, raw=None, pred_count=None):
         ev += tr.drain(now)
     except Exception as ex:
         err("detector drain", ex)
+    if changes is not None:                      # before write(): it sorts ev in place, which is fine either way
+        try:
+            changes.observe(reps, now, ev)
+        except Exception as ex:
+            err("bus changes", ex)
     try:
         w.write(ev)
     except Exception as ex:
@@ -416,6 +423,8 @@ def main():
     ap.add_argument("--pred-seed", nargs="*", default=[], help="PredLog files to reload the last hour from")
     ap.add_argument("--alerts-out", help="Passio's service alerts as version rows (CSV, alerts_lib.COLUMNS), "
                                          "rewritten after each alerts poll (AlertLog)")
+    ap.add_argument("--changes-out", help="bus count changes per route (drop / add rows, bus_changes.COLUMNS) appended "
+                                          "here as they are confirmed (bus_changes.BusChanges)")
     ap.add_argument("--alerts-every", type=float, default=300, help="seconds between serviceAlerts polls (min 30; "
                                                                      "the first is at start)")
     ap.add_argument("--alerts-timeout", type=float, default=8, help="serviceAlerts request timeout, seconds")
@@ -454,6 +463,13 @@ def main():
         tr.seed(L.read_tail(a.seed or a.out), int(time.time()))
     except Exception as ex:                      # a bad seed only costs duplicate protection (merge dedupes too)
         err("seed", ex)
+    changes = None
+    if a.changes_out:                            # optional: a failure here never stops arrival logging
+        try:
+            import bus_changes as BC
+            changes = BC.BusChanges(st, int(time.time()), out=a.changes_out)
+        except Exception as ex:
+            err("bus changes setup", ex)
     alerts, alerts_setup = None, ""
     if a.alerts_out:                             # own thread + counters: never part of err / the arrival loop
         try:
@@ -480,7 +496,7 @@ def main():
     try:
         while True:
             t0 = time.time()
-            s = poll(tr, w, int(t0), err, raw=raw, pred_count=pcount)
+            s = poll(tr, w, int(t0), err, raw=raw, pred_count=pcount, changes=changes)
             if plog is not None:
                 try:
                     plog.flush()
@@ -539,7 +555,8 @@ def main():
                      "rows": w.n, "errors": err.proc, "fetch_errors": err.fetch, "first_error": err.first,
                      "raw_polls": raw.n if raw else None, "pred_rows": w.np if a.pred_out else None,
                      "pred_updates": plog.n if plog else None, "idle_stop": idle_stop,
-                     "last_bus": act.last_bus if act else None, **(al or {})}),
+                     "last_bus": act.last_bus if act else None,
+                     "bus_changes": changes.n if changes is not None else None, **(al or {})}),
                     encoding="utf-8")
             except OSError as ex:
                 print(f"could not write {a.status_file}: {ex}", file=sys.stderr)
@@ -550,6 +567,7 @@ def main():
                                                             if al.get("alert_last_error") else ""))
     print(f"done: {w.n} rows appended to {a.out}; polls={polls} errors={err.proc} fetch_errors={err.fetch}"
           + (f"; {w.np} prediction rows to {a.pred_out}" if a.pred_out else "") + al_txt
+          + (f"; {changes.n} bus count changes to {a.changes_out}" if changes is not None else "")
           + (f"; stopped early (idle): {idle_stop}" if idle_stop else ""))
 
 

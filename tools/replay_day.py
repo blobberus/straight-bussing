@@ -39,6 +39,7 @@ import build_eta_dataset as B
 import merge_arrivals as MA
 import merge_predictions as MP
 import truth_logger as TL
+import bus_changes as BC
 from arrival_detector import Tracker
 
 REPO = "blobberus/straight-bussing"
@@ -159,6 +160,7 @@ class Run:
         self.rid, self.polls, self.preds, self.pred_src = rid, polls, preds, pred_src
         self.t_first, self.t_last = int(polls[0]["t"]), int(polls[-1]["t"])
         self.arr = self.pred = None               # its output files once replayed
+        self.changes = None                       # its bus count changes file once replayed
         self.seed_t = self.t_first - SEED_LAG_S   # when it read the shared CSV, when its rows were merged
         self.merge_t = self.t_last + MERGE_LAG_S  # (run_times: the job's own step times, when GitHub has them)
 
@@ -300,11 +302,13 @@ def replay_run(run, st, seed_rows, work):
     """One run through truth_logger.poll -> (arrivals CSV path, predictions CSV path, processing errors)."""
     work = Path(work)
     work.mkdir(parents=True, exist_ok=True)
-    arr, pred = work / f"run-{run.rid}.csv", work / f"run-{run.rid}_pred.csv"
-    for p in (arr, pred):
+    arr, pred, chg = work / f"run-{run.rid}.csv", work / f"run-{run.rid}_pred.csv", work / f"run-{run.rid}_changes.csv"
+    for p in (arr, pred, chg):
         if p.exists():
             p.unlink()
     tr, w, err = Tracker(st), TL.Writer(arr, st, pred), TL.Errors(out=io.StringIO())
+    changes = BC.BusChanges(st, run.t_first, out=chg)   # bus count changes, as the live run's --changes-out
+    run.changes = chg
     tr.seed(seed_rows, run.t_first)
     eps, k, empty = run.preds or [], 0, {"entity": []}
     for p in run.polls:
@@ -314,7 +318,7 @@ def replay_run(run, st, seed_rows, work):
             tr.add_prediction(trip, stop, made, pr, seq, veh, seen=seen, last=last)
             k += 1
         feed = {"header": {"timestamp": p.get("h")}, "entity": [entity(v) for v in p.get("v") or []]}
-        TL.poll(tr, w, t, err, get=lambda name, f=feed: empty if name == "tripUpdates" else f)
+        TL.poll(tr, w, t, err, get=lambda name, f=feed: empty if name == "tripUpdates" else f, changes=changes)
     w.write(tr.drain(run.t_last, final=True))
     return arr, pred, err.proc
 
@@ -338,6 +342,8 @@ def replay(runs, st_for, seed_rows, work, log=print):
         else:
             MA.merge(store_a, r.arr)
             MP.merge(store_p, r.pred)
+            if getattr(r, "changes", None):          # bus count changes (work/store_changes.csv; copies dropped)
+                BC.merge(work / "store_changes.csv", r.changes)
     if errors:
         log(f"  {errors} processing errors were skipped (as live)")
     return store_a, store_p
@@ -497,9 +503,15 @@ def replay_day(day, out, cache=CACHE, source="auto", compare_live=False, live_pr
     fa, fp = out / f"arrivals-{day}.csv", out / f"predictions-{day}.csv"
     fa.write_text(",".join(L.COLUMNS) + "\n" + "".join(L.row_text(r) for r in rep_a), encoding="utf-8", newline="")
     fp.write_text(",".join(L.PRED_COLUMNS) + "\n" + "".join(L.row_text(r) for r in rep_p), encoding="utf-8", newline="")
+    rep_c = [r for r in BC.read_rows(work / "store_changes.csv") if t0 <= int(float(r["epoch"])) < t1]
+    with open(out / f"bus_changes-{day}.csv", "w", encoding="utf-8", newline="") as f:
+        cw = csv.DictWriter(f, fieldnames=list(BC.COLUMNS), lineterminator="\n", extrasaction="ignore")
+        cw.writeheader()
+        cw.writerows(rep_c)
     stats = {"day": day, "runs": len(runs), "pred_sources": dict(Counter(str(r.pred_src) for r in runs)),
              "arrivals": len(rep_a), "predictions": len(rep_p), "by_source": dict(Counter(r[-1] for r in rep_a)),
-             "live_pred_filled": filled, "first_poll": first, "day_start": t0, "day_end": t1}
+             "live_pred_filled": filled, "first_poll": first, "day_start": t0, "day_end": t1,
+             "bus_changes": len(rep_c), "bus_drops": sum(1 for r in rep_c if r["kind"] == "drop")}
     log(f"{day}: replayed {len(rep_a)} arrivals ({stats['by_source']}), {len(rep_p)} prediction rows"
         + (f"; {filled} rows kept the live passio_pred columns (no prediction log then)" if filled else ""))
     if compare_live:

@@ -19,6 +19,7 @@ up to **Tuesday, October 13, 2026, 4:20 PM** (collection started Thursday, Octob
 | `predictions.csv` | same folder | one arrival x one "how far ahead" (1 to 30 min) | **checking** predictions against the goal | 23,915 rows, Oct 12 12:20 PM to Oct 13 |
 | `eta-<day>.csv.gz` | Releases page, "Prediction data archive" | one minute x one bus x one stop it reaches in the next 45 min | **training** a better algorithm | Oct 10, 11, 12 (Passio from Oct 12) |
 | `data/eta/summary.csv` | `data` branch | one day x predictor x lead range x route | the daily scoreboard | Oct 10 to 12 |
+| `bus_changes.csv` | `data` branch, `data/ground_truth/` | one moment a line lost or gained a bus | finding the 2 to 1 bus transitions and the predictions around them | from Oct 30 (about 40 to 55 drops a weekday, 30 to 45 of them lasting) |
 | `alerts.csv` | `data` branch, `data/ground_truth/` | one version of one announcement by the operator (detour, reduced service, phone help) | explaining odd days and big misses | from Oct 14 (3 announcements in the feed that evening) |
 | per-day / per-route copies, `latest.csv` | [github.com/blobberus/straight-bussing-data](https://github.com/blobberus/straight-bussing-data) | as `arrivals.csv` | browsing in GitHub | synced every 30 min |
 
@@ -243,6 +244,42 @@ later** than shown (of 1,065 set aside at 15 to 30 minutes, 24 were early). Two 
 **Checking a row against the goal in a spreadsheet** (the 10 minute shrink):
 `=ABS(pred_minus_actual_s) <= IF(lead_target_s >= 1800, 180, IF(lead_target_s >= 1200, 120, 60))`. The old 10% rule:
 `=ABS(pred_minus_actual_s) <= 0.1 * lead_target_s`.
+
+## `bus_changes.csv`: when a line loses or gains a bus
+
+The owner noticed big timing errors when a line goes from 2 buses to 1. Since October 30 the collector writes a row
+every time a line's number of running buses changes: a **drop** when a bus stops reporting on that line for 10 minutes
+while another bus of the line keeps going, an **add** when a new bus has been on the line for 5 minutes. A line's last
+bus of the day is not a drop, and short gaps in the feed (it sometimes sends empty lists) never count.
+
+**Most drops are layovers, not transitions.** Between trips the live feed leaves a bus out for 10 to 27 minutes while it
+waits at the end of the line (Apostolic Lot, Drexel Garage, 59th & Ellis). So each drop is checked against the
+arrivals log: if the bus is back on the line within 30 minutes it is a layover (`lasting` = 0); if not, it is a
+**lasting drop** (`lasting` = 1), the transition the owner means: the line really runs with one bus fewer (end of a
+peak, a driver break, the bus moved to another line). `returned_min` says when it came back, `moved_to_route` where it
+went.
+
+| Column | What it means | Example |
+|---|---|---|
+| `route_id`, `route_name` | The line. | `5699`, `Red Line/Arts Block` |
+| `epoch`, `local_time` | When it happened: for a drop, the leaving bus's last report; for an add, the new bus's first. | `2026-10-27 11:19:00` |
+| `kind` | `drop` (a bus left) or `add` (a bus joined). | `drop` |
+| `buses_before`, `buses_after` | Running buses on the line before and after. | `2`, `1` |
+| `vehicle_id` | **The bus that left** (or joined). | `4320` |
+| `last_stop_id`, `last_stop_name` | Drops: the last stop it was logged at on that line. | `Logan Center for Arts` |
+| `last_seen_epoch`, `trip_id` | Its last report and trip number. | |
+| `staying_vehicles` | The buses still running on the line, separated by `;`. | `12644` |
+| `sched_buses_hour`, `sched_buses_next_hour`, `expected` | What the timetable says for that hour and the next, and `expected` = 1 if the timetable itself loses (or gains) a bus within 30 minutes of the change. | `2`, `1`, `1` |
+| `moved_to_route` | The line the bus showed up on next, if any. | `5704` |
+| `returned_min`, `lasting` | Minutes until it was logged on the line again (blank = not within 3 hours); 1 = lasting drop, 0 = layover, blank = too early to tell. | `blank`, `1` |
+| `returning` | Adds only: 1 = a bus coming back from its layover, 0 = a new bus. | `0` |
+
+**What a week showed (Oct 20 to 23 and 26 to 28, replayed):** 337 drops, 267 lasting (91 of them from 2 buses to 1), 70
+layovers. Around lasting 2 to 1 drops, Passio's predictions for the bus that stays were clearly worse on the lines that
+share buses (Apostolic/Drexel: 5% within 10% of the lead against 14% the rest of the day, gross misses 48% against 28%;
+Apostolic: typical miss 14.6 against 4.4 minutes; Drexel 5.7 against 2.5 minutes), but not on the other lines, so across
+all lines there was no clear effect. The forecast table marks rows near a lasting drop (`bus_change_min`, `leaving_bus`)
+so a model can learn this.
 
 ## `alerts.csv`: what the operator announced
 

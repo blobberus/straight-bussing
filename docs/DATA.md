@@ -8,6 +8,7 @@ predictions and train our own (`tools/model_*.py`, `docs/ALGORITHMS.md`). Unoffi
 | `data/ground_truth/arrivals.csv` | `data` branch only (git-ignored on main) | real arrivals, collected every 10 s while buses run (`tools/service_gate.py`), merged about every 40 min (once per CI run) |
 | `data/ground_truth/predictions.csv` | `data` branch | since 2026-10-12: Passio's prediction 1, 2, 3, 5, 10, 15, 20 and 30 min before each arrival (one row per arrival and lead; schema below), for the owner's "10% rule" |
 | `data/ground_truth/alerts.csv` | `data` branch | since 2026-10-14: the operator's service alerts (Passio `serviceAlerts`), one row per alert version with when our collector first and last saw it (schema below); context for odd days (detours, reduced service), not ground truth about buses |
+| `data/ground_truth/bus_changes.csv` | `data` branch | since 2026-10-30: bus count changes per route (a bus leaves while the route keeps running, or a bus joins), each drop classified as lasting or a layover (schema below; owner: the 2 to 1 bus transitions) |
 | `data/ground_truth/archive/*.csv` | `data` branch | same schemas, rotated when a live file passes 40 MB (arrivals, predictions; alerts.csv never rotates) |
 | CI artifacts `raw-polls-<run>`, `pred-updates-<run>` | GitHub Actions, 90 days | every position poll (E03) and every Passio prediction update `[veh, trip, stop_id, made, predicted, seq, seen, last]` (repeated about once a minute while it stays on display) per run (`tools/raw_fetch.py --list`) |
 | Release `data-archive-YYYY-MM` assets | GitHub Releases (prerelease), kept | from service day 2026-10-12 on (Oct 10-11: positions only), one set per service day, uploaded the morning after: `pred-updates-<day>.jsonl.gz`, `raw-polls-<day>.jsonl.gz` (the two artifacts merged and deduped), `eta-<day>.csv.gz` (forecast snapshots, below), `gtfs-<day>.zip`, and from the first day alerts were collected `alerts-<day>.csv.gz` (the alerts.csv versions in the feed at some poll of that service day; header only = none seen); about 5.5 MB a day, no growth of the git history (`.github/workflows/archive.yml`, `tools/archive_day.py`) |
@@ -128,6 +129,39 @@ active_end. Fetch health per run: `logger.json` keys `alert_polls` `alert_ok` `a
 failed`, and a `Service alerts not collected` warning appears when more than half failed (never part of the
 "Collector run degraded" verdict).
 
+## bus_changes.csv (added 2026-10-30; one row = one confirmed change in a route's bus count)
+Owner: "A large propagating timing error I noticed originates from when buses transition from 2 bus to 1 bus schedule.
+When collecting data, flag buses that are during a transition and mark the one that disappears." `tools/bus_changes.py`,
+fed by every vehiclePositions poll (truth_logger.py `--changes-out`, so replay_day.py rebuilds it too), merged and
+classified by every collect run (`bus_changes.py merge --arrivals arrivals.csv`, also `monitor.py local`).
+- **Running buses of a route:** buses with a fresh report there (at most 90 s old by the feed's clock, the detector's rule),
+  on a route the static data knows.
+- **drop:** a bus sends no report on the route for 10 min while at least one other bus of the route reported within that
+  time: N to N-1 (N >= 2). `epoch` = its last report. A route that empties (end of service, or a feed outage that
+  silences every bus) is not a drop; neither is a gap under 10 min (Passio's empty / partial lists, DC-015).
+- **add:** a bus newly reporting on the route for 5 min with at least 3 reports, when the route already ran: N to N+1
+  (N >= 1). `epoch` = its first report. A bus first seen in a run's first 5 min counts as already there (the earlier
+  overlapping run, which saw it arrive, writes the row). Two overlapping runs' copies (same route, kind, bus within 300 s)
+  are merged.
+- **Classification (every merge, from arrivals.csv, which knows where each bus went across runs):** `returned_min` =
+  minutes until the bus's next logged arrival on the same route (within 3 h, else blank); `lasting` = 1 if none within
+  30 min, 0 if sooner (a **layover**: between trips Passio leaves a bus out of the feed for 10 to 27 min, so most
+  short drops are layovers at a line end), blank while the log does not reach 30 min past the drop yet; on adds
+  `returning` = 1 if the same bus dropped off that route in the 30 min before (a layover's end). **The transitions the
+  owner means are `kind = drop` with `lasting = 1`.**
+
+`route_id` `route_name` `epoch` `local_time` `kind` (drop | add) `buses_before` `buses_after` `vehicle_id` (the bus that
+left or came) `last_stop_id` `last_stop_name` (drops: its last logged arrival on the route, else Passio's last named stop)
+`last_seen_epoch` `trip_id` (its last / first trip id) `staying_vehicles` (`;`-joined) `sched_buses_hour`
+`sched_buses_next_hour` (timetable buses for that clock hour and the next, web/data/service.json) `expected` (1 if the
+timetable's bus count falls / rises between 30 min before and 30 min after, 0 if not, blank if unknown)
+`moved_to_route` (the route the bus reported or logged an arrival on next, within 30 min) `returned_min` `lasting`
+`returning`.
+
+Archive: `bus-changes-<day>.csv.gz` on the `data-archive-YYYY-MM` release is rebuilt by archive_day.py from the day's
+merged raw polls (one pass, `bus_changes.day_changes`) and classified the same way; the forecast table's
+`bus_change_min` / `leaving_bus` use it. The live file and the archive can differ by a row or two at run edges.
+
 ## Forecast snapshots for training and analysis: `eta-<day>.csv.gz` (added 2026-10-12)
 `tools/build_eta_dataset.py`. **One row = (query minute t, bus, one of that bus's arrivals in (t, t + 45 min])**, plus
 rows for a visit Passio showed at t that no arrival matches (`label_status` no_arrival: a bus going out of service, a
@@ -146,7 +180,9 @@ late, the bus came early**) and `_rel` = err / lead_s, so **the 10% rule is |rel
 (reading B) is rel > +0.01**: `passio_status` (shown / none / previous_lap) `passio_epoch` `passio_made_epoch`
 `passio_seen_epoch` `passio_age_s` `passio_err_s` `passio_rel`; `tt_epoch` (GTFS timetable of the target trip; blank
 on headway trips, the Downtown Campus Connector) `tt_err_s` `tt_rel`; `ttd_epoch` (timetable + the bus's current
-delay) `ttd_err_s` `ttd_rel`. Passio at t uses the collector's rules (this bus, loop stop_sequence, first seen by t
+delay) `ttd_err_s` `ttd_rel` · since 2026-10-30 `bus_change_min` (minutes from the nearest lasting drop on the row's route to the query
+time, negative = the drop is still ahead; blank if none within 45 min; bus_changes.py) and `leaving_bus` (1 if the
+row's bus is the one that leaves in that drop, 0 if it stays, blank with no drop). Passio at t uses the collector's rules (this bus, loop stop_sequence, first seen by t
 and still shown within 90 s, only for its next visit; an update made before the previous visit on the same trip =
 previous_lap; since 2026-10-16 (DC-010) a minute the own trip id left empty, after one it filled for the same arrival,
 takes the bus's prediction under a trip id Passio re-matched it to, by the detector's own rule, as in

@@ -144,6 +144,7 @@ class Static:
         self.routes = load_json(web_data / "routes.json", {})
         self.shapes = load_json(web_data / "shapes.json", {})
         self.addr = load_json(web_data / "stop_addresses.json", {})
+        self.service = load_json(web_data / "service.json", {})   # timetable bus counts per hour (bus_changes.py)
         self._cum = {}
 
     def route_name(self, rid):

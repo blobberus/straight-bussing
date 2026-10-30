@@ -27,6 +27,28 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 
 ## Errors
 
+### DC-020 Bus count changes (the 2 to 1 bus transitions) were not recorded (added 2026-10-30)
+- Owner: "A large propagating timing error I noticed originates from when buses transition from 2 bus to 1 bus
+  schedule. When collecting data, flag buses that are during a transition and mark the one that disappears."
+- Added: `tools/bus_changes.py`, fed by every poll (`truth_logger.py --changes-out`, replay_day.py too), merged into
+  `data/ground_truth/bus_changes.csv` by every collect run and `monitor.py local`. A drop = a bus silent on its route for
+  10 min while another bus of the route still reports (timed to its last report); an add = a new bus on a running route
+  for 5 min. Feed blips and a route that empties never count. Every merge classifies drops with arrivals.csv: `lasting`
+  = 1 if the bus logs no arrival on the route for 30 min, 0 = a layover (`returned_min`, `moved_to_route`). The forecast
+  table gains `bus_change_min` / `leaving_bus` (lasting drops); the archive gains `bus-changes-<day>.csv.gz`.
+- Why the classification: between trips Passio leaves a bus out of the feed for 10 to 27 min (bus 4322 on Oct 27:
+  21 min without a single sighting at Apostolic Lot, back on its next trip), so a 10-min rule alone also finds every
+  layover. Returns cluster at 10 to 27 min (layover) and 40 min or more (break, end of peak, moved).
+- Week replayed from the raw polls (Oct 20 to 23, 26 to 28; not written to the data branch): 337 drops, 267 lasting
+  (91 from 2 to 1; 24 where the timetable itself loses a bus within 30 min), 70 layovers, 49 lasting drops moved to
+  another route. Passio 10 to 30 min ahead (one sample per arrival, nearest 15 min), near a lasting drop vs the same
+  route's baseline: 2 to 1, staying bus: within 10% 15.5% vs 13.0%, median |err| 5.7 vs 5.4 min, gross 15.1% vs 14.5%;
+  2 to 1, leaving bus: 18.2% vs 15.3%, 4.4 vs 4.8 min, gross 7.0% vs 16.1%. By route the staying bus is clearly worse on
+  the interlined lines: Apostolic/Drexel 5% vs 14% within 10%, |err| 9.5 vs 6.2 min, gross 48% vs 28%; Apostolic |err|
+  14.6 vs 4.4 min (n = 22); Drexel 5.7 vs 2.5 min; not on 53rd Street Express, Midway Metra, Red Line, Central, South.
+- Impact: from now on every change is recorded live; past days are not backfilled on the data branch (the archive
+  rebuilds `bus-changes-<day>` for each day it archives). Status: added.
+
 ### DC-019 Bug check 2026-10-29: loop-end predictions (DC-017), replay determinism, daylight saving (fixed)
 - Loop-end predictions dropped (DC-017's main case): `arrival_detector._candidates` (and `build_eta_dataset.shown`)
   wanted Passio's stop_sequence to equal our index + 1 at a loop's end visit; our merged route order includes stops a

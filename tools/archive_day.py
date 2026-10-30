@@ -14,7 +14,7 @@ aggregate rows (the owner's accuracy goal by lead) are merged into data/eta/summ
 Only finished days are archived (3 h after the day ends, so the last runs have uploaded); a day already archived is
 skipped unless --replace. Needs the logged-in gh CLI (GH_TOKEN in CI). Stdlib + gh. Tests: tools/test_eta.py.
 """
-import argparse, glob, gzip, io, json, subprocess, sys, time, zipfile
+import argparse, csv, glob, gzip, io, json, subprocess, sys, time, zipfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -195,13 +195,26 @@ def archive(day, repo, arts, work, arrivals, gtfs=None, local=False, upload=True
         cal = load_calendar(L.ROOT / "data" / "calendar.json")
     except Exception:
         cal = ()
+    changes, change_file, change_msg = [], None, ""
+    try:                                      # bus count changes (bus_changes.py): optional, never costs the main files
+        import bus_changes as BC
+        changes = BC.day_changes([paths[1]], arrivals, st, t0, t1)
+        change_file = work / f"bus-changes-{day}.csv.gz"
+        with gzip.open(change_file, "wt", encoding="utf-8", newline="", compresslevel=9) as f:
+            cw = csv.DictWriter(f, fieldnames=list(BC.COLUMNS), lineterminator="\n", extrasaction="ignore")
+            cw.writeheader()
+            cw.writerows(changes)
+        change_msg = (f", {sum(1 for c in changes if c['kind'] == 'drop')} bus drops "
+                      f"({sum(1 for c in changes if c['kind'] == 'drop' and str(c['lasting']) == '1')} lasting)")
+    except Exception as ex:
+        changes, change_file, change_msg = [], None, f", bus changes skipped ({type(ex).__name__}: {ex})"
     rows = B.build(day, B.load_arrivals(arrivals, t0, t1 + B.HORIZON_S), B.load_pred_updates([paths[0]], t0, t1 + B.HORIZON_S),
-                   B.load_raw([paths[1]], t0, t1), B.load_timetable(gtfs), st, cal=cal)
+                   B.load_raw([paths[1]], t0, t1), B.load_timetable(gtfs), st, cal=cal, changes=changes)
     B.write_rows(rows, paths[2])
     summ = B.summary(rows, day)
     B.merge_summary(work / f"summary-{day}.csv", summ)
     msg = (f"{day}: {len(pred)} prediction updates, {sum(len(p['v']) for p in raw)} position reports, {len(rows)} table rows "
-           f"({sum(p.stat().st_size for p in paths) / 1e6:.1f} MB gz)")
+           f"({sum(p.stat().st_size for p in paths) / 1e6:.1f} MB gz)") + change_msg
     alert_file = None
     try:                                      # optional: never costs the day's main files
         day_alerts = alerts_of_day(alerts, day)
@@ -221,7 +234,7 @@ def archive(day, repo, arts, work, arrivals, gtfs=None, local=False, upload=True
                           "forecast-snapshot table (eta-<day>.csv.gz) and the operator's service alert versions "
                           "(alerts-<day>.csv.gz). Made by .github/workflows/archive.yml; "
                           "schemas in docs/DATA.md. Unofficial student project; public feed data only.")
-        extra = [alert_file] if alert_file else []
+        extra = [f for f in (alert_file, change_file) if f]
         if gtfs and Path(gtfs).exists():      # the timetable used (80 kB): rebuilds stay exact after a GTFS change
             g = work / f"gtfs-{day}.zip"
             g.write_bytes(Path(gtfs).read_bytes())

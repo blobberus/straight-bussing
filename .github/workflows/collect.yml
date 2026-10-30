@@ -128,11 +128,14 @@ jobs:
           # --pred-log: every prediction update Passio published (artifact below, for re-analysis);
           # --alerts-out: Passio's service alerts at start and every 5 min, one row per alert version (own thread,
           # never delays the 10 s loop; merged into data/ground_truth/alerts.csv below);
+          # --changes-out: bus count changes per route as they are confirmed (bus_changes.py; owner 2026-10-30: the
+          # 2 -> 1 bus transitions; merged into data/ground_truth/bus_changes.csv below and classified there);
           # --stop-when-idle: stop once no bus has reported for 30 min and no route is about to start (service_gate.py)
           python tools/truth_logger.py --duration 4200 --seed "$RUNNER_TEMP/seed.csv" --out "$RUNNER_TEMP/run.csv" \
             --status-file "$RUNNER_TEMP/logger.json" --raw-out "$RUNNER_TEMP/raw/raw-polls.jsonl" \
             --pred-out "$RUNNER_TEMP/run_pred.csv" --pred-log "$RUNNER_TEMP/pred/pred-updates.jsonl" \
-            --alerts-out "$RUNNER_TEMP/run_alerts.csv" --stop-when-idle --live-file "$RUNNER_TEMP/live.json"
+            --alerts-out "$RUNNER_TEMP/run_alerts.csv" --changes-out "$RUNNER_TEMP/run_changes.csv" \
+            --stop-when-idle --live-file "$RUNNER_TEMP/live.json"
       - name: Keep the raw position polls (RouteKnower E03; artifact, 90 days, never on the data branch)
         if: always() && steps.gate.outputs.mode == 'collect'
         continue-on-error: true
@@ -188,6 +191,8 @@ jobs:
               line += f"; alerts: {s.get('alert_versions') or 0} versions, {af} of {ap} polls failed"
               if ap == 0 or af > ap / 2:
                   alert_warn.append(f"service alerts: {af} of {ap} polls failed; last error: {s.get('alert_last_error')}")
+          if s and s.get("bus_changes") is not None:
+              line += f"; bus changes: {s['bus_changes']}"
           print(line)
           esc = lambda m: m.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
           for w in warn:
@@ -230,6 +235,12 @@ jobs:
               # one row per alert version (min first_seen, max last_seen); a failure never stops the arrivals push
               python tools/merge_alerts.py --into databranch/data/ground_truth/alerts.csv \
                 --add "$RUNNER_TEMP/run_alerts.csv" || echo "::warning title=Alerts merge failed::arrivals are still committed"
+            fi
+            if [ -s "$RUNNER_TEMP/run_changes.csv" ] || [ -f databranch/data/ground_truth/bus_changes.csv ]; then
+              # one row per confirmed change; every merge re-classifies the drops with arrivals.csv (lasting / layover)
+              python tools/bus_changes.py merge --into databranch/data/ground_truth/bus_changes.csv \
+                --add "$RUNNER_TEMP/run_changes.csv" --arrivals databranch/data/ground_truth/arrivals.csv \
+                || echo "::warning title=Bus changes merge failed::arrivals are still committed"
             fi
             python tools/refresh_model.py --data databranch/data/ground_truth/arrivals.csv \
               --out databranch/web/data/learned.json || echo "refresh_model failed; arrivals are still committed"
