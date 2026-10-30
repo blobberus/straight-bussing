@@ -232,8 +232,10 @@ extension AppModel {
     /// last poll while others report stays for up to 45 s (`BusMotion.missingS`).
     func publishBuses() {
         let t = now
+        let nums = BusNumbers.byRoute(buses)   // "Bus 1", "Bus 2" on routes showing two or more (owner 2026-10-30)
         let markers = busMotion.drawn().map { d in
-            MapBus(id: d.id, rid: d.rid, label: d.label, coord: d.coord, bearing: d.rotation, stale: d.vt > 0 && t - d.vt > 60)
+            MapBus(id: d.id, rid: d.rid, label: d.label, coord: d.coord, bearing: d.rotation, stale: d.vt > 0 && t - d.vt > 60,
+                   number: nums[d.rid]?[d.id])
         }
         if mapBuses != markers { mapBuses = markers }
     }
@@ -582,9 +584,13 @@ extension AppModel {
     }
 
     /// A bus tapped on the map opens its route WITHOUT moving the map (web main.js openRoute(rid, false)).
-    func busTapped(_ rid: String) {
+    /// A bus tapped on the map opens its route; a numbered bus (its route shows two or more, owner 2026-10-30) opens it
+    /// with that bus selected, so each station shows that bus's own time. Already on that route page: only the selection.
+    func busTapped(_ rid: String, vehicleId: String? = nil) {
         lastAnnotationTap = Date().timeIntervalSince1970
         guard staticData.routes[rid] != nil else { return }
+        selectedBus = vehicleId.flatMap { v in BusNumbers.byRoute(buses)[rid]?[v] != nil ? SelectedBus(rid: rid, vehicleId: v) : nil }
+        if page == .route(rid) { return }
         paths[tab, default: []].append(.route(rid))   // the sheet keeps its state (owner 2026-10-12)
         syncMapFocus()
     }

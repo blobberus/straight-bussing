@@ -139,12 +139,13 @@ struct MapScreen: View {
             ForEach(buses) { b in
                 let isYou = youOnDrawnBus && b.id == youBus
                 Annotation(b.label, coordinate: b.coord.cl, anchor: .center) {
-                    Button { model.busTapped(b.rid) } label: {
-                        BusMarker(route: model.route(b.rid), bearing: b.bearing, stale: b.stale, youText: isYou ? you?.text : nil)
+                    Button { model.busTapped(b.rid, vehicleId: b.id) } label: {
+                        BusMarker(route: model.route(b.rid), bearing: b.bearing, stale: b.stale, youText: isYou ? you?.text : nil,
+                                  number: b.number)
                             .frame(minWidth: 44, minHeight: 44)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Opens the route")
+                    .accessibilityHint(b.number != nil ? "Opens the route with this bus's times" : "Opens the route")
                 }
                 .annotationTitles(.hidden)
             }
@@ -436,6 +437,8 @@ struct BusMarker: View {
     let bearing: Double?
     var stale = false
     var youText: String? = nil
+    /// "Bus 2": a small number on the badge when the route shows two or more buses (Kit `BusNumbers`, owner 2026-10-30).
+    var number: Int? = nil
     var body: some View {
         ZStack {
             if youText != nil {
@@ -461,9 +464,20 @@ struct BusMarker: View {
                 .background(Color(hex: route?.color), in: RoundedRectangle(cornerRadius: Radius.badge, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: Radius.badge, style: .continuous).stroke(.white, lineWidth: 2))
                 .shadow(color: Palette.shadow.opacity(0.3), radius: 2, y: 1)
+            if let number {
+                Text("\(number)")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color(hex: route?.color))
+                    .frame(minWidth: 15, minHeight: 15)
+                    .background(.white, in: Circle())
+                    .overlay(Circle().stroke(Color(hex: route?.color), lineWidth: 1.5))
+                    .offset(x: 16, y: -11)
+            }
         }
         .opacity(stale ? 0.5 : 1)
-        .accessibilityLabel((youText ?? "\(route?.displayName ?? "Shuttle") bus") + (stale ? ", location may be old" : ""))
+        .accessibilityLabel((youText ?? (number.map { "Bus \($0), \(route?.displayName ?? "Shuttle")" } ?? "\(route?.displayName ?? "Shuttle") bus"))
+                            + (stale ? ", location may be old" : ""))
     }
 }
 

@@ -235,12 +235,20 @@ struct DirectionsView: View {
                 walkOnlyCard(r)
                 refiningNote
             } else {
+                // very close (owner 2026-10-30): walking the whole way is the first option when it takes 10 min or less
+                // or arrives no later than the best bus (Kit Rank.walkFirst)
+                let walkFirst = Rank.walkFirst(r)
+                if walkFirst {
+                    walkOnlyCard(r).accessibilityIdentifier("dirWalkFirst")
+                }
                 ForEach(Array(r.options.prefix(Planner.maxOpts).enumerated()), id: \.element.key) { item in
                     OptionCard(option: item.element, index: item.offset, showCriteria: r.options.count > 1,
                                selected: item.offset == model.dir.selected)
                 }
-                Text("Walking the whole way: \(TripInfo.mins(r.walkOnlyMin)) min (\(r.walkOnlyM) m), \(walkSourceText(r))")
-                    .font(.footnote).foregroundStyle(Palette.text2)
+                if !walkFirst {
+                    Text("Walking the whole way: \(TripInfo.mins(r.walkOnlyMin)) min (\(r.walkOnlyM) m), \(walkSourceText(r))")
+                        .font(.footnote).foregroundStyle(Palette.text2)
+                }
                 refiningNote
                 Text("Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.")
                     .font(.footnote).foregroundStyle(Palette.text2)

@@ -223,10 +223,20 @@ struct SheetHeader: View {
             .accessibilityValue(model.isFav(id) ? "Favorited" : "")
             .accessibilityIdentifier("favButton")
         case nil where model.tab == .current:
-            // the next bus at the nearest stop, one glance (web metaNearby "53RD · 4 min")
-            Text(model.nearbyMeta).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text2).monospacedDigit()
-                .fixedSize()
-                .accessibilityLabel(model.nearbyMeta.isEmpty ? "" : "Next bus at the nearest stop: " + model.nearbyMeta)
+            if model.activeTrip != nil, let p = model.tripFollow {
+                // a trip in progress (owner 2026-10-30): "Arriving In: 4 min" until the trip's bus reaches your stop (the
+                // boarding stop, then the stop you get off at), or the walk when no bus is ahead (Kit TripText.arrivingIn)
+                let t = TripText.arrivingIn(p, now: model.now)
+                Text(t).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text2).monospacedDigit()
+                    .fixedSize()
+                    .accessibilityLabel(t.replacingOccurrences(of: "Arriving In:", with: "Arriving in"))
+                    .accessibilityIdentifier("arrivingIn")
+            } else {
+                // the next bus at the nearest stop, one glance (web metaNearby "53RD · 4 min")
+                Text(model.nearbyMeta).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text2).monospacedDigit()
+                    .fixedSize()
+                    .accessibilityLabel(model.nearbyMeta.isEmpty ? "" : "Next bus at the nearest stop: " + model.nearbyMeta)
+            }
         case nil where model.tab == .routes:
             Button { model.editingOrder.toggle() } label: {
                 Text(model.editingOrder ? "Done" : "Edit map order").font(.subheadline.weight(.semibold))

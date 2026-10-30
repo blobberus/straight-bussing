@@ -142,6 +142,14 @@ struct MapBus: Identifiable, Equatable {
     let coord: LatLon
     let bearing: Double?
     let stale: Bool
+    /// "Bus 2": its number when its route shows two or more buses (Kit `BusNumbers`, owner 2026-10-30).
+    var number: Int? = nil
+}
+
+/// The numbered bus whose own times the route page shows (owner 2026-10-30).
+struct SelectedBus: Equatable {
+    let rid: String
+    let vehicleId: String
 }
 
 /// The app store (web/js/state.js) as an Observable model. Pure rules live in StraightBussingKit; this type
@@ -255,6 +263,10 @@ final class AppModel {
     /// calls `mapCoverChanged` when it flips.
     var mapCovered: Bool { showSettings || showTimePick || showLiveActivityPreview }
     var editingOrder = false
+    /// The numbered bus whose own times its route page shows instead of the next bus at each stop (owner 2026-10-30):
+    /// set by tapping a numbered bus on the map or its row on the route page; cleared when that page closes or the bus
+    /// is gone.
+    var selectedBus: SelectedBus?
     var confirmDelete: CustomRoute?
     /// Where to land after a confirmed delete: "list" | "detail" | "edit" (web deleteWithConfirm `from`).
     var confirmDeleteFrom = "list"

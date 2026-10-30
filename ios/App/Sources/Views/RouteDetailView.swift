@@ -7,6 +7,8 @@ import StraightBussingKit
 /// schedule changes incl. this route's service alerts, scheduled buses by hour). While the route is closed (Kit
 /// `RouteText.closed`: no bus running and not scheduled now) "Hours & service" comes before the stops (owner 2026-10-27,
 /// web route.js routeClosed) and before the no-bus help numbers (owner 2026-10-29); open routes keep the help first.
+/// Two or more buses are "Bus 1", "Bus 2" (Kit `BusNumbers`, owner 2026-10-30): tapping one (here or on the map)
+/// shows that bus's own time at each station ("Showing Bus 2's times", "Show the next bus at each stop" clears it).
 struct RouteDetailView: View {
     @Environment(AppModel.self) private var model
     let rid: String
@@ -36,7 +38,11 @@ struct RouteDetailView: View {
         let ids = RouteText.stopOrder(model.staticData.routeStops[rid])
         let list = model.staticData.routeStops[rid] ?? []
         let loop = list.count > 2 && list.first == list.last
-        let spots = model.liveLoaded ? RouteText.busPositions(model.staticData, buses: model.buses, rid: rid, now: model.now) : []
+        let nums = BusNumbers.byRoute(model.buses)[rid] ?? [:]
+        let spots = model.liveLoaded ? RouteText.busPositions(model.staticData, buses: model.buses, rid: rid, now: model.now, numbers: nums) : []
+        // the selected numbered bus, while it is still one of this route's numbered buses
+        let sel: (vid: String, n: Int)? = model.selectedBus.flatMap { b in b.rid == rid ? nums[b.vehicleId].map { (b.vehicleId, $0) } : nil }
+        let selTimes = sel.map { Arrivals.busTimes(trips: model.trips, vehicleId: $0.vid, routeId: rid, now: model.now) }
         let closed = RouteText.closed(running: n, service: svc, rid: rid, now: model.now)
         let schedule = RouteScheduleView(rid: rid, day: Self.localDay(model.now), t: model.now, alertIds: routeAlerts.map(\.id),
                                          version: model.staticVersion).equatable()
@@ -82,19 +88,56 @@ struct RouteDetailView: View {
                     EmptyStateView(title: "No stops listed", message: "The schedule has no stops for this route.")
                 } else {
                     if !spots.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(spots.enumerated()), id: \.offset) { item in
-                                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                    Image(systemName: "bus.fill").font(.caption2).foregroundStyle(Palette.text2).accessibilityHidden(true)
-                                    Text(item.element.text).font(.footnote).foregroundStyle(item.element.stale ? Palette.warn : Palette.text2)
+                        if nums.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(Array(spots.enumerated()), id: \.offset) { item in
+                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                        Image(systemName: "bus.fill").font(.caption2).foregroundStyle(Palette.text2).accessibilityHidden(true)
+                                        Text(item.element.text).font(.footnote).foregroundStyle(item.element.stale ? Palette.warn : Palette.text2)
+                                    }
+                                }
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("Where the buses are: " + spots.map(\.text).joined(separator: ". "))
+                        } else {
+                            // numbered buses: each row selects its bus (its own time at each station)
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(spots.enumerated()), id: \.offset) { item in
+                                    let b = item.element, on = b.vehicleId != nil && b.vehicleId == sel?.vid
+                                    Button {
+                                        model.selectedBus = on ? nil : b.vehicleId.map { SelectedBus(rid: rid, vehicleId: $0) }
+                                    } label: {
+                                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                            Image(systemName: on ? "checkmark.circle.fill" : "bus.fill").font(.caption)
+                                                .foregroundStyle(on ? Palette.accent : Palette.text2).accessibilityHidden(true)
+                                            Text(b.text).font(.footnote.weight(on ? .semibold : .regular))
+                                                .foregroundStyle(b.stale ? Palette.warn : on ? Palette.text : Palette.text2)
+                                                .multilineTextAlignment(.leading)
+                                            Spacer(minLength: 0)
+                                        }
+                                        .frame(minHeight: 44).contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(b.text)
+                                    .accessibilityHint(on ? "Shows the next bus at each stop again" : "Shows this bus's time at each stop")
+                                    .accessibilityAddTraits(on ? .isSelected : [])
                                 }
                             }
                         }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Where the buses are: " + spots.map(\.text).joined(separator: ". "))
+                    }
+                    if let sel {
+                        HStack(spacing: 8) {
+                            Text("Showing Bus \(sel.n)'s times").font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Button { model.selectedBus = nil } label: {
+                                Text("Show the next bus at each stop").font(.subheadline.weight(.semibold))
+                                    .multilineTextAlignment(.trailing).frame(minHeight: 44).contentShape(Rectangle())
+                            }
+                        }
+                        .accessibilityElement(children: .contain)
                     }
                     SectionTitle(text: "Stops")
-                    Card { stopTimeline(ids: ids, loop: loop, spots: spots, color: Color(hex: r.color), route: r) }
+                    Card { stopTimeline(ids: ids, loop: loop, spots: spots, color: Color(hex: r.color), route: r, sel: sel?.n, selTimes: selTimes) }
                     if loop, let first = ids.first {
                         Label("Loop: continues to \(model.staticData.stops[first]?.name ?? first)", systemImage: "arrow.triangle.2.circlepath")
                             .font(.footnote).foregroundStyle(Palette.text2)
@@ -109,6 +152,9 @@ struct RouteDetailView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
+        // the selection lasts while the page is open and the bus is still one of the route's numbered buses
+        .onChange(of: sel?.vid) { _, v in if v == nil, model.selectedBus?.rid == rid { model.selectedBus = nil } }
+        .onDisappear { if model.selectedBus?.rid == rid { model.selectedBus = nil } }
     }
 
     /// This route's alerts, also those naming it by Passio's own id (`Arrivals.alertRouteIds`, DC-009).
@@ -116,7 +162,9 @@ struct RouteDetailView: View {
         model.activeAlerts.filter { Arrivals.alertRouteIds($0, routes: model.staticData.routes).contains(rid) }
     }
 
-    func stopTimeline(ids: [String], loop: Bool, spots: [RouteText.BusSpot], color: Color, route: Route) -> some View {
+    /// `sel` / `selTimes`: a selected numbered bus and its own times per stop (no time = that bus has no prediction there).
+    func stopTimeline(ids: [String], loop: Bool, spots: [RouteText.BusSpot], color: Color, route: Route,
+                      sel: Int? = nil, selTimes: [String: Double]? = nil) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(ids.enumerated()), id: \.offset) { item in
                 let i = item.offset, id = item.element
@@ -124,7 +172,7 @@ struct RouteDetailView: View {
                 let here = spots.filter { $0.next == i }
                 let onRail = spots.filter { ($0.prev ?? $0.next) == i }   // a marker lives in the row it is leaving
                 let last = i == ids.count - 1
-                let eta = TimeFmt.etaLabel(next?.t, now: model.now, stale: model.isStale)
+                let eta = TimeFmt.etaLabel(selTimes != nil ? selTimes?[id] : next?.t, now: model.now, stale: model.isStale)
                 let name = model.staticData.stops[id]?.name ?? id
                 HStack(spacing: 10) {
                     ZStack(alignment: .top) {
@@ -169,11 +217,19 @@ struct RouteDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(name)\(eta.isEmpty ? ", no prediction" : ", next bus " + (eta == "Now" ? "now" : "in " + eta.replacingOccurrences(of: "~", with: "about ")))\(here.isEmpty ? "" : ", a bus is heading here")")
+                    .accessibilityLabel("\(name)\(Self.etaSay(eta, sel: sel))\(here.isEmpty ? "" : ", a bus is heading here")")
                     .accessibilityAddTraits(.isButton)
                 }
             }
         }
+    }
+
+    /// The spoken time of a stop row: ", next bus in 4 min" / ", no prediction", or for a selected numbered bus
+    /// ", Bus 2 in 4 min" / ", no time from Bus 2".
+    static func etaSay(_ eta: String, sel: Int?) -> String {
+        let when = eta == "Now" ? "now" : "in " + eta.replacingOccurrences(of: "~", with: "about ")
+        if let sel { return eta.isEmpty ? ", no time from Bus \(sel)" : ", Bus \(sel) \(when)" }
+        return eta.isEmpty ? ", no prediction" : ", next bus \(when)"
     }
 
     /// Local (America/Chicago) date of `t`, e.g. "2026-10-9": the schedule section only changes with it.
