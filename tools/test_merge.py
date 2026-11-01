@@ -178,6 +178,61 @@ def test_predictions_merge_keeps_the_fresher_duplicate():
     assert all(ln.count(",") == body(d / "p.csv")[0].count(",") for ln in body(d / "p.csv"))
 
 
+def test_check_merge_passes_a_normal_merge_and_a_rotation():
+    """Risk review 2026-11-01 (DC-021): tools/check_merge.py guards every push. A merge that adds rows, replaces one by
+    a richer copy, or rotates the file to archive/ is safe."""
+    import check_merge as CM
+    d = tmp()
+    gt = d / "ground_truth"
+    gt.mkdir()
+    into, add = gt / "arrivals.csv", d / "run.csv"
+    write(into, [row(T0), row(T0 + 600, stop="B", idx=1)])
+    (gt / "alerts.csv").write_text("alert_id,version,first_seen\n1,v1,10\n2,v1,12\n3,v2,20\n", encoding="utf-8")
+    before = CM.snapshot(gt)
+    write(add, [row(T0 + 1200, stop="C", idx=2), row(T0 + 5, prev="P")])   # one new row, one richer copy
+    merge(into, add)
+    (gt / "alerts.csv").write_text("alert_id,version,first_seen\n1;2,v1,10\n3,v2,20\n", encoding="utf-8")   # DC-012 collapse
+    assert CM.verify(gt, before) == [], CM.verify(gt, before)
+    before = CM.snapshot(gt)
+    write(add, [row(T0 + 1800, stop="D", idx=3)])
+    merge(into, add, rotate_mb=0.000001)                   # rotates to archive/
+    assert (gt / "archive").exists() and CM.verify(gt, before) == [], CM.verify(gt, before)
+
+
+def test_check_merge_blocks_lost_rows_cut_files_broken_columns_and_rewritten_archives():
+    import check_merge as CM
+    d = tmp()
+    gt = d / "ground_truth"
+    (gt / "archive").mkdir(parents=True)
+    write(gt / "arrivals.csv", [row(T0), row(T0 + 600, stop="B"), row(T0 + 1200, stop="C")])
+    write(gt / "archive" / "arrivals-20261001-0000.csv", [row(T0 - 9000)])
+    (gt / "bus_changes.csv").write_text("route_id,epoch\nR,1\nR,2\n", encoding="utf-8")
+    (gt / "alerts.csv").write_text("alert_id,version\n1,v1\n2,v2\n", encoding="utf-8")
+    before = CM.snapshot(gt)
+    write(gt / "arrivals.csv", [row(T0)])
+    assert any("2 row(s) lost" in p for p in CM.verify(gt, before)), CM.verify(gt, before)
+    write(gt / "arrivals.csv", [row(T0), row(T0 + 600, stop="B"), row(T0 + 1200, stop="C")])
+    with open(gt / "arrivals.csv", "a", encoding="utf-8", newline="") as f:
+        f.write("1791401800,cut short")
+    probs = CM.verify(gt, before)
+    assert any("wrong number of columns" in p for p in probs) and any("newline" in p for p in probs), probs
+    write(gt / "arrivals.csv", [row(T0), row(T0 + 600, stop="B"), row(T0 + 1200, stop="C")])
+    write(gt / "archive" / "arrivals-20261001-0000.csv", [row(T0 - 9000), row(T0 - 8000)])
+    assert any("archive/arrivals-20261001-0000.csv changed" in p for p in CM.verify(gt, before))
+    write(gt / "archive" / "arrivals-20261001-0000.csv", [row(T0 - 9000)])
+    (gt / "bus_changes.csv").write_text("route_id,epoch\nR,1\n", encoding="utf-8")
+    (gt / "alerts.csv").write_text("alert_id,version\n1;2,v1\n", encoding="utf-8")
+    probs = CM.verify(gt, before)
+    assert any(p.startswith("bus_changes: 1 row(s) lost") for p in probs), probs
+    assert any(p.startswith("alerts: 1 alert version(s) lost") for p in probs), probs
+    (gt / "bus_changes.csv").unlink()
+    assert any("bus_changes: the file is gone" in p for p in CM.verify(gt, before))
+    r = __import__("subprocess").run([sys.executable, str(Path(__file__).resolve().parent / "check_merge.py"), "verify",
+                                      str(gt), "--before", str(d / "b.json")], capture_output=True, text=True,
+                                     input=None) if (d / "b.json").write_text(__import__("json").dumps(before)) else None
+    assert r.returncode == 1 and "NOT SAFE TO PUSH" in r.stdout, r.stdout
+
+
 TESTS = [v for k, v in dict(globals()).items() if k.startswith("test_")]
 
 

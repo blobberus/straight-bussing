@@ -502,6 +502,26 @@ def _push(ctx):
     return git(ctx, "push", "-q", ctx.remote, "HEAD:refs/heads/data", cwd=ctx.wt, check=False).returncode == 0
 
 
+def guard_snapshot(ctx):
+    """tools/check_merge.py's row counts of the freshly checked-out data branch (risk review 2026-11-01, DC-021: the same
+    no-rows-lost guard as collect.yml), or None if the guard is unavailable."""
+    try:
+        sys.path.insert(0, str(ctx.root / "tools"))
+        import check_merge
+        return check_merge.snapshot(ctx.wt / "data" / "ground_truth")
+    except Exception as e:
+        log(ctx, f"no-rows-lost guard unavailable ({type(e).__name__}: {e}); pushing without it")
+        return None
+
+
+def guard_verify(ctx, before):
+    """-> list of problems (empty = safe to push)."""
+    if before is None:
+        return []
+    import check_merge
+    return check_merge.verify(ctx.wt / "data" / "ground_truth", before)
+
+
 def publish(ctx, files, model=True):
     """Merge run files into the data branch and push. -> (ok, rows_added, message). A chunk without arrivals still
     counts when it saw service alerts (they run overnight too); an alerts merge failure never stops the push."""
@@ -514,6 +534,7 @@ def publish(ctx, files, model=True):
     for attempt in range(1, 6):
         try:
             prepare_worktree(ctx)
+            before = guard_snapshot(ctx)
             into, added = ctx.wt / CSV, 0
             mp = ctx.root / "tools" / "merge_predictions.py"
             for f in files:
@@ -554,6 +575,9 @@ def publish(ctx, files, model=True):
             if model and rm.exists():
                 subprocess.run([sys.executable, str(rm), "--data", str(into), "--out", str(ctx.wt / "web/data/learned.json")],
                                capture_output=True, cwd=ctx.root)
+            lost = guard_verify(ctx, before)
+            if lost:                        # never push a merge that loses rows; the run files stay for a retry
+                return False, 0, "the no-rows-lost guard stopped the push: " + "; ".join(lost)[:300]
             git(ctx, "add", "-A", "data", cwd=ctx.wt)
             for extra in ("README.md", "web/data/learned.json"):
                 if (ctx.wt / extra).exists():
