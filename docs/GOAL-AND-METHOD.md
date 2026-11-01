@@ -128,6 +128,16 @@ First learned corrections (Colab notebook, test days Oct 14 to 16, band B, goal 
 more than 10% worse; a deep network no real gain (RouteKnower E23c). The tables below are the October 13 look
 under the 10% rule.
 
+**Newest (November 1, 19 days, RouteKnower E26):** the data repo's test bench (`algorithm-test/` in
+github.com/blobberus/straight-bussing-data, conclusion in `algorithm-test/CONCLUSION.md`) tested on October 20 to 30
+with every model trained on earlier days. Band B under 10 / 10 to 15 / 15 to 20 / 20 to 30 / 30 to 45 minutes:
+Passio 18 / 10 / 11 / 21 / 12%; a small neural network tuned to the safety rule 27 / 15 / 15 / 26 / 13%, no more
+often too late than Passio within the noise. Nothing meets the goal; even fits that see the answers stay under 34%,
+so better inputs (lateness carried into the next trip, spacing for frequency trips, time at stops, traffic, bus count
+changes) come before bigger models, and a language model is not worth training for this. The four biggest lateness
+perpetrators: trips with no timetable (the Downtown Campus Connector), buses already more than 10 minutes behind, the
+Red Line/Arts Block, and the 3 to 7 PM rush.
+
 ### 3.1 Under the 10% rule (October 13, 2026)
 
 **Newer, with 13 days (October 12 to 24) and broken down by trip, delay, route, stop, hour and weekday:**
