@@ -324,6 +324,8 @@ def main(argv=None):
     ap.add_argument("--zip", help="a local google_transit.zip instead of downloading Passio's")
     ap.add_argument("--out", help="write the JSON files here instead of web/data")
     ap.add_argument("--patterns", help="write route_patterns.json here instead of data/route_patterns.json")
+    ap.add_argument("--save-zip", help="also keep the zip it built from here (collect.yml records the timetable version: "
+                                       "tools/gtfs_versions.py)")
     a = ap.parse_args(argv)
     OUT = Path(a.out) if a.out else OUT
     PATTERNS = Path(a.patterns) if a.patterns else PATTERNS
@@ -333,6 +335,8 @@ def main(argv=None):
         req = urllib.request.Request(URL, headers={"User-Agent": "straight-bussing/1.0"})
         data = urllib.request.urlopen(req, timeout=60).read()
     z = zipfile.ZipFile(io.BytesIO(data))
+    if a.save_zip:
+        Path(a.save_zip).write_bytes(data)
     OUT.mkdir(parents=True, exist_ok=True)
 
     routes = {}
