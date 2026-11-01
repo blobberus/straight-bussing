@@ -40,9 +40,18 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   counts idle time as covered and shows the collecting share. Weekday nights about 1 to 4:15 AM and weekends until
   3:15 PM are normally idle. Force collecting: `gh workflow run collect.yml -f slot=a -f mode=collect`.
 - No rows overnight is normal: no shuttles run, and the collector is idle then, so there are no commits either.
+- **Safety nets** (since 2026-11-01, DC-021; docs/DATA.md "Safety nets"): every run self-tests main's collector code first
+  (`tools/collector_selftest.py`) and collects with the last good code (git tag `collector-ok`) if main's is broken;
+  `tools/check_merge.py` stops a push that would lose rows (the run's files stay as the artifact `unmerged-<run>`);
+  `tools/health.py` keeps **one GitHub issue labeled `collector-health`** up to date (it opens for a new problem and
+  closes itself when all is clear: check it first, it is the quickest verdict), and the data repo's sync chain runs
+  `health.py watchdog` from outside (an issue in straight-bussing-data when buses run but nothing collects them). Each
+  run records its timetable in `data/ground_truth/gtfs_versions.csv`. Repo variable `HEALTH_ISSUES=off` silences the
+  issues (annotations stay).
 
 ## Run it
-1. `cd ~/Documents/straight-bussing && python tools/monitor.py status` (exit 0 HEALTHY, 1 DEGRADED, 2 DOWN).
+1. `cd ~/Documents/straight-bussing && python tools/monitor.py status` (exit 0 HEALTHY, 1 DEGRADED, 2 DOWN), and look
+   at the open `collector-health` issues: `gh issue list -l collector-health` here and with `-R blobberus/straight-bussing-data`.
 2. HEALTHY: go to **Report back**.
 3. DEGRADED / DOWN: for each `[warn]` / `[DOWN]` line, apply the matching row of the fix table.
 4. If it is DOWN and not fixed within ~10 min, **take over locally** (below), and tell the owner.
@@ -65,6 +74,16 @@ Git Bash gotcha: it rewrites `rev:path` arguments (`git show origin/data:data/..
 | `N local run file(s) were never pushed` | Local collector was killed | `python tools/monitor.py resume --hours 0.01` (merges and pushes them, then exits). |
 | `GitHub API unavailable` | Rate limit (60/h unauthenticated) or offline | Wait, or `gh auth login` once (monitor.py then uses its token), or set `GITHUB_TOKEN` for that one command. Never commit a token. |
 | monitor.py itself crashes | Bug | `python tools/test_monitor.py` (about 1 min, hermetic), fix, rerun. |
+| issue: `main's collector code failed its pre-flight self-test` (code) | A push to main broke a collector part | Runs are collecting with the `collector-ok` code meanwhile. `python tools/collector_selftest.py` names the failing suite; fix it on main. The next healthy run moves the tag and closes the problem. |
+| issue: `No working collector code` | Main and the tag both fail | Urgent: fix main now (runs try main's code anyway); take over locally if no rows come. |
+| issue: `Passio's vehicle feed could not be read for N min` (run outage) | Passio down or unreachable from GitHub | Nothing to fix if it ends; note the window in the log. If it repeats daily, check from this PC (`python tools/truth_logger.py --once`) and run the local collector. |
+| issue: `No arrival on any route ... a collection gap` (data gap) | A feed outage, a stopped chain, or every run failing | Read the runs of that window (`gh run list -w collect.yml`); log a DC entry. A gap is not recoverable unless the local collector ran. |
+| issue: `Only N arrivals`, `<route> logged N arrivals` | Service cut, a detector or stop-data break, a chain gap | Check the operator's alerts first (a route that did not run is fine), then the day's runs. |
+| issue: `Buses were in the feed ... but the run logged no arrival` | Detector or web/data broken | `python tools/truth_logger.py --duration 120 --out "$TEMP/t.csv"` during service; check `tools/build_gtfs.py`. |
+| issue: `unexpected shape` (schema) | Passio changed its feed format | Compare a fresh feed with `truth_logger.reports()` / `feed_shape()`; update the reader; replay the affected days from the raw polls if they parse. |
+| issue: `The no-rows-lost guard ... stopped this run's push` | A merge bug | Do not push by hand. Reproduce with the artifact `unmerged-<run>` and `tools/check_merge.py`; fix the merge; then merge the artifact's run files (`python tools/merge_arrivals.py --into ... --add run.csv`, same for predictions) and push. |
+| issue: `The daily archive lacks files for N day(s)` | The archive job failed or did not fire | `gh workflow run archive.yml` (catches up 85 days); a day with only some files: `gh workflow run archive.yml -f day=YYYY-MM-DD -f replace=true`. Before the artifacts expire (the issue says how many days are left). |
+| data-repo issue: `the collector looks stopped` (watchdog) | The self-chain and the cron backstop both stopped | `python tools/monitor.py dispatch`; then find why (the last run's Self-chain line). |
 
 ## Take over locally
 Start it with the **Bash tool, `run_in_background: true`**:
@@ -132,6 +151,12 @@ can run at once (the merge drops duplicates). Each PC keeps its own state in its
 - Before pulling a new version: stop, `git pull`, start again. If it was killed instead of stopped, step 2 with `resume`
   instead of `local` (or the watchdog) pushes the leftover rows first.
 
+## Back up off GitHub
+Every copy of the data lives on one GitHub account (DC-021). Every week or two, and before anything risky with the
+repository, run `python tools/backup.py` (incremental: the data branch's files plus every archive release asset into
+`~/StraightBussing-backup`, about 260 MB in Nov 2026, growing about 6 MB a day; `--to` another folder or drive;
+`--check` verifies against its MANIFEST.json). Tell the owner where it is; only schedule it (schtasks) if the owner asks.
+
 ## Resume after a stop
 Same background command, with `resume`:
 ```
@@ -145,8 +170,8 @@ State: `data/monitor/state.json` (totals, last push, last error), `monitor.log`,
 
 ## Update the collector
 Pushing to main is outward-facing: confirm with the owner first unless they asked for the update.
-1. Edit on `v2-rewrite`: `.github/workflows/collect.yml`, `tools/{truth_logger,arrival_detector,arrivals_lib,merge_arrivals,merge_predictions,alerts_lib,merge_alerts,refresh_model,model_core,model_segments,model_quantile,model_kalman,backtest,monitor,collect_chain}.py`, `docs/DATA.md`.
-2. Test: `python tools/test_truth.py && python tools/test_merge.py && python tools/test_alerts.py && python tools/test_models.py && python tools/test_monitor.py && python tools/test_chain.py && python tools/truth_logger.py --once`.
+1. Edit on `v2-rewrite`: `.github/workflows/collect.yml`, `tools/{truth_logger,arrival_detector,arrivals_lib,merge_arrivals,merge_predictions,alerts_lib,merge_alerts,refresh_model,model_core,model_segments,model_quantile,model_kalman,backtest,monitor,collect_chain,collector_selftest,check_merge,gtfs_versions,health}.py`, `docs/DATA.md`.
+2. Test: `python tools/collector_selftest.py && python tools/test_collect_yml.py && python tools/test_models.py && python tools/test_monitor.py && python tools/truth_logger.py --once` (the self-test runs every suite a run depends on; collector-tests.yml runs them on the push too).
 3. Commit only those paths on v2-rewrite (`git commit --only -m "..." -- <paths>`; the owner may have other uncommitted work), then `git push origin v2-rewrite`.
 4. Bring the same files to main through a worktree (the method used in commit `a466886`):
    ```
@@ -169,4 +194,5 @@ data` first). Read-only; writing the result to the data branch is a separate ste
 - Coverage % and the biggest gap since the reported start; `arrivals.csv` rows and newest arrival.
 - What you did (dispatch, local takeover started and how to stop it, fixes pushed).
 - What needs the owner: enabling the workflow, a token for dispatch, the reboot watchdog.
-- New or still-open `DC-NNN` entries from `docs/DATA-COLLECTION-LOG.md`.
+- New or still-open `DC-NNN` entries from `docs/DATA-COLLECTION-LOG.md`, and any open `collector-health` issue.
+- When the last off-GitHub backup was made (`python tools/backup.py --check`).
