@@ -1175,6 +1175,72 @@ def gps_rows_never_change_the_rules_rows():
     tr.seed([dict(zip(L.COLUMNS, next(__import__("csv").reader([row(T0, "gps", "")]))))], T0 + 60)
     assert not tr.v and tr.logged[("V1", "Q1")], "a GPS row only feeds the sweep's duplicate check"
 
+@test
+def a_feed_in_another_shape_is_counted_not_read_as_no_buses():
+    """Risk review 2026-11-01 (DC-021): if Passio renamed a field, the logger saw "no vehicles" and the run idled with
+    nobody told. feed_shape() names what is wrong; poll() counts it in err.schema (status schema_errors) and still never
+    skips a good feed. An empty entity list (night) is a good feed."""
+    import truth_logger as TL
+    head = {"gtfs_realtime_version": "2.0", "timestamp": str(T0)}
+    veh = {"id": "e1", "vehicle": {"trip": {"trip_id": "T1"}, "position": {"latitude": LAT, "longitude": LON0},
+                                   "vehicle": {"id": "V1"}, "timestamp": T0}}
+    assert TL.feed_shape({"header": head, "entity": [veh]}, "vehicle") is None
+    assert TL.feed_shape({"header": head}, "vehicle") is None                       # no buses at night
+    assert TL.feed_shape({"header": head, "entity": []}, "trip_update") is None
+    assert "timestamp" in TL.feed_shape({"entity": [veh]}, "vehicle")
+    assert "none with 'vehicle'" in TL.feed_shape({"header": head, "entity": [{"id": "e1", "vehiclePosition": {}}]}, "vehicle")
+    bad_pos = {"id": "e1", "vehicle": {"trip": {"trip_id": "T1"}, "position": {"lat": LAT}}}
+    assert "position.latitude" in TL.feed_shape({"header": head, "entity": [bad_pos]}, "vehicle")
+    assert "list" in TL.feed_shape({"header": head, "entity": {"a": 1}}, "vehicle")
+    assert "JSON object" in TL.feed_shape([1, 2], "trip_update")
+    st = fake_static()
+    tr, err = Tracker(st), TL.Errors(out=open(__import__("os").devnull, "w"))
+    feeds = {"tripUpdates": {"header": head, "entity": [{"id": "x", "tripUpdate": {}}]},
+             "vehiclePositions": {"header": head, "entity": [{"id": "e1", "vehiclePosition": {}}]}}
+
+    class W:
+        n = np = 0
+        def write(self, ev):
+            pass
+    s = TL.poll(tr, W(), T0, err, get=lambda name: feeds[name])
+    assert err.schema == 2 and err.fetch == 0 and "tripUpdates" in err.schema_first, (err.schema, err.schema_first)
+    assert s == {"veh": 0, "trip": 0, "fresh": 0}, s
+    feeds["vehiclePositions"] = {"header": head, "entity": [veh]}
+    feeds["tripUpdates"] = {"header": head, "entity": []}
+    TL.poll(tr, W(), T0 + 10, err, get=lambda name: feeds[name])
+    assert err.schema == 2, "a good feed is never counted"
+
+
+@test
+def the_status_file_reports_outages_and_polls_with_buses():
+    """Risk review 2026-11-01 (DC-021): on Oct 28 every feed read timed out from 7:31 to 8:11 PM while the run stayed green.
+    The status file now carries bus_polls (polls that saw a bus), max_fail_s and fail_spans (stretches of 2 min or more
+    with no readable vehicle feed) and schema_errors, for tools/health.py."""
+    import subprocess
+    d = Path(tempfile.mkdtemp(prefix="sb-truth-"))
+    status = d / "s.json"
+    child = d / "child.py"
+    child.write_text("\n".join([
+        "import sys",
+        f"sys.path.insert(0, {str(Path(__file__).resolve().parent)!r})",
+        f"sys.argv = ['truth_logger.py', '--duration', '0', '--interval', '5', '--out', {str(d / 'run.csv')!r},",
+        f"            '--status-file', {str(status)!r}, '--once']",
+        "import truth_logger as TL",
+        "def fake(name, timeout=15):",
+        "    raise TimeoutError('The read operation timed out')",
+        "orig = TL.poll",
+        "TL.poll = lambda *a, **k: orig(*a, **{**k, 'get': fake})   # no network: every read times out",
+        "TL.main()", ""]), encoding="utf-8")
+    r = subprocess.run([sys.executable, str(child)], cwd=str(Path(__file__).resolve().parent.parent),
+                       capture_output=True, text=True, timeout=60)
+    assert status.exists(), r.stderr[-800:]
+    s = json.loads(status.read_text(encoding="utf-8"))
+    for k in ("bus_polls", "max_fail_s", "fail_spans", "schema_errors", "schema_first"):
+        assert k in s, (k, s)
+    assert s["bus_polls"] == 0 and s["fetch_errors"] == 2 and s["schema_errors"] == 0, s
+    assert s["max_fail_s"] >= 0 and s["fail_spans"] == [], s          # one failed poll: not a 2-min stretch
+
+
 def main():
     fails = 0
     for fn in TESTS:

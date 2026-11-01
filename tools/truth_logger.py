@@ -58,9 +58,19 @@ class Errors:
     """Counts failed fetches and processing errors and logs them to stderr, sampled (first 20, then every
     100th) so a feed that is malformed on every poll cannot flood the log."""
     def __init__(self, out=None):
-        self.fetch = self.proc = 0
-        self.first = ""
+        self.fetch = self.proc = self.schema = 0
+        self.first = self.schema_first = ""
         self.out = out
+
+    def shape(self, where, why):
+        """A feed that downloads and parses but is not shaped like GTFS-realtime (Passio changed its format?). Counted
+        apart from fetch failures: without this a renamed field reads as "no buses" and the run idles (risk review
+        2026-11-01, DC-021)."""
+        self.schema += 1
+        if not self.schema_first:
+            self.schema_first = f"{where}: {why}"[:300]
+        if self.schema <= 5 or self.schema % 100 == 0:
+            print(f"{datetime.now():%H:%M:%S} SCHEMA {where}: {why}", file=self.out or sys.stderr, flush=True)
 
     def __call__(self, where, ex, fetch=False):
         if fetch:
@@ -96,6 +106,27 @@ def reports(feed, err=None):
             err("vehiclePositions entity", ex)
             continue
         yield rep
+
+
+def feed_shape(feed, kind):
+    """None if `feed` looks like a GTFS-realtime feed of this kind ("vehicle" or "trip_update"), else why not. An empty
+    entity list is fine (no buses at night); a header without a timestamp, or entities none of which carries `kind`
+    (or, for vehicles, a position), is not."""
+    if not isinstance(feed, dict):
+        return f"not a JSON object ({type(feed).__name__})"
+    head = feed.get("header")
+    if not isinstance(head, dict) or not str(head.get("timestamp") or "").strip().isdigit():
+        return "no header.timestamp"
+    ents = feed.get("entity", [])
+    if not isinstance(ents, list):
+        return f"entity is a {type(ents).__name__}, not a list"
+    if ents and not any(isinstance(e, dict) and isinstance(e.get(kind), dict) for e in ents):
+        keys = sorted({k for e in ents[:20] if isinstance(e, dict) for k in e})
+        return f"{len(ents)} entities, none with '{kind}' (keys: {', '.join(keys)[:120]})"
+    if kind == "vehicle" and ents and not any("latitude" in ((e.get("vehicle") or {}).get("position") or {})
+                                              for e in ents if isinstance(e, dict) and isinstance(e.get("vehicle"), dict)):
+        return f"{len(ents)} vehicles, none with position.latitude"
+    return None
 
 
 def feed_summary(feed):
@@ -175,6 +206,9 @@ def poll(tr, w, now, err, get=fetch, raw=None, pred_count=None, changes=None):
     except Exception as ex:
         err("tripUpdates", ex, fetch=True)
     else:
+        why = feed_shape(feed, "trip_update")
+        if why and hasattr(err, "shape"):
+            err.shape("tripUpdates", why)
         try:
             store_predictions(tr, feed, now, err)
         except Exception as ex:                  # not a feed object at all
@@ -189,6 +223,9 @@ def poll(tr, w, now, err, get=fetch, raw=None, pred_count=None, changes=None):
     except Exception as ex:
         err("vehiclePositions", ex, fetch=True)
         return None
+    why = feed_shape(feed, "vehicle")
+    if why and hasattr(err, "shape"):
+        err.shape("vehiclePositions", why)
     if raw is not None:
         try:
             raw.write(now, feed)
@@ -485,6 +522,7 @@ def main():
             print(f"alerts off for this run ({alerts_setup})", file=sys.stderr, flush=True)
     end = time.time() + a.duration if a.duration else None
     started, polls, summary = time.time(), 0, {}
+    bus_polls, fail_since, fail_spans, max_fail = 0, None, [], 0.0   # health.py: outages and "buses but no rows"
     act, idle_stop, gate_at, pcount = None, None, started + 60, None
     if a.stop_when_idle or a.live_file:          # an unreadable schedule or a gate bug only costs the early stop
         try:
@@ -504,6 +542,15 @@ def main():
                     err("pred log", ex)
             if s is not None:
                 summary = s
+                if (s.get("fresh") or s.get("veh") or s.get("pred") or 0) > 0:
+                    bus_polls += 1
+                if fail_since is not None:           # a stretch with no readable vehicle feed ended
+                    max_fail = max(max_fail, t0 - fail_since)
+                    if t0 - fail_since >= 120 and len(fail_spans) < 20:
+                        fail_spans.append([int(fail_since), int(t0)])
+                    fail_since = None
+            elif fail_since is None:
+                fail_since = t0
             polls += 1
             if act is not None:
                 try:
@@ -535,6 +582,10 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        if fail_since is not None:                   # still failing at the end
+            max_fail = max(max_fail, time.time() - fail_since)
+            if time.time() - fail_since >= 120 and len(fail_spans) < 20:
+                fail_spans.append([int(fail_since), int(time.time())])
         try:
             w.write(tr.drain(int(time.time()), final=True))
         except Exception as ex:
@@ -556,7 +607,9 @@ def main():
                      "raw_polls": raw.n if raw else None, "pred_rows": w.np if a.pred_out else None,
                      "pred_updates": plog.n if plog else None, "idle_stop": idle_stop,
                      "last_bus": act.last_bus if act else None,
-                     "bus_changes": changes.n if changes is not None else None, **(al or {})}),
+                     "bus_changes": changes.n if changes is not None else None,
+                     "bus_polls": bus_polls, "max_fail_s": int(max_fail), "fail_spans": fail_spans,
+                     "schema_errors": err.schema, "schema_first": err.schema_first, **(al or {})}),
                     encoding="utf-8")
             except OSError as ex:
                 print(f"could not write {a.status_file}: {ex}", file=sys.stderr)
