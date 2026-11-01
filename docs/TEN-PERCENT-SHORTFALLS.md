@@ -46,8 +46,9 @@ comparison.
 9. **No trend in two weeks:** the second week's weekdays score the same as the first week's; Saturdays score about
    twice as well as weekdays.
 10. **A simple correction is not enough.** Shifting every time by a learned amount raises the 10% pass rate to about
-    50%, but then 3 to 4 in 10 predictions are shown later than the bus came (about 1 in 10 now). Fixing this needs
-    information about each bus (delay, layover, stops), not a constant.
+    50% at 15 to 30 minutes ahead (22 to 38% nearer or farther; corrected 2026-11-01, see section 6), but then 3 to 4 in
+    10 predictions are shown later than the bus came (about 1 in 10 now). Fixing this needs information about each
+    bus (delay, layover, stops), not a constant.
 
 ## 1. Headline: each source by how far ahead
 
@@ -216,7 +217,15 @@ than the bus came by more than 1% of the lead (the dangerous direction).
 | 20 to 30 min | 32% / 26% / 8% | 55% / 32% / 36% | 51% / 39% / 21% |
 | 30 to 45 min | 15% / 14% / 4% | 48% / 27% / 33% | 44% / 31% / 21% |
 
-The systematic part is large: centring the errors lifts the 10% pass rate to about 50% from 10 minutes ahead on.
+> **Correction (2026-11-01): this table is too optimistic.** The shift above was grouped by the lead range and scaled
+> by the lead, both measured from the real arrival, which a rider's phone cannot know. Rerun with Passio's own
+> predicted lead instead (data repo `algorithm-test/e24_leak_check.py`, results `algorithm-test/results/10-e24-leak-check.md`,
+> October 20 to 30, learned on earlier days), the shift tuned for the 10% rule passes 22% about 5 minutes ahead (32%
+> with the leak), 38% at 10 to 15 (46%), 47% at 15 to 20 (50%), 52% at 20 to 30 (55%) and 38% at 30 to 45 (47%), and
+> is too late 11 to 43% of the time (Passio 3 to 18%). The verdict below stands; the numbers near 5 minutes and at
+> 30 to 45 minutes were overstated.
+
+The systematic part is large: centring the errors lifts the 10% pass rate to about 50% at 15 to 30 minutes ahead.
 But the spread around the centre is wide, so a constant shift moves many predictions to the wrong side: "shown
 later than the bus came" goes from about 1 in 10 to 2 to 5 in 10. That fails the ship gate (never too late more
 often than Passio) and the 1% rule. **What would close the gap is narrowing the spread**: knowing which bus is late,

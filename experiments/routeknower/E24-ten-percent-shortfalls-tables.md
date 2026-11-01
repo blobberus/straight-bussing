@@ -253,6 +253,10 @@ Timetable rows exist only where the GTFS has a time for the trip (not the Downto
 
 ### Headroom: the same Passio times with a learned shift (rolling origin: learned on earlier days only)
 
+> Corrected 2026-11-01: this shift used the lead range and the lead measured from the real arrival (a leak), so the
+> numbers are too high. Leak-free rerun: data repo `algorithm-test/results/10-e24-leak-check.md`; summary in
+> `docs/TEN-PERCENT-SHORTFALLS.md` section 6.
+
 Scored days: 2026-10-14 to 2026-10-24 (11 service days). Each cell: 10% rule / band B / shown later than the bus came by more than 1% of the lead (the 1% rule, dangerous direction).
 
 | lead | samples | Passio as shown | shift tuned for the 10% rule | shift tuned for band B |
