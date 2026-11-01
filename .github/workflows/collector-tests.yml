@@ -26,6 +26,7 @@ jobs:
         with: { python-version: "3.11" }
       - name: The workflows parse
         run: |
+          python -m pip install -q pyyaml          # setup-python's interpreter has no PyYAML (the collector never needs it)
           python - <<'EOF'
           import sys, yaml
           for f in ("collect.yml", "archive.yml", "collector-tests.yml"):
