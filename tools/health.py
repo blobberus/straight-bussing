@@ -374,7 +374,7 @@ def parse_state(body):
 def render(state, now):
     rows = [(src, k, v) for src, ps in sorted(state["sources"].items()) for k, v in sorted(ps.items(), key=lambda x: x[1]["since"])]
     when = ct(now).strftime("%b %d, %I:%M %p")
-    head = (f"Automatic alert for @{OWNER}: the ground-truth collector found problems (written by tools/health.py; runbook "
+    head = (f"Automatic health report of the ground-truth collector for @{OWNER} (written by tools/health.py; runbook "
             "monitoring.md; log docs/DATA-COLLECTION-LOG.md).\n\n")
     if rows:
         body = head + f"**{len(rows)} open problem(s)** (updated {when} Chicago):\n\n"

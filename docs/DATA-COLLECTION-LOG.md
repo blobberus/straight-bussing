@@ -84,7 +84,16 @@ mitigate them." Ranked by how likely each is and how much of the record it would
    bites, uploads fail softly and the archive check reports the missing days).
 - Impact: none on existing rows; from now on failures are reported within one run (about 40 min) or one merge, a
   broken push no longer stops collection, and a damaging merge cannot reach the data branch. Status: fixed /
-  mitigated; first live runs to be checked (below).
+  mitigated (commits 5cc3d2c..b9ab470, then 1ee2af0 and b3ffaf9 for what the first CI runs found).
+- Verified live 2026-11-01: collector-tests.yml green (41293406117: self-test, the merge step against a throwaway
+  remote, archive / replay / monitor / DST suites; its first run caught a missing PyYAML and a Linux-only zombie
+  check in monitor.py, both fixed). A dispatched collect run (41293114859): pre-flight passed in 7 s, logged 30 min
+  (no bus, idle stop), recorded timetable 708be9d370e2 (the Oct 26 timetable, feed dates to Dec 1) in
+  gtfs_versions.csv with its zip, the guard found no rows lost, health run / data / archive all clear, and the tag
+  collector-ok moved from f380dc7 to 1ee2af0. The archive run 41293211039 with the 85-day catch-up and recorded
+  timetables succeeded, health clear. The issue path: issue #1 was opened and closed by health.py with a marked test
+  problem (label created, comment, close). The data repo's sync run 41293548122 ran the watchdog: feed read, 0 buses,
+  1 collecting run seen in the app repo, newest arrival 230 min old: all clear (correct at 4 AM on a Sunday).
 
 ### DC-020 Bus count changes (the 2 to 1 bus transitions) were not recorded (added 2026-10-30)
 - Owner: "A large propagating timing error I noticed originates from when buses transition from 2 bus to 1 bus
