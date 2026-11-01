@@ -310,7 +310,7 @@ def replay_run(run, st, seed_rows, work):
     changes = BC.BusChanges(st, run.t_first, out=chg)   # bus count changes, as the live run's --changes-out
     run.changes = chg
     tr.seed(seed_rows, run.t_first)
-    eps, k, empty = run.preds or [], 0, {"entity": []}
+    eps, k = run.preds or [], 0
     for p in run.polls:
         t = int(p["t"])
         while k < len(eps) and eps[k][6] <= t:     # the poll's tripUpdates come first (truth_logger.poll)
@@ -318,7 +318,8 @@ def replay_run(run, st, seed_rows, work):
             tr.add_prediction(trip, stop, made, pr, seq, veh, seen=seen, last=last)
             k += 1
         feed = {"header": {"timestamp": p.get("h")}, "entity": [entity(v) for v in p.get("v") or []]}
-        TL.poll(tr, w, t, err, get=lambda name, f=feed: empty if name == "tripUpdates" else f, changes=changes)
+        empty = {"header": {"timestamp": t}, "entity": []}      # shaped like a real feed (truth_logger.feed_shape)
+        TL.poll(tr, w, t, err, get=lambda name, f=feed, e=empty: e if name == "tripUpdates" else f, changes=changes)
     w.write(tr.drain(run.t_last, final=True))
     return arr, pred, err.proc
 

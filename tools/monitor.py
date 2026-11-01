@@ -130,10 +130,14 @@ def alive(pid):
         return bool(ok) and code.value == 259                # STILL_ACTIVE
     try:
         os.kill(pid, 0)
-        return True
     except ProcessLookupError:
         return False
     except PermissionError:
+        return True
+    try:                                    # Linux: a process that exited but was not reaped yet answers kill(0)
+        with open(f"/proc/{int(pid)}/stat", encoding="utf-8") as f:
+            return f.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except (OSError, IndexError):
         return True
 
 

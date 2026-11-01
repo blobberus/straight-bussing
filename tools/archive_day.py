@@ -25,6 +25,7 @@ import build_eta_dataset as B
 REPO = "blobberus/straight-bussing"
 PREFIXES = ("pred-updates-", "raw-polls-")
 SETTLE_S = 3 * 3600
+FIRST_DAY = "2026-10-08"              # the first day the collector logged; --catch-up never looks earlier
 LOCAL = L.ROOT / "data" / "monitor"
 
 
@@ -50,7 +51,7 @@ def finished(day, now):
 def last_days(n, now):
     """The n service days before the current one, newest first."""
     cur = B.service_day_of(now)
-    return [str(cur - timedelta(days=k)) for k in range(1, n + 1)]
+    return [str(cur - timedelta(days=k)) for k in range(1, n + 1) if str(cur - timedelta(days=k)) >= FIRST_DAY]
 
 
 def _epoch(iso):
@@ -323,7 +324,8 @@ def main(argv=None):
             gtfs, web_data, patterns = tt if tt else (a.gtfs, None, None)
             summ, msg = archive(day, a.repo, arts, a.work, arrivals, gtfs, a.local, not a.no_upload, a.replace,
                                 local_dir=a.local_dir, alerts=a.alerts, web_data=web_data, patterns=patterns)
-            msg += f" (timetable {Path(gtfs).stem if tt else 'downloaded today'})" if gtfs else ""
+            if summ and gtfs:
+                msg += f" (timetable {Path(gtfs).stem if tt else 'downloaded today'})"
         except Exception as ex:               # one bad day must not stop the others
             failed += 1
             print(f"{day}: FAILED {ex!r}", file=sys.stderr)

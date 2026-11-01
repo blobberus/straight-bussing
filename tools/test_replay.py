@@ -49,7 +49,7 @@ def synthetic_day(st):
         if not 30 <= i % 60 < 42:                    # V2: A, then B for a minute, then A again; withdrawn 2 min
             pb = int(t2[1]) + (40 if 12 <= i % 60 < 18 else 5)
             ents.append(tu_entity("T2", T0 - 60, [("B", 2, pb), ("C", 3, int(t2[2]) + 5)], veh="V2"))
-        polls.append((t, vp_feed(by_t[t]), {"entity": ents}))
+        polls.append((t, vp_feed(by_t[t]), {"header": {"timestamp": t}, "entity": ents}))
     return polls
 
 
