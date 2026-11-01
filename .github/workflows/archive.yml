@@ -3,21 +3,25 @@ name: Archive prediction data
 # raw-polls-<run>) become one gzipped file per service day, plus the forecast-snapshot table for the accuracy goal
 # (tools/build_eta_dataset.py), uploaded to the GitHub Release data-archive-YYYY-MM (assets do not grow the git
 # history; about 5.5 MB a day, plus the GTFS zip used). The day's aggregate pass rates go to data/eta/summary.csv on the data branch.
-# Catches up the last 10 days, so a dropped scheduled run costs nothing. Code: tools/archive_day.py.
+# Catches up every day whose run artifacts still exist (85 of their 90 days; was 10 until the risk review of 2026-11-01,
+# DC-021: a longer outage of this job would have let raw polls expire unarchived). Each day is archived with the
+# timetable the collector used that day (data/ground_truth/gtfs_versions.csv, recorded since 2026-11-01), not the one
+# downloaded this morning. Problems go to the collector-health issue (tools/health.py). Code: tools/archive_day.py.
 on:
   schedule: [{ cron: "41 10 * * *" }]   # about 5:41 AM CDT / 4:41 AM CST, after the 04:00 end of the service day
   workflow_dispatch:
     inputs:
-      day: { description: "Service day YYYY-MM-DD (blank: catch up the last 10 days)", required: false, default: "" }
+      day: { description: "Service day YYYY-MM-DD (blank: catch up the last 85 days)", required: false, default: "" }
       replace: { description: "Rebuild and overwrite an archived day", type: boolean, default: false }
 permissions:
   contents: write                       # release assets + the data branch summary
   actions: read                         # download collect.yml artifacts
+  issues: write                         # tools/health.py: the one collector-health issue
 concurrency: { group: data-archive, cancel-in-progress: false }
 jobs:
   archive:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 120                # a normal day takes a few minutes; catching up many days takes longer
     steps:
       - uses: actions/checkout@v4
         with: { ref: main }
@@ -43,12 +47,15 @@ jobs:
           git -C databranch sparse-checkout set --cone data/ground_truth data/eta
           git -C databranch reset -q --hard
       - name: Archive finished service days
+        id: archive
         env:
           GH_TOKEN: ${{ github.token }}
           DAY: ${{ inputs.day }}
           REPLACE: ${{ inputs.replace }}
         run: |
-          args=(--catch-up 10 --work "$RUNNER_TEMP/work" --arrivals databranch/data/ground_truth/arrivals.csv)
+          args=(--catch-up 85 --work "$RUNNER_TEMP/work" --arrivals databranch/data/ground_truth/arrivals.csv)
+          # the timetable each day was collected with (falls back to today's download for days before 2026-11-01)
+          args+=(--gtfs-versions databranch/data/ground_truth/gtfs_versions.csv --gtfs-store databranch/data/ground_truth/gtfs)
           for f in databranch/data/ground_truth/archive/arrivals-*.csv; do [ -f "$f" ] && args+=("$f"); done
           [ -f "$RUNNER_TEMP/gtfs.zip" ] && args+=(--gtfs "$RUNNER_TEMP/gtfs.zip")
           # service alert versions of the day (alerts-<day>.csv.gz; optional, skipped if the file is missing)
@@ -77,3 +84,17 @@ jobs:
             sleep $((RANDOM % 20 + 5 * i))
           done
           echo "push failed after 5 attempts"; exit 1
+      - name: Health of the archive (tools/health.py; never fails the job)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEALTH_ISSUES: ${{ vars.HEALTH_ISSUES }}
+          OUTCOME: ${{ steps.archive.outcome }}
+        run: |
+          url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "$OUTCOME" = "failure" ]; then
+            python tools/health.py report --source archive-job --problem "failed=The daily archive job could not archive every day ($url); see its log."
+          else
+            python tools/health.py report --source archive-job
+          fi
+          python tools/health.py archive          # every day whose artifacts still exist has its files

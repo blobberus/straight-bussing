@@ -1,0 +1,44 @@
+name: Collector tests
+# Every push to main that touches the collector runs its tests at once, so a broken change shows a red mark (and GitHub's
+# failure e-mail) right away instead of at the next collect run. The collect runs protect themselves anyway: they
+# self-test main's code before using it and fall back to the last good code (tag collector-ok). Risk review 2026-11-01,
+# docs/DATA-COLLECTION-LOG.md DC-021.
+on:
+  push:
+    branches: [main]
+    paths: ["tools/**", ".github/workflows/collect.yml", ".github/workflows/archive.yml",
+             ".github/workflows/collector-tests.yml", "data/route_patterns.json", "data/calendar.json"]
+  pull_request:
+    paths: ["tools/**", ".github/workflows/collect.yml", ".github/workflows/archive.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: collector-tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: The workflows parse
+        run: |
+          python - <<'EOF'
+          import sys, yaml
+          for f in ("collect.yml", "archive.yml", "collector-tests.yml"):
+              yaml.safe_load(open(f".github/workflows/{f}", encoding="utf-8"))
+          print("workflows parse")
+          EOF
+      - name: Pre-flight self-test (what every collect run checks first)
+        run: python tools/collector_selftest.py
+      - name: The workflow's own merge step against a throwaway remote (no-rows-lost guard, timetable record)
+        run: python tools/test_collect_yml.py
+      - name: Archive, replay, monitor and daylight-saving tests
+        run: |
+          python tools/test_eta.py
+          python tools/test_replay.py
+          python tools/test_monitor.py
+          python tools/test_dst.py

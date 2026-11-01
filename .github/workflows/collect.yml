@@ -19,6 +19,12 @@ run-name: >-
 # Each run writes only its own rows, then merges them into data/ground_truth/arrivals.csv on the orphan
 # 'data' branch (tools/merge_arrivals.py drops the duplicates from the overlap; predictions.csv and the
 # service alert versions in alerts.csv sit next to it) and refreshes web/data/learned.json there. Nothing is ever pushed to main, so this never triggers a Pages deploy.
+# Safety nets (risk review 2026-11-01, docs/DATA-COLLECTION-LOG.md DC-021): every run first self-tests main's collector
+# code (tools/collector_selftest.py) and falls back to the last code that ran healthy (git tag collector-ok, moved forward
+# by healthy runs) if main's is broken; tools/check_merge.py stops a push that would lose rows; tools/health.py reports
+# problems (broken code, a crashed logger, feed outages, a blocked push, gaps or thin days in the data, missing archive
+# days) in one GitHub issue labeled collector-health (repo variable HEALTH_ISSUES=off = annotations only); each run
+# records the timetable it used (tools/gtfs_versions.py -> data/ground_truth/gtfs_versions.csv + gtfs/).
 # Docs: docs/DATA.md, monitoring.md
 on:
   schedule:
@@ -37,8 +43,9 @@ on:
         options: [auto, collect, sleep]
         default: auto
 permissions:
-  contents: write
+  contents: write         # the data branch, and the collector-ok tag
   actions: write          # start the next run (self-chain) + keepalive (re-enable after GitHub's 60-day idle rule)
+  issues: write           # tools/health.py: the one collector-health issue
 concurrency:              # one running run per slot: never more than 2 collect runs at once
   group: collect-${{ inputs.slot || (github.event.schedule == '37 * * * *' && 'b') || 'a' }}
   cancel-in-progress: false   # never cancel a collecting run (a newer waiting run replaces an older waiting one)
@@ -51,6 +58,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4            # code (tools/ + web/data) always from main
         with: { ref: main }
+      - name: Pre-flight check of the collector code (main's, else the last good code)
+        id: code
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEALTH_ISSUES: ${{ vars.HEALTH_ISSUES }}
+        run: |
+          # a broken push to main must not stop collection: run main's code only if it passes its own offline tests,
+          # else the last code that finished a healthy run (tag collector-ok); tools/health.py tells the owner
+          if python3 tools/collector_selftest.py > "$RUNNER_TEMP/selftest.txt" 2>&1; then
+            tail -1 "$RUNNER_TEMP/selftest.txt"; echo "code=main" >> "$GITHUB_OUTPUT"; code=main
+          else
+            cat "$RUNNER_TEMP/selftest.txt"
+            echo "::error title=Collector code failed its self-test::this run uses the last good code (tag collector-ok); fix main"
+            code=broken
+            if git fetch --no-tags --depth 1 origin +refs/tags/collector-ok:refs/tags/collector-ok 2>/dev/null \
+               && git checkout collector-ok -- tools; then
+              git log -1 --format='fallback code: %h %s' collector-ok
+              if python3 tools/collector_selftest.py --quick >> "$RUNNER_TEMP/selftest.txt" 2>&1; then code=fallback
+              else git checkout HEAD -- tools; fi
+            fi
+            [ "$code" = broken ] && echo "::error title=No working collector code::trying main's code anyway"
+            echo "code=$code" >> "$GITHUB_OUTPUT"
+          fi
+          [ -f tools/health.py ] && python3 tools/health.py code --code "$code" --detail "$RUNNER_TEMP/selftest.txt" || true
       - name: Collect or idle (buses running or about to start?)
         id: gate
         env:
@@ -97,7 +128,8 @@ jobs:
       - name: Refresh static network data
         if: steps.gate.outputs.mode == 'collect'
         run: |
-          python tools/build_gtfs.py || {
+          # --save-zip: the merge step records which timetable this run used (tools/gtfs_versions.py)
+          python tools/build_gtfs.py --save-zip "$RUNNER_TEMP/gtfs.zip" || python tools/build_gtfs.py || {
             echo "::warning title=GTFS refresh failed::using the committed web/data"
             git checkout -- web/data
           }
@@ -203,6 +235,7 @@ jobs:
               f.write(f"**{line}**\n\n" + "".join(f"- warning: {w}\n" for w in warn + alert_warn) + "\n")
           EOF
       - name: Merge into the data branch and push
+        id: merge
         if: always() && steps.gate.outputs.mode == 'collect'
         run: |
           git config --global user.name "github-actions[bot]"
@@ -218,6 +251,9 @@ jobs:
               git worktree add --no-checkout -f -B data databranch origin/data
               git -C databranch sparse-checkout set --cone data/ground_truth web/data
               git -C databranch reset -q --hard
+              # the no-rows-lost guard's "before" (tools/check_merge.py; skipped by older fallback code without it)
+              : > "$RUNNER_TEMP/before.json"         # empty = no guard (a guard crash must never stop the push)
+              [ -f tools/check_merge.py ] && { python tools/check_merge.py snapshot databranch/data/ground_truth > "$RUNNER_TEMP/before.json" || : > "$RUNNER_TEMP/before.json"; }
             else
               git worktree add --orphan -b data databranch 2>/dev/null || {
                 git worktree add --detach databranch
@@ -242,8 +278,24 @@ jobs:
                 --add "$RUNNER_TEMP/run_changes.csv" --arrivals databranch/data/ground_truth/arrivals.csv \
                 || echo "::warning title=Bus changes merge failed::arrivals are still committed"
             fi
+            if [ -s "$RUNNER_TEMP/gtfs.zip" ] && [ -f tools/gtfs_versions.py ]; then
+              # which timetable this run used (stop_index means a place in its stop lists); a failure never stops the push
+              python tools/gtfs_versions.py record --zip "$RUNNER_TEMP/gtfs.zip" --since "$(cat "$RUNNER_TEMP/log.t0" 2>/dev/null || date +%s)" \
+                --into databranch/data/ground_truth/gtfs_versions.csv --store databranch/data/ground_truth/gtfs \
+                || echo "::warning title=Timetable version not recorded::arrivals are still committed"
+            fi
             python tools/refresh_model.py --data databranch/data/ground_truth/arrivals.csv \
               --out databranch/web/data/learned.json || echo "refresh_model failed; arrivals are still committed"
+            if [ -s "$RUNNER_TEMP/before.json" ] && [ -f tools/check_merge.py ]; then
+              if ! python tools/check_merge.py verify databranch/data/ground_truth --before "$RUNNER_TEMP/before.json" \
+                   > "$RUNNER_TEMP/guard.txt" 2>&1; then
+                cat "$RUNNER_TEMP/guard.txt"
+                echo "::error title=Push stopped: rows would be lost::$(grep PROBLEM "$RUNNER_TEMP/guard.txt" | head -3 | tr '\n' ' ')"
+                cp "$RUNNER_TEMP/guard.txt" "$RUNNER_TEMP/guard-blocked.txt"
+                exit 1
+              fi
+              tail -1 "$RUNNER_TEMP/guard.txt"
+            fi
             git -C databranch add -A data README.md 2>/dev/null || git -C databranch add -A data
             [ -f databranch/web/data/learned.json ] && git -C databranch add web/data/learned.json
             if git -C databranch diff --cached --quiet; then echo "nothing new (all duplicates)"; exit 0; fi
@@ -253,6 +305,41 @@ jobs:
             sleep $((RANDOM % 20 + 5 * i))
           done
           echo "push failed after 5 attempts"; exit 1
+      - name: Keep this run's rows if they did not reach the data branch (artifact, 90 days)
+        if: always() && steps.gate.outputs.mode == 'collect' && steps.merge.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: unmerged-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/run.csv
+            ${{ runner.temp }}/run_pred.csv
+            ${{ runner.temp }}/run_alerts.csv
+            ${{ runner.temp }}/run_changes.csv
+            ${{ runner.temp }}/guard.txt
+          retention-days: 90
+          if-no-files-found: ignore
+      - name: Health of this run and of the collected data (tools/health.py; never fails the job)
+        id: health
+        if: always() && steps.gate.outputs.mode == 'collect'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEALTH_ISSUES: ${{ vars.HEALTH_ISSUES }}
+        run: |
+          [ -f tools/health.py ] || { echo "no tools/health.py in this code"; exit 0; }
+          python tools/health.py run --status "$RUNNER_TEMP/logger.json" --log-outcome "${{ steps.log.outcome }}" \
+            --merge-outcome "${{ steps.merge.outcome }}" --code "${{ steps.code.outputs.code || 'main' }}" \
+            --guard "$RUNNER_TEMP/guard-blocked.txt"
+          # gaps, thin days, a missing route, duplicates, missing predictions, missing archive days (data branch as pushed)
+          python tools/health.py data --dir databranch/data/ground_truth
+      - name: Mark main's collector code as good (tag collector-ok, the fallback for a broken push to main)
+        if: always() && steps.gate.outputs.mode == 'collect' && steps.health.outputs.healthy == 'true'
+        continue-on-error: true
+        run: |
+          head=$(git rev-parse HEAD)
+          cur=$(git ls-remote origin refs/tags/collector-ok | cut -f1)
+          if [ "$cur" = "$head" ]; then echo "collector-ok is already $head"; exit 0; fi
+          git push -f origin "$head:refs/tags/collector-ok" && echo "collector-ok: ${cur:-none} -> $head"
       - name: Keep the schedule alive (unless someone disabled the workflow by hand)
         if: always()
         env: { GH_TOKEN: "${{ github.token }}" }
