@@ -7,6 +7,7 @@
 import { test, eq, ok, near, holdRun, run } from "./lib.js";
 import { shellE2E } from "./ui-shell-e2e.js";
 import { currentTripE2E } from "./e2e-current.js";
+import { locPromptE2E } from "./e2e-locprompt.js";
 import { WELCOME_KEY } from "../js/ui/feedback.js";
 import { localParts } from "../js/core/schedule.js";
 
@@ -570,6 +571,7 @@ test("no console errors or uncaught exceptions in the app", () => {
 });
 
 currentTripE2E({ test, ok, eq, waitFor, openApp });   // the next bus at the half detent (owner decisions 2026-10-11)
+locPromptE2E({ test, ok, eq, waitFor, openApp });   // one system prompt per location tap (owner 2026-11-02)
 
 test("desktop window: the app runs in a 393x852 phone frame with the phone layout", async () => {
   const f = await openApp("width:1280px;height:800px");

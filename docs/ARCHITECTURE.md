@@ -397,8 +397,15 @@ Web: `ui/notifier.js` (SETTINGS) watches the store while the page is open and de
 first: the compass (iOS Safari `deviceorientation` + `webkitCompassHeading`, Chrome / Android `deviceorientationabsolute`
 = 360 - alpha; a relative alpha is ignored), + the screen angle in landscape; else the GPS course (`coords.heading`) while
 moving >= 1 m/s; else no cone (the plain dot). iOS 13+ shows the compass only after `DeviceOrientationEvent.requestPermission()`
-inside a tap: `compass.request()` runs synchronously in `locate()` (every tap that asks for the location) and the locate
-button, never at launch (`locate({auto: true})`), and never again once readings come. On while location sharing is on
+inside a tap (Safari's "Motion & Orientation Access" prompt). One tap shows at most ONE system prompt (2026-11-02, owner:
+"There are two requests for locations when the user decides to press share location/use my location ... If this is not
+absolutely needed and can be completed with one notification to the user, do so"): main.js `askCompass()` calls
+`compass.request()` synchronously from `locate()` (every tap that asks for the location) and the locate button only
+when `mayAskCompass(store.locState)` (location already `granted`, so no location prompt can show in the same tap);
+never at launch (`locate({auto: true})`), at most one request in flight, never again once readings come. So the first
+share / locate tap shows the location prompt alone; a later locate tap may show the motion prompt alone; a blocked or
+switched-off location (Settings > Stop sharing) never reaches it. Without the compass the cone still follows the GPS
+course while moving. Android / Chrome need no prompt for the sensors. Test: `tests/e2e-locprompt.js` (e2e.test.html). On while location sharing is on
 (`start` after a fix, `stop` in `stopLocation`), listener off while the page is hidden. Readings never enter the store:
 coalesced to one per animation frame, passed on only on a turn >= 2 deg or a width change, straight to
 `MapApi.setHeading(deg, spread)`. Width = 2 x the compass's stated error, 40..120 deg (60 when the source gives no

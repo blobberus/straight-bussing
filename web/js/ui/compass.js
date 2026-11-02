@@ -3,9 +3,13 @@
  * The way the rider faces, for the heading cone on the location dot (MapApi.setHeading; owner 2026-10-14: "the
  * tracking dot should have a direction based on the user's heading"). Sources, best first:
  *  1. the compass: iOS Safari `deviceorientation` + `webkitCompassHeading` (iOS 13+ shows it only after
- *     `DeviceOrientationEvent.requestPermission()`, which must run inside a tap: `request()`, called from the taps that
- *     ask for the location, never at launch); Chrome / Android `deviceorientationabsolute` (or an `absolute`
- *     `deviceorientation`), heading = 360 - alpha;
+ *     `DeviceOrientationEvent.requestPermission()`, its "Motion & Orientation Access" prompt, which must run inside a
+ *     tap: `request()`, never at launch). One tap shows at most ONE system prompt (owner 2026-11-02: "two requests
+ *     for locations ... If this is not absolutely needed and can be completed with one notification to the user, do
+ *     so"): main.js asks only
+ *     in a tap where location is already granted and working (`mayAskCompass`), so the first share / locate tap
+ *     shows the location prompt alone and a later locate tap may show the motion prompt alone. Chrome / Android
+ *     `deviceorientationabsolute` (or an `absolute` `deviceorientation`), heading = 360 - alpha, needs no prompt;
  *  2. the GPS course (`coords.heading`) while moving at least COURSE_MIN_MPS (walking or riding);
  *  3. nothing: the plain dot, as before.
  * The heading never enters the store (sensor events come at up to 60 Hz): readings are coalesced to one per
@@ -19,6 +23,17 @@ export const COURSE_FRESH_MS = 10000;  // a course with no fix since this long i
 export const MIN_STEP_DEG = 2;         // smaller turns are not redrawn
 export const SPREAD_DEFAULT = 60;      // cone width (deg) when the source gives no accuracy (Android, the GPS course)
 export const SPREAD_MIN = 40, SPREAD_MAX = 120;
+
+/**
+ * May a tap ask for the compass permission now? Only when location is already granted and working (store.locState
+ * "granted"): then no location prompt can show in the same tap, and the motion prompt is the tap's only one. Read
+ * from the store, synchronously: iOS accepts requestPermission() only inside the tap, so no async permission query.
+ * @param {string|undefined} locState store.locState ("unknown" | "asking" | "granted" | "denied" | "off")
+ * @returns {boolean}
+ */
+export function mayAskCompass(locState) {
+  return locState === "granted";
+}
 
 /** @param {number} d degrees @returns {number} 0 <= x < 360 */
 export function norm(d) {
@@ -98,14 +113,15 @@ export function changed(prev, next) {
  *   raf?:(fn:Function)=>any}} o test seams: win (window), doc (document), now (ms), raf (requestAnimationFrame)
  * @returns {{start():void, stop():void, request():void, course(coords:object|null):void, current():object|null}}
  *   start: location sharing is on; stop: it is off (cone gone, listener off); request: ask for the iOS compass
- *   permission (call inside a tap); course: a position fix (its heading + speed)
+ *   permission (call inside a tap, only when mayAskCompass; at most one request in flight, none once readings
+ *   come); course: a position fix (its heading + speed)
  */
 export function createCompass(o) {
   const win = o.win || globalThis, doc = o.doc || globalThis.document;
   const now = o.now || (() => Date.now());
   const raf = o.raf || ((fn) => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : setTimeout(fn, 16)));
   const evName = win && "ondeviceorientationabsolute" in win ? "deviceorientationabsolute" : "deviceorientation";
-  let active = false, listening = false, pending = false, timer = 0, sawCompass = false;
+  let active = false, listening = false, pending = false, timer = 0, sawCompass = false, asking = false;
   let compass = null, course = null, shown = null;
 
   function onEvent(e) {
@@ -162,10 +178,14 @@ export function createCompass(o) {
     },
     request() {
       const D = win && win.DeviceOrientationEvent;
-      if (sawCompass || !D || typeof D.requestPermission !== "function") return;
+      if (sawCompass || asking || !D || typeof D.requestPermission !== "function") return;
+      asking = true;   // one tap may reach here twice (the locate button, then locate()): one prompt
       try {
-        Promise.resolve(D.requestPermission()).then((r) => { if (r === "granted") { detach(); attach(); } }).catch(() => {});
-      } catch (e) { /* not in a tap, or no such API */ }
+        Promise.resolve(D.requestPermission())
+          .then((r) => { if (r === "granted") { detach(); attach(); } })
+          .catch(() => {})
+          .then(() => { asking = false; });
+      } catch (e) { asking = false; /* not in a tap, or no such API */ }
     },
     course(c) {
       if (!c) return;

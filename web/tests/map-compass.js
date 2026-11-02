@@ -1,6 +1,6 @@
 /** Tests for the heading cone: ui/compass.js (sensor -> heading) and MapApi.setHeading (map/map.js, geometry.unwrapDeg). */
 import { test, eq, ok } from './lib.js';
-import { norm, screenAngle, headingFromEvent, spreadFor, turn, changed, createCompass,
+import { norm, screenAngle, headingFromEvent, spreadFor, turn, changed, createCompass, mayAskCompass,
   SPREAD_DEFAULT, SPREAD_MIN, SPREAD_MAX, COMPASS_FRESH_MS, COURSE_FRESH_MS } from '../js/ui/compass.js';
 import { unwrapDeg } from '../js/map/geometry.js';
 import { createMap } from '../js/map/map.js';
@@ -116,6 +116,27 @@ test('createCompass: iOS permission asked only by request(), listener re-attache
   h2.c.start(); h2.c.request();
   await new Promise((r) => setTimeout(r, 0));
   eq(h2.calls.length, 0, 'denied: plain dot');
+});
+
+test('compass permission: asked only once location works, one request in flight (owner 2026-11-02: one prompt per tap)', async () => {
+  eq(['unknown', 'asking', 'denied', 'off', undefined, 'granted'].map(mayAskCompass), [false, false, false, false, false, true],
+    'only "granted": no location prompt can show in the same tap');
+  const perm = { asked: 0, answer: 'granted' };
+  const env = fakeEnv({ perm });
+  const { c } = harness(env);
+  c.request(); c.request();   // the locate button, then locate(), in the same tap
+  eq(perm.asked, 1, 'one prompt, not two');
+  await new Promise((r) => setTimeout(r, 0));
+  c.request();
+  eq(perm.asked, 2, 'answered: a later tap may ask again (iOS then answers without a prompt)');
+  const thrower = fakeEnv();
+  thrower.win.DeviceOrientationEvent = { requestPermission() { throw new Error('not in a tap'); } };
+  const h3 = harness(thrower);
+  h3.c.request();
+  let asked = 0;
+  thrower.win.DeviceOrientationEvent = { requestPermission() { asked++; return Promise.resolve('denied'); } };
+  h3.c.request();
+  eq(asked, 1, 'a request that threw does not block the next tap');
 });
 
 test('createCompass: Android absolute events, hidden page detaches', () => {

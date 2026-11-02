@@ -28,7 +28,7 @@ import { registerContextActions, mountContextBar } from "./ui/contextbar.js";
 import { initFrame } from "./ui/frame.js";
 import { isSettingsOpen, closeSettingsOverlay } from "./ui/settings-overlay.js";
 import { startTripMap } from "./ui/tripmap.js";
-import { createCompass } from "./ui/compass.js";
+import { createCompass, mayAskCompass } from "./ui/compass.js";
 
 /** Every view module; each calls registerView() at import time ("timepick" only registers its actions: Lines by Time is an overlay). */
 export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes", "settings", "timepick"]);
@@ -107,6 +107,17 @@ function syncMap(s, changed) {
 let locating = null, watchId = null;
 // the way the rider faces, straight to the map (never the store: up to 60 readings a second); on while sharing is on
 const compass = createCompass({ onHeading: (deg, spread) => mapCall("setHeading", deg, spread) });
+/**
+ * Ask for the compass (iOS Safari's "Motion & Orientation Access" prompt) from a tap, only when it can be the tap's
+ * ONE system prompt (owner 2026-11-02: "two requests for locations ... can be completed with one notification to the
+ * user, do so"): location is already granted and working, so no location prompt can show in the same tap
+ * (ui/compass.js mayAskCompass). The first share / locate tap shows the location prompt alone; a later locate tap may
+ * show the motion prompt alone.
+ * Decided from the store, synchronously, before any await: iOS accepts requestPermission() only inside the tap.
+ */
+function askCompass() {
+  if (mayAskCompass(store.get().locState)) compass.request();
+}
 const LOC_OFF = "sb-loc-off";   // the rider chose Stop sharing in Settings: no automatic location at the next launch
 const locOptOut = () => { try { return localStorage.getItem(LOC_OFF) === "1"; } catch (e) { return false; } };
 /** Settings > Stop sharing: forget the position, stop watching, remember the choice. */
@@ -130,12 +141,13 @@ function startWatch() {
 }
 /**
  * Ask for the device location. Sets store.user / store.locState. Never throws. A tap (every caller but the launch,
- * which passes {auto: true}) also asks for the compass (iOS shows it only after a permission asked inside a tap).
+ * which passes {auto: true}) also asks for the compass, but only when location already works (askCompass: never two
+ * system prompts from one tap; iOS shows the compass only after a permission asked inside a tap).
  * @param {{auto?:boolean}} [opts]
  * @returns {Promise<boolean>} true when a position was obtained
  */
 function locate(opts) {
-  if (!(opts && opts.auto)) compass.request();
+  if (!(opts && opts.auto)) askCompass();   // reads locState before this call changes it to "asking"
   if (locating) return locating;
   locating = new Promise((resolve) => {
     const prev = store.get().locState;
@@ -172,7 +184,7 @@ function locate(opts) {
   return locating;
 }
 async function onLocateFab() {
-  compass.request();   // inside the tap, before any await (a trip with a known position never calls locate)
+  askCompass();   // inside the tap, before any await (a trip with a known position never calls locate)
   if (tripMap?.active?.()) {   // during a trip: show you in the trip again (follow), asking for the location if unknown
     tripMap.recenter();
     const s = store.get();
