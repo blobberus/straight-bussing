@@ -12,6 +12,8 @@
  * tapped on the map (main.js onBusTap) or in "Where the buses are" is picked (store.busId): every station then shows
  * THAT bus's own next live time (none where it has no prediction), under "Showing Bus 2's times" with "Show the next
  * bus at each stop". Leaving the page or the bus going away clears it (main.js).
+ * Line replaces line (owner 2026-11-02, ui/router.js replaceSelf): another route opened from this page (a map line or bus
+ * tap) takes this page's place in the back stack, so Back returns to the menu the first route page was opened from.
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -235,6 +237,7 @@ registerView("route", {
   parent: "routes",
   detent: "half",
   tab: "routes",
+  replaceSelf: true,   // another line opened from this page (map line or bus tap) takes its place: Back goes to the menu below
   render: (state) => renderRoute(state),
 });
 

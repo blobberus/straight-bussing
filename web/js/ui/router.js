@@ -5,6 +5,9 @@
  *
  * Root views are the three tabs: 'nearby', 'routes', 'myroutes'. Every other view is a sub view
  * with a Back button. Navigating to a view already on the back stack pops back to it (no loops).
+ * A view registered with replaceSelf (the route page) replaces itself instead of stacking: "line replaces line"
+ * (owner 2026-11-02), so Back from a line opened from another line returns to the menu the first line was opened
+ * from (My Routes, the Routes list, a stop, Alerts, ...), never to the previous line.
  *
  * Call initRouter({store, setDetent, getDetent}) once at boot (main.js). Views call
  * registerView(...) at import time and navigate()/back() from actions.
@@ -37,11 +40,14 @@ export function initRouter(deps) {
  * @param {string} id
  * @param {{title:(state:Object)=>string, parent?:string, detent?:'peek'|'half'|'full', tab?:'nearby'|'routes'|'myroutes',
  *          render?:(state:Object)=>string, mount?:(rootEl:HTMLElement, ctx:Object)=>void, unmount?:()=>void,
- *          meta?:(state:Object)=>string, onStopTap?:(stopId:string, ctx:Object)=>boolean, refresh?:()=>void}} def
+ *          meta?:(state:Object)=>string, onStopTap?:(stopId:string, ctx:Object)=>boolean, refresh?:()=>void, replaceSelf?:boolean}} def
  *   Views with mount() own their DOM after mounting: main.js never rebuilds them; it calls
  *   refresh() (optional) every 15 s so countdowns tick between polls.
  *   meta (optional, D1 extension): plain text for the right side of the sheet title line.
  *   onStopTap (optional, D1 extension): return true to handle a map stop tap instead of opening the stop view.
+ *   replaceSelf (optional): opening this view from itself with other ids (another route from a route page: a map line
+ *   or bus tap) replaces the current entry instead of pushing it, so a page of this view never sits directly on
+ *   another one in the back stack (owner 2026-11-02).
  */
 export function registerView(id, def) {
   if (!id || !def || typeof def !== "object") throw new Error("registerView: bad arguments for " + id);
@@ -138,7 +144,8 @@ function applyDetent(d) {
 }
 
 /**
- * Go to a view. Root views reset the back stack; sub views push the current location.
+ * Go to a view. Root views reset the back stack; sub views push the current location, except a replaceSelf view
+ * opened from itself (line replaces line: the current entry is dropped, what is under it stays).
  * @param {string} view registered view id
  * @param {{stopId?:string, routeId?:string, detent?:'peek'|'half'|'full'}&Object} [p] extra keys are kept in currentParams()
  * @returns {boolean} false if the view is unknown (not loaded yet: held, it runs once it registers) or the router is not initialised
@@ -162,7 +169,7 @@ export function navigate(view, p = {}) {
   } else {
     const i = stack.findIndex((e) => e.view === view && e.stopId === stopId && e.routeId === routeId);
     if (i >= 0) stack = stack.slice(0, i);
-    else {
+    else if (!(def.replaceSelf && s.view === view)) {   // line replaces line: Back skips the previous line (owner 2026-11-02)
       stack.push({ view: s.view, stopId: s.stopId, routeId: s.routeId, detent: detentNow(), params });
       if (stack.length > MAX_DEPTH) stack.splice(1, stack.length - MAX_DEPTH);
     }

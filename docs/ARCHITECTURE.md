@@ -180,8 +180,8 @@ Layer groups must never be rebuilt when nothing changed (diff by a cheap signatu
 ## UI shell (D1) and views (D2)
 ```js
 // ui/router.js
-export function registerView(id, def)   // def = { title(state)->string, parent?:viewId, detent?:'peek'|'half'|'full', tab?:'nearby'|'routes'|'myroutes', render(state)->htmlString, mount?(rootEl, ctx), unmount?(), refresh?(), meta?(state)->text, onStopTap?(id, ctx)->bool }
-export function navigate(view, params={})   // sets store.view/prevView/stopId/routeId, adjusts detent
+export function registerView(id, def)   // def = { title(state)->string, parent?:viewId, detent?:'peek'|'half'|'full', tab?:'nearby'|'routes'|'myroutes', render(state)->htmlString, mount?(rootEl, ctx), unmount?(), refresh?(), meta?(state)->text, onStopTap?(id, ctx)->bool, replaceSelf?:bool }
+export function navigate(view, params={})   // sets store.view/prevView/stopId/routeId, adjusts detent; a sub view pushes the current location (a view already on the stack pops back to it); a replaceSelf view (the route page) opened from itself replaces the current entry instead (line replaces line, owner 2026-11-02)
 export function back()
 // ui/actions.js
 export function registerAction(name, fn)    // fn(dataset, event, ctx); markup uses data-action="name" data-id="..." (event delegation on the sheet content)
@@ -727,3 +727,17 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   says "Walking the whole way, no bus"; Current trip shows "Trip to X", "Walk N min to X", "No bus needed: it is close
   enough to walk.", End trip, Trip steps (core/tripprogress.js `walkTrip` / `walkLeft`); no notification prompt.
 - Tests: tests/trip-arriving.js (8), core-rank.js walk first (3), views-flows.js walk option. sw sb-v2-74.
+
+## Line replaces line: Back after a line opened from a line (2026-11-02, owner: "Pressing back after selecting a specific line to view should not shift to the previous line but rather go to the previous menu view entirely")
+- `ui/router.js navigate`: a view registered with `replaceSelf: true` (only `route`, ui/views/route.js) that is opened
+  while the same view shows another id (a map line tap via main.js onLineTap, a bus tap via onBusTap) does not push the
+  current entry: the new route page takes its place, so a route page never sits directly on another one in the back
+  stack. Back then returns to the menu the first route page came from (My Routes / a custom route with its params and
+  detent, the Routes list, a stop, Alerts, Current trip, search results). Route > stop > route keeps every step (the
+  stop sits between them); a route already on the stack still pops back to it (no loops). The browser's back, Escape
+  and the header Back all call `back()` (main.js keeps one history entry while in a sub view), so they agree.
+- iOS: `AppModel.showPage` (used by `push` and `busTapped`) replaces a `.route` on top of the path with the new one.
+- Tests: tests/ui-shell-router.js (4: My Routes > Central > 53rd > Back, from any menu, route > stop > route, stop >
+  stop still stacks), tests/e2e-backnav.js in e2e.test.html (3, the real app with real map line taps: My Routes >
+  Central > 53rd Street Express > Back or browser back = the custom route page, unchanged; Routes list > line > map tap
+  on another line > Back = Routes list; a single line > Back and browser back). sw `sb-v2-80`.

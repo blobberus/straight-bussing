@@ -18,7 +18,8 @@ function setup() {
   registerView("myroutes", v("My Routes", { tab: "myroutes", detent: "half" }));
   registerView("alerts", v("Alerts", { parent: "nearby", tab: "nearby", detent: "half" }));
   registerView("stop", v("Stop", { detent: "half" }));
-  registerView("route", v("Route", { parent: "routes", tab: "routes", detent: "half" }));
+  registerView("route", v("Route", { parent: "routes", tab: "routes", detent: "half", replaceSelf: true }));   // as ui/views/route.js
+  registerView("customroute", v("Custom route", { parent: "myroutes", tab: "myroutes", detent: "half" }));
   registerView("about", v("About", { parent: "myroutes", detent: "full" }));
   registerView("directions", v("Dir", { detent: "full" }));
   return { store, detents, setD: (d) => (detent = d), getD: () => detent };
@@ -140,6 +141,72 @@ test("router: extra params are available via currentParams and restored on back"
   navigate("stop", { stopId: "s1" });
   back();
   eq(currentParams().fromStopId, "s9");
+});
+
+test("router: line replaces line: My Routes > Central > 53rd > Back = the My Routes view it came from (owner 2026-11-02)", () => {
+  const t = setup();
+  navigate("myroutes");
+  navigate("customroute", { id: "c1" });
+  t.setD("full");
+  navigate("route", { routeId: "central" });
+  t.setD("peek");
+  navigate("route", { routeId: "53rd" });          // a map line tap on the Central page
+  eq(t.store.get().routeId, "53rd");
+  eq(_stack().map((e) => e.view + ":" + (e.routeId || "")), ["myroutes:", "customroute:"], "Central is not under 53rd");
+  ok(back());
+  const s = t.store.get();
+  eq([s.view, s.routeId], ["customroute", null], "Back skips Central");
+  eq(currentParams().id, "c1", "the same custom route");
+  eq(t.getD(), "full", "the detent it had");
+  ok(back());
+  eq(t.store.get().view, "myroutes");
+  eq(back(), false);
+});
+
+test("router: line replaces line from any menu, and again for a third line", () => {
+  const t = setup();
+  navigate("routes");
+  navigate("route", { routeId: "a" });
+  navigate("route", { routeId: "b" });
+  navigate("route", { routeId: "c" });
+  eq(_stack().map((e) => e.view), ["routes"]);
+  ok(back());
+  eq(t.store.get().view, "routes");
+  navigate("alerts");
+  navigate("route", { routeId: "a" });
+  navigate("route", { routeId: "b" });
+  ok(back());
+  eq(t.store.get().view, "alerts", "Alerts, not line a");
+  navigate("route", { routeId: "b" });
+  navigate("route", { routeId: "b" });             // the same line again: nothing changes
+  eq(_stack().map((e) => e.view), ["routes", "alerts"]);
+});
+
+test("router: line > stop > line keeps every step (a line never sits directly on a line)", () => {
+  const t = setup();
+  navigate("routes");
+  navigate("route", { routeId: "a" });
+  navigate("stop", { stopId: "s1" });
+  navigate("route", { routeId: "b" });             // a route chip on the stop page
+  eq(_stack().map((e) => e.view + ":" + (e.routeId || e.stopId || "")), ["routes:", "route:a", "stop:s1"]);
+  navigate("route", { routeId: "c" });             // a map line tap on line b
+  eq(_stack().map((e) => e.view + ":" + (e.routeId || e.stopId || "")), ["routes:", "route:a", "stop:s1"], "c replaced b");
+  back();
+  eq([t.store.get().view, t.store.get().stopId], ["stop", "s1"]);
+  back();
+  eq([t.store.get().view, t.store.get().routeId], ["route", "a"]);
+  navigate("stop", { stopId: "s1" });
+  navigate("route", { routeId: "a" });             // already on the stack: pops back to it (no loops)
+  eq(_stack().map((e) => e.view), ["routes"]);
+});
+
+test("router: views without replaceSelf still stack on themselves (stop > stop)", () => {
+  const t = setup();
+  navigate("stop", { stopId: "a" });
+  navigate("stop", { stopId: "b" });
+  eq(_stack().map((e) => e.view + ":" + (e.stopId || "")), ["nearby:", "stop:a"]);
+  back();
+  eq(t.store.get().stopId, "a");
 });
 
 test("router: explicit detent param wins over the view default", () => {

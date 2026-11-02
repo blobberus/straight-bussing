@@ -8,6 +8,7 @@ import { test, eq, ok, near, holdRun, run } from "./lib.js";
 import { shellE2E } from "./ui-shell-e2e.js";
 import { currentTripE2E } from "./e2e-current.js";
 import { locPromptE2E } from "./e2e-locprompt.js";
+import { backNavE2E } from "./e2e-backnav.js";
 import { WELCOME_KEY } from "../js/ui/feedback.js";
 import { localParts } from "../js/core/schedule.js";
 
@@ -565,6 +566,8 @@ test("tap outside the sheet: empty map collapses it to peek; stops and buses sti
     await waitFor(() => state().view === "nearby" || null, "back to Current trip");
   }
 });
+
+backNavE2E({ test, ok, eq, waitFor, $, $$, txt, click, tab, W: () => W, sb: () => SB });   // line replaces line (owner 2026-11-02)
 
 test("no console errors or uncaught exceptions in the app", () => {
   eq(T.errors, []);

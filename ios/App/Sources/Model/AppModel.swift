@@ -387,7 +387,7 @@ final class AppModel {
     }
 
     func push(_ p: SheetPage) {
-        paths[tab, default: []].append(p)
+        showPage(p)
         switch p {
         case .directions, .about, .editCustom: detent = .full
         // pages that opened at the midway stop keep the rider's current state (owner 2026-10-12: two states only)
@@ -395,6 +395,16 @@ final class AppModel {
         case .stop, .customRoute, .alerts, .pick: break
         }
         syncMapFocus()
+    }
+
+    /// Puts a page on the current tab's path. Line replaces line (owner 2026-11-02, web ui/router.js `replaceSelf`): a
+    /// route page opened from another route page (a map line or bus tap) takes its place, so Back returns to the menu
+    /// the first route page was opened from (My Routes, the Routes list, a stop, Alerts, ...), never to the previous line.
+    func showPage(_ p: SheetPage) {
+        var stack = paths[tab] ?? []
+        if case .route(_) = p, case .route(_)? = stack.last { stack.removeLast() }
+        stack.append(p)
+        paths[tab] = stack
     }
 
     func back() {

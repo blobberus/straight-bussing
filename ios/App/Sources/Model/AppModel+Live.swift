@@ -571,7 +571,9 @@ extension AppModel {
             // a stop / bus tap delivered just before or after this one: that was not the empty map
             guard let self, self.lastAnnotationTap < at - 0.4 else { return }
             if let rid = line, self.lineTapOpens, self.staticData.routes[rid] != nil, self.page != .route(rid) {
-                self.push(.route(rid))   // the Routes list's tap: the route page, the map framed on the route
+                // the Routes list's tap: the route page, the map framed on the route; tapped on a route page it takes that
+                // page's place, so Back returns to the menu under it (owner 2026-11-02, AppModel.showPage)
+                self.push(.route(rid))
                 return
             }
             if self.detent != .peek { self.detent = .peek }
@@ -595,7 +597,7 @@ extension AppModel {
         guard staticData.routes[rid] != nil else { return }
         selectedBus = vehicleId.map { SelectedBus(rid: rid, vehicleId: $0) }
         if page == .route(rid) { return }
-        paths[tab, default: []].append(.route(rid))   // the sheet keeps its state (owner 2026-10-12)
+        showPage(.route(rid))   // the sheet keeps its state (owner 2026-10-12); on another route page it takes its place
         syncMapFocus()
     }
 
