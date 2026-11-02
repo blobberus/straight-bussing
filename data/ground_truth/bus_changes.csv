@@ -60,3 +60,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5703,Midway Metra,1793627388,2026-11-02 07:49:48,drop,2,1,4315,8615,Bernard Mitchell Hospital,1793627388,501533,12644,4,5,0,,,1,
 4346,53rd Street Express,1793628122,2026-11-02 08:02:02,add,1,2,12646,,,1793628422,672350,4326,2,2,1,,,,0
 5703,Midway Metra,1793628690,2026-11-02 08:11:30,add,1,2,4322,,,1793628990,501532,12644,5,6,1,,,,0
+5704,Downtown Campus Connector,1793629707,2026-11-02 08:28:27,drop,6,5,12647,151792,N (Upper) Wacker Dr & W Madison St,1793629707,874028,12642;12643;12645;4314;4325,6,6,0,,,1,
