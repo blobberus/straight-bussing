@@ -354,6 +354,22 @@ its own list: Apple Maps for the map and walks instead of the web map stack).
 
 ### Beta feedback (2026-10-13, owner)
 `ui/feedback.js`: `FEEDBACK_URL` (the only place the Google Form address appears), `feedbackLinkHTML()` (a real `<a target="_blank" rel="noopener">`, never window.open after an await), the welcome popup (native `<dialog>` like ui/confirm.js: Cancel focused first, Escape / outside tap close, 350 ms double-tap guard) once per browser session (`sessionStorage`; blocked storage = once per page load), opened by main.js after the first painted render (`welcomeAfterPaint`). Settings starts with "Beta feedback" (`views/settings.js feedbackHTML`). Browser tests set the session flag before booting the app (e2e.js, e2e-demo.js).
+- 2026-11-02 (owner: "Make the feedback request notification a little more noticable (using different colors etc).
+  Emphasize how it would be very helpful. Would it be possible to make this request only occur every once in a while
+  and not every time the user reloads the site?" and "In the settings menu, the beta feedback should also be more
+  prominent"): one look for the popup and the Settings card: the accent tint `--accent-bg` (tokens.css: light #d9e7f8,
+  dark #223042; never the green live color), `FEEDBACK_ICON` (speech bubble, white on an `--accent-fill` disc,
+  aria-hidden), the bold ask `FEEDBACK_LEAD` "Your feedback would be very helpful.". Popup: the owner's title in a band
+  running edge to edge under the rounded top, then `WELCOME_BODY` and `WELCOME_NOTE`, Cancel / Go to Feedback (with the
+  opens-elsewhere arrow). Settings: "Beta feedback" stays first; a tinted card with the icon + ask, `FEEDBACK_LINE`,
+  Give feedback as the card's primary button, the privacy note.
+- How often: never twice in one visit (`sessionStorage` `sb-welcome-seen`, still the tests' seam), at most once every
+  `WELCOME_EVERY_DAYS` (7) days, and not for `WELCOME_AFTER_FEEDBACK_DAYS` (30) days after the rider opened the form
+  (Go to Feedback, or Give feedback in Settings: `noteFeedbackOpened`). `localStorage` `sb-welcome-log` =
+  `{shown, feedback}` (ms; two dates, on the device only; privacy.html "Your settings" and About say so); `welcomeDue`
+  is pure (a date far in the future, from a changed clock, counts by its distance). Storage blocked: once per session,
+  or per page load. Tests: tests/feedback-welcome.js (wording, frequency, contrast, Settings card), feedback-app.js
+  (real app: a new visit within the week shows nothing, a week later it asks). sw sb-v2-81.
 
 ### You on the trip map + trip alerts (2026-10-13, owner: "the Current Trip map should show the user's location in the current trip's location (especially for bus routes). Make this sync to the notification center's get off in X stops")
 ONE evaluation of the followed trip per data change, `core/tripprogress.js tripNow(state, nowS)` (memo: same journey,

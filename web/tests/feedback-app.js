@@ -1,10 +1,16 @@
-// The beta welcome popup in the REAL app (feedback.test.html): it opens on the first launch of a browser session
-// once the app has rendered, never blocks the data, fits the phone and the desktop phone frame, and does not come
-// back after a reload in the same session (same-origin iframes share this page's sessionStorage).
+// The beta welcome popup in the REAL app (feedback.test.html): it opens on a first visit once the app has rendered,
+// never blocks the data, fits the phone and the desktop phone frame, and does not come back after a reload or on a new
+// visit within the week (same-origin iframes share this page's sessionStorage and localStorage).
 // 1. live mode (e2e-stubs.js: fake feed, no location) in a 393 x 852 phone iframe; 2. ?demo=1 in a 1280 x 800
-// desktop window (phone frame), then a reload.
+// desktop window (phone frame), then a reload, then a new visit.
 import { test, eq, ok } from "./lib.js";
-import { WELCOME_KEY } from "../js/ui/feedback.js";
+import { WELCOME_KEY, WELCOME_LOG_KEY } from "../js/ui/feedback.js";
+
+/** A first visit: no popup yet in this session, none ever in this browser. */
+function firstVisit() {
+  sessionStorage.removeItem(WELCOME_KEY);
+  localStorage.removeItem(WELCOME_LOG_KEY);
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitFor(fn, what, ms = 7000) {
@@ -38,13 +44,14 @@ async function openLive(style) {
 }
 
 test("real app (live feed, phone): the popup opens after the first render, data keeps loading, Cancel closes it", async () => {
-  sessionStorage.removeItem(WELCOME_KEY);
+  firstVisit();
   const f = await openLive("width:393px;height:852px;border:0;display:block");
   try {
     const w = f.contentWindow, d = w.document;
     const dlg = await waitFor(() => welcome(d), "the welcome popup");
     eq(d.getElementById("app").dataset.view, "nearby", "opened after the app shell rendered its first view");
     eq(sessionStorage.getItem(WELCOME_KEY), "1", "marked in this browser session");
+    ok(JSON.parse(localStorage.getItem(WELCOME_LOG_KEY)).shown > 0, "its date remembered for the weekly rule");
     eq(d.activeElement, dlg.querySelector('[data-welcome="cancel"]'), "focus in the popup");
     await waitFor(() => w.__st.get().staticLoaded && w.__st.get().liveLoaded && w.__st.get().lastOk, "stops, routes and live data load underneath");
     const r = dlg.getBoundingClientRect();
@@ -61,7 +68,7 @@ test("real app (live feed, phone): the popup opens after the first render, data 
 
 let F = null;
 test("real app (?demo=1, desktop phone frame): shown inside the frame; Go to Feedback opens the form and closes it", async () => {
-  sessionStorage.removeItem(WELCOME_KEY);
+  firstVisit();
   F = document.createElement("iframe");
   F.style.cssText = "width:1280px;height:800px;border:0;display:block";
   F.src = "../index.html?demo=1";
@@ -80,6 +87,7 @@ test("real app (?demo=1, desktop phone frame): shown inside the frame; Go to Fee
   w.removeEventListener("click", stop);
   eq(seen, [["https://forms.gle/zK4hi2UfYsrXURR97", false]], "the link to the form is followed (new tab)");
   await waitFor(() => !d.querySelector("dialog.v-welcome"), "popup closed");
+  ok(JSON.parse(localStorage.getItem(WELCOME_LOG_KEY)).feedback > 0, "the form's opening remembered (a month without asking)");
 });
 
 test("real app: a reload in the same session does not show the popup again", async () => {
@@ -98,4 +106,29 @@ test("real app: a reload in the same session does not show the popup again", asy
     ok(!d.querySelector("dialog.v-welcome"), "no welcome popup after the reload");
     eq(sessionStorage.getItem(WELCOME_KEY), "1");
   } finally { F.remove(); F = null; }
+});
+
+test("real app: a new visit within the week (fresh session) does not show the popup; one a week later does", async () => {
+  const visit = async () => {
+    sessionStorage.removeItem(WELCOME_KEY);   // a new tab or browser restart: a fresh session, the same localStorage
+    const f = await openLive("width:393px;height:852px;border:0;display:block");
+    const w = f.contentWindow, d = w.document;
+    await waitFor(() => w.__st && w.__st.get().staticLoaded && d.getElementById("app").dataset.view === "nearby", "the app rendered");
+    await sleep(800);
+    return { f, d };
+  };
+  try {
+    const DAY = 86400000;
+    localStorage.setItem(WELCOME_LOG_KEY, JSON.stringify({ shown: Date.now() - 3 * DAY, feedback: 0 }));
+    let v = await visit();
+    ok(!v.d.querySelector("dialog.v-welcome"), "shown 3 days ago: not again");
+    v.f.remove();
+    localStorage.setItem(WELCOME_LOG_KEY, JSON.stringify({ shown: Date.now() - 8 * DAY, feedback: 0 }));
+    v = await visit();
+    ok(v.d.querySelector("dialog.v-welcome[open]"), "shown 8 days ago: asks again");
+    v.f.remove();
+  } finally {
+    localStorage.removeItem(WELCOME_LOG_KEY);
+    sessionStorage.setItem(WELCOME_KEY, "1");
+  }
 });

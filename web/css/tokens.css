@@ -13,6 +13,7 @@
   --hairline-strong: rgba(60, 60, 67, .30);
   --accent: #0066d6;          /* accent used as text/icon on light */
   --accent-fill: #0071e3;     /* accent used as a fill (buttons, location dot); white text 4.7:1 */
+  --accent-bg: #d9e7f8;       /* accent tint for a highlighted card (beta feedback): --text 15:1, --text-2 5.3:1 on it (not for --accent text) */
   --on-accent: #ffffff;
   --live: #1e9e4a;
   --live-text: #17803b;      /* --live as small text: 5:1 on white (--live is 3.4:1, fills only) */
@@ -145,6 +146,7 @@
     --hairline-strong: rgba(120, 120, 128, .7);
     --accent: #409cff;
     --accent-fill: #0071e3;
+    --accent-bg: #223042;     /* --text 12.3:1, --text-2 5.2:1, --accent 4.7:1 on it */
     --on-accent: #ffffff;
     --live: #32d74b;
     --live-text: #32d74b;
@@ -175,6 +177,7 @@
   --hairline-strong: rgba(120, 120, 128, .7);
   --accent: #409cff;
   --accent-fill: #0071e3;
+  --accent-bg: #223042;
   --on-accent: #ffffff;
   --live: #32d74b;
   --live-text: #32d74b;

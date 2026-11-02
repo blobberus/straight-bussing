@@ -140,17 +140,35 @@
 .st-other summary { min-height: var(--tap); display: flex; align-items: center; cursor: pointer; color: var(--accent); font-weight: 600; }
 .st-tried { margin: var(--s2) 0 0; }
 
-/* Beta feedback (owner 2026-10-13, ui/feedback.js): the Settings link and the once-per-session welcome popup */
-.st-feedback .st-intro { margin: 0; }
-.st-fbbtn { margin-bottom: 0; }
-.st-fbbtn .fb-ext { width: 18px; height: 18px; }
+/* Beta feedback (owner 2026-10-13, ui/feedback.js): the Settings card and the welcome popup. One look since 2026-11-02
+   (owner: "more noticable (using different colors etc)", "In the settings menu, the beta feedback should also be more
+   prominent"): the accent tint --accent-bg (never the green live color; --text and --text-2 stay AA on it in both
+   themes), a speech bubble on an accent disc (white mark on the accent fill), the "very helpful" ask in bold. */
+.fb-badge { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px;
+  border-radius: var(--r-pill); background: var(--accent-fill); color: var(--on-accent); }
+.fb-badge svg { width: 22px; height: 22px; }
+.v-btn .fb-ext { width: 18px; height: 18px; }
+.st-feedback { margin: var(--s2) 0; padding: var(--s4); border-radius: var(--r-card); background: var(--accent-bg); }
+.st-fbhead { display: flex; align-items: center; gap: var(--s3); }
+.st-fblead, .v-welcome-lead { margin: 0; font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 650; color: var(--text); }
+.st-feedback .st-intro { margin: var(--s3) 0 0; }
+.st-feedback .st-fbbtn { margin: var(--s3) 0 0; }
+.st-feedback .st-fbnote { margin: var(--s2) 0 0; }
 /* the popup: as wide as the confirm popup; scaled with the desktop phone frame (--frame-k, ui/frame.js) so it
-   never spills over a shrunken frame (native dialogs center on the window, outside the frame's transform) */
-.v-welcome { width: min(calc(100vw - 48px), 340px); scale: var(--frame-k, 1); }
+   never spills over a shrunken frame (native dialogs center on the window, outside the frame's transform). The
+   tinted band runs edge to edge under the rounded top (the dialog clips it; it scrolls as one with larger text). */
+.v-welcome { width: min(calc(100vw - 48px), 340px); scale: var(--frame-k, 1); padding: 0; overflow: hidden auto; }
+.v-welcome-band { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); padding: var(--s5) var(--s5) var(--s4); background: var(--accent-bg); }
+.v-welcome-main { padding: var(--s4) var(--s5) var(--s5); }
 .v-welcome-b { margin: var(--s2) 0 0; }
+.v-welcome-note { margin: var(--s3) 0 0; }
 .v-welcome-acts { flex-wrap: wrap; margin: var(--s5) 0 0; }
 .v-welcome-acts .v-btn { flex: 1 1 auto; }   /* sized by their words: with larger text they stack instead of wrapping a label */
-@media (forced-colors: active) { .v-welcome { border: 1px solid CanvasText; } }
+@media (forced-colors: active) {
+  .v-welcome, .st-feedback { border: 1px solid CanvasText; }
+  .v-welcome-band { border-bottom: 1px solid CanvasText; }
+  .fb-badge { border: 1px solid CanvasText; }
+}
 
 /* Lines by Time (views/timepick.js, owner 2026-10-18): the Settings card with Cancel / Set time in its head, a date and
    a time on wheel columns like the iPhone alarm clock (ui/wheel.js: 40px rows, 5 in view, the chosen one in the band). */

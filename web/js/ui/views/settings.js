@@ -2,7 +2,9 @@
  * @module ui/views/settings
  * Settings content, shown in its own modal overlay (ui/settings-overlay.js), NOT in the sheet. The
  * top-right gear runs action `settings:open`, which opens (or closes) the overlay:
- * Beta feedback first (a link to the form, ui/feedback.js), appearance (ui/theme.js mount), location, usage statistics
+ * Beta feedback first (an accent-tinted card with the form's link as its primary button, ui/feedback.js; more
+ * prominent since 2026-11-02, owner: "In the settings menu, the beta feedback should also be more prominent"),
+ * appearance (ui/theme.js mount), location, usage statistics
  * (only once a receiver is set, data/usage.js), service alerts inline,
  * bus alerts ("notify me when my bus is near
  * <station>": station, routes, 2 stops / 1 stop / N min; ONE alert each, a banner while the app is in front or a
@@ -33,18 +35,20 @@ import { alertBodyHTML } from "./alerts.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen, overlayKind } from "../settings-overlay.js";
 import { locPlatform, locEnv, LOC_STEPS, LOC_ORDER, locResultText } from "../../core/lochelp.js";
-import { feedbackLinkHTML } from "../feedback.js";
+import { feedbackLinkHTML, noteFeedbackOpened, FEEDBACK_LEAD, FEEDBACK_ICON } from "../feedback.js";
 import { usageConfigured, resetId, cleanUsage, lastSend } from "../../data/usage.js";
 import { bus } from "../../core/events.js";
 
-/** Settings > Beta feedback, first in Settings (the welcome popup says the link is in the settings menu). */
-export const FEEDBACK_LINE = "This is a beta. Tell us what works and what does not.";
+/** Settings > Beta feedback, first in Settings (the welcome popup says the link is in Settings): the same tinted look
+ * and "very helpful" ask as the popup, Give feedback as the card's primary button. */
+export const FEEDBACK_LINE = "This is a beta. Tell us what works and what does not: it takes about a minute and directly shapes what gets fixed and built next.";
 export const FEEDBACK_NOTE = "Opens a Google Form in a new tab. What you type is sent only when you press Submit there.";
 /** @returns {string} */
 export function feedbackHTML() {
-  return `<h3 class="v-h">Beta feedback</h3><div class="st-feedback"><p class="v-sec st-intro">${esc(FEEDBACK_LINE)}</p>`
-    + feedbackLinkHTML("Give feedback", { cls: "v-btn v-btn--secondary v-btn--block st-fbbtn", attrs: 'data-key="feedback"', icon: true })
-    + `<p class="v-fine">${esc(FEEDBACK_NOTE)}</p></div>`;
+  return `<h3 class="v-h">Beta feedback</h3><div class="st-feedback"><div class="st-fbhead">${FEEDBACK_ICON}<p class="st-fblead">${esc(FEEDBACK_LEAD)}</p></div>`
+    + `<p class="v-sec st-intro">${esc(FEEDBACK_LINE)}</p>`
+    + feedbackLinkHTML("Give feedback", { cls: "v-btn v-btn--primary v-btn--block st-fbbtn", attrs: 'data-key="feedback"', icon: true })
+    + `<p class="v-fine st-fbnote">${esc(FEEDBACK_NOTE)}</p></div>`;
 }
 
 /** The location promise in Settings (owner 2026-10-12: "no user location data will be collected"); matches privacy.html. */
@@ -399,6 +403,8 @@ function setNotify(ctx, change) {
 }
 
 function onClick(e, root, ctx) {
+  // Give feedback: the link opens the form by itself; the welcome popup then waits a month (ui/feedback.js)
+  if (e.target.closest?.('a[data-key="feedback"]')) return void noteFeedbackOpened();
   const b = e.target.closest?.("[data-st]");
   if (!b || !root.contains(b)) return;
   const s = ctx.store.get(), what = b.dataset.st;

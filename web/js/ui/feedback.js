@@ -1,27 +1,46 @@
 /**
  * @module ui/feedback
  * Beta feedback (owner 2026-10-13): the one place for the feedback form's address, the link that opens it, and the
- * welcome popup shown once per browser session.
+ * welcome popup that asks for feedback every once in a while.
  * - FEEDBACK_URL: a Google Form. It opens in a new tab only when the rider taps "Give feedback" (Settings) or
  *   "Go to Feedback" (the welcome popup); nothing is added to its link. Not the support form (support.html +
  *   web/support-form.js SUPPORT_FORM_URL, a separate, pre-filled form).
- * - Welcome popup (native <dialog>, looks and behaves like ui/confirm.js): the first time the app opens in a
- *   browser session (sessionStorage WELCOME_KEY; storage blocked or private mode = at most once per page load).
+ * - Welcome popup (native <dialog>, behaves like ui/confirm.js), more noticeable since 2026-11-02 (owner: "Make the
+ *   feedback request notification a little more noticable (using different colors etc). Emphasize how it would be
+ *   very helpful. Would it be possible to make this request only occur every once in a while and not every time the
+ *   user reloads the site?"): an accent-tinted header band (--accent-bg, never the green live color) with a speech
+ *   bubble icon, then "Your feedback would be very helpful." How often (constants below): never twice in one visit
+ *   (sessionStorage WELCOME_KEY), at most once every WELCOME_EVERY_DAYS days, and not for WELCOME_AFTER_FEEDBACK_DAYS
+ *   days after the rider opened the form (Go to Feedback, or Give feedback in Settings: noteFeedbackOpened), both
+ *   remembered in localStorage WELCOME_LOG_KEY (two dates, on the device only, never sent). Storage blocked or
+ *   private mode: at most once per browser session, or per page load when even sessionStorage is blocked.
  *   Cancel, Escape and a tap outside close it; "Go to Feedback" is a real link (new tab, never window.open) that
  *   also closes it. main.js opens it after the first real render, so it never delays the first paint or the data.
  *   Test seam: pages that boot the real app set sessionStorage[WELCOME_KEY] = "1" first (tests/e2e.js, e2e-demo.js).
  */
 import { esc } from "../core/esc.js";
 
+/** How often the welcome popup may ask (owner 2026-11-02: "only occur every once in a while"). */
+export const WELCOME_EVERY_DAYS = 7;            // at most once a week
+export const WELCOME_AFTER_FEEDBACK_DAYS = 30;  // after the rider opened the form: a month without asking
+const DAY_MS = 86400000;
+
 /** The beta feedback form (owner 2026-10-13). */
 export const FEEDBACK_URL = "https://forms.gle/zK4hi2UfYsrXURR97";
-/** sessionStorage key: the welcome popup was shown in this browser session. */
+/** sessionStorage key: the welcome popup was shown in this browser session (never twice in one visit). */
 export const WELCOME_KEY = "sb-welcome-seen";
-/** Owner's words, exactly. */
+/** localStorage key: {shown, feedback}, the times (ms) the popup last appeared and the form was last opened. */
+export const WELCOME_LOG_KEY = "sb-welcome-log";
+/** Owner's title, exactly (2026-10-13). */
 export const WELCOME_TITLE = "Welcome to the beta version of Straight Bussing!";
-export const WELCOME_BODY = "Thank you for trying the app out. Please give feedback on your experience (link to feedback also available in the settings menu).";
+/** The ask, also the first line of Settings > Beta feedback (owner 2026-11-02: "Emphasize how it would be very helpful"). */
+export const FEEDBACK_LEAD = "Your feedback would be very helpful.";
+export const WELCOME_BODY = "Straight Bussing is still in beta. The form takes about a minute, and every answer directly shapes what gets fixed and built next for everyone who rides the campus shuttles.";
+export const WELCOME_NOTE = "You can also find Give feedback in Settings at any time.";
 /** What a screen reader adds to a feedback link's visible label. */
 export const NEW_TAB = "opens a Google Form in a new tab";
+/** Speech bubble on an accent disc (decoration: the words carry the meaning). Popup header and Settings card. */
+export const FEEDBACK_ICON = '<span class="fb-badge" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.4-4.3A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8.5 10h7M8.5 13.5h4.5"/></svg></span>';
 
 const GUARD_MS = 350;   // like ui/confirm.js: taps in the first moment after opening are ignored (a double tap)
 const PAINT_WAIT_MS = 400;   // welcomeAfterPaint: the longest wait for the next frame
@@ -42,6 +61,46 @@ export function feedbackLinkHTML(label, { cls = "v-btn v-btn--secondary", attrs 
 function session() {
   try { return window.sessionStorage; } catch (e) { return null; }   // the getter itself throws when storage is blocked
 }
+function local() {
+  try { return window.localStorage; } catch (e) { return null; }
+}
+
+/**
+ * When the popup last appeared and the form was last opened (ms; 0 = never). Never throws.
+ * @param {Storage|null} [storage] default: localStorage
+ * @returns {{shown:number, feedback:number}}
+ */
+export function welcomeLog(storage = local()) {
+  let v = null;
+  try { v = storage ? JSON.parse(storage.getItem(WELCOME_LOG_KEY) || "null") : null; } catch (e) { v = null; }
+  const num = (x) => (Number.isFinite(x) && x > 0 ? x : 0);
+  return { shown: num(v && v.shown), feedback: num(v && v.feedback) };
+}
+function writeLog(storage, patch) {
+  try { if (storage) storage.setItem(WELCOME_LOG_KEY, JSON.stringify({ ...welcomeLog(storage), ...patch })); } catch (e) { /* private mode / blocked */ }
+}
+
+/**
+ * May the popup ask again? Not within WELCOME_EVERY_DAYS of the last time it appeared, nor within
+ * WELCOME_AFTER_FEEDBACK_DAYS of the rider opening the form. A time in the future (the clock was changed) counts by
+ * its distance, so a wrong clock never silences the popup for good. Pure.
+ * @param {{shown?:number, feedback?:number}|null} log welcomeLog()
+ * @param {number} [now] ms
+ * @returns {boolean}
+ */
+export function welcomeDue(log, now = Date.now()) {
+  const away = (t) => (Number.isFinite(t) && t > 0 ? Math.abs(now - t) : Infinity);
+  return away(log && log.shown) >= WELCOME_EVERY_DAYS * DAY_MS && away(log && log.feedback) >= WELCOME_AFTER_FEEDBACK_DAYS * DAY_MS;
+}
+
+/**
+ * The rider opened the form (Go to Feedback, or Give feedback in Settings): the popup waits
+ * WELCOME_AFTER_FEEDBACK_DAYS. Never throws.
+ * @param {{storage?:Storage|null, now?:number}} [o] storage: default localStorage
+ */
+export function noteFeedbackOpened({ storage, now } = {}) {
+  writeLog(storage === undefined ? local() : storage, { feedback: Number.isFinite(now) ? now : Date.now() });
+}
 
 /**
  * Was the welcome popup already shown in this browser session?
@@ -53,18 +112,26 @@ export function welcomeSeen(storage = session()) {
 }
 
 /**
- * Show the welcome popup if this browser session has not seen it (and this page load has not shown it).
- * It counts as seen as soon as it opens, so a reload in the same session never shows it again.
- * @param {{storage?:Storage|null}} [o] storage: default sessionStorage (tests pass their own)
+ * Show the welcome popup when it is due: not yet in this browser session or page load, and welcomeDue (once a week at
+ * most; a month after the form was opened). It counts as shown as soon as it opens, so a reload never shows it again.
+ * @param {{storage?:Storage|null, log?:Storage|null, now?:number}} [o] storage: default sessionStorage; log: default
+ *   localStorage; now: ms (tests pass their own)
  * @returns {Promise<string>|null} the popup's result ("feedback" | "cancel"), null when not shown
  */
-export function maybeShowWelcome({ storage } = {}) {
+export function maybeShowWelcome({ storage, log, now } = {}) {
   if (shownThisLoad) return null;
   const st = storage === undefined ? session() : storage;
   if (welcomeSeen(st)) return null;
+  const ls = log === undefined ? local() : log;
+  const t = Number.isFinite(now) ? now : Date.now();
+  if (!welcomeDue(welcomeLog(ls), t)) return null;
   shownThisLoad = true;
   try { st && st.setItem(WELCOME_KEY, "1"); } catch (e) { /* private mode / blocked storage: once per page load */ }
-  return showWelcome();
+  writeLog(ls, { shown: t });
+  return showWelcome().then((how) => {
+    if (how === "feedback") noteFeedbackOpened({ storage: ls });
+    return how;
+  });
 }
 
 /** Tests only: forget that this page load showed the popup. */
@@ -82,9 +149,11 @@ export function showWelcome() {
   dlg.className = "v-dialog v-welcome";
   dlg.setAttribute("aria-labelledby", "v-welcome-t");
   dlg.setAttribute("aria-describedby", "v-welcome-b");
-  dlg.innerHTML = `<h2 class="v-dlg-title" id="v-welcome-t">${esc(WELCOME_TITLE)}</h2><p class="v-sec v-welcome-b" id="v-welcome-b">${esc(WELCOME_BODY)}</p>`
+  dlg.innerHTML = `<div class="v-welcome-band">${FEEDBACK_ICON}<h2 class="v-dlg-title" id="v-welcome-t">${esc(WELCOME_TITLE)}</h2></div>`
+    + `<div class="v-welcome-main"><div id="v-welcome-b"><p class="v-welcome-lead">${esc(FEEDBACK_LEAD)}</p>`
+    + `<p class="v-sec v-welcome-b">${esc(WELCOME_BODY)}</p><p class="v-fine v-welcome-note">${esc(WELCOME_NOTE)}</p></div>`
     + '<div class="v-actions v-welcome-acts"><button type="button" class="v-btn v-btn--secondary" data-welcome="cancel">Cancel</button>'
-    + feedbackLinkHTML("Go to Feedback", { cls: "v-btn v-btn--primary", attrs: 'data-welcome="feedback"' }) + "</div>";
+    + feedbackLinkHTML("Go to Feedback", { cls: "v-btn v-btn--primary", attrs: 'data-welcome="feedback"', icon: true }) + "</div></div>";
   document.body.appendChild(dlg);
   return new Promise((resolve) => {
     let done = false;
@@ -118,7 +187,7 @@ export function showWelcome() {
 
 /**
  * Boot hook (main.js, after the first real render): wait for the next paint, and for the page to be visible
- * (a tab opened in the background must not use up the session's one popup unseen), then maybe show it.
+ * (a tab opened in the background must not use up the week's one popup unseen), then maybe show it.
  * Never throws; never blocks anything.
  */
 export function welcomeAfterPaint() {

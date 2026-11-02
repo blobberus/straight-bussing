@@ -1,17 +1,19 @@
-// Beta feedback (owner 2026-10-13; feedback.test.html): the welcome popup (ui/feedback.js), the Settings link, and the
-// privacy wording in About and privacy.html. The real app is covered by feedback-app.js.
+// Beta feedback (owner 2026-10-13, 2026-11-02; feedback.test.html): the welcome popup (ui/feedback.js), how often it
+// asks, the Settings card, and the privacy wording in About and privacy.html. The real app is covered by feedback-app.js.
 import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
-import { FEEDBACK_URL, WELCOME_KEY, WELCOME_TITLE, WELCOME_BODY, maybeShowWelcome, showWelcome, welcomeSeen, _resetWelcome } from "../js/ui/feedback.js";
-import { renderSettings, mountSettings, unmountSettings, FEEDBACK_LINE } from "../js/ui/views/settings.js";
+import { FEEDBACK_URL, WELCOME_KEY, WELCOME_LOG_KEY, WELCOME_TITLE, WELCOME_BODY, WELCOME_NOTE, FEEDBACK_LEAD,
+  WELCOME_EVERY_DAYS, WELCOME_AFTER_FEEDBACK_DAYS, maybeShowWelcome, showWelcome, welcomeSeen, welcomeLog, welcomeDue,
+  noteFeedbackOpened, _resetWelcome } from "../js/ui/feedback.js";
+import { renderSettings, mountSettings, unmountSettings, FEEDBACK_LINE, FEEDBACK_NOTE } from "../js/ui/views/settings.js";
 import { renderAbout } from "../js/ui/views/about.js";
 import { bindActions } from "../js/ui/actions.js";
 import { cleanNotify } from "../js/state.js";
 
 const FORM = "https://forms.gle/zK4hi2UfYsrXURR97";   // the owner's link, verbatim
 const OWNER_TITLE = "Welcome to the beta version of Straight Bussing!";
-const OWNER_BODY = "Thank you for trying the app out. Please give feedback on your experience (link to feedback also available in the settings menu).";
 const DASH = /[–—]/;   // en / em dash: never in visible text (DESIGN.md 1b)
+const DAY = 86400000, T0 = Date.UTC(2026, 10, 2, 15);
 
 /** An in-memory sessionStorage. */
 function mem() {
@@ -36,9 +38,17 @@ async function closeAny() {
   _resetWelcome();
 }
 
-test("feedback: one URL, the owner's form", () => {
+test("feedback: one URL, the owner's form; the owner's title; the ask stresses that feedback is very helpful", () => {
   eq(FEEDBACK_URL, FORM);
-  eq([WELCOME_TITLE, WELCOME_BODY], [OWNER_TITLE, OWNER_BODY], "the owner's words, exactly");
+  eq(WELCOME_TITLE, OWNER_TITLE, "the owner's title, exactly");
+  eq(FEEDBACK_LEAD, "Your feedback would be very helpful.");
+  ok(/beta/.test(WELCOME_BODY) && /about a minute/.test(WELCOME_BODY) && /directly shapes/.test(WELCOME_BODY), "beta, a minute, it shapes the app: " + WELCOME_BODY);
+  ok(/Settings/.test(WELCOME_NOTE), "says Give feedback is also in Settings");
+  for (const t of [FEEDBACK_LEAD, WELCOME_BODY, WELCOME_NOTE, FEEDBACK_LINE]) {
+    ok(!DASH.test(t), "no en / em dash: " + t);
+    ok(!/UChicago|UGo|University/.test(t), "no university names of its own: " + t);
+  }
+  eq([WELCOME_EVERY_DAYS, WELCOME_AFTER_FEEDBACK_DAYS], [7, 30], "once a week at most; a month after the form was opened");
 });
 
 test("welcome popup: owner's title and text, buttons Cancel / Go to Feedback, the link opens the form in a new tab", async () => {
@@ -47,15 +57,17 @@ test("welcome popup: owner's title and text, buttons Cancel / Go to Feedback, th
   before.textContent = "opener";
   document.body.appendChild(before);
   before.focus();
-  const st = mem();
-  const p = maybeShowWelcome({ storage: st });
+  const st = mem(), lg = mem();
+  const p = maybeShowWelcome({ storage: st, log: lg, now: T0 });
   ok(p && typeof p.then === "function", "shown");
   const d = dlg();
   ok(d && d.open && d.matches(":modal"), "a modal <dialog>");
-  eq(d.querySelector("h2").textContent, OWNER_TITLE);
-  eq(d.querySelector("p").textContent, OWNER_BODY);
+  eq(d.querySelector(".v-welcome-band h2").textContent, OWNER_TITLE, "the title sits in the tinted band");
+  ok(d.querySelector(".v-welcome-band .fb-badge[aria-hidden='true'] svg"), "the speech bubble icon is decoration only");
+  eq([...d.querySelectorAll("p")].map((x) => x.textContent), [FEEDBACK_LEAD, WELCOME_BODY, WELCOME_NOTE], "the ask first, then why, then where else");
+  eq(getComputedStyle(d.querySelector(".v-welcome-lead")).fontWeight, "650", "the ask in bold");
   eq(document.getElementById(d.getAttribute("aria-labelledby")), d.querySelector("h2"), "aria-labelledby = the title");
-  eq(document.getElementById(d.getAttribute("aria-describedby")), d.querySelector("p"), "aria-describedby = the text");
+  eq(document.getElementById(d.getAttribute("aria-describedby")).textContent, FEEDBACK_LEAD + WELCOME_BODY + WELCOME_NOTE, "aria-describedby = all the text");
   const btns = [...d.querySelectorAll("[data-welcome]")];
   eq(btns.map((b) => b.textContent), ["Cancel", "Go to Feedback"], "exactly two buttons, owner's labels, in order");
   const a = btns[1];
@@ -65,7 +77,8 @@ test("welcome popup: owner's title and text, buttons Cancel / Go to Feedback, th
   eq(btns[0].tagName, "BUTTON");
   eq(document.activeElement, btns[0], "focus moved into the popup, on Cancel (the safe choice)");
   ok(!DASH.test(d.textContent), "no en / em dash");
-  eq(st.getItem(WELCOME_KEY), "1", "counted as seen as soon as it opens");
+  eq(st.getItem(WELCOME_KEY), "1", "counted as seen in this visit as soon as it opens");
+  eq(welcomeLog(lg), { shown: T0, feedback: 0 }, "and its date remembered for the weekly rule");
   for (const b of btns) { const r = b.getBoundingClientRect(); ok(r.height >= 44 && r.width >= 44, "44 px target: " + b.textContent); }
   await tick(380);   // past the double-tap guard
   userClick(btns[0]);
@@ -78,35 +91,95 @@ test("welcome popup: owner's title and text, buttons Cancel / Go to Feedback, th
   _resetWelcome();
 });
 
-test("welcome popup: once per browser session; a reload in the same session does not show it again", async () => {
+test("welcome popup: never twice in one visit; a reload or a new visit within the week does not show it again", async () => {
   _resetWelcome();
-  const st = mem();
+  const st = mem(), lg = mem();
   ok(!welcomeSeen(st));
-  const p = maybeShowWelcome({ storage: st });
-  ok(p && dlg(), "first open of the session: shown");
-  eq(maybeShowWelcome({ storage: st }), null, "a second call in the same page load does nothing");
+  const p = maybeShowWelcome({ storage: st, log: lg, now: T0 });
+  ok(p && dlg(), "first visit: shown");
+  eq(maybeShowWelcome({ storage: st, log: lg, now: T0 }), null, "a second call in the same page load does nothing");
   eq(document.querySelectorAll("dialog.v-welcome").length, 1, "only one popup");
   await closeAny();
-  // a reload: the page (and module state) starts over, sessionStorage stays
-  eq(maybeShowWelcome({ storage: st }), null, "same session after a reload: not shown");
+  // a reload: the page (and module state) starts over, sessionStorage and localStorage stay
+  eq(maybeShowWelcome({ storage: st, log: lg, now: T0 + 60000 }), null, "a reload: not shown");
   ok(!dlg());
   ok(welcomeSeen(st));
-  // a new session (new tab / browser restart): shown again
-  const p2 = maybeShowWelcome({ storage: mem() });
-  ok(p2 && dlg(), "new session: shown");
+  _resetWelcome();
+  // new visits (new tab / browser restart: a fresh sessionStorage) during the week: not shown
+  for (const days of [1, 3, 6.9]) {
+    eq(maybeShowWelcome({ storage: mem(), log: lg, now: T0 + days * DAY }), null, `a new visit ${days} days later: not shown`);
+    _resetWelcome();
+  }
+  ok(!dlg());
+  // a week later: shown once more, and the week starts again
+  const p2 = maybeShowWelcome({ storage: mem(), log: lg, now: T0 + 7 * DAY });
+  ok(p2 && dlg(), "a new visit 7 days later: shown");
+  eq(welcomeLog(lg).shown, T0 + 7 * DAY);
   await closeAny();
+  eq(maybeShowWelcome({ storage: mem(), log: lg, now: T0 + 10 * DAY }), null, "3 days after that: not shown");
+  _resetWelcome();
+});
+
+test("welcome popup: after the rider opens the form (popup or Settings), a month without asking", async () => {
+  // Go to Feedback in the popup
+  _resetWelcome();
+  const lg = mem();
+  const p = maybeShowWelcome({ storage: mem(), log: lg, now: T0 });
+  ok(p && dlg(), "shown");
+  await tick(380);
+  const nav = catchNav();
+  try { userClick(dlg().querySelector('[data-welcome="feedback"]')); } finally { nav.off(); }
+  eq(await p, "feedback");
+  ok(welcomeLog(lg).feedback > 0, "the form's opening is remembered");
+  await tick(5);
+  // pin the date for the arithmetic below (the popup's own note uses the real clock)
+  noteFeedbackOpened({ storage: lg, now: T0 });
+  eq(welcomeLog(lg), { shown: T0, feedback: T0 });
+  for (const days of [7, 14, 29.9]) {
+    _resetWelcome();
+    eq(maybeShowWelcome({ storage: mem(), log: lg, now: T0 + days * DAY }), null, `${days} days after opening the form: not shown`);
+  }
+  _resetWelcome();
+  const p2 = maybeShowWelcome({ storage: mem(), log: lg, now: T0 + 30 * DAY });
+  ok(p2 && dlg(), "30 days after: shown again");
+  await closeAny();
+  // Give feedback in Settings counts the same, even before the popup ever showed
+  const lg2 = mem();
+  noteFeedbackOpened({ storage: lg2, now: T0 });
+  eq(maybeShowWelcome({ storage: mem(), log: lg2, now: T0 + 8 * DAY }), null, "Settings' Give feedback 8 days ago: not shown");
+  _resetWelcome();
+});
+
+test("welcome popup: the weekly rule is pure and survives a broken log or a changed clock", () => {
+  eq(welcomeDue({ shown: 0, feedback: 0 }, T0), true, "never shown: due");
+  eq(welcomeDue(null, T0), true);
+  eq(welcomeDue({ shown: T0 - 6 * DAY }, T0), false);
+  eq(welcomeDue({ shown: T0 - 7 * DAY }, T0), true);
+  eq(welcomeDue({ shown: T0 - 8 * DAY, feedback: T0 - 29 * DAY }, T0), false, "the form rule wins");
+  eq(welcomeDue({ shown: T0 - 8 * DAY, feedback: T0 - 31 * DAY }, T0), true);
+  eq(welcomeDue({ shown: T0 + 2 * DAY }, T0), false, "a date just ahead (clock set back): wait");
+  eq(welcomeDue({ shown: T0 + 400 * DAY }, T0), true, "a date far ahead (a wrong clock) never silences it for good");
+  const bad = mem();
+  bad.setItem(WELCOME_LOG_KEY, "{not json");
+  eq(welcomeLog(bad), { shown: 0, feedback: 0 }, "unreadable log: as if never shown");
+  bad.setItem(WELCOME_LOG_KEY, JSON.stringify({ shown: "x", feedback: -5 }));
+  eq(welcomeLog(bad), { shown: 0, feedback: 0 });
+  eq(welcomeLog(blocked), { shown: 0, feedback: 0 }, "throwing storage");
+  eq(welcomeLog(null), { shown: 0, feedback: 0 });
+  noteFeedbackOpened({ storage: blocked });   // never throws
+  noteFeedbackOpened({ storage: null });
 });
 
 test("welcome popup: blocked storage or private mode never crashes and shows it at most once per page load", async () => {
   for (const st of [blocked, null]) {
     _resetWelcome();
     let p = null;
-    try { p = maybeShowWelcome({ storage: st }); } catch (e) { ok(false, "threw: " + e.message); }
+    try { p = maybeShowWelcome({ storage: st, log: st }); } catch (e) { ok(false, "threw: " + e.message); }
     ok(p && dlg(), "shown once (" + (st ? "throwing storage" : "no storage") + ")");
     await tick(380);
     dlg().querySelector('[data-welcome="cancel"]').click();
     await tick(5);
-    eq(maybeShowWelcome({ storage: st }), null, "not again in this page load, not on every render");
+    eq(maybeShowWelcome({ storage: st, log: st }), null, "not again in this page load, not on every render");
     ok(!dlg());
   }
   ok(!welcomeSeen(blocked), "a throwing storage reads as not seen");
@@ -185,7 +258,10 @@ function contrast(fg, bg) {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-test("welcome popup: readable in light and dark, sized like the confirm popup, scales with the desktop phone frame", async () => {
+/** Is this "rgb(...)" color mostly green (the live color's job, DESIGN.md 1b)? */
+const greenish = (c) => { const [r, g, b] = String(c).match(/[\d.]+/g).map(Number); return g > r + 20 && g > b + 20; };
+
+test("welcome popup: noticeable (a tinted band, not the live green) and readable in light and dark, sized like the confirm popup, scales with the desktop phone frame", async () => {
   _resetWelcome();
   const html = document.documentElement, prevTheme = html.dataset.theme;
   const p = showWelcome(), d = dlg();
@@ -196,7 +272,17 @@ test("welcome popup: readable in light and dark, sized like the confirm popup, s
       html.dataset.theme = theme;
       const cs = (el) => getComputedStyle(el), bg = cs(d).backgroundColor;
       ok(!/rgba\(0, 0, 0, 0\)|transparent/.test(bg), theme + ": solid popup background " + bg);
-      const pairs = [["title", d.querySelector("h2"), bg], ["text", d.querySelector("p"), bg]];
+      const band = d.querySelector(".v-welcome-band"), bandBg = cs(band).backgroundColor, badge = d.querySelector(".fb-badge");
+      ok(bandBg !== bg && !/rgba\(0, 0, 0, 0\)|transparent/.test(bandBg), `${theme}: the band stands out (${bandBg} on ${bg})`);
+      const probe = document.body.appendChild(document.createElement("div"));
+      probe.style.background = "var(--accent-bg)";
+      eq(bandBg, cs(probe).backgroundColor, theme + ": band = --accent-bg");
+      probe.remove();
+      ok(!greenish(bandBg) && !greenish(cs(badge).backgroundColor), theme + ": never the green live color");
+      const br = band.getBoundingClientRect(), dr = d.getBoundingClientRect();
+      ok(Math.abs(br.left - dr.left) < 1 && Math.abs(br.right - dr.right) < 1 && Math.abs(br.top - dr.top) < 1, theme + ": the band runs edge to edge at the top");
+      const pairs = [["title", d.querySelector("h2"), bandBg], ["badge icon", badge, cs(badge).backgroundColor]];
+      for (const x of d.querySelectorAll("#v-welcome-b p")) pairs.push([x.className, x, bg]);
       for (const b of d.querySelectorAll("[data-welcome]")) pairs.push([b.textContent, b, cs(b).backgroundColor]);
       for (const [name, el, back] of pairs) {
         const k = contrast(cs(el).color, back);
@@ -208,10 +294,14 @@ test("welcome popup: readable in light and dark, sized like the confirm popup, s
     const [c, g] = [...d.querySelectorAll("[data-welcome]")].map((b) => b.getBoundingClientRect());
     ok(Math.abs(c.top - g.top) < 1, "both buttons on one line at the default text size");
     for (const b of d.querySelectorAll("[data-welcome]")) {
-      const r = document.createRange();
-      r.selectNodeContents(b);
-      const lines = new Set([...r.getClientRects()].map((x) => Math.round(x.top)));
-      eq(lines.size, 1, "label on one line: " + b.textContent);
+      const tops = new Set();
+      for (const n of b.childNodes) {
+        if (n.nodeType !== 3 || !n.textContent.trim()) continue;
+        const r = document.createRange();
+        r.selectNodeContents(n);
+        for (const x of r.getClientRects()) tops.add(Math.round(x.top));
+      }
+      eq(tops.size, 1, "label on one line: " + b.textContent);
     }
     html.style.setProperty("--frame-k", "0.8");
     eq(getComputedStyle(d).scale, "0.8", "shrinks with the phone frame (native dialogs sit outside the frame's transform)");
@@ -228,7 +318,7 @@ test("welcome popup: readable in light and dark, sized like the confirm popup, s
 
 const base = (over = {}) => ({ notify: cleanNotify(null), favStops: [], journey: null, ...over });
 
-test("settings: Beta feedback comes first, with a real link to the form in a new tab (secondary button, 44 px)", async () => {
+test("settings: Beta feedback comes first, a tinted card with the ask and a real link to the form (primary button, 44 px)", async () => {
   const h = renderSettings(fixture(base()), NOW);
   ok(!DASH.test(h.replace(/<[^>]+>/g, "")), "no en / em dash");
   const ctx = makeCtx(base());
@@ -237,21 +327,49 @@ test("settings: Beta feedback comes first, with a real link to the form in a new
   mountSettings(el, ctx);
   const off = bindActions(el, () => ctx);
   const nav = catchNav();
+  let saved = null;
+  try { saved = localStorage.getItem(WELCOME_LOG_KEY); localStorage.removeItem(WELCOME_LOG_KEY); } catch (e) { /* */ }
   try {
     eq(el.querySelector(".v-h").textContent, "Beta feedback", "the first section of Settings");
-    ok(el.textContent.includes(FEEDBACK_LINE), "the beta line");
+    const card = el.querySelector(".st-feedback");
+    eq(card.previousElementSibling, el.querySelector(".v-h"), "the card right under it");
+    eq(card.querySelector(".st-fblead").textContent, FEEDBACK_LEAD, "the same ask as the popup, first");
+    ok(card.querySelector(".fb-badge[aria-hidden='true'] svg"), "the popup's icon, decoration only");
+    ok(card.textContent.includes(FEEDBACK_LINE) && card.textContent.includes(FEEDBACK_NOTE), "the beta line and the privacy note");
+    ok(/about a minute/.test(FEEDBACK_LINE), "short form of the popup's message");
     const links = [...el.querySelectorAll(`a[href="${FORM}"]`)];
     eq(links.length, 1, "one feedback link");
     const a = links[0];
     eq([a.textContent.trim(), a.getAttribute("target")], ["Give feedback", "_blank"]);
     ok(/\bnoopener\b/.test(a.getAttribute("rel")) && /^Give feedback, .*new tab/.test(a.getAttribute("aria-label")), "rel + spoken label");
-    ok(a.classList.contains("v-btn") && a.classList.contains("v-btn--secondary") && !a.dataset.action, "styled as the secondary button, not an app action");
+    ok(a.classList.contains("v-btn") && a.classList.contains("v-btn--primary") && !a.dataset.action, "styled as the primary button, not an app action");
+    ok(card.contains(a), "inside the card");
     ok(a.getBoundingClientRect().height >= 44, "44 px target");
     ok(a.querySelector("svg[aria-hidden='true']"), "the 'opens elsewhere' arrow is decoration only");
+    // readable and not the live green, in light and dark
+    const html = document.documentElement, prevTheme = html.dataset.theme;
+    const still = document.head.appendChild(document.createElement("style"));
+    still.textContent = "*, *::before, *::after { transition: none !important; animation: none !important; }";
+    try {
+      for (const theme of ["light", "dark"]) {
+        html.dataset.theme = theme;
+        const cs = (x) => getComputedStyle(x), cbg = cs(card).backgroundColor, badge = card.querySelector(".fb-badge");
+        ok(!/rgba\(0, 0, 0, 0\)|transparent/.test(cbg) && !greenish(cbg) && !greenish(cs(badge).backgroundColor), `${theme}: tinted, not green (${cbg})`);
+        for (const [name, x, back] of [["lead", card.querySelector(".st-fblead"), cbg], ["line", card.querySelector(".st-intro"), cbg],
+          ["note", card.querySelector(".st-fbnote"), cbg], ["button", a, cs(a).backgroundColor], ["badge icon", badge, cs(badge).backgroundColor]]) {
+          const k = contrast(cs(x).color, back);
+          ok(k >= 4.5, `${theme}: ${name} contrast ${k.toFixed(2)} >= 4.5 (${cs(x).color} on ${back})`);
+        }
+      }
+    } finally { still.remove(); if (prevTheme === undefined) delete html.dataset.theme; else html.dataset.theme = prevTheme; }
     userClick(a);
     eq(nav.seen, [false], "Settings lets the link open the form");
     eq([ctx.calls.navigate.length, ctx.calls.toast.length], [0, 0], "no app navigation or toast");
-  } finally { nav.off(); off?.(); unmountSettings(); el.remove(); }
+    ok(welcomeLog().feedback > 0, "tapping Give feedback quiets the welcome popup for a month");
+  } finally {
+    nav.off(); off?.(); unmountSettings(); el.remove();
+    try { if (saved === null) localStorage.removeItem(WELCOME_LOG_KEY); else localStorage.setItem(WELCOME_LOG_KEY, saved); } catch (e) { /* */ }
+  }
 });
 
 test("privacy: About and privacy.html say the feedback form is opened only when tapped", async () => {

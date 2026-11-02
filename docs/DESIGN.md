@@ -55,7 +55,9 @@ Motion: durations 120 (press/fade), 220 (content swap), 320 (sheet settle). Easi
 **Color lock.** One accent (`--accent` text / `--accent-fill` fills) for every action, selection and switch. Green (`--live`)
 means live GPS / prediction data and nothing else (no green switches, no green "Scheduled now"). Route colors are data,
 never decoration or accent. Red fills use `--danger-fill`; `--danger` is for error text. Gold (the `--warn` hue) is also the
-favorite star, always with the star shape. No pure #000 / #fff surfaces or shadows: light surfaces are #FCFCFD, shadows and
+favorite star, always with the star shape. The one highlighted card (Beta feedback: the welcome popup's band and the
+Settings card, 2026-11-02) uses the accent tint `--accent-bg` with `--text` / `--text-2` on it and a white mark on an
+`--accent-fill` disc; never green, never `--accent` text on the tint in light. No pure #000 / #fff surfaces or shadows: light surfaces are #FCFCFD, shadows and
 scrims use `--shadow-rgb`. White is allowed only as text / marks on a saturated fill (accent, danger, route color) and as map
 marker rings. Every button, toggle, tag and placeholder is >= 4.5:1 in light and dark (`tests/ui-shell-contrast.js`).
 
