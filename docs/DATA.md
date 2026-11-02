@@ -402,8 +402,10 @@ Actions > Variables), or "Disable workflow" in the Actions tab (the keepalive st
   rows missing ids, under 50% of arrivals with Passio's prediction; paused during academic breaks and holidays,
   data/calendar.json) and the archive (finished days missing files while their artifacts still exist); the archive
   job's own failure. From outside, the public data repo's sync chain runs `health.py watchdog` every ~30 min: buses
-  in the feed but no collect run active (and nothing merged for 45 min), or nothing merged for 3 h while collecting,
-  opens an issue in the data repo. Replayed over Oct 12 to 31 the data checks raise exactly one problem, the real
+  in the feed but no collect run active and nothing merged for 45 min opens an issue in the data repo (a run that logs
+  or pushes nothing is reported by the run itself). "Buses" in the run checks are buses in service: fresh reports
+  within 600 m of a stop of their own route (status `bus_polls`), not buses Passio still lists on a trip on their way
+  to the garage (DC-022). Replayed over Oct 12 to 31 the data checks raise exactly one problem, the real
   Oct 28 feed outage. Repo variable `HEALTH_ISSUES=off` keeps everything to annotations and job summaries.
 - **The logger's status file** (`--status-file`) also reports `bus_polls` (polls that saw a bus), `max_fail_s` and
   `fail_spans` (stretches of 2 min or more with no readable vehicle feed) and `schema_errors` / `schema_first` (feeds

@@ -1204,11 +1204,41 @@ def a_feed_in_another_shape_is_counted_not_read_as_no_buses():
             pass
     s = TL.poll(tr, W(), T0, err, get=lambda name: feeds[name])
     assert err.schema == 2 and err.fetch == 0 and "tripUpdates" in err.schema_first, (err.schema, err.schema_first)
-    assert s == {"veh": 0, "trip": 0, "fresh": 0}, s
+    assert s == {"veh": 0, "trip": 0, "fresh": 0, "live": 0}, s
     feeds["vehiclePositions"] = {"header": head, "entity": [veh]}
     feeds["tripUpdates"] = {"header": head, "entity": []}
     TL.poll(tr, W(), T0 + 10, err, get=lambda name: feeds[name])
     assert err.schema == 2, "a good feed is never counted"
+
+
+@test
+def only_buses_near_their_own_route_count_as_in_service():
+    """2026-11-02: the first "buses but no rows" alert came from three buses Passio still listed on trips while they drove
+    to the garage, 3 km from any stop. poll()'s summary["live"] counts only fresh reports within IN_SERVICE_M of a stop of
+    their own route (bus_polls in the status file uses it)."""
+    import truth_logger as TL
+    st = fake_static()
+    near = {"veh": "V1", "route": "R", "lat": LAT, "lon": LON0 + STEP * 1.5, "vt": T0}            # between B and C
+    far = {"veh": "V2", "route": "R", "lat": LAT + 0.03, "lon": LON0, "vt": T0}                    # 3.3 km north
+    old = {"veh": "V3", "route": "R", "lat": LAT, "lon": LON0, "vt": T0 - 600}                     # 10 min old
+    other = {"veh": "V4", "route": "S", "lat": st.stops["X"]["lat"], "lon": st.stops["X"]["lon"], "vt": T0}
+    assert TL.in_service(st, [near, far, old, other], T0) == 2, "near + the bus at its own route's stop X"
+    assert TL.in_service(st, [far, old], T0) == 0
+    assert TL.in_service(st, [dict(near, route="NOPE")], T0) == 0, "an unknown route is not in service"
+    head = {"gtfs_realtime_version": "2.0", "timestamp": str(T0)}
+    ent = lambda r: {"id": r["veh"], "vehicle": {"trip": {"trip_id": "T1", "route_id": r["route"]}, "vehicle": {"id": r["veh"]},
+                                                  "position": {"latitude": r["lat"], "longitude": r["lon"]}, "timestamp": r["vt"]}}
+
+    class W:
+        n = np = 0
+        def write(self, ev):
+            pass
+    feeds = {"tripUpdates": {"header": head, "entity": []}, "vehiclePositions": {"header": head, "entity": [ent(far)]}}
+    s = TL.poll(Tracker(st), W(), T0, TL.Errors(out=open(__import__("os").devnull, "w")), get=lambda n: feeds[n])
+    assert s["fresh"] == 1 and s["live"] == 0, s
+    feeds["vehiclePositions"]["entity"].append(ent(near))
+    s = TL.poll(Tracker(st), W(), T0, TL.Errors(out=open(__import__("os").devnull, "w")), get=lambda n: feeds[n])
+    assert s["live"] == 1, s
 
 
 @test

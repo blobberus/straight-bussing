@@ -129,6 +129,27 @@ def feed_shape(feed, kind):
     return None
 
 
+IN_SERVICE_M = 600      # a bus this close to a stop of its own route counts as in service (health.py "buses but no rows")
+
+
+def in_service(st, reps, head):
+    """How many reports are fresh (at most 5 min old by the feed's clock) and within IN_SERVICE_M of a stop of their own
+    route. A bus Passio still lists on a trip while it drives to the garage after service is neither (2026-11-02: three
+    buses 3 km from any stop, 00:13 to 00:37, made the first "buses but no rows" alert a false one)."""
+    n = 0
+    for r in reps:
+        try:
+            if head and head - int(r.get("vt") or 0) > 300:
+                continue
+            lat, lon = float(r["lat"]), float(r["lon"])
+            stops = [st.stops[s] for s in st.route_stops.get(str(r.get("route")), []) if s in st.stops]
+            if any(L.hav_m(lat, lon, s["lat"], s["lon"]) <= IN_SERVICE_M for s in stops):
+                n += 1
+        except (KeyError, TypeError, ValueError):
+            continue
+    return n
+
+
 def feed_summary(feed):
     """Vehicles in a vehiclePositions feed: with a position, on a trip, reported in the last 5 min (feed clock).
     Logged with each status line so a quiet night can be told apart from a detector problem."""
@@ -260,6 +281,16 @@ def poll(tr, w, now, err, get=fetch, raw=None, pred_count=None, changes=None):
         err("write rows", ex)
     if summary is not None and pred_count is not None:
         summary["pred"] = pred
+    st = getattr(tr, "st", None)                 # stand-in trackers (tests) have no static data: no count then
+    if summary is not None and st is not None:
+        try:
+            head = int((feed.get("header") or {}).get("timestamp") or 0)
+        except (TypeError, ValueError):
+            head = 0
+        try:
+            summary["live"] = in_service(st, reps, head)
+        except Exception as ex:
+            err("in-service count", ex)
     return summary
 
 
@@ -542,7 +573,7 @@ def main():
                     err("pred log", ex)
             if s is not None:
                 summary = s
-                if (s.get("fresh") or s.get("veh") or s.get("pred") or 0) > 0:
+                if (s["live"] if "live" in s else (s.get("fresh") or 0)) > 0:   # a bus in service, not one going home
                     bus_polls += 1
                 if fail_since is not None:           # a stretch with no readable vehicle feed ended
                     max_fail = max(max_fail, t0 - fail_since)

@@ -293,7 +293,7 @@ def check_watchdog(buses, newest, now, collecting, idle_only=False):
     """The collector seen from outside (the public data repo's sync chain, which runs on its own schedule, so it still
     runs when the collector's self-chain and its cron backstop have both stopped). buses = live buses Passio reports
     now; newest = epoch of the newest arrival on the data branch; collecting = a collect.yml run is logging now.
-    -> problems. Quiet while no bus runs (nothing to log) and while a run is collecting and merges keep coming."""
+    -> problems. Quiet while no bus runs (nothing to log) and while a run is collecting."""
     if buses <= 0:
         return {}
     age = (now - newest) / 60 if newest else 10 ** 6
@@ -304,9 +304,8 @@ def check_watchdog(buses, newest, now, collecting, idle_only=False):
     if not collecting and age > 45:
         what = "only an idle run is active" if idle_only else "no collect run is active"
         return {"watchdog:stopped": f"{buses} bus(es) are running but {what} and {newest_txt}: the collector looks stopped. {restart}"}
-    if age > 180:
-        return {"watchdog:stale": (f"{buses} bus(es) are running and a collect run is active, but {newest_txt}: runs log or "
-                                   f"push nothing (check the latest collect run's log). {restart}")}
+    # No "nothing merged for 3 h while collecting" rule (it fired at every service start after a quiet night or weekend
+    # morning, 2026-11-01 4:00 PM): a run that logs or pushes nothing is reported by the run itself (health.py run).
     return {}
 
 

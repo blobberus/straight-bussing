@@ -157,7 +157,7 @@ def the_watchdog_speaks_only_when_buses_run_and_nothing_collects_them():
     assert "watchdog:stopped" in p and "no collect run is active" in p["watchdog:stopped"], p
     assert "only an idle run" in H.check_watchdog(5, now - 50 * 60, now, False, idle_only=True)["watchdog:stopped"]
     assert H.check_watchdog(5, now - 170 * 60, now, True) == {}
-    assert "watchdog:stale" in H.check_watchdog(5, now - 200 * 60, now, True)
+    assert H.check_watchdog(5, now - 15 * 3600, now, True) == {}, "service starting after a quiet night: a run collects"
     assert "no arrival on the data branch" in H.check_watchdog(2, None, now, False)["watchdog:stopped"]
 
 
