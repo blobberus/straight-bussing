@@ -137,6 +137,11 @@
 <button id="locateBtn" class="fab" type="button" aria-label="Show my location">
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
 </button>
+<!-- beta feedback button under the locate button (js/ui/feedback-button.js shows it until the rider gives feedback) -->
+<button id="feedbackBtn" class="fab fbfab" type="button" aria-label="Give feedback" aria-haspopup="dialog" aria-expanded="false" hidden>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.4-4.3A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8.5 10h7M8.5 13.5h4.5"/></svg>
+  <span class="fbfab-dot" aria-hidden="true"></span>
+</button>
 
 <div id="pill" class="statuspill" role="status" aria-live="polite" hidden><span id="pillIcon" class="pillicon" aria-hidden="true"></span><span id="pillText" class="pilltext"></span><button id="pillRetry" class="pillbtn" type="button" data-action="retry" hidden>Retry</button><button id="pillAlert" class="pillbtn" type="button" data-action="alerts:open" aria-label="Read the service alert" hidden>See alert</button></div>
 <div id="ctxbar" class="ctxbar" role="status" aria-live="polite" hidden></div>

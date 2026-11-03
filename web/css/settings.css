@@ -164,6 +164,12 @@
 .v-welcome-note { margin: var(--s3) 0 0; }
 .v-welcome-acts { flex-wrap: wrap; margin: var(--s5) 0 0; }
 .v-welcome-acts .v-btn { flex: 1 1 auto; }   /* sized by their words: with larger text they stack instead of wrapping a label */
+/* the map feedback button's panel (js/ui/feedback-button.js, owner 2026-11-02): the Settings card in the Settings shell,
+   then the quieter "I already gave feedback" (accent text on the panel's own surface, not on the tint: 5.6:1 light) */
+.fbp { padding: var(--s3) 0 var(--s2); }
+.fbp .fbp-card { margin-top: 0; }
+.fbp .fbp-silence { display: flex; margin: var(--s2) auto 0; font-weight: 500; }
+.fbp .fbp-note { margin: var(--s2) 0 0; text-align: center; }
 @media (forced-colors: active) {
   .v-welcome, .st-feedback { border: 1px solid CanvasText; }
   .v-welcome-band { border-bottom: 1px solid CanvasText; }

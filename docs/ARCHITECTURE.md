@@ -364,12 +364,47 @@ its own list: Apple Maps for the map and walks instead of the web map stack).
   opens-elsewhere arrow). Settings: "Beta feedback" stays first; a tinted card with the icon + ask, `FEEDBACK_LINE`,
   Give feedback as the card's primary button, the privacy note.
 - How often: never twice in one visit (`sessionStorage` `sb-welcome-seen`, still the tests' seam), at most once every
-  `WELCOME_EVERY_DAYS` (7) days, and not for `WELCOME_AFTER_FEEDBACK_DAYS` (30) days after the rider opened the form
-  (Go to Feedback, or Give feedback in Settings: `noteFeedbackOpened`). `localStorage` `sb-welcome-log` =
-  `{shown, feedback}` (ms; two dates, on the device only; privacy.html "Your settings" and About say so); `welcomeDue`
-  is pure (a date far in the future, from a changed clock, counts by its distance). Storage blocked: once per session,
-  or per page load. Tests: tests/feedback-welcome.js (wording, frequency, contrast, Settings card), feedback-app.js
-  (real app: a new visit within the week shows nothing, a week later it asks). sw sb-v2-81.
+  `WELCOME_EVERY_DAYS` (7) days, and never again once the rider gave feedback (below; until the feedback button it
+  waited 30 days after the form was opened). `localStorage` `sb-welcome-log` = `{shown, feedback}` (ms; two dates, on
+  the device only; privacy.html "Your settings" and About say so); `welcomeDue` is pure (a date far in the future, from
+  a changed clock, counts by its distance). Storage blocked: once per session, or per page load. Tests:
+  tests/feedback-welcome.js (wording, frequency, contrast, Settings card), feedback-app.js (real app: a new visit within
+  the week shows nothing, a week later it asks). sw sb-v2-81.
+- The map's feedback button (2026-11-02, owner: "Add a small notification button (still noticable) under the
+  navigation arrow button under the right side of the search bar. This notification should ping every once in a
+  while. Pressing it should reveal a menu that looks similar to the settings overlay menu which explicity requests the
+  user for feedback. Put a notification under it that if the user gives feedback, the notification button will
+  disappear. The app should remember if a particular user has already given feedback (or pressed the link).
+  Alternatively, underneath the send feedbakc button, there should be a smaller less noticable button which can say: I
+  already gave feedback. Which will silence the notification entirely. A silenced notification will entirely remove
+  the button from the navigation screen."). `ui/feedback-button.js`, `#feedbackBtn` in index.html (`hidden` until the
+  module, imported by main.js after the first render, shows it):
+  - Look (css/base.css `.fbfab`): the locate button's 44 px size and `--r-control` shape, 8 px under it, hidden with it
+    at the full detent; the accent tint `--accent-bg` (the feedback card's color, never green) with the speech bubble
+    in `--accent` (4.3:1 light, 4.7:1 dark, a graphic needs 3:1) and a 10 px `--accent` badge dot ringed in the tint.
+    Accessible name "Give feedback", `aria-haspopup="dialog"`, `aria-expanded` follows the panel.
+  - Ping: two soft ring pulses on the badge (`PING_MS` 2.6 s, transform + opacity), the first `PING_FIRST_MS` (20 s)
+    after start, then every `PING_EVERY_MS` (3 min), at most `PING_MAX` (4) per page load. A due ping waits
+    (`PING_RETRY_MS` 15 s) while a trip is in progress, the sheet is at the full detent, the overlay or any dialog is
+    open, a text field has focus or the page is hidden (`pingBlocker`, pure; `nextPingIn`, pure). Reduced motion: no
+    class is added (and base.css stops the animation): only the static badge.
+  - Panel: the Settings overlay shell (`openSettingsOverlay` kind `feedback`, title "Beta feedback", Done; Back,
+    Escape, Done, a scrim tap or a second tap on the button close it; focus returns to the button): the tinted card
+    with `FEEDBACK_ICON`, `FEEDBACK_LEAD`, `WELCOME_BODY`, the primary "Send feedback" (`feedbackLinkHTML`, the form in
+    a new tab), under it `FB_GONE` "Once you give feedback, the feedback button on the map disappears.", then outside
+    the card the quiet text button "I already gave feedback", then `FEEDBACK_NOTE` + `WELCOME_NOTE` in fine print.
+  - Memory (`ui/feedback.js`): `localStorage` `sb-feedback-done` = `{how: "gave" | "silenced", at}`. Opening the form
+    anywhere (Send feedback, Go to Feedback, Settings > Give feedback: `noteFeedbackOpened`) records "gave", "I already
+    gave feedback" records "silenced" (`markFeedbackDone`; "gave" always wins); a form opened before this change (the
+    welcome log's feedback date) counts as "gave". `feedbackDone()` set = the button is removed at once (bus
+    `feedback:done`), in other open tabs too (`storage` event), on every later visit, and the welcome popup never asks
+    again; Settings > Give feedback always stays. Storage blocked: remembered for the rest of the page load. A toast
+    confirms ("Thank you for helping. Give feedback stays in Settings." / "Feedback button removed. Give feedback stays
+    in Settings."); focus moves to the locate button.
+  - Shown like the popup, also in demo mode. Test seam: `sessionStorage` `sb-feedback-btn-off` = "1" (e2e.js,
+    e2e-demo.js set it with `sb-welcome-seen`); tests/feedback-button.js (rules, schedule, reduced motion, panel, both
+    choices, reloads, other tabs, blocked storage, CSS in light / dark, the real app) clears it. iOS: the same button
+    (RootView `FeedbackButton`, `FeedbackSheet`, UserDefaults `sb.feedbackDone`), ios/README.md. sw sb-v2-82.
 
 ### You on the trip map + trip alerts (2026-10-13, owner: "the Current Trip map should show the user's location in the current trip's location (especially for bus routes). Make this sync to the notification center's get off in X stops")
 ONE evaluation of the followed trip per data change, `core/tripprogress.js tripNow(state, nowS)` (memo: same journey,

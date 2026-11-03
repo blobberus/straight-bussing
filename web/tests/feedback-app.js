@@ -4,12 +4,13 @@
 // 1. live mode (e2e-stubs.js: fake feed, no location) in a 393 x 852 phone iframe; 2. ?demo=1 in a 1280 x 800
 // desktop window (phone frame), then a reload, then a new visit.
 import { test, eq, ok } from "./lib.js";
-import { WELCOME_KEY, WELCOME_LOG_KEY } from "../js/ui/feedback.js";
+import { WELCOME_KEY, WELCOME_LOG_KEY, FEEDBACK_DONE_KEY } from "../js/ui/feedback.js";
 
-/** A first visit: no popup yet in this session, none ever in this browser. */
+/** A first visit: no popup yet in this session, none ever in this browser, no feedback given. */
 function firstVisit() {
   sessionStorage.removeItem(WELCOME_KEY);
   localStorage.removeItem(WELCOME_LOG_KEY);
+  localStorage.removeItem(FEEDBACK_DONE_KEY);
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -80,6 +81,7 @@ test("real app (?demo=1, desktop phone frame): shown inside the frame; Go to Fee
   const app = d.getElementById("app").getBoundingClientRect(), r = dlg.getBoundingClientRect();
   ok(inside(r, app, 12), "inside the phone frame: " + JSON.stringify({ dlg: [r.left, r.right, r.top, r.bottom], app: [app.left, app.right, app.top, app.bottom] }));
   await sleep(400);
+  const fab = await waitFor(() => { const b = d.getElementById("feedbackBtn"); return b && !b.hidden ? b : null; }, "the map's feedback button next to the popup");
   const seen = [];
   const stop = (e) => { if (e.target.closest?.("a[href]")) { seen.push([e.target.closest("a").href, e.defaultPrevented]); e.preventDefault(); } };
   w.addEventListener("click", stop);   // after the app's own handlers: record, then keep the test page from opening a tab
@@ -87,7 +89,9 @@ test("real app (?demo=1, desktop phone frame): shown inside the frame; Go to Fee
   w.removeEventListener("click", stop);
   eq(seen, [["https://forms.gle/zK4hi2UfYsrXURR97", false]], "the link to the form is followed (new tab)");
   await waitFor(() => !d.querySelector("dialog.v-welcome"), "popup closed");
-  ok(JSON.parse(localStorage.getItem(WELCOME_LOG_KEY)).feedback > 0, "the form's opening remembered (a month without asking)");
+  ok(JSON.parse(localStorage.getItem(WELCOME_LOG_KEY)).feedback > 0, "the form's opening logged");
+  eq(JSON.parse(localStorage.getItem(FEEDBACK_DONE_KEY)).how, "gave", "Go to Feedback counts as feedback given");
+  ok(fab.hidden, "the map's feedback button went at once");
 });
 
 test("real app: a reload in the same session does not show the popup again", async () => {
@@ -105,6 +109,7 @@ test("real app: a reload in the same session does not show the popup again", asy
     await sleep(800);   // well past the next paint, when the first launch showed it
     ok(!d.querySelector("dialog.v-welcome"), "no welcome popup after the reload");
     eq(sessionStorage.getItem(WELCOME_KEY), "1");
+    ok(d.getElementById("feedbackBtn").hidden, "nor the feedback button: feedback was given");
   } finally { F.remove(); F = null; }
 });
 
@@ -119,6 +124,7 @@ test("real app: a new visit within the week (fresh session) does not show the po
   };
   try {
     const DAY = 86400000;
+    localStorage.removeItem(FEEDBACK_DONE_KEY);   // a rider who has not given feedback (the test above did)
     localStorage.setItem(WELCOME_LOG_KEY, JSON.stringify({ shown: Date.now() - 3 * DAY, feedback: 0 }));
     let v = await visit();
     ok(!v.d.querySelector("dialog.v-welcome"), "shown 3 days ago: not again");
@@ -129,6 +135,7 @@ test("real app: a new visit within the week (fresh session) does not show the po
     v.f.remove();
   } finally {
     localStorage.removeItem(WELCOME_LOG_KEY);
+    localStorage.removeItem(FEEDBACK_DONE_KEY);
     sessionStorage.setItem(WELCOME_KEY, "1");
   }
 });

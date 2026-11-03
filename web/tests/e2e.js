@@ -10,6 +10,7 @@ import { currentTripE2E } from "./e2e-current.js";
 import { locPromptE2E } from "./e2e-locprompt.js";
 import { backNavE2E } from "./e2e-backnav.js";
 import { WELCOME_KEY } from "../js/ui/feedback.js";
+import { FEEDBACK_BTN_OFF_KEY } from "../js/ui/feedback-button.js";
 import { localParts } from "../js/core/schedule.js";
 
 holdRun();
@@ -62,8 +63,9 @@ async function pageHTML() {
 /** Load the app into a new iframe (optionally sized, e.g. a desktop window). */
 async function openApp(style) {
   // test seam: the beta welcome popup (ui/feedback.js) counts as seen in this session (same-origin iframes share
-  // sessionStorage with this page), so it never covers the flows; feedback.test.html covers the popup
-  try { sessionStorage.setItem(WELCOME_KEY, "1"); } catch (e) { /* blocked storage: the popup would show */ }
+  // sessionStorage with this page), so it never covers the flows, and the map's feedback button stays hidden
+  // (ui/feedback-button.js); feedback.test.html covers both
+  try { sessionStorage.setItem(WELCOME_KEY, "1"); sessionStorage.setItem(FEEDBACK_BTN_OFF_KEY, "1"); } catch (e) { /* blocked storage: they would show */ }
   const frame = document.createElement("iframe");
   frame.title = "app under test";
   if (style) frame.style.cssText = style;

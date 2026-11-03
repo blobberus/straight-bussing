@@ -55,9 +55,10 @@ Motion: durations 120 (press/fade), 220 (content swap), 320 (sheet settle). Easi
 **Color lock.** One accent (`--accent` text / `--accent-fill` fills) for every action, selection and switch. Green (`--live`)
 means live GPS / prediction data and nothing else (no green switches, no green "Scheduled now"). Route colors are data,
 never decoration or accent. Red fills use `--danger-fill`; `--danger` is for error text. Gold (the `--warn` hue) is also the
-favorite star, always with the star shape. The one highlighted card (Beta feedback: the welcome popup's band and the
-Settings card, 2026-11-02) uses the accent tint `--accent-bg` with `--text` / `--text-2` on it and a white mark on an
-`--accent-fill` disc; never green, never `--accent` text on the tint in light. No pure #000 / #fff surfaces or shadows: light surfaces are #FCFCFD, shadows and
+favorite star, always with the star shape. The one highlighted card (Beta feedback: the welcome popup's band, the
+Settings card and the map feedback button's panel, 2026-11-02) uses the accent tint `--accent-bg` with `--text` / `--text-2` on it and a white mark on an
+`--accent-fill` disc; never green, never `--accent` text on the tint in light. The map's feedback button is the same
+tint with an `--accent` icon and badge dot (graphics, >= 3:1 in both themes). No pure #000 / #fff surfaces or shadows: light surfaces are #FCFCFD, shadows and
 scrims use `--shadow-rgb`. White is allowed only as text / marks on a saturated fill (accent, danger, route color) and as map
 marker rings. Every button, toggle, tag and placeholder is >= 4.5:1 in light and dark (`tests/ui-shell-contrast.js`).
 
@@ -68,7 +69,7 @@ marker rings. Every button, toggle, tag and placeholder is >= 4.5:1 in light and
 | `--r-pill` | 999 | search bar, nav indicator, toggles (Favorite, Highlight), switches, count badges, pills, grabber |
 | `--r-sheet` | 20 | sheet, Settings card, dialogs |
 | `--r-card` | 14 | cards, option cards, alert banners |
-| `--r-control` | 12 | buttons, inputs, segmented controls, locate button, status pill, context chip |
+| `--r-control` | 12 | buttons, inputs, segmented controls, locate and feedback buttons, status pill, context chip |
 | `--r-inner` | 10 | a control nested 2-3 px inside a 12 px control: segment thumb, Clear, Retry |
 | `--r-badge` | 9 | route badge, the same shape as the bus marker (route identity) |
 | `--r-tag` | 6 | est. / live / sidewalk route tags, small route chips, bus chips on timelines |
@@ -83,7 +84,7 @@ Data marks (chart bars, the 8 px legend square, the switch's on mark) and the de
 | `--z-sheet` | 1000 | bottom sheet |
 | `--z-nav` | 1010 | bottom navigation |
 | `--z-chip` | 1090 | map context chip |
-| `--z-float` | 1100 | status pill, locate button |
+| `--z-float` | 1100 | status pill, locate button, feedback button |
 | `--z-search` | 1105 | floating search bar |
 | `--z-overlay-scrim` / `--z-overlay` | 1140 / 1150 | Settings scrim / card |
 | `--z-dialog` | 1200 | `#dlg` scrim + card |

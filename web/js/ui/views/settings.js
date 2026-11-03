@@ -35,14 +35,14 @@ import { alertBodyHTML } from "./alerts.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen, overlayKind } from "../settings-overlay.js";
 import { locPlatform, locEnv, LOC_STEPS, LOC_ORDER, locResultText } from "../../core/lochelp.js";
-import { feedbackLinkHTML, noteFeedbackOpened, FEEDBACK_LEAD, FEEDBACK_ICON } from "../feedback.js";
+import { feedbackLinkHTML, noteFeedbackOpened, FEEDBACK_LEAD, FEEDBACK_ICON, FEEDBACK_NOTE } from "../feedback.js";
 import { usageConfigured, resetId, cleanUsage, lastSend } from "../../data/usage.js";
 import { bus } from "../../core/events.js";
 
 /** Settings > Beta feedback, first in Settings (the welcome popup says the link is in Settings): the same tinted look
  * and "very helpful" ask as the popup, Give feedback as the card's primary button. */
 export const FEEDBACK_LINE = "This is a beta. Tell us what works and what does not: it takes about a minute and directly shapes what gets fixed and built next.";
-export const FEEDBACK_NOTE = "Opens a Google Form in a new tab. What you type is sent only when you press Submit there.";
+export { FEEDBACK_NOTE };   // ui/feedback.js: the same note under the map feedback button's Send feedback
 /** @returns {string} */
 export function feedbackHTML() {
   return `<h3 class="v-h">Beta feedback</h3><div class="st-feedback"><div class="st-fbhead">${FEEDBACK_ICON}<p class="st-fblead">${esc(FEEDBACK_LEAD)}</p></div>`
@@ -403,7 +403,8 @@ function setNotify(ctx, change) {
 }
 
 function onClick(e, root, ctx) {
-  // Give feedback: the link opens the form by itself; the welcome popup then waits a month (ui/feedback.js)
+  // Give feedback: the link opens the form by itself; the rider counts as having given feedback (ui/feedback.js):
+  // the map's feedback button goes and the welcome popup never asks again
   if (e.target.closest?.('a[data-key="feedback"]')) return void noteFeedbackOpened();
   const b = e.target.closest?.("[data-st]");
   if (!b || !root.contains(b)) return;

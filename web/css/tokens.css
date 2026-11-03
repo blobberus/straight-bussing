@@ -83,7 +83,7 @@
   --z-sheet: 1000;
   --z-nav: 1010;          /* bottom navigation */
   --z-chip: 1090;         /* map context chip */
-  --z-float: 1100;        /* status pill, locate button */
+  --z-float: 1100;        /* status pill, locate button, feedback button */
   --z-search: 1105;       /* floating search bar */
   --z-overlay-scrim: 1140;
   --z-overlay: 1150;      /* Settings */

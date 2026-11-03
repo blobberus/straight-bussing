@@ -3,8 +3,8 @@
 import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
 import { FEEDBACK_URL, WELCOME_KEY, WELCOME_LOG_KEY, WELCOME_TITLE, WELCOME_BODY, WELCOME_NOTE, FEEDBACK_LEAD,
-  WELCOME_EVERY_DAYS, WELCOME_AFTER_FEEDBACK_DAYS, maybeShowWelcome, showWelcome, welcomeSeen, welcomeLog, welcomeDue,
-  noteFeedbackOpened, _resetWelcome } from "../js/ui/feedback.js";
+  WELCOME_EVERY_DAYS, maybeShowWelcome, showWelcome, welcomeSeen, welcomeLog, welcomeDue,
+  noteFeedbackOpened, feedbackDone, markFeedbackDone, FEEDBACK_DONE_KEY, _resetWelcome } from "../js/ui/feedback.js";
 import { renderSettings, mountSettings, unmountSettings, FEEDBACK_LINE, FEEDBACK_NOTE } from "../js/ui/views/settings.js";
 import { renderAbout } from "../js/ui/views/about.js";
 import { bindActions } from "../js/ui/actions.js";
@@ -48,7 +48,8 @@ test("feedback: one URL, the owner's form; the owner's title; the ask stresses t
     ok(!DASH.test(t), "no en / em dash: " + t);
     ok(!/UChicago|UGo|University/.test(t), "no university names of its own: " + t);
   }
-  eq([WELCOME_EVERY_DAYS, WELCOME_AFTER_FEEDBACK_DAYS], [7, 30], "once a week at most; a month after the form was opened");
+  eq(WELCOME_EVERY_DAYS, 7, "once a week at most (never again after feedback: the next tests)");
+  eq(FEEDBACK_DONE_KEY, "sb-feedback-done", "a clearly named key for 'already gave feedback'");
 });
 
 test("welcome popup: owner's title and text, buttons Cancel / Go to Feedback, the link opens the form in a new tab", async () => {
@@ -120,7 +121,7 @@ test("welcome popup: never twice in one visit; a reload or a new visit within th
   _resetWelcome();
 });
 
-test("welcome popup: after the rider opens the form (popup or Settings), a month without asking", async () => {
+test("welcome popup: after the rider opens the form (popup, Settings or the map button's panel), it never asks again", async () => {
   // Go to Feedback in the popup
   _resetWelcome();
   const lg = mem();
@@ -131,23 +132,61 @@ test("welcome popup: after the rider opens the form (popup or Settings), a month
   try { userClick(dlg().querySelector('[data-welcome="feedback"]')); } finally { nav.off(); }
   eq(await p, "feedback");
   ok(welcomeLog(lg).feedback > 0, "the form's opening is remembered");
+  eq(feedbackDone(lg), "gave", "and the rider counts as having given feedback (the map button goes too)");
+  eq(JSON.parse(lg.getItem(FEEDBACK_DONE_KEY)).how, "gave", "kept under its own key");
   await tick(5);
-  // pin the date for the arithmetic below (the popup's own note uses the real clock)
-  noteFeedbackOpened({ storage: lg, now: T0 });
-  eq(welcomeLog(lg), { shown: T0, feedback: T0 });
-  for (const days of [7, 14, 29.9]) {
+  for (const days of [7, 14, 30, 365]) {
     _resetWelcome();
     eq(maybeShowWelcome({ storage: mem(), log: lg, now: T0 + days * DAY }), null, `${days} days after opening the form: not shown`);
   }
-  _resetWelcome();
-  const p2 = maybeShowWelcome({ storage: mem(), log: lg, now: T0 + 30 * DAY });
-  ok(p2 && dlg(), "30 days after: shown again");
-  await closeAny();
-  // Give feedback in Settings counts the same, even before the popup ever showed
+  ok(!dlg());
+  // Give feedback in Settings / Send feedback on the panel count the same, even before the popup ever showed
   const lg2 = mem();
   noteFeedbackOpened({ storage: lg2, now: T0 });
-  eq(maybeShowWelcome({ storage: mem(), log: lg2, now: T0 + 8 * DAY }), null, "Settings' Give feedback 8 days ago: not shown");
+  eq(welcomeLog(lg2), { shown: 0, feedback: T0 });
+  eq(JSON.parse(lg2.getItem(FEEDBACK_DONE_KEY)), { how: "gave", at: T0 });
   _resetWelcome();
+  eq(maybeShowWelcome({ storage: mem(), log: lg2, now: T0 + 8 * DAY }), null, "Settings' Give feedback 8 days ago: not shown");
+  // "I already gave feedback" silences it too
+  const lg3 = mem();
+  eq(markFeedbackDone("silenced", { storage: lg3, now: T0 }), "silenced");
+  _resetWelcome();
+  eq(maybeShowWelcome({ storage: mem(), log: lg3, now: T0 + 400 * DAY }), null, "silenced: never shown");
+  eq(welcomeLog(lg3).shown, 0, "not even counted as shown");
+  // a form opened before 2026-11-02 (only the log's date, no done key) counts as feedback given
+  const old = mem();
+  old.setItem(WELCOME_LOG_KEY, JSON.stringify({ shown: T0 - 40 * DAY, feedback: T0 - 35 * DAY }));
+  eq(feedbackDone(old), "gave", "earlier form opening = gave");
+  _resetWelcome();
+  eq(maybeShowWelcome({ storage: mem(), log: old, now: T0 }), null, "so the popup stays away");
+  _resetWelcome();
+});
+
+test("given feedback: 'gave' wins over 'silenced'; blocked storage remembers it for this page load only", () => {
+  _resetWelcome();
+  const st = mem();
+  eq(feedbackDone(st), null, "nothing yet");
+  markFeedbackDone("silenced", { storage: st, now: T0 });
+  eq(feedbackDone(st), "silenced");
+  markFeedbackDone("gave", { storage: st, now: T0 + 1 });
+  eq(feedbackDone(st), "gave", "Give feedback after silencing: gave");
+  markFeedbackDone("silenced", { storage: st, now: T0 + 2 });
+  eq(feedbackDone(st), "gave", "silencing never undoes gave");
+  st.setItem(FEEDBACK_DONE_KEY, "{broken");
+  eq(feedbackDone(st), null, "an unreadable value: not done");
+  st.setItem(FEEDBACK_DONE_KEY, JSON.stringify({ how: "maybe" }));
+  eq(feedbackDone(st), null, "an unknown value: not done");
+  for (const s of [blocked, null]) {
+    _resetWelcome();
+    eq(feedbackDone(s), null, "blocked: not done");
+    let r = null;
+    try { r = markFeedbackDone("silenced", { storage: s }); } catch (e) { ok(false, "threw: " + e.message); }
+    eq(r, "silenced");
+    eq(feedbackDone(s), "silenced", "remembered for this page load");
+    eq(maybeShowWelcome({ storage: s, log: s }), null, "and the popup stays away in this page load");
+    _resetWelcome();   // a reload
+    eq(feedbackDone(s), null, "gone after a reload (nothing could be stored)");
+  }
 });
 
 test("welcome popup: the weekly rule is pure and survives a broken log or a changed clock", () => {
@@ -156,7 +195,8 @@ test("welcome popup: the weekly rule is pure and survives a broken log or a chan
   eq(welcomeDue({ shown: T0 - 6 * DAY }, T0), false);
   eq(welcomeDue({ shown: T0 - 7 * DAY }, T0), true);
   eq(welcomeDue({ shown: T0 - 8 * DAY, feedback: T0 - 29 * DAY }, T0), false, "the form rule wins");
-  eq(welcomeDue({ shown: T0 - 8 * DAY, feedback: T0 - 31 * DAY }, T0), true);
+  eq(welcomeDue({ shown: T0 - 8 * DAY, feedback: T0 - 400 * DAY }, T0), false, "opened the form, however long ago: never again");
+  eq(welcomeDue({ shown: 0, feedback: T0 + 400 * DAY }, T0), false, "a form date from a wrong clock still counts as feedback given");
   eq(welcomeDue({ shown: T0 + 2 * DAY }, T0), false, "a date just ahead (clock set back): wait");
   eq(welcomeDue({ shown: T0 + 400 * DAY }, T0), true, "a date far ahead (a wrong clock) never silences it for good");
   const bad = mem();
@@ -327,8 +367,11 @@ test("settings: Beta feedback comes first, a tinted card with the ask and a real
   mountSettings(el, ctx);
   const off = bindActions(el, () => ctx);
   const nav = catchNav();
-  let saved = null;
-  try { saved = localStorage.getItem(WELCOME_LOG_KEY); localStorage.removeItem(WELCOME_LOG_KEY); } catch (e) { /* */ }
+  let saved = null, savedDone = null;
+  try {
+    saved = localStorage.getItem(WELCOME_LOG_KEY); localStorage.removeItem(WELCOME_LOG_KEY);
+    savedDone = localStorage.getItem(FEEDBACK_DONE_KEY); localStorage.removeItem(FEEDBACK_DONE_KEY);
+  } catch (e) { /* */ }
   try {
     eq(el.querySelector(".v-h").textContent, "Beta feedback", "the first section of Settings");
     const card = el.querySelector(".st-feedback");
@@ -365,19 +408,28 @@ test("settings: Beta feedback comes first, a tinted card with the ask and a real
     userClick(a);
     eq(nav.seen, [false], "Settings lets the link open the form");
     eq([ctx.calls.navigate.length, ctx.calls.toast.length], [0, 0], "no app navigation or toast");
-    ok(welcomeLog().feedback > 0, "tapping Give feedback quiets the welcome popup for a month");
+    ok(welcomeLog().feedback > 0, "the form's opening is logged");
+    eq(feedbackDone(), "gave", "tapping Give feedback counts as feedback given: the popup and the map button stop for good");
+    // Settings keeps Give feedback after that (always available)
+    el.innerHTML = renderSettings(fixture(base()), NOW);
+    eq(el.querySelectorAll(`a[href="${FORM}"]`).length, 1, "Give feedback still in Settings after feedback was given");
   } finally {
     nav.off(); off?.(); unmountSettings(); el.remove();
-    try { if (saved === null) localStorage.removeItem(WELCOME_LOG_KEY); else localStorage.setItem(WELCOME_LOG_KEY, saved); } catch (e) { /* */ }
+    try {
+      if (saved === null) localStorage.removeItem(WELCOME_LOG_KEY); else localStorage.setItem(WELCOME_LOG_KEY, saved);
+      if (savedDone === null) localStorage.removeItem(FEEDBACK_DONE_KEY); else localStorage.setItem(FEEDBACK_DONE_KEY, savedDone);
+    } catch (e) { /* */ }
   }
 });
 
 test("privacy: About and privacy.html say the feedback form is opened only when tapped", async () => {
   const about = renderAbout().replace(/\s+/g, " ");
-  ok(about.includes("only when you tap “Give feedback” in Settings or “Go to Feedback” in the welcome popup") && about.includes("<b>Google Forms</b>"), "About");
+  ok(about.includes("only when you tap “Give feedback” in Settings, “Send feedback” behind the feedback button on the map or “Go to Feedback” in the welcome popup") && about.includes("<b>Google Forms</b>"), "About");
   ok(about.includes("sent only when you press Submit"), "About: nothing typed is sent before Submit");
+  ok(about.includes("whether you already gave feedback (which removes the feedback button) are saved in this browser only"), "About: the given-feedback choice is stored locally");
   const page = (await (await fetch("../privacy.html", { cache: "no-store" })).text()).replace(/\s+/g, " ");
-  ok(page.includes("<b>Beta feedback (optional, web app).</b> Only when you tap &ldquo;Give feedback&rdquo; in Settings or &ldquo;Go to Feedback&rdquo; in the welcome popup"), "privacy.html bullet");
+  ok(page.includes("<b>Beta feedback (optional).</b> Only when you tap &ldquo;Give feedback&rdquo; in Settings, &ldquo;Send feedback&rdquo; behind the feedback button on the map, or &ldquo;Go to Feedback&rdquo; in the welcome popup (web)"), "privacy.html bullet");
+  ok(page.includes("whether you already gave feedback or chose &ldquo;I already gave feedback&rdquo;, which removes the feedback button from the map"), "privacy.html: the choice stays on the device");
   ok(page.includes("unless you send a support request or beta feedback"), "privacy.html short version");
   ok(!DASH.test(page), "no en / em dash in the policy");
 });
