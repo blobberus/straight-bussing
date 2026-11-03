@@ -152,6 +152,11 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
   position: relative;
 }
 .statuspill .pillbtn::after { content: ""; position: absolute; inset: -6px -4px; } /* 44px hit area */
+/* Retry sits at the pill's LEFT end with a fixed width (owner 2026-11-03): when the feed recovers the pill hides and the
+   context bar moves up into its place; a quick second tap then lands on the bar's label, never on its right-hand
+   "Show all" (which ends a trip). main.js also ignores context-bar taps for a moment after Retry. */
+.statuspill:has(.pillretry:not([hidden])) { padding-left: 6px; }
+.statuspill .pillretry { min-width: 4.5rem; white-space: nowrap; }
 /* demo mode (?demo=1): "Simulated buses"; the whole pill is one button (stretched hit area) that explains it and
    offers the way back to live buses (ui/demo.js). The info mark says it can be tapped. */
 .statuspill .pilltap {

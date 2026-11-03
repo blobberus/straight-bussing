@@ -49,6 +49,8 @@ const el = {
 };
 const bootS = nowS();
 let map = null, sheet = null, live = null, ctx = null, notifier = null, tripMap = null;
+const RETRY_GUARD_MS = 1000;   // context-bar taps ignored this long after a Retry tap (see bindActions below)
+let retryAt = 0;
 const pill = createPill({ pill: el.pill, text: el.pillText, retry: el.pillRetry, app: el.app }, { bootS, demo: DEMO });
 
 /* ---------------- toast + global errors ---------------- */
@@ -305,6 +307,12 @@ function wireUI() {
   el.back.addEventListener("click", () => back());
   el.tabs.addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) navigate(b.dataset.tab); });
   el.locate.addEventListener("click", onLocateFab);
+  // a tap on the context bar right after Retry is the same finger tapping again as the pill vanished (the bar moves up
+  // into its place): ignore it, so a fast double tap on Retry never ends the trip (owner 2026-11-03; Retry is also at the
+  // pill's left end, over the bar's label). Capture phase: it runs before the bar's own action handler.
+  el.ctxbar.addEventListener("click", (e) => {
+    if (Date.now() - retryAt < RETRY_GUARD_MS) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
   for (const root of [el.content, el.pill, el.dlg, el.ctxbar, el.topbar || el.gear]) bindActions(root, () => ctx);
   el.dlg.addEventListener("click", (e) => { if (e.target === el.dlg) closeDlg(); });
   el.content.addEventListener("focusout", () => setTimeout(() => { if (dirty && !inputFocused()) render(); }, 0));
@@ -331,7 +339,7 @@ function registerCoreActions() {
   registerAction("nav", (ds) => navigate(ds.view, { stopId: ds.stopId, routeId: ds.routeId, detent: ds.detent }), fb);
   registerAction("back", () => back(), fb);
   registerAction("locate", () => locate(), fb);
-  registerAction("retry", () => (live ? live.pollNow() : undefined), fb);
+  registerAction("retry", () => { retryAt = Date.now(); return live ? live.pollNow() : undefined; }, fb);
   registerAction("detent", (ds) => sheet.setDetent(ds.id), fb);
 }
 /* Open a stop / route (the sheet goes to the view's detent). Only choosing a route frames the map: stop and

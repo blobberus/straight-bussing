@@ -420,6 +420,34 @@ test("status pill: failing feed shows the error pill with Retry; recovery hides 
   await waitFor(() => $("#pill").hidden && !state().failed, "pill hidden after recovery");
 });
 
+// Owner 2026-11-03: spamming Retry during a trip must never end it. Retry is at the pill's left end (the context bar's
+// label moves up under it when the pill hides, not its right-hand "Show all"), and context-bar taps are ignored for a
+// moment after a Retry tap.
+test("status pill: Retry sits on the left; a fast second tap after recovery never ends the trip", async () => {
+  SB.store.set({ journey: { rids: [T.R], label: "E2E retry trip", kind: "plan" } });
+  await waitFor(() => !$("#ctxbar").hidden && txt($("#ctxbar")).includes("E2E retry trip"), "journey bar");
+  T.feedFail = true;
+  W.dispatchEvent(new W.Event("online"));
+  await waitFor(() => !$("#pill").hidden && $("#pill").classList.contains("err") && !$("#pillRetry").hidden, "error pill with Retry");
+  const pill = $("#pill").getBoundingClientRect(), retry = $("#pillRetry").getBoundingClientRect();
+  const text = $("#pillText").getBoundingClientRect(), show = $('#ctxbar [data-action="journey:end"]').getBoundingClientRect();
+  ok(retry.left - pill.left <= 12 && retry.right <= text.left, `Retry is the leftmost control (pill ${pill.left}, retry ${retry.left}..${retry.right}, text ${text.left})`);
+  ok(retry.right < show.left, `Retry is clear of the bar's Show all (retry right ${retry.right}, Show all left ${show.left})`);
+  const x = retry.left + retry.width / 2, y = retry.top + retry.height / 2;
+  T.feedFail = false;
+  click($("#pillRetry"), "Retry");
+  await waitFor(() => $("#pill").hidden && !state().failed, "pill hidden after recovery");
+  const under = D.elementFromPoint(x, y);
+  ok(!under || !under.closest('[data-action="journey:end"]'), "where Retry was there is no trip-ending control: " + (under && under.outerHTML.slice(0, 80)));
+  if (under) click(under, "the same spot again");
+  click($('#ctxbar [data-action="journey:end"]'), "Show all, within a second of Retry");
+  await new Promise((r) => setTimeout(r, 150));
+  eq(state().journey && state().journey.label, "E2E retry trip", "the trip survives the double tap");
+  await new Promise((r) => setTimeout(r, 1000));
+  click($('#ctxbar [data-action="journey:end"]'), "Show all, later");
+  await waitFor(() => state().journey === null && $("#ctxbar").hidden, "Show all works again after the guard");
+});
+
 // Rider safety (2026-10-10): a fresh feed with no vehicles while a route is scheduled is not "no shuttles running".
 test("status pill: an empty feed while a route is scheduled says no bus reports a location, never 'no shuttles running'", async () => {
   const svc = state().service, feed = T.feed, rid = T.R;
