@@ -147,4 +147,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 1076,South,1793675898,2026-11-02 21:18:18,drop,2,1,4328,8661,Cottage Grove & 63rd,1793675898,501643,12644,2,2,0,,,1,
 5699,Red Line/Arts Block,1793675915,2026-11-02 21:18:35,drop,2,1,4322,,,1793675915,672392,12648,2,0,0,,,1,
 5704,Downtown Campus Connector,1793678584,2026-11-02 22:03:04,add,1,2,12642,,,1793678901,874028,12645,6,4,0,,,,0
-5704,Downtown Campus Connector,1793679222,2026-11-02 22:13:42,drop,2,1,12642,132964,UCHICAGO Medicine - River East,1793679222,874028,12645,6,4,0,,,,
+5704,Downtown Campus Connector,1793679222,2026-11-02 22:13:42,drop,2,1,12642,132964,UCHICAGO Medicine - River East,1793679222,874028,12645,6,4,0,,,1,
