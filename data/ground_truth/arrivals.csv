@@ -77496,5 +77496,5 @@ epoch,ts_utc,local_time,dow,hour,minute_of_day,route_id,route_name,trip_id,vehic
 1793685670,2026-11-03T06:01:10Z,2026-11-03 00:01:10,1,0,1,6126,Apostolic/Drexel,,4538,8613,Wyler Pavilion,South Maryland Avenue,41.7888,-87.60487,1,,,,,,,,,gps
 1793685687,2026-11-03T06:01:27Z,2026-11-03 00:01:27,1,0,1,6126,Apostolic/Drexel,,4538,8615,Bernard Mitchell Hospital,South Maryland Avenue,41.78943,-87.60487,2,,,,,,,,,gps
 1793685882,2026-11-03T06:04:42Z,2026-11-03 00:04:42,1,0,4,6126,Apostolic/Drexel,,4538,8609,57th Street & Drexel (NB),South Drexel Avenue,41.79131,-87.60367,5,,,,,,,,,gps
-1793685915,2026-11-03T06:05:15Z,2026-11-03 00:05:15,1,0,5,5699,Red Line/Arts Block,,12648,67601,Garfield Green Line Station,East Garfield Boulevard,41.79494,-87.61833,4,,,,,,,,,gps
-1793686014,2026-11-03T06:06:54Z,2026-11-03 00:06:54,1,0,6,5699,Red Line/Arts Block,,12648,161393,Garfield & Wabash (WB),48 East Garfield Boulevard,41.79478,-87.62367,5,,,,,,,,,gps
+1793685915,2026-11-03T06:05:15Z,2026-11-03 00:05:15,1,0,5,5699,Red Line/Arts Block,672392,12648,67601,Garfield Green Line Station,East Garfield Boulevard,41.79494,-87.61833,4,,,,,,,,,gps
+1793686014,2026-11-03T06:06:54Z,2026-11-03 00:06:54,1,0,6,5699,Red Line/Arts Block,672392,12648,161393,Garfield & Wabash (WB),48 East Garfield Boulevard,41.79478,-87.62367,5,,,,,,,,,gps
