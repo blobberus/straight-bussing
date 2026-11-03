@@ -14,6 +14,8 @@ import StraightBussingKit
 ///   -theme light|dark     force the color scheme
 ///   -noloc                with -demo: no location and no favorites (the "Use my location" first state)
 ///   -nobus                with -demo: no bus reporting, with the operator's real help alert (the no-bus state)
+///   -feedback             with -demo: show the map's feedback button (hidden in the other -demo screenshots and UI
+///                         tests); `-screen feedback` opens its sheet
 struct LaunchConfig {
     var demo = false
     var screen: String?
@@ -22,6 +24,7 @@ struct LaunchConfig {
     var theme: String?
     var noLocation = false
     var noBus = false
+    var feedback = false
 
     static func parse(_ args: [String] = ProcessInfo.processInfo.arguments) -> LaunchConfig {
         var c = LaunchConfig()
@@ -36,6 +39,7 @@ struct LaunchConfig {
         c.theme = value(after: "-theme")
         c.noLocation = c.demo && args.contains("-noloc")
         c.noBus = c.demo && args.contains("-nobus")
+        c.feedback = c.demo && args.contains("-feedback")
         return c
     }
 }

@@ -37,7 +37,8 @@ struct AboutView: View {
                         bullet("Network requests: the public shuttle feeds (passio3.com), Apple Maps for the map and for walking directions, photon.komoot.io for address search (above), and blobberus.github.io for schedule updates (below).")
                         bullet("Schedule updates: at most once a day the app asks blobberus.github.io (the site of the web version) whether newer schedule files exist, and downloads them if so. These are plain requests for public files: no location, search text or ID is sent. Until a new schedule is checked and complete, the one built into the app is used.")
                         bullet("Walking directions: only the start and end of each walking leg (your location, when a trip starts there), rounded to about 10 m, are sent to Apple Maps to follow sidewalks. Nothing else about you or your trip is sent. If that fails, a straight-line estimate is used and labeled \u{201C}estimate\u{201D}.")
-                        bullet("Settings (theme, hidden routes, custom routes, favorites) are saved on this iPhone only.")
+                        bullet("Beta feedback: only when you tap \u{201C}Give feedback\u{201D} in Settings or \u{201C}Send feedback\u{201D} behind the feedback button on the map does the Google Forms page open in Safari. Nothing is added to its link, and what you type there is sent only when you press Submit.")
+                        bullet("Settings (theme, hidden routes, custom routes, favorites) and whether you already gave feedback (which removes the feedback button) are saved on this iPhone only.")
                     }
                     .padding(.vertical, 10)
                 }

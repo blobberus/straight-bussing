@@ -60,9 +60,14 @@ struct SettingsView: View {
                         .accessibilityIdentifier("supportContactLink")
                     }
                     Section {
-                        Link(destination: SiteLinks.feedback) {
+                        // opening the form counts as feedback given: the map's feedback button goes (web settings.js)
+                        Button {
+                            openURL(SiteLinks.feedback)
+                            model.markFeedback(.gave)
+                        } label: {
                             Label("Give feedback", systemImage: "text.bubble")
                         }
+                        .accessibilityAddTraits(.isLink)
                         .accessibilityHint("Opens the feedback form in Safari")
                         .accessibilityIdentifier("feedbackLink")
                     } header: {

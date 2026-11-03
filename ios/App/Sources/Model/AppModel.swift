@@ -259,10 +259,18 @@ final class AppModel {
     /// Lines by Time (the clock next to the gear; Views/TimePickView.swift).
     var showTimePick = false
     var showLiveActivityPreview = false
-    /// A sheet covers the map (Settings, Lines by Time, the Live Activity preview): the bus markers stop gliding and
-    /// move at once until it closes (nothing to see, and no main-thread work for a map nobody looks at). RootView
-    /// calls `mapCoverChanged` when it flips.
-    var mapCovered: Bool { showSettings || showTimePick || showLiveActivityPreview }
+    /// The map feedback button's sheet (Views/FeedbackViews.swift, owner 2026-11-02).
+    var showFeedback = false
+    /// The rider gave feedback or silenced the ask (UserDefaults `sb.feedbackDone`, AppModel+Feedback.swift): the
+    /// map's feedback button is gone for good.
+    var feedbackDone: FeedbackAsk.Done?
+    /// Bumped at each ping of the feedback button (its badge pulses on the change).
+    var feedbackPing = 0
+    @ObservationIgnored var feedbackPingTask: Task<Void, Never>?
+    /// A sheet covers the map (Settings, Lines by Time, the Live Activity preview, the feedback sheet): the bus markers
+    /// stop gliding and move at once until it closes (nothing to see, and no main-thread work for a map nobody looks
+    /// at). RootView calls `mapCoverChanged` when it flips.
+    var mapCovered: Bool { showSettings || showTimePick || showLiveActivityPreview || showFeedback }
     var editingOrder = false
     /// The bus whose own times its route page shows instead of the next bus at each stop (owner 2026-10-30): set by
     /// tapping a bus on the map or its row on the route page (again = unpick); cleared when that page closes or the map

@@ -50,6 +50,8 @@ CAPTIONS = {
     "39-map-zoomed": "Building names after a pinch zoom: laid out again for the closer view, more tiers (UI test)",
     "40-map-panned": "Building names after a pan (UI test)",
     "41-lines-by-time": "Lines by Time: date and time wheels, the lines the timetable has running then (UI test)",
+    "42-feedback-button": "The feedback button under the locate button (accent tint, badge dot), until the rider gives feedback",
+    "43-feedback-sheet": "The feedback sheet: the ask, Send feedback, the note that the button then disappears, I already gave feedback",
 }
 
 STORE_CAPTIONS = {

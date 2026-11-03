@@ -62,6 +62,9 @@ for mode in light dark; do
   shot 36-map          "$mode" 9  -screen current -detent peek
   shot 37-map-near     "$mode" 9  -screen near -detent peek
   shot 38-trip-map     "$mode" 11 -screen trip -detent peek
+  # the map's feedback button (hidden in every other -demo shot) and its sheet
+  shot 42-feedback-button "$mode" 9 -screen current -detent peek -feedback
+  shot 43-feedback-sheet  "$mode" 9 -screen feedback -feedback
 done
 
 # Larger text (Dynamic Type): key rows must wrap, never clip or slide under the sheet. Light mode, the largest

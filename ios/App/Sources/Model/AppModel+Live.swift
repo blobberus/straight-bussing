@@ -64,6 +64,7 @@ extension AppModel {
         startBusAlerts()
         startClock()
         resumePolling()
+        loadFeedback()   // the map's feedback button and its pings (AppModel+Feedback.swift)
     }
 
     // MARK: Polling
@@ -726,6 +727,7 @@ extension AppModel {
             case "directions": _ = await openDirections(to: demoDestination)?.value
             case "stop": push(.stop(DemoConfig.stopForDetail))
             case "settings": showSettings = true
+            case "feedback": showFeedback = true   // the map feedback button's sheet (with -feedback, CI gallery)
             case "liveactivity", "livestates", "livestatesend":   // livestates: every arrival state of the card (CI only)
                 _ = await openDirections(to: demoDestination)?.value
                 if let o = dir.result?.options.first(where: { !$0.busLegs.isEmpty }) { startTrip(o, label: demoDestination.label) }

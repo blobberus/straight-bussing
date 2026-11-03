@@ -32,6 +32,9 @@ enum Palette {
     static let accent = dynamic(0x0060CC, 0x64B0FF, highLight: 0x004A9E, highDark: 0x8AC4FF)
     /// The accent as a fill under white text (primary buttons): 4.7:1 in both themes, like the web's --accent-fill.
     static let accentFill = dynamic(0x0071E3, 0x0071E3, highLight: 0x0058B0, highDark: 0x0058B0)
+    /// The accent tint of the one highlighted card (beta feedback: the map's feedback button and its sheet; the web's
+    /// --accent-bg): text 15:1 / 12.3:1, text2 5.3:1 / 5.2:1, the accent 4.7:1 / 5.8:1 on it (light / dark).
+    static let accentBg = dynamic(0xD9E7F8, 0x223042)
     /// Live data as text ("Now" from a live prediction).
     static let live = dynamic(0x157A38, 0x32D74B)
     /// Live data as a mark (the live dot).

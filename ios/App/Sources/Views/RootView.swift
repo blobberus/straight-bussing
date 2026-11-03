@@ -60,7 +60,15 @@ struct RootView: View {
                     .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { h in
                         if abs(h - chromeH) > 0.5 { withAnimation(.easeOut(duration: 0.2)) { chromeH = h } }
                     }
-                    if model.detent != .full { LocateButton().frame(maxWidth: .infinity, alignment: .trailing) }
+                    if model.detent != .full {
+                        // the feedback button under the locate button until the rider gives feedback (owner 2026-11-02)
+                        VStack(alignment: .trailing, spacing: 8) {
+                            LocateButton()
+                            if model.showsFeedbackButton { FeedbackButton().transition(.opacity) }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .animation(.easeOut(duration: 0.2), value: model.showsFeedbackButton)
+                    }
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 12)
@@ -91,6 +99,7 @@ struct RootView: View {
         .sheet(isPresented: $model.showSettings) { SettingsView() }
         .onChange(of: model.mapCovered) { _, _ in model.mapCoverChanged() }   // no bus glides behind a sheet
         .sheet(isPresented: $model.showTimePick) { TimePickView(start: model.routeState.timeView?.at ?? Date().timeIntervalSince1970) }
+        .sheet(isPresented: $model.showFeedback) { FeedbackSheet() }
         .sheet(isPresented: $model.showLiveActivityPreview) {
             NavigationStack { LiveActivityPreviewView() }
         }

@@ -290,8 +290,9 @@ extension MapScreen {
         if let o = plan, let last = o.legs.last, let end = last.walk?.to.coord ?? last.bus?.alight.coord { at(end, 84, 64, dy: -12) }
         if let w = walkOnly, let end = w.last { at(end, 84, 64, dy: -12) }
         if let u = model.user { at(u, 30, 30) }
-        if model.detent != .full {   // the locate button, right under the floating chrome (RootView)
-            out.append(LabelRect(minX: Double(view.maxX) - 52, minY: Double(view.minY) - 4, maxX: Double(view.maxX) + 8, maxY: Double(view.minY) + 48))
+        if model.detent != .full {   // the locate button, right under the floating chrome (RootView), and the feedback button under it
+            let below: Double = model.showsFeedbackButton ? 52 : 0
+            out.append(LabelRect(minX: Double(view.maxX) - 52, minY: Double(view.minY) - 4, maxX: Double(view.maxX) + 8, maxY: Double(view.minY) + 48 + below))
         }
         return out
     }
