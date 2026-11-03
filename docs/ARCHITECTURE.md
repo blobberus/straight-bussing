@@ -389,7 +389,8 @@ its own list: Apple Maps for the map and walks instead of the web map stack).
     open, a text field has focus or the page is hidden (`pingBlocker`, pure; `nextPingIn`, pure). Reduced motion: no
     class is added (and base.css stops the animation): only the static badge.
   - Panel: the Settings overlay shell (`openSettingsOverlay` kind `feedback`, title "Beta feedback", Done; Back,
-    Escape, Done, a scrim tap or a second tap on the button close it; focus returns to the button): the tinted card
+    Escape, Done or a scrim tap close it (the scrim also covers the button, so tapping it again closes the panel;
+    `open()` toggles for keyboard and script callers); focus returns to the button): the tinted card
     with `FEEDBACK_ICON`, `FEEDBACK_LEAD`, `WELCOME_BODY`, the primary "Send feedback" (`feedbackLinkHTML`, the form in
     a new tab), under it `FB_GONE` "Once you give feedback, the feedback button on the map disappears.", then outside
     the card the quiet text button "I already gave feedback", then `FEEDBACK_NOTE` + `WELCOME_NOTE` in fine print.
