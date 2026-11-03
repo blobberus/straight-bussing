@@ -166,6 +166,11 @@ final class AppModel {
     @ObservationIgnored let location = LocationProvider()
     @ObservationIgnored let liveActivity = LiveActivityController()
     @ObservationIgnored let mapCamera = MapCameraModel()
+    /// When Retry was last tapped on the status pill. The map context bar ignores taps for a second after it (owner
+    /// 2026-11-03: a fast second tap as the pill vanishes, the bar moving up into its place, must never end the trip;
+    /// web main.js RETRY_GUARD_MS).
+    @ObservationIgnored var retryTappedAt: Date = .distantPast
+    var contextBarGuarded: Bool { Date().timeIntervalSince(retryTappedAt) < 1 }
     /// Building and place names on the map (bundled web/data/landmarks.json), in their own observable like the camera.
     @ObservationIgnored let mapLabels = MapLabelModel()
     @ObservationIgnored let busAlerter = BusAlerter()

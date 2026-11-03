@@ -562,6 +562,12 @@ Hidden routes still prevent the "no shuttles" claim but are not named ("Some hid
 ### 2026-10-10: web parity with the iPhone app (ios/README.md "iOS has, web missing")
 - **Routes list**: a "Not running" row adds today's scheduled hours (`routes.js idleText`: "Not running · Today 7:00 AM to
   11:30 PM", `hoursOn` label, nothing added on a no-service day), like iOS RouteRow.
+- **Retry is the pill's first control** (owner 2026-11-03): `#pillRetry` sits at the pill's LEFT end with a fixed width. During a trip
+  the context chip under the pill ends the trip with its right-hand "Show all"; when Retry succeeds the pill hides and the chip
+  moves up into its place, so a Retry at the right end put "Show all" under the finger for a second tap. Now a tap at Retry's old
+  spot lands on the chip's label, and main.js also ignores context-chip taps for `RETRY_GUARD_MS` (1 s) after a Retry tap
+  (capture-phase guard). iOS: the same (`StatusPill` Retry leading, `AppModel.contextBarGuarded`). Test: e2e.js "Retry sits on
+  the left".
 - **Status pill** (`ui/pill.js`, out of main.js): `pillState(s, now, {bootS, graceS})` -> `{kind, icon, msg, retry, alert}` with icon
   `feed` (error) / `delay` (late, old) / `silent` (scheduled, no live locations) / `idle` (no shuttles); `createPill(els)`
   renders it into `#pill` (`#pillIcon` slot, aria-hidden) and keeps `--pill-h`. Words unchanged.

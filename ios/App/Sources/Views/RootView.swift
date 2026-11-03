@@ -183,18 +183,25 @@ struct StatusPill: View {
             SimulatedPill()
         } else if let p = model.statusPill {
             HStack(spacing: 8) {
+                // Retry first, at a fixed width (owner 2026-11-03): when the feed recovers the pill hides and the context
+                // bar moves up; a quick second tap then lands on the bar's label, not its trailing Show all (ends a trip)
+                if p.retry {
+                    Button {
+                        model.retryTappedAt = Date()
+                        Task { await model.pollOnce() }
+                    } label: {
+                        Text("Retry").font(.footnote.weight(.bold)).underline()
+                            .frame(minWidth: 60, minHeight: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Retry loading live data")
+                    .accessibilityIdentifier("pillRetry")
+                }
                 Image(systemName: icon(p)).accessibilityHidden(true)
                 // safety text: never truncated (the sheet makes room, RootView measures this stack)
                 Text(p.text).font(.footnote.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
-                if p.retry {
-                    Button { Task { await model.pollOnce() } } label: {
-                        Text("Retry").font(.footnote.weight(.bold)).underline()
-                            .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Retry loading live data")
-                } else if p.alert {
+                if !p.retry && p.alert {
                     // no bus is reporting and the operator posted an alert: it may say why (rider safety)
                     Button { model.openAlerts() } label: {
                         Text("See alert").font(.footnote.weight(.bold)).underline()
@@ -205,7 +212,7 @@ struct StatusPill: View {
                     .accessibilityIdentifier("pillAlert")
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, p.retry || p.alert ? 0 : 7)
+            .padding(.leading, p.retry ? 4 : 12).padding(.trailing, 12).padding(.vertical, p.retry || p.alert ? 0 : 7)
             .foregroundStyle(p.kind == .err ? Color.white : p.kind == .warn ? Self.onYellow : Color.primary)
             .background(pillStyle(p), in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
             .dynamicTypeSize(...DynamicTypeSize.accessibility2)
@@ -258,7 +265,7 @@ struct ContextBar: View {
                 ForEach(rids.prefix(Self.maxChips), id: \.self) { RouteChip(route: model.route($0), rid: $0, size: 11) }
                 if rids.count > Self.maxChips { Text("+\(rids.count - Self.maxChips)").font(.caption).foregroundStyle(Palette.text2) }
                 Spacer(minLength: 0)
-                Button { model.endJourney() } label: {
+                Button { if !model.contextBarGuarded { model.endJourney() } } label: {
                     Text("Show all").font(.footnote.weight(.bold)).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                 }
                 .accessibilityHint("Shows every route on the map again")
@@ -267,14 +274,14 @@ struct ContextBar: View {
                 (Text(tv.name.hasPrefix(TimeActive.prefix) ? "\(TimeActive.prefix) " : "Showing ").foregroundColor(Palette.text2)
                     + Text(rest).fontWeight(.semibold)).font(.footnote).lineLimit(2)
                 Spacer(minLength: 0)
-                Button { model.apply(Custom.clearTimeView(model.routeState)) } label: {
+                Button { if !model.contextBarGuarded { model.apply(Custom.clearTimeView(model.routeState)) } } label: {
                     Text("Clear").font(.footnote.weight(.bold)).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                 }
                 .accessibilityLabel("Clear \(tv.name), show your usual routes")
             } else if let c = RouteVisibility.activeCustomRoute(s) {
                 (Text("My route: ").foregroundColor(Palette.text2) + Text(c.name).fontWeight(.semibold)).font(.footnote).lineLimit(2)
                 Spacer(minLength: 0)
-                Button { model.apply(Custom.clearCustom(model.routeState)) } label: {
+                Button { if !model.contextBarGuarded { model.apply(Custom.clearCustom(model.routeState)) } } label: {
                     Text("Clear").font(.footnote.weight(.bold)).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                 }
                 .accessibilityLabel("Clear my route \(c.name)")
