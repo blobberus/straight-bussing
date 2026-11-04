@@ -70,8 +70,8 @@ export function createStore(initial): { get(), set(patch), subscribe(fn)->off } 
   routeStops:{rid:[stopId,...]}  /* first==last means loop */, stopRoutes:{stopId:[rid]}, addresses:{stopId:{address}},
   staticLoaded:false,
   // live (data/live.js fills every 10 s)
-  buses:[{vehicle:{id,label}, position:{latitude,longitude,bearing,speed}, trip:{trip_id,route_id}, timestamp, stop_id, current_stop_sequence}],   // OPERATING vehicles only (core/operating.js, applied in data/live.js)
-  trips:[{trip:{trip_id,route_id}, vehicle:{id,label}, stop_time_update:[{stop_id, arrival:{time}, departure:{time}}]}],
+  buses:[{vehicle:{id,label}, position:{latitude,longitude,bearing,speed}, trip:{trip_id,route_id}, timestamp, stop_id, current_stop_sequence}],   // OPERATING vehicles only (core/operating.js), minus buses long off their route (core/offroute.js); both applied in data/live.js
+  trips:[{trip:{trip_id,route_id}, vehicle:{id,label}, stop_time_update:[{stop_id, arrival:{time}, departure:{time}}]}],   // minus the trip updates of buses core/offroute.js hides
   alerts:[{header_text, description_text, active_period, informed_entity}],
   feedTs:0, lastOk:0, failed:false, liveLoaded:false,
   // user/prefs (persisted via storage.js where noted)
@@ -120,6 +120,11 @@ export function silentService(state, nowS): boolean   // liveLoaded, no operatin
 export function scheduledNoLive(state, rid, nowS): boolean   // scheduled now, no operating bus on it (callers check liveUnknown first)
 export function noLiveStatus(state, rid, nowS): string|null  // 'Scheduled until 4:29 AM, no live location'
 export function silentText(state, rids, nowS, phone?): string   // plain text (escape it): names <= 3 routes + scheduled end, else counts; [] = hidden only
+// core/offroute.js (2026-11-04, owner): buses not following their route for a long time are hidden (section "Buses that do not follow their route")
+export const OFF_M = 300, HIDE_IN_S = 900, HIDE_OUT_S = 300, HOURS_PAD_S = 1800, FOLLOW_M = 1500, RETURN_M = 1000, GAP_S = 600, DETOUR_RE
+export function offRouteStep(tracks, buses, {shapes, service, alerts, routes, nowS, feedTs}): {tracks, hidden: vehicleId[]}   // pure; tracks = {} at start, kept by the caller between polls (data/live.js), never modified
+export function dropHidden(buses, trips, hidden): {buses, trips}   // trip updates matched by vehicle id only (shared trip ids)
+export function closestOnLine(lines, lat, lon): {d, lat, lon}|null; inListedHours(service, rid, t, padS?): boolean|null; detourAlert(alerts, routes, rid, t): boolean
 ```
 ```js
 // core/arrivals.js  (pure, takes state slices)
@@ -676,6 +681,39 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   report keeps its badge for `MISSING_S` (45 s) and then continues along its line; a poll with no bus at all clears the map at
   once (the map never shows buses while the pill says none report); a route the rider hides goes at once.
 - iOS: Kit `BusTrack.swift` (the same rules and numbers, `BusTrackTests` incl. a golden file the web JS computed on real reports) and App `Model/BusMotion.swift` (steps the badge along the path; `missingS` = MISSING_S); Kit `LiveState.emptyHoldS` = EMPTY_HOLD_S (`LiveHoldTests`); ios/README.md parity matrix.
+
+## Buses that do not follow their route (2026-11-04, owner: "If buses are not following their routes for a long period of time (measure this by the bus operation data and their listed hours), remove them from the map. Do this for both the experimental and nonexperimental build.")
+- Measured first (RouteKnower.md E27, `experiments/routeknower/E27-scripts/`): 25 days of archived raw polls (Oct 10 to Nov 3,
+  1.54 M fresh reports, 4,355 bus-hours), each day's route lines and listed hours, the logged arrivals and alerts. Inside the
+  listed hours buses are within 300 m of their line 95.9% of the time. Buses that really serve riders can be far off it for a
+  long time: the Downtown Campus Connector 2.5 km off Lake Shore Drive for up to 32 min (Oct 22, every DCC bus), the
+  Apostolic bus on its 8 AM run to the 57th Street Metra station (920 m, 23 to 30 min, every weekday, along another line). The
+  buses that do not operate are mostly at the operator's garage (41.82, -87.64; 105 of the 109 runs the rule hides).
+- `core/offroute.js` (pure; tests `web/tests/core-offroute.js`): OFF the route = farther than `OFF_M` (300 m) from its route's
+  line (store.shapes) AND from every other route's line. The clock starts at the first such report (the bus's own report time,
+  never the phone's) and restarts within 300 m of any line, on a route change, or after `GAP_S` (10 min) without a report.
+  HIDDEN at `HIDE_IN_S` (15 min) inside the route's listed hours padded `HOURS_PAD_S` (30 min) at both ends (service.json via
+  core/schedule.js isScheduledNow; no schedule data counts as inside), at `HIDE_OUT_S` (5 min) outside them. Never hidden
+  while the closest points of its line have spread `FOLLOW_M` (1.5 km) since the clock started (following its route on
+  another street), while it is `RETURN_M` (1 km) or more closer to its line than its farthest point (heading back: leaving the
+  garage), nor inside the listed hours while an operator alert is active that names its route (any text, alias ids too) or
+  names no route and matches `DETOUR_RE` (detour, reroute, closed, blocked, construction, ...; the standing "UGo Bus Route
+  Assistance" alert does not match). Back within 300 m of a line = shown at the next poll.
+- Applied in `data/live.js` after core/operating.js: `offRouteStep` once per vehicle poll on the operating buses (the clocks
+  live in the poll loop, `offTracks`), then `dropHidden` takes the hidden buses out of store.buses AND their trip updates out
+  of store.trips (by vehicle id), so the map, "Where the buses are", arrivals, counts, bus alerts, the planner and the trip
+  view agree; Passio kept predicting the Nov 2 garage-bound buses (DC-022: 830 prediction rows). Silent-service trip updates
+  with no bus are untouched. Before static data loads nothing is hidden; after a reload the clocks start again (a missed hide
+  for up to 15 min, never a wrong one). Demo buses ride their lines and are never hidden.
+- Numbers (25 days): 835 bus-min hidden, 33 a day; 643 of them buses going to the garage after service, 131 never serving,
+  21.5 leaving the garage, 39.1 two parked breaks between trips (a Red Line bus at the garage, a DCC bus parked 1 km off at
+  Museum Campus); 0.5 bus-min within 2 min of a logged arrival; no moving detour or Metra run hidden. DC-022 (Nov 2): Central
+  hidden from 00:11 (its hours had ended), North from 00:23, East from 00:27.
+- iOS: Kit `OffRoute.swift` (same rules and numbers), applied in `LiveState.applying` (`offTracks`, `offHidden`), `OffRouteTests`
+  incl. the web's answers on real polls (`Fixtures/offroute_golden.json` = `web/tests/fixtures/offroute_golden.json`, made by
+  `experiments/routeknower/E27-scripts/make_golden.py`, answers from `web/tests/offroute-golden.html` in headless Edge).
+- Experimental build: port `web/js/core/offroute.js` as is, the `data/live.js` lines that call it, `web/tests/core-offroute.js`
+  + the fixture; sw cache bump.
 
 ## Minutes to every station on the Current trip (2026-10-20, owner: "the distance in minutes away is shown on the right side of the station name")
 - Passio splits one bus's predictions over its trip updates (the trip it is on, often 1 to 4 stops left, and its next trip), so
