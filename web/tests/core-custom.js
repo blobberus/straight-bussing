@@ -1,6 +1,6 @@
 // Tests for core/visibility.js and core/custom.js (My Routes, journeys, draw order)
 import { test, eq, ok } from "./lib.js";
-import { effectiveHidden, isVisible, mapFocus, drawOrder, mapVisibility, activeCustomRoute } from "../js/core/visibility.js";
+import { effectiveHidden, isVisible, mapFocus, drawOrder, mapVisibility, activeCustomRoute, busFaded } from "../js/core/visibility.js";
 import * as C from "../js/core/custom.js";
 import { cleanCustom } from "../js/state.js";
 
@@ -25,6 +25,19 @@ test("visibility: focus precedence route view > journey > station filter > custo
   eq(mapFocus(base({ view: "route", routeId: "d", routeFilter: { ids: ["c"] } })), ["d"]);
   eq(mapFocus(base()), null);
   eq(activeCustomRoute(base({ customRoutes: cr, activeCustom: "gone" })), null);
+});
+
+test("visibility: busFaded = the bus's route is faded (owner 2026-11-04)", () => {
+  eq(busFaded("a", null), false, "no focus, no plan: none");
+  eq(busFaded("a", []), false, "an empty focus is no focus");
+  eq(busFaded("a", ["b"]), true, "another route in focus");
+  eq(busFaded("b", ["b"]), false, "its route in focus");
+  eq(busFaded(7, ["7"]), false, "ids compared as text");
+  eq(busFaded("a", null, ["b"]), true, "a drawn plan that does not ride it");
+  eq(busFaded("b", null, ["b"]), false, "the plan rides it: the bus to catch stays");
+  eq(busFaded("b", null, []), true, "a walk plan rides no route");
+  eq(busFaded("b", ["a"], ["b"]), true, "focus decides first (a route page during a trip)");
+  eq(busFaded("a", ["a"], ["b"]), false);
 });
 
 test("visibility: draw order = focus, then routeOrder, then data order; unknown ids dropped", () => {

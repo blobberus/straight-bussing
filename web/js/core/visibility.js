@@ -77,6 +77,23 @@ export function drawOrder(state, focus = null) {
 }
 
 /**
+ * Is a bus on route `rid` drawn faded (owner 2026-11-04: "The buses on faded routes should also be faded")? Its
+ * route is faded when other routes are in focus (route page, station filter, a custom route's highlights: the line
+ * dims to .25), or, with no focus, when a trip plan is drawn (Directions, a started trip) that does not ride it. The
+ * routes a drawn plan rides keep their buses at full strength: the bus to catch is never the faded one.
+ * @param {string} rid
+ * @param {string[]|null} focus mapFocus
+ * @param {string[]|null} [plan] route ids of the drawn plan's bus legs; null when no plan is drawn
+ * @returns {boolean}
+ */
+export function busFaded(rid, focus, plan = null) {
+  const r = String(rid);
+  if (Array.isArray(focus) && focus.length) return !focus.some((f) => String(f) === r);
+  if (Array.isArray(plan)) return !plan.some((p) => String(p) === r);
+  return false;
+}
+
+/**
  * Everything the map needs to know about visibility, in one call.
  * @param {object} state
  * @returns {{hidden:string[], focus:string[]|null, order:string[]}}
