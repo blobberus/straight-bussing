@@ -139,6 +139,22 @@ test('compass permission: asked only once location works, one request in flight 
   eq(asked, 1, 'a request that threw does not block the next tap');
 });
 
+test('compass request() says what happened (main.js lets a failed first-tap ask try again; owner 2026-11-04)', async () => {
+  const perm = { asked: 0, answer: 'granted' };
+  const { c } = harness(fakeEnv({ perm }));
+  const first = c.request(), second = c.request();
+  eq(await second, 'skipped', 'a request already in flight: nothing asked');
+  eq(await first, 'granted');
+  perm.answer = 'denied';
+  eq(await c.request(), 'denied');
+  const env = fakeEnv();
+  env.win.DeviceOrientationEvent = { requestPermission() { throw new Error('not in a tap'); } };
+  eq(await harness(env).c.request(), 'error', 'threw: error (the next tap may try again)');
+  env.win.DeviceOrientationEvent = { requestPermission: () => Promise.reject(new Error('NotAllowedError')) };
+  eq(await harness(env).c.request(), 'error', 'rejected: error');
+  eq(await harness(fakeEnv({ absolute: true })).c.request(), 'skipped', 'no requestPermission API (Android): nothing asked');
+});
+
 test('createCompass: Android absolute events, hidden page detaches', () => {
   const env = fakeEnv({ absolute: true });
   const { c, calls } = harness(env);
