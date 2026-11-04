@@ -104,7 +104,7 @@ export function searchPlaces(q, {signal}): Promise<{items:[{label, sub, lat, lon
 // categories (coffee, grocery, apartments), whole-word name matches first, then nearest stop. Items carry {local:true, walk, stop, score}
 // and sub "Kind, address · N min walk to <stop>" (one middle dot per line, docs/DESIGN.md "Copy"). Photon is called only when the local index has < 5 matches; mergePlaces() puts local
 // first and drops Photon duplicates (within 150 m, one name contains the other); Photon results > 3 km away end with "N km from campus".
-// data/places.js: norm(s), scorePlace, searchLocal(q,{limit}), loadPlaces(fetch?) (never throws), setPlaces(data|null) for tests.
+// data/places.js: norm(s) (re-exported from core/text.js since 2026-11-04, with near1: one text rule for place, station and route search), scorePlace, searchLocal(q,{limit}), loadPlaces(fetch?) (never throws), setPlaces(data|null) for tests.
 ```
 `sw.js`: network-first for same-origin GET with `cache:'no-cache'`, cache only `r.ok && r.status===200`, never cache cross-origin, never `?demo` requests; precache the whole shell: index.html, privacy.html, support.html, manifest, every file under js/ css/ icons/ data/ (`tools/test_precache.py` walks the import graph from index.html, including the dynamic view imports, and fails on a missing entry; `pages.yml` runs it before deploying); cache name constant `sb-v2-<n>` (bump it whenever a shell file changes); serve offline fallback. Also keep the daily GTFS refresh workflow `pages.yml` working (it copies `web/`).
 
@@ -842,3 +842,41 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   stop still stacks), tests/e2e-backnav.js in e2e.test.html (3, the real app with real map line taps: My Routes >
   Central > 53rd Street Express > Back or browser back = the custom route page, unchanged; Routes list > line > map tap
   on another line > Back = Routes list; a single line > Back and browser back). sw `sb-v2-80`.
+
+## Route search on the Routes list (2026-11-04, owner: "You should be able to search routes from the routes menu which will bring them to the top. Allow keywords and smart search such as allowing 53rdst -> 53rd Street or 53rd St -> 53rd Street etc.")
+- Logic `core/routesearch.js` (pure; iOS Kit `RouteSearch.swift` ports it 1:1):
+  `buildRouteIndex(items [{id, short, long, stops:[names]}])` / `routeIndexFor(state, ids)`, `searchRoutes(index, q)`
+  -> `[{id, score, stop?}]` best first (ties keep the list order), `splitByHits(ids, hits)` -> `{top, rest}`,
+  `matchText(n)`, `routeWords(s, typing)`, `canon(w)`, `ordinal(digits)`, `TIER`, `CANON`.
+- Text: `core/text.js norm` (the place search's: case, accents, punctuation, "/" and "&"; data/places.js now imports
+  `norm` and `near1` from there), then letters split from digits with the ordinal dropped ("53rdst" = "53rd st" =
+  "53 st"; the right suffix for the number or a wrong "th" / "nd" / "rd"; a wrong "st" stays a word: "53st" = "53
+  street"; while typing, the start of the suffix: "53r"), number words ("fifty third" = 53), "and / the / of / for /
+  at / to" ignored, abbreviations both ways (`CANON`: st / str street, ave avenue, blvd, dr, exp / expr express, ctr /
+  cntr center, dt downtown, sth / nth, n / s / e / w as whole words, apt(s), hosp, sta / stn, univ, lib, ln line).
+  Keywords: the short name (AP, DX, CEN, ...), every long-name word, the names of the route's stops. One typo
+  (`near1`) on words of 4+ letters, never on the first letter of a 4 or 5 letter word ("west" is not "east").
+- Ranking: exact short / long name 100; start of a name 90; every typed word a name word or its start 80+; the same
+  after abbreviations 70+; name words plus the words of ONE stop 60+ (the hit names the stop); a name word with a typo
+  50+; a stop word with a typo 45+. In a tier + 3 x the mean word weight (1 exact, 0.85 start, 0.7 typo) - 0.5 per
+  long-name word not typed (max 3). Single letters only match the start of a name or a name word (no stop matches).
+- View `ui/views/routes.js`: a third region `[data-region="routes-search"]` between the top (Edit map order + custom
+  bar, still the first control) and the body: `searchHTML` (label "Search routes", placeholder "Search routes or
+  stops", clear button "Clear route search", a visually hidden aria-live count). It is drawn once per mount and never
+  rebuilt (patch only toggles `hidden`: map-order mode, no routes yet), so typing keeps focus and caret. Typing sets
+  `R.q` (module memory: kept for the session, e.g. route page and Back, never stored) and patches the body:
+  `listHTML(state, now, q)` = alerts as before, then "N routes match" with the matches best first (each row as usual:
+  status, grayed + eye when hidden, plus "Stops at <stop>" for a stop match) or "No routes match" + Clear search,
+  then the divider "Other routes" ("All routes" with no match), Show all / Show running / Hide all (unchanged scope
+  and states), and the usual groups without the matches. Within the station filter (`routeIds`). Escape in a field
+  with text clears it (consumed; an empty field lets Escape go Back); Enter hides a phone's keyboard; focusing the
+  field opens the sheet (`setDetent("full")`). The live count follows 400 ms after typing stops.
+- iOS `RoutesView`: the app's `SearchField` (clear label "Clear route search", identifier `routesQuery`) under the
+  bar; `AppModel.routeMatches` (index cached per `staticVersion`), the same sections and wording, `RouteRow(stop:)`,
+  a VoiceOver announcement of the count; UI test `testRouteSearch`.
+- Tests: tests/core-routesearch.js (core.test.html: owner examples, keywords, words, the golden file),
+  tests/routes-search.js (routes.test.html: placement, order, stop line, no match, filter, hidden rows, escaping, the
+  mounted field keeps focus and caret, x / Escape / Clear search, nothing stored, order mode). Golden
+  `web/tests/routesearch-golden.json` (a frozen copy of the route and stop names + every case's answer;
+  `python tools/gen_routesearch_golden.py`, cases in tests/routesearch-cases.js) is checked by the web test and by
+  Kit `RouteSearchTests` (ios.yml also runs when it changes). sw `sb-v2-86`.
