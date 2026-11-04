@@ -391,9 +391,22 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
   ok($("#content [data-region='nearby-trip'] .tp-title"), "the trip in progress leads, above the next bus");
   await waitFor(() => D.activeElement === tt, "focus on the trip title");
   ok($$("#map .sb-plan-casing").length > 0, "the trip stays on the map");
+  // on a trip only the trip's lines and their buses are drawn (owner 2026-11-04); they all come back when it ends
+  const drawnLines = () => { let n = 0; SB.map.eachLayer((l) => { if (l instanceof W.L.Polyline && l.options.className === "sb-route") n++; }); return n; };
+  const linesOf = (rids) => rids.reduce((n, rid) => n + (state().shapes[rid] || []).filter((p) => p && p.length >= 2).length, 0);
+  const tripRids = state().journey.rids.slice();
+  ok(tripRids.length >= 1, "a bus trip");
+  await waitFor(() => drawnLines() === linesOf(tripRids) || null, `only the trip's lines drawn (${drawnLines()} of ${linesOf(Object.keys(state().shapes))})`);
+  const tripBuses = T.routes.filter((r) => tripRids.includes(r.rid)).length;
+  await waitFor(() => busIcons().length === tripBuses || null, "only the trip's buses drawn");
+  eq(busIcons().length, fullBefore, "the same buses the preview kept at full strength");
+  eq(fadedIcons().length, 0, "and none faded");
   click($('#content [data-action="journey:end"]'), "End trip");
   await waitFor(() => !state().journey && !$("#content .tp-title"), "trip ended");
   await waitFor(() => $$("#map .sb-plan-casing").length === 0, "plan cleared from the map");
+  const shown = Object.keys(state().shapes).filter((rid) => !(state().hiddenRoutes || []).includes(String(rid)));
+  await waitFor(() => drawnLines() === linesOf(shown) || null, "every line back after the trip");
+  await waitFor(() => busIcons().length === T.routes.length && fadedIcons().length === 0 || null, "every bus back, none faded");
 });
 
 test("theme: About's Auto / Light / Dark updates the page and the map", async () => {
