@@ -138,6 +138,8 @@ struct SearchField: View {
     let placeholder: String
     @Binding var text: String
     var identifier: String = ""
+    /// VoiceOver label of the clear button ("Clear route search" on Routes).
+    var clearLabel: String = "Clear"
     var onSubmit: () -> Void = {}
     var body: some View {
         HStack(spacing: 8) {
@@ -152,7 +154,7 @@ struct SearchField: View {
                 .accessibilityIdentifier(identifier)
             if !text.isEmpty {
                 Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.text2).tapTarget() }
-                    .accessibilityLabel("Clear")
+                    .accessibilityLabel(clearLabel)
             }
         }
         .padding(.horizontal, 12)

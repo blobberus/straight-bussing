@@ -9,6 +9,10 @@
 // data/geocode.js merges these with Photon results. The index is built once when the file loads;
 // preloadPlaces() fetches it in idle time after start so the first search is instant.
 import { buildVocab, corrections } from './spell.js';
+import { norm, near1 } from '../core/text.js';
+
+/** The shared text rule (core/text.js), re-exported for the views and data/geocode.js that import it from here. */
+export { norm };
 
 const URL_PLACES = new URL('../../data/places.json', import.meta.url);
 const LIMIT = 5;
@@ -30,27 +34,6 @@ const SYNONYMS = {
 };
 
 let data = null, loading = null, index = null, vocab = null, display = null, gen = 0;
-
-/**
- * Lowercase, strip accents and punctuation, "&" -> "and", words separated by single spaces.
- * @param {string} s
- * @returns {string}
- */
-export function norm(s) {
-  return String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, ' and ')
-    .replace(/['\u2019`.]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-}
-
-/** Edit distance <= 1 (insert, delete, substitute or swap two neighbours). */
-function near1(a, b) {
-  if (a === b) return true;
-  const la = a.length, lb = b.length;
-  if (Math.abs(la - lb) > 1) return false;
-  let i = 0;
-  while (i < la && i < lb && a[i] === b[i]) i++;
-  if (la === lb) return a.slice(i + 1) === b.slice(i + 1) || (a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2));
-  return la > lb ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
-}
 
 /** Best weight of one query word against a list of words: 1 exact, .85 prefix, .7 one typo (fuzzy only), 0 none. */
 function wordWeight(q, words, fuzzy) {

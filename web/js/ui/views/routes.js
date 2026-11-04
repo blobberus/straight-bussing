@@ -9,6 +9,10 @@
  * Update / Save as new), journey note, "Edit map order" mode (drag by the grip, routes-drag.js, or Move
  * up / down; store.routeOrder, drawn top-first). The view mounts and owns its DOM: regions [data-region="routes-top"] and [data-region="routes-body"] are
  * patched in place on store changes; the top is never touched while its name field has focus.
+ * Route search (owner 2026-11-04): a field between the top and the list, region [data-region="routes-search"], drawn
+ * once and never rebuilt while mounted (typing keeps focus and caret; only its clear button and live count change).
+ * Typing re-draws the body with the matches first, best first (core/routesearch.js), then "Other routes" in their
+ * usual groups. A display order only: nothing is stored (the query lives in this module for the session).
  */
 import { registerView } from "../router.js";
 import { registerAction, setHTMLKeepFocus } from "../actions.js";
@@ -19,6 +23,7 @@ import { nowS } from "../../core/time.js";
 import { hoursOn } from "../../core/schedule.js";
 import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibility.js";
 import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, showRunning, cleanName } from "../../core/custom.js";
+import { routeIndexFor, searchRoutes, splitByHits, matchText } from "../../core/routesearch.js";
 import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { OFFICIAL_HTML } from "./pick.js";
 import { operatorAlertsHTML, callsHTML, operatorPhone } from "./alerts.js";
@@ -30,11 +35,19 @@ const EYEOFF = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stro
 const UP = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>';
 const GRIP = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"/></svg>';
 const LAYERS = '<svg class="v-ic rt-toolic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>';
+const SEARCH = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>';
+const CLEAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 const DOWN = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 
-/** View-local UI state (not in the store). mode: 'list' | 'order'. */
-const R = { mode: "list", naming: false, draft: "" };
-let rootRef = null, ctxRef = null, offStore = null, lastTop = null, lastBody = null, pendingFocus = null, detachDrag = null, dragging = false;
+/** View-local UI state (not in the store). mode: 'list' | 'order'; q: the route search (kept for the session only). */
+const R = { mode: "list", naming: false, draft: "", q: "" };
+let rootRef = null, ctxRef = null, offStore = null, lastTop = null, lastBody = null, pendingFocus = null, detachDrag = null, dragging = false, liveTimer = null;
+
+/** Every route id sorted by short name (numeric aware). */
+function sortedIds(state) {
+  const Rt = state.routes || {};
+  return Object.keys(Rt).sort((a, b) => String(Rt[a].short || Rt[a].long || a).localeCompare(String(Rt[b].short || Rt[b].long || b), undefined, { numeric: true }));
+}
 
 /**
  * Route ids sorted by short name (numeric aware), restricted to the active station filter.
@@ -42,11 +55,33 @@ let rootRef = null, ctxRef = null, offStore = null, lastTop = null, lastBody = n
  * @returns {string[]}
  */
 export function routeIds(state) {
-  const Rt = state.routes || {};
-  let ids = Object.keys(Rt).sort((a, b) => String(Rt[a].short || Rt[a].long || a).localeCompare(String(Rt[b].short || Rt[b].long || b), undefined, { numeric: true }));
+  let ids = sortedIds(state);
   const f = state.routeFilter;
   if (f && Array.isArray(f.ids)) ids = ids.filter((i) => f.ids.includes(i));
   return ids;
+}
+
+let idxMemo = { routes: null, routeStops: null, stops: null, idx: [] };
+/** The route search index (names + stop names), rebuilt only when the static data changes. */
+function searchIndex(state) {
+  const m = idxMemo;
+  if (m.routes !== state.routes || m.routeStops !== state.routeStops || m.stops !== state.stops) {
+    idxMemo = { routes: state.routes, routeStops: state.routeStops, stops: state.stops, idx: routeIndexFor(state, sortedIds(state)) };
+  }
+  return idxMemo.idx;
+}
+
+/**
+ * Route search over the listed routes (the station filter's, when one is set): the matches, best first, with the
+ * stop that matched (stop keyword matches). Empty query: no matches.
+ * @param {object} state
+ * @param {string} q
+ * @returns {{top:string[], stopOf:Map<string,string>}}
+ */
+export function routeMatches(state, q) {
+  const hits = String(q || "").trim() ? searchRoutes(searchIndex(state), q) : [];
+  const stopOf = new Map(hits.filter((h) => h.stop).map((h) => [h.id, h.stop]));
+  return { top: splitByHits(routeIds(state), hits).top, stopOf };
 }
 
 /**
@@ -81,14 +116,14 @@ const nameOf = (state, id) => { const r = state.routes?.[id] || {}; return r.lon
 /** "Not running", plus today's scheduled hours when there are any ("Not running · Today 7:00 AM to 11:30 PM"; iOS RouteRow). */
 export const idleText = (state, id, now) => { const h = hoursOn(state.service, id, now); return h && h.first ? `Not running · Today ${h.label}` : "Not running"; };
 
-function row(state, id, hidden, now) {
+function row(state, id, hidden, now, stop = null) {
   const r = state.routes[id] || {}, n = runningCount(state, id), name = nameOf(state, id);
   const tripOff = hidden && !!state.journey && !(state.hiddenRoutes || []).includes(id);   // hidden only by the journey
   // whether the route runs, also for a hidden one (owner 2026-10-17: a grayed line must still say if it is running)
   const live = n ? `${n} bus${n > 1 ? "es" : ""} running` : liveUnknown(state, now) ? "Live status unknown" : noLiveStatus(state, id, now) || idleText(state, id, now);
   const status = tripOff ? `${live} · Not part of this trip` : hidden ? `${live} · Hidden from map and times` : live;
   const eye = tripOff ? "" : `<button type="button" class="v-eye" data-action="routes:toggle" data-id="${esc(id)}" aria-pressed="${hidden ? "false" : "true"}" aria-label="${hidden ? "Show" : "Hide"} route ${esc(r.short || "")} ${esc(name)}">${hidden ? EYEOFF : EYE}</button>`;
-  return `<div class="v-routerow${hidden ? " is-off" : ""}"><button type="button" class="v-row v-rowmain" data-action="route:open" data-id="${esc(id)}">${routeChip(id, state.routes)}<span class="v-grow"><span class="v-prim">${esc(name)}</span><span class="v-sec">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(status)}</span></span></button>${eye}</div>`;
+  return `<div class="v-routerow${hidden ? " is-off" : ""}"><button type="button" class="v-row v-rowmain" data-action="route:open" data-id="${esc(id)}">${routeChip(id, state.routes)}<span class="v-grow"><span class="v-prim">${esc(name)}</span><span class="v-sec">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(status)}</span>${stop ? `<span class="v-sec rt-why">Stops at ${esc(stop)}</span>` : ""}</span></button>${eye}</div>`;
 }
 
 /**
@@ -217,13 +252,33 @@ export function toolsHTML(state) {
   return `<div class="rt-tools"><button type="button" class="v-btn v-btn--quiet rt-orderbtn" data-action="routes:order-edit">${LAYERS}Edit map order</button></div>`;
 }
 
+/** The search field is not offered: map-order mode, or no routes (yet). */
+const searchOff = (state) => R.mode === "order" || !state.staticLoaded || !Object.keys(state.routes || {}).length;
+
 /**
- * The list body (normal mode).
+ * The route search field (its own region, drawn once per mount; owner 2026-11-04). The clear button and the live
+ * count are updated in place while typing.
  * @param {object} state
- * @param {number} [now] unix seconds
+ * @param {string} [q]
  * @returns {string}
  */
-export function listHTML(state, now = nowS()) {
+export function searchHTML(state, q = R.q) {
+  return `<div class="rt-search" role="search"${searchOff(state) ? " hidden" : ""}>`
+    + `<label class="v-search rt-q"><span class="v-ic" aria-hidden="true">${SEARCH}</span><span class="v-sr">Search routes</span>`
+    + `<input type="search" data-input="routes-q" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search routes or stops" value="${esc(q)}"></label>`
+    + `<button type="button" class="rt-qx" data-action="routes:search-clear" aria-label="Clear route search"${q ? "" : " hidden"}>${CLEAR}</button>`
+    + `<p class="v-sr" data-live="routes-q" aria-live="polite"></p></div>`;
+}
+
+/**
+ * The list body (normal mode). With a search query: the matching routes first, best first, then "Other routes" in
+ * the usual groups (nothing is hidden by the search).
+ * @param {object} state
+ * @param {number} [now] unix seconds
+ * @param {string} [q] the route search (default: the field's)
+ * @returns {string}
+ */
+export function listHTML(state, now = nowS(), q = R.q) {
   if (!state.staticLoaded) return skeleton(5);
   const g = groupRoutes(state, now);
   let h = filterChipHTML(state);
@@ -235,7 +290,17 @@ export function listHTML(state, now = nowS()) {
   const calls = (unknown || empty) && !state.routeFilter && !!operatorPhone(state, now), help = () => operatorAlertsHTML(state, now);
   if (unknown && !state.routeFilter) h += emptyState("Live bus status unavailable", "Can't reach the shuttle feed. Routes are listed below for reference.") + help();
   else if (empty && !state.routeFilter) h += (silentService(state, now) ? emptyState("No live locations right now", silentText(state, g.scheduled, now, OFFICIAL_PHONE)) : emptyState("No shuttles running right now", "Routes are listed below for reference.")) + help();
-  h += bulkHTML(state, g, now);
+  const bulk = bulkHTML(state, g, now);   // before the search takes the matches out of the groups (same scope, same states)
+  if (String(q || "").trim()) {
+    const { top, stopOf } = routeMatches(state, q), hiddenSet = new Set(g.hidden);
+    h += top.length
+      ? `<h3 class="v-h rt-qhead">${esc(matchText(top.length))}</h3><div class="v-list rt-qlist">${top.map((i) => row(state, i, hiddenSet.has(i), now, stopOf.get(i))).join("")}</div>`
+      : `<div class="rt-qnone">${emptyState("No routes match", "Try a route name, a street or a stop.")}<button type="button" class="v-btn v-btn--secondary" data-action="routes:search-clear">Clear search</button></div>`;
+    const got = new Set(top), label = top.length ? "Other routes" : "All routes";
+    for (const k of Object.keys(g)) g[k] = g[k].filter((i) => !got.has(i));
+    if (g.running.length + g.scheduled.length + g.idle.length + g.hidden.length) h += `<div class="rt-qdiv" role="separator" aria-label="${label}"><span aria-hidden="true">${label}</span></div>`;
+  }
+  h += bulk;
   const group = (title, ids, hidden, cls) => (ids.length ? `<h3 class="v-h">${title}</h3><div class="v-list${cls ? " " + cls : ""}">${ids.map((i) => row(state, i, hidden, now)).join("")}</div>` : "");
   h += group("Running", g.running, false, "");
   h += group("Scheduled, no live location", g.scheduled, false, "");
@@ -249,13 +314,13 @@ function topRegion(state) { return R.mode === "order" ? "" : toolsHTML(state) + 
 function bodyRegion(state, now) { return R.mode === "order" && state.staticLoaded ? orderHTML(state) : listHTML(state, now); }
 
 /**
- * Render the routes view (both regions).
+ * Render the routes view (its three regions: top, search, body).
  * @param {object} state
  * @param {number} [now] unix seconds
  * @returns {string}
  */
 export function renderRoutes(state, now = nowS()) {
-  return `<div data-region="routes-top">${topRegion(state)}</div><div data-region="routes-body">${bodyRegion(state, now)}</div>`;
+  return `<div data-region="routes-top">${topRegion(state)}</div><div data-region="routes-search">${searchHTML(state)}</div><div data-region="routes-body">${bodyRegion(state, now)}</div>`;
 }
 
 /**
@@ -274,6 +339,7 @@ export function toggleRoute(store, rid) {
 /* ---------------- mounted DOM ---------------- */
 const curState = () => ctxRef?.store?.get?.() || {};
 const nameInput = () => rootRef?.querySelector?.('[data-input="routes-name"]') || null;
+const searchInput = () => rootRef?.querySelector?.('[data-input="routes-q"]') || null;
 
 /** Patch both regions in place (the top is skipped while its field has focus, unless forced). */
 function patch(force = false) {
@@ -281,6 +347,8 @@ function patch(force = false) {
   const s = curState();
   const top = rootRef.querySelector('[data-region="routes-top"]'), body = rootRef.querySelector('[data-region="routes-body"]');
   if (!top || !body) { rootRef.innerHTML = renderRoutes(s); lastTop = lastBody = null; return; }
+  const search = rootRef.querySelector(".rt-search");
+  if (search) search.hidden = searchOff(s);      // never rebuilt: the field keeps focus, caret and text
   const inp = nameInput();
   if (force || !(inp && document.activeElement === inp)) {
     const th = topRegion(s);
@@ -299,9 +367,42 @@ function patch(force = false) {
 
 function onInput(e) {
   if (e.target?.matches?.('[data-input="routes-name"]')) R.draft = e.target.value;
+  else if (e.target?.matches?.('[data-input="routes-q"]')) setQuery(e.target.value);
+}
+
+/** New search text: the clear button, the body (matches first), and the live count a moment later. */
+function setQuery(v) {
+  R.q = String(v ?? "");
+  const x = rootRef?.querySelector?.(".rt-qx");
+  if (x) x.hidden = !R.q;
+  patch();
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(() => {
+    const live = rootRef?.querySelector?.('[data-live="routes-q"]');
+    if (live) live.textContent = R.q.trim() ? matchText(routeMatches(curState(), R.q).top.length) : "";
+  }, 400);
+}
+
+/**
+ * Clear the route search (clear button, "Clear search", Escape in the field); focus returns to the field.
+ * @returns {void}
+ */
+export function clearSearch() {
+  const inp = searchInput();
+  if (inp) inp.value = "";
+  setQuery("");
+  inp?.focus?.({ preventScroll: true });
 }
 
 function onKey(e) {
+  if (e.target?.matches?.('[data-input="routes-q"]')) {
+    if (e.key === "Escape" && e.target.value) { e.preventDefault(); e.stopPropagation(); clearSearch(); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      if (globalThis.matchMedia?.("(pointer: coarse)").matches) e.target.blur();   // a phone's Search key hides the keyboard
+    }
+    return;
+  }
   if (!e.target?.matches?.('[data-input="routes-name"]')) return;
   if (e.key === "Enter") { e.preventDefault(); saveName(ctxRef); }
   else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancelName(); }
@@ -343,12 +444,18 @@ export function saveName(ctx) {
   return id;
 }
 
-/** Mount: listeners for the name field + a store subscription patching the two regions. */
+/** The search field got focus with the sheet collapsed: open it so the matches show above the keyboard. */
+function onFocusIn(e) {
+  if (e.target?.matches?.('[data-input="routes-q"]')) ctxRef?.setDetent?.("full");
+}
+
+/** Mount: listeners for the name and search fields + a store subscription patching the regions. */
 export function mountRoutes(root, ctx) {
   unmountRoutes();
   rootRef = root; ctxRef = ctx; lastTop = lastBody = null;
   root.addEventListener("input", onInput);
   root.addEventListener("keydown", onKey);
+  root.addEventListener("focusin", onFocusIn);
   offStore = ctx?.store?.subscribe?.(() => patch()) || null;
   detachDrag = attachOrderDrag(root, { onStart: () => { dragging = true; }, onEnd: () => { dragging = false; }, onDrop: dropAt });
   patch();
@@ -367,7 +474,8 @@ function dropAt(rid, index) {
 
 /** Unmount: drop listeners; leave edit/naming modes. */
 export function unmountRoutes() {
-  if (rootRef) { rootRef.removeEventListener("input", onInput); rootRef.removeEventListener("keydown", onKey); }
+  if (rootRef) { rootRef.removeEventListener("input", onInput); rootRef.removeEventListener("keydown", onKey); rootRef.removeEventListener("focusin", onFocusIn); }
+  clearTimeout(liveTimer); liveTimer = null;
   offStore?.(); offStore = null;
   detachDrag?.(); detachDrag = null; dragging = false;
   rootRef = null;
@@ -423,6 +531,7 @@ registerAction("routes:hide-all", (ds, ev, ctx) => {
   ctx.toast?.("All routes hidden. Show them again here.");
 });
 registerAction("routes:clear-filter", (ds, ev, ctx) => ctx.store.set({ routeFilter: null }));
+registerAction("routes:search-clear", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; clearSearch(); });
 registerAction("routes:order-edit", (ds, ev, ctx) => {
   ctxRef = ctx || ctxRef; R.mode = "order"; R.naming = false; pendingFocus = { sel: '[data-action="routes:order-done"]' }; patch(true);
 });

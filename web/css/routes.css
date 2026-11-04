@@ -46,6 +46,24 @@
 .rt-orow.is-dragging .rt-grip { cursor: grabbing; color: var(--accent); }
 .rt-orow > .rt-grip + .chip { min-width: 56px; margin-right: var(--s1); }
 
+/* route search (owner 2026-11-04): the field (same look as .v-search), its clear button, the matches heading,
+   the stop that matched and the quiet "Other routes" divider */
+.rt-search { position: relative; margin: var(--s2) 0 0; }
+.rt-search .v-search { margin: 0; }
+.rt-search input { padding-right: var(--tap); }
+.rt-search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+.rt-qx { position: absolute; top: 0; right: 0; display: grid; place-items: center; width: var(--tap); height: var(--tap); border: 0; border-radius: var(--r-control); background: none; color: var(--text-2); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.rt-qx[hidden] { display: none; }
+.rt-qx:active { background: var(--surface-press); }
+.rt-qx:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rt-qhead { margin-top: var(--s4); }
+.rt-why { overflow-wrap: anywhere; }
+.rt-qnone { display: flex; flex-direction: column; align-items: center; gap: var(--s2); margin: var(--s2) 0 0; }
+.rt-qnone .empty { padding-bottom: 0; }
+.rt-qnone .v-btn { min-height: var(--tap); }
+.rt-qdiv { display: flex; align-items: center; gap: var(--s3); margin: var(--s5) 0 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
+.rt-qdiv::before, .rt-qdiv::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--hairline); }
+
 /* Show all / Hide all */
 .rt-bulk { display: flex; justify-content: flex-end; gap: var(--s1); margin: var(--s2) 0 calc(-1 * var(--s2)); }
 .rt-bulk .v-btn--quiet { min-height: var(--tap); padding: 0 var(--s3); }

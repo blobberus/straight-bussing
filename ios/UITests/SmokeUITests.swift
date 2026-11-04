@@ -102,6 +102,35 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["searchBar"].waitForExistence(timeout: 10))
     }
 
+    /// Route search on Routes (owner 2026-11-04: "53rdst -> 53rd Street"): the match comes first, above "Other routes";
+    /// the clear button brings the usual list back. Nothing is stored (Kit RouteSearchTests cover the ranking).
+    func testRouteSearch() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo"]
+        app.launch()
+        XCTAssertTrue(app.buttons["tab.routes"].waitForExistence(timeout: 30), "tabs")
+        app.buttons["tab.routes"].tap()
+        let field = app.textFields["routesQuery"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "route search field")
+        field.tap()
+        field.typeText("53rdst")
+        let head = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH[c] %@ OR label ENDSWITH[c] %@", "route matches", "routes match")).firstMatch
+        if !head.waitForExistence(timeout: 10) {
+            save(app, "16-route-search-failed-light")
+            XCTFail("matches heading; tree: " + app.debugDescription.replacingOccurrences(of: "\n", with: " | "))
+            return
+        }
+        let first = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "53rd Street Express")).firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 5), "53rd Street Express listed")
+        let other = app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "Other routes")).firstMatch
+        if other.exists { XCTAssertLessThan(first.frame.minY, other.frame.minY, "the match is above the other routes") }
+        save(app, "16-route-search-light")
+        app.buttons["Clear route search"].tap()
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: head)], timeout: 5)
+        let left = field.value as? String ?? ""
+        XCTAssertTrue(left.isEmpty || left == "Search routes or stops", "the field is empty again (shows its placeholder): \(left)")
+    }
+
     /// A started trip ends when a stop's Directions picks a new destination (else "Trip to Chipotle" would follow a
     /// plan to another place). Regression test of the 2026-10-11 sweep.
     func testNewDestinationFromAStopEndsTheTrip() throws {

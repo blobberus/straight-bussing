@@ -7,7 +7,7 @@ name: iOS app (build, test, simulator preview)
 on:
   push:
     branches: [main]
-    paths: ["ios/**", "web/data/**", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "web/data/**", "web/tests/routesearch-golden.json", ".github/workflows/ios.yml"]
   workflow_dispatch:
 permissions:
   contents: read
