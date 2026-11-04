@@ -104,7 +104,7 @@ segments scale .97-.98 (opacity only under reduced motion). Every target is >= 4
 
 - Basemap (CARTO raster now needs a key, superseded): OpenFreeMap vector tiles through `web/mapstyle.js` (positron light / dark), see "Map style changes". OSM raster is only an emergency fallback (heavy use is against OSM tile policy). If traffic grows, self-host (Protomaps PMTiles).
 - Zoom 13-18, start 15 on user or campus center. Disable Leaflet zoom control (pinch only); add one 44px locate button (floating, top-right under safe-area, 12 radius, --bg-solid) and nothing else.
-- Route lines: weight 5 at z15 (4 at z13, 6 at z17), round caps/joins, opacity .9, 2px white casing underneath (weight+3, light rgba(255,255,255,.9), dark rgba(28,28,30,.9)). Overlapping routes: offset not needed; draw selected route last, dim others to .25 when a route is selected.
+- Route lines: weight 3.5 at z15 (2.8 at z13, 6 at z17; a focused route keeps the earlier 5 / 4 / 6), round caps/joins, opacity .9, no casing (owner 2026-11-04: "Remove the outlines on each line", "slightly thinner from the zoomed out view"). Overlapping routes: offset not needed; draw selected route last, dim others to .25 when a route is selected; their buses fade with them (smaller, see-through, no tap). On a trip only the trip's lines show.
 - Stops: 10px circle, white fill, 2.5px stroke in route color (neutral --text-2 when multi-route); hidden below z14; selected stop = 16px with accent ring and name label. Tap target extended to 44px with a transparent halo (`L.circleMarker` radius 22, fillOpacity 0).
 - Buses: 28px rounded-square badge (radius 9) in route color, white bold route short name (12px), 2px white border, shadow-sm, small heading triangle (8px) on the edge that rotates with bearing. Move smoothly: interpolate between polls via CSS `transition: transform 9s linear` on marker. Stale bus (>60s old): 50% opacity, gray border.
 - User location: 14px --accent dot, 3px white ring, soft accuracy circle at 12% accent.
@@ -153,7 +153,7 @@ segments scale .97-.98 (opacity only under reduced motion). Every target is >= 4
 
 1. **style.css tokens**: add the `:root` + dark variables, system font stack, tabular-nums; replace all hardcoded colors/radii. (P0)
 2. **Basemap** (app.js line ~12): swap Voyager for Positron/Dark Matter with matchMedia listener; keep attribution. (P0)
-3. **Markers** (`drawStatic`, `drawBuses`): route casing + widths, stop circle with 44px halo, bus badge with heading, glide transition, stale styling. (P0)
+3. **Markers** (`drawStatic`, `drawBuses`): route widths (no casing since 2026-11-04), stop circle with 44px halo, bus badge with heading, glide transition, stale styling. (P0)
 4. **index.html**: add `viewport-fit=cover`, `theme-color` meta for both schemes; restructure `#sheet` into header (grabber + title/peek line + segmented control) and scrolling content; keep ids used by app.js. (P0)
 5. **Sheet behavior**: new `initSheet()` in app.js with pointer-event drag, three detents, velocity snapping, `--sheet-y` CSS var; remove tab-bar styling. (P0)
 6. **Arrivals UI** (`renderArrivals`, `fmtEta`): ETA numeral + unit, Live/Scheduled label, route badge rows, nearest-stop card in `nearestStops(n)`. (P1)
