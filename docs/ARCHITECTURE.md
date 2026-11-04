@@ -353,23 +353,27 @@ its own list: Apple Maps for the map and walks instead of the web map stack).
 - Tests: `tests/core-timeactive.js` (core.test.html), `tests/timepick.test.html`, e2e "lines by time".
 
 ### Beta feedback (2026-10-13, owner)
-`ui/feedback.js`: `FEEDBACK_URL` (the only place the Google Form address appears), `feedbackLinkHTML()` (a real `<a target="_blank" rel="noopener">`, never window.open after an await), the welcome popup (native `<dialog>` like ui/confirm.js: Cancel focused first, Escape / outside tap close, 350 ms double-tap guard) once per browser session (`sessionStorage`; blocked storage = once per page load), opened by main.js after the first painted render (`welcomeAfterPaint`). Settings starts with "Beta feedback" (`views/settings.js feedbackHTML`). Browser tests set the session flag before booting the app (e2e.js, e2e-demo.js).
+`ui/feedback.js`: `FEEDBACK_URL` (the only place the Google Form address appears), `feedbackLinkHTML()` (a real `<a target="_blank" rel="noopener">`, never window.open after an await), the words the feedback prompts share, and the given-feedback memory (below). Settings starts with "Beta feedback" (`views/settings.js feedbackHTML`). The map's feedback button (below) is the only prompt; nothing in ui/feedback.js runs at boot.
+- Welcome popup: REMOVED 2026-11-04 (owner: "Stop the give feedback sign on every login to pop up. Keep the feedback
+  button on the map screen."). It was a native `<dialog>` ("Welcome to the beta version of Straight Bussing!", Cancel /
+  Go to Feedback) that main.js opened after the first render: once per browser session from 2026-10-13, at most once a
+  week from 2026-11-02, never after feedback. Gone with it: `showWelcome`, `maybeShowWelcome`, `welcomeAfterPaint`,
+  `welcomeDue`, `sessionStorage` `sb-welcome-seen` (it was also the tests' seam), the `.v-welcome*` CSS, and every write
+  to `localStorage` `sb-welcome-log` (`{shown, feedback}`). That log is now only read: a form opened before 2026-11-02
+  (its `feedback` date) still counts as feedback given. privacy.html (effective November 4, 2026) says an old browser may
+  still hold those two dates; About no longer mentions a popup. Tests: tests/feedback-app.js (the real app: a first visit
+  in live and demo mode, the desktop phone frame, a reload, a visit a week after the old popup last appeared, feedback
+  given before 2026-11-02: no popup, and the button appears or stays gone as it should), feedback-shared.js (nothing of
+  the popup left in any precached file). sw sb-v2-84.
 - 2026-11-02 (owner: "Make the feedback request notification a little more noticable (using different colors etc).
   Emphasize how it would be very helpful. Would it be possible to make this request only occur every once in a while
   and not every time the user reloads the site?" and "In the settings menu, the beta feedback should also be more
-  prominent"): one look for the popup and the Settings card: the accent tint `--accent-bg` (tokens.css: light #d9e7f8,
-  dark #223042; never the green live color), `FEEDBACK_ICON` (speech bubble, white on an `--accent-fill` disc,
-  aria-hidden), the bold ask `FEEDBACK_LEAD` "Your feedback would be very helpful.". Popup: the owner's title in a band
-  running edge to edge under the rounded top, then `WELCOME_BODY` and `WELCOME_NOTE`, Cancel / Go to Feedback (with the
-  opens-elsewhere arrow). Settings: "Beta feedback" stays first; a tinted card with the icon + ask, `FEEDBACK_LINE`,
-  Give feedback as the card's primary button, the privacy note.
-- How often: never twice in one visit (`sessionStorage` `sb-welcome-seen`, still the tests' seam), at most once every
-  `WELCOME_EVERY_DAYS` (7) days, and never again once the rider gave feedback (below; until the feedback button it
-  waited 30 days after the form was opened). `localStorage` `sb-welcome-log` = `{shown, feedback}` (ms; two dates, on
-  the device only; privacy.html "Your settings" and About say so); `welcomeDue` is pure (a date far in the future, from
-  a changed clock, counts by its distance). Storage blocked: once per session, or per page load. Tests:
-  tests/feedback-welcome.js (wording, frequency, contrast, Settings card), feedback-app.js (real app: a new visit within
-  the week shows nothing, a week later it asks). sw sb-v2-81.
+  prominent"): one look for the Settings card and the map button's panel (and, until 2026-11-04, the popup): the accent
+  tint `--accent-bg` (tokens.css: light #d9e7f8, dark #223042; never the green live color), `FEEDBACK_ICON` (speech
+  bubble, white on an `--accent-fill` disc, aria-hidden), the bold ask `FEEDBACK_LEAD` "Your feedback would be very
+  helpful.". Settings: "Beta feedback" stays first; a tinted card with the icon + ask, `FEEDBACK_LINE`, Give feedback as
+  the card's primary button, the privacy note. Tests: tests/feedback-shared.js (wording, the memory, contrast in light
+  and dark, Settings card, privacy wording). sw sb-v2-81.
 - The map's feedback button (2026-11-02, owner: "Add a small notification button (still noticable) under the
   navigation arrow button under the right side of the search bar. This notification should ping every once in a
   while. Pressing it should reveal a menu that looks similar to the settings overlay menu which explicity requests the
@@ -391,21 +395,22 @@ its own list: Apple Maps for the map and walks instead of the web map stack).
   - Panel: the Settings overlay shell (`openSettingsOverlay` kind `feedback`, title "Beta feedback", Done; Back,
     Escape, Done or a scrim tap close it (the scrim also covers the button, so tapping it again closes the panel;
     `open()` toggles for keyboard and script callers); focus returns to the button): the tinted card
-    with `FEEDBACK_ICON`, `FEEDBACK_LEAD`, `WELCOME_BODY`, the primary "Send feedback" (`feedbackLinkHTML`, the form in
+    with `FEEDBACK_ICON`, `FEEDBACK_LEAD`, `FEEDBACK_BODY`, the primary "Send feedback" (`feedbackLinkHTML`, the form in
     a new tab), under it `FB_GONE` "Once you give feedback, the feedback button on the map disappears.", then outside
-    the card the quiet text button "I already gave feedback", then `FEEDBACK_NOTE` + `WELCOME_NOTE` in fine print.
+    the card the quiet text button "I already gave feedback", then `FEEDBACK_NOTE` + `FEEDBACK_IN_SETTINGS` in fine
+    print (2026-11-04: `WELCOME_BODY` / `WELCOME_NOTE` renamed with the popup gone, same words).
   - Memory (`ui/feedback.js`): `localStorage` `sb-feedback-done` = `{how: "gave" | "silenced", at}`. Opening the form
-    anywhere (Send feedback, Go to Feedback, Settings > Give feedback: `noteFeedbackOpened`) records "gave", "I already
-    gave feedback" records "silenced" (`markFeedbackDone`; "gave" always wins); a form opened before this change (the
-    welcome log's feedback date) counts as "gave". `feedbackDone()` set = the button is removed at once (bus
-    `feedback:done`), in other open tabs too (`storage` event), on every later visit, and the welcome popup never asks
-    again; Settings > Give feedback always stays. Storage blocked: remembered for the rest of the page load. A toast
-    confirms ("Thank you for helping. Give feedback stays in Settings." / "Feedback button removed. Give feedback stays
-    in Settings."); focus moves to the locate button.
-  - Shown like the popup, also in demo mode. Test seam: `sessionStorage` `sb-feedback-btn-off` = "1" (e2e.js,
-    e2e-demo.js set it with `sb-welcome-seen`); tests/feedback-button.js (rules, schedule, reduced motion, panel, both
-    choices, reloads, other tabs, blocked storage, CSS in light / dark, the real app) clears it. iOS: the same button
-    (RootView `FeedbackButton`, `FeedbackSheet`, UserDefaults `sb.feedbackDone`), ios/README.md. sw sb-v2-82.
+    anywhere (Send feedback, Settings > Give feedback: `noteFeedbackOpened`) records "gave", "I already gave feedback"
+    records "silenced" (`markFeedbackDone`; "gave" always wins); a form opened before 2026-11-02 (the old popup log's
+    feedback date, read only) counts as "gave". `feedbackDone()` set = the button is removed at once (bus
+    `feedback:done`), in other open tabs too (`storage` event) and on every later visit; Settings > Give feedback always
+    stays. Storage blocked: remembered for the rest of the page load. A toast confirms ("Thank you for helping. Give
+    feedback stays in Settings." / "Feedback button removed. Give feedback stays in Settings."); focus moves to the
+    locate button.
+  - Shown in live and demo mode. Test seam: `sessionStorage` `sb-feedback-btn-off` = "1" (e2e.js, e2e-demo.js);
+    tests/feedback-button.js (rules, schedule, reduced motion, panel, both choices, reloads, other tabs, blocked storage,
+    CSS in light / dark, the real app) and feedback-app.js clear it. iOS: the same button (RootView `FeedbackButton`,
+    `FeedbackSheet`, UserDefaults `sb.feedbackDone`), ios/README.md. sw sb-v2-82.
 
 ### You on the trip map + trip alerts (2026-10-13, owner: "the Current Trip map should show the user's location in the current trip's location (especially for bus routes). Make this sync to the notification center's get off in X stops")
 ONE evaluation of the followed trip per data change, `core/tripprogress.js tripNow(state, nowS)` (memo: same journey,
