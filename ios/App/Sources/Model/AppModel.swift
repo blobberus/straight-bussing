@@ -222,6 +222,8 @@ final class AppModel {
     var staticFailed: [String] = []
     /// Bumped whenever `staticData` is replaced (part of the map layer cache key).
     var staticVersion = 0
+    /// Route search index for the Routes list (RouteSearch.Index), rebuilt when `staticVersion` changes.
+    @ObservationIgnored var routeSearchCache: (version: Int, index: RouteSearch.Index)?
     /// The schedule in use: bundled with the app, or a newer validated download from the web app's site.
     var scheduleSource: ScheduleSource = .bundled
     var places: PlaceIndex?

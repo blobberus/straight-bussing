@@ -6,11 +6,15 @@ import StraightBussingKit
 /// "Routes to <station>" filter chip, Show all / Hide all, then Running / Scheduled, no live location / Not
 /// running / Hidden groups with a per-route eye toggle (persisted), official contact at the bottom. A scheduled
 /// route with no reporting bus is never "Not running" (rider safety), and a feed outage is "Live status unknown".
+/// Route search (owner 2026-11-04; web routes.js): a field under the bar; typing puts the matching routes first, best
+/// first (Kit RouteSearch), then "Other routes" in their usual groups. A display order only: nothing is stored, and the
+/// query lasts while the app runs.
 struct RoutesView: View {
     @Environment(AppModel.self) private var model
     @State private var naming = false
     @State private var draft = ""
     @FocusState private var nameFocused: Bool
+    @State private var query = ""
 
     var body: some View {
         List {
@@ -57,7 +61,15 @@ struct RoutesView: View {
 
     // MARK: List
 
-    struct Groups { var running: [String] = [], scheduled: [String] = [], idle: [String] = [], hidden: [String] = [] }
+    struct Groups {
+        var running: [String] = [], scheduled: [String] = [], idle: [String] = [], hidden: [String] = []
+        var count: Int { running.count + scheduled.count + idle.count + hidden.count }
+        /// The groups without the search's matches (they are drawn first).
+        func without(_ ids: Set<String>) -> Groups {
+            Groups(running: running.filter { !ids.contains($0) }, scheduled: scheduled.filter { !ids.contains($0) },
+                   idle: idle.filter { !ids.contains($0) }, hidden: hidden.filter { !ids.contains($0) })
+        }
+    }
 
     /// Running / scheduled with no live bus ([] in a feed outage) / not running / hidden (routes.js groupRoutes).
     var groups: Groups {
@@ -84,11 +96,46 @@ struct RoutesView: View {
             && (model.liveOutage || (model.liveLoaded && model.buses.isEmpty))
     }
 
+    /// The search field (web .rt-search): one row, no card behind it, the same field as Plan Trip's.
+    var searchSection: some View {
+        Section {
+            SearchField(placeholder: "Search routes or stops", text: $query, identifier: "routesQuery", clearLabel: "Clear route search")
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .task(id: query) {
+                    // VoiceOver hears the count once typing pauses (web: the aria-live line)
+                    let q = query
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !Task.isCancelled, !q.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                    AccessibilityNotification.Announcement(RouteSearch.matchText(model.routeMatches(q).top.count)).post()
+                }
+        }
+    }
+
+    /// The matches, best first (hidden ones stay grayed with their eye), or "No routes match" with Clear search.
+    @ViewBuilder func matchSection(_ top: [String], stopOf: [String: String], hidden: Set<String>) -> some View {
+        if top.isEmpty {
+            Section {
+                EmptyStateView(title: "No routes match", message: "Try a route name, a street or a stop.")
+                Button { query = "" } label: { Text("Clear search").frame(maxWidth: .infinity, minHeight: 44) }
+                    .accessibilityIdentifier("routesClearSearch")
+            }
+        } else {
+            Section(header: ListHeader(RouteSearch.matchText(top.count))) {
+                ForEach(top, id: \.self) { RouteRow(rid: $0, hidden: hidden.contains($0), stop: stopOf[$0]) }
+            }
+        }
+    }
+
     @ViewBuilder var listSections: some View {
         let s = model.routeState
-        let g = groups
-        let total = g.running.count + g.scheduled.count + g.idle.count + g.hidden.count
+        let all = groups
+        let total = all.count
+        let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty
+        let found = searching ? model.routeMatches(query) : (top: [String](), stopOf: [String: String]())
+        let g = all.without(Set(found.top))
         topBar
+        if total > 0 { searchSection }
         if let f = s.routeFilter {
             Section {
                 HStack {
@@ -123,7 +170,7 @@ struct RoutesView: View {
                         EmptyStateView(title: "Live bus status unavailable", message: "Can't reach the shuttle feed. Routes are listed below for reference.")
                     } else if model.silentService {
                         EmptyStateView(title: "No live locations right now",
-                                       message: Operating.silentText(g.scheduled, routes: model.staticData.routes, service: model.staticData.service,
+                                       message: Operating.silentText(all.scheduled, routes: model.staticData.routes, service: model.staticData.service,
                                                                      now: model.now, phone: LiveText.phone))
                     } else {
                         EmptyStateView(title: "No shuttles running right now", message: "Routes are listed below for reference.")
@@ -132,11 +179,18 @@ struct RoutesView: View {
                     OperatorAlerts(hideCalls: Set([operatorCall?.url, OfficialContact.telURL].compactMap { $0 }))
                 }
             }
+            if searching {
+                matchSection(found.top, stopOf: found.stopOf, hidden: Set(all.hidden))
+                if g.count > 0 {
+                    // the quiet divider (web .rt-qdiv): the routes that did not match, in their usual groups
+                    Section(header: ListHeader(found.top.isEmpty ? "All routes" : "Other routes")) {}
+                }
+            }
             if s.journey == nil {
                 Section {
                     let scope = s.routeFilter != nil ? " at this station" : ""
                     HStack {
-                        Button("Show all") { model.showAllRoutes() }.secondaryButtonStyle().disabled(g.hidden.isEmpty)
+                        Button("Show all") { model.showAllRoutes() }.secondaryButtonStyle().disabled(all.hidden.isEmpty)
                             .accessibilityLabel("Show all routes\(scope)")
                         Spacer()
                         // owner 2026-10-17: only the lines operating now; with none it says so (never disabled then)
@@ -146,7 +200,7 @@ struct RoutesView: View {
                             .accessibilityHint(model.onlyRunningShown ? "Only running routes are shown" : "")
                             .accessibilityIdentifier("routes.showRunning")
                         Spacer()
-                        Button("Hide all") { model.hideAllRoutes() }.secondaryButtonStyle().disabled(g.running.isEmpty && g.scheduled.isEmpty && g.idle.isEmpty)
+                        Button("Hide all") { model.hideAllRoutes() }.secondaryButtonStyle().disabled(all.running.isEmpty && all.scheduled.isEmpty && all.idle.isEmpty)
                             .accessibilityLabel("Hide all routes\(scope)")
                     }
                 }
@@ -252,6 +306,8 @@ struct RouteRow: View {
     @Environment(AppModel.self) private var model
     let rid: String
     let hidden: Bool
+    /// The stop whose name matched the route search ("Stops at …"), nil otherwise.
+    var stop: String? = nil
 
     var body: some View {
         let r = model.route(rid)
@@ -267,6 +323,9 @@ struct RouteRow: View {
                         HStack(spacing: 4) {
                             if n > 0 { LiveDot() }
                             Text(subtitle(n, tripOff: tripOff)).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
+                        }
+                        if let stop {
+                            Text("Stops at \(stop)").font(.caption).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     Spacer()
