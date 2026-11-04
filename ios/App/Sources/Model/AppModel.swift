@@ -82,6 +82,9 @@ final class MapCameraModel {
     /// The follow camera of a started trip (web spec 2026-10-13): on at Start and by the re-center button, off as soon
     /// as the rider drags or zooms the map (or another screen moves it). While on, the map keeps `TripYou.frame` in view.
     var follow = false
+    /// Route line width factor for the camera's zoom (Kit `RouteLineWidth.scale`, owner 2026-11-04: thinner zoomed out),
+    /// written by MapScreen when a camera move ends and only when it changes (0.05 steps), so the lines redraw rarely.
+    var lineScale: Double = 0.7
     /// The part of the map the rider can see, in global points: below the floating chrome, above the sheet (RootView
     /// writes it when the chrome or the settled sheet changes; the follow check runs again then).
     var visibleRect: CGRect = .zero
@@ -96,21 +99,24 @@ final class MapCameraModel {
 }
 
 /// A route polyline ready for MapKit (coordinates converted and color parsed once per visibility change). `rid` and
-/// the bounding box serve a tap on the line (MapScreen `lineHit`, Kit `LineTap`).
+/// the bounding box serve a tap on the line (MapScreen `lineHit`, Kit `LineTap`). `width` is the full width (street level,
+/// and the tap reach); MapScreen draws a line that is not `focused` thinner when the camera is far out (`lineScale`).
 struct MapLine: Identifiable {
     let id: String
     let rid: String
     let coords: [CLLocationCoordinate2D]
     let color: Color
     let width: CGFloat
+    let focused: Bool
     let minLat: Double, maxLat: Double, minLon: Double, maxLon: Double
 
-    init(id: String, rid: String, coords: [CLLocationCoordinate2D], color: Color, width: CGFloat) {
+    init(id: String, rid: String, coords: [CLLocationCoordinate2D], color: Color, width: CGFloat, focused: Bool = false) {
         self.id = id
         self.rid = rid
         self.coords = coords
         self.color = color
         self.width = width
+        self.focused = focused
         minLat = coords.map(\.latitude).min() ?? 0
         maxLat = coords.map(\.latitude).max() ?? 0
         minLon = coords.map(\.longitude).min() ?? 0
@@ -124,11 +130,14 @@ struct MapStop: Identifiable {
     var id: String { stop.id }
 }
 
-/// Route lines (bottom -> top), the stops served by a visible route, and travel-direction chevrons.
+/// Route lines (bottom -> top), the stops served by a visible route, and travel-direction chevrons. `hidden` and `focus`
+/// also decide the buses (MapScreen): a hidden route's bus is never drawn unless its route is in focus, and a bus on a
+/// faded route is faded (Kit `RouteVisibility.busFaded`).
 struct MapLayers {
     var lines: [MapLine] = []
     var stops: [MapStop] = []
     var hidden: Set<String> = []
+    var focus: [String]? = nil
     var chevrons: [MapChevron] = []
 }
 
@@ -496,41 +505,73 @@ final class AppModel {
     private struct LayersKey: Equatable {
         var vis: RouteVisibility.MapVisibility
         var favs: [String]
+        var planDim: Bool
         var version: Int
     }
 
     @ObservationIgnored private var layersMemo: (key: LayersKey, layers: MapLayers)?
 
-    /// Route lines + stops for the map. Rebuilt only when visibility, focus, map order, favorites or the static
-    /// data change (about 4,000 shape points and every route color), never on a poll, clock tick or location update.
+    /// Route lines + stops for the map. Rebuilt only when visibility, focus, map order, favorites, a plan being drawn
+    /// or the static data change (about 4,000 shape points and every route color), never on a poll, clock tick or
+    /// location update.
     var mapLayers: MapLayers {
-        let key = LayersKey(vis: mapVisibility, favs: routeState.favStops, version: staticVersion)
+        let key = LayersKey(vis: mapVisibility, favs: routeState.favStops, planDim: mapPlanRids != nil, version: staticVersion)
         if let memo = layersMemo, memo.key == key { return memo.layers }
-        let layers = Self.buildLayers(key.vis, favs: key.favs, staticData)
+        let layers = Self.buildLayers(key.vis, favs: key.favs, planDim: key.planDim, staticData)
         layersMemo = (key: key, layers: layers)
         return layers
     }
 
-    static func buildLayers(_ vis: RouteVisibility.MapVisibility, favs: [String], _ S: StaticData) -> MapLayers {
+    /// The trip drawn on the map: the started one, else the selected Directions option.
+    var mapPlan: TripOption? {
+        if let t = activeTrip { return t.option }
+        if page == .directions, let r = dir.result, r.options.indices.contains(dir.selected) { return r.options[dir.selected] }
+        return nil
+    }
+
+    /// Directions with no shuttle option: the walk the whole way (sidewalk route once refined), like the web.
+    var mapWalkOnly: [LatLon]? {
+        guard activeTrip == nil, page == .directions, let r = dir.result, r.options.isEmpty,
+              let f = dir.from?.coord, let t = dir.to?.coord else { return nil }
+        return r.walkOnlyCoords ?? [f, t]
+    }
+
+    /// Route ids of the drawn plan's bus legs (web map.js planRoutes): its buses stay at full strength while every other
+    /// bus fades (Kit `RouteVisibility.busFaded`); [] for a walk; nil when no plan is drawn.
+    var mapPlanRids: [String]? {
+        if let o = mapPlan {
+            var out: [String] = []
+            for l in o.busLegs where !out.contains(l.rid) { out.append(l.rid) }
+            return out
+        }
+        return mapWalkOnly != nil ? [] : nil
+    }
+
+    /// Lines bottom to top. A focused route is drawn even when hidden (the web's stackOrder: its route page during a
+    /// trip, or a route the rider hid). Dimmed: routes out of focus, and every line while a plan is drawn (the web's
+    /// dimAll; the plan's own legs are drawn bold on top). No chevrons while a plan is drawn (as the web).
+    static func buildLayers(_ vis: RouteVisibility.MapVisibility, favs: [String], planDim: Bool = false, _ S: StaticData) -> MapLayers {
         let hidden = Set(vis.hidden), focus = vis.focus.map { Set($0) }
+        let drawn = { (rid: String) in !hidden.contains(rid) || focus?.contains(rid) == true }
         var lines: [MapLine] = []
         // Bottom -> top: MapKit draws later content above earlier content.
-        for rid in vis.order.reversed() where !hidden.contains(rid) {
+        for rid in vis.order.reversed() where drawn(rid) {
             guard let r = S.routes[rid] else { continue }
-            let dim = focus.map { !$0.contains(rid) } ?? false
+            let focused = focus?.contains(rid) == true
+            let dim = planDim || (focus != nil && !focused)
             let color = dim ? Color.dimmed(hex: r.color) : Color(hex: r.color)
             for (i, line) in (S.shapes[rid] ?? []).enumerated() {
-                lines.append(MapLine(id: "\(rid)-\(i)", rid: rid, coords: line.map(\.cl), color: color, width: dim ? 3 : 5))
+                lines.append(MapLine(id: "\(rid)-\(i)", rid: rid, coords: line.map(\.cl), color: color, width: dim ? 3 : 5, focused: focused))
             }
         }
         var ids = Set<String>()
-        for (rid, list) in S.routeStops where !hidden.contains(rid) { ids.formUnion(list) }
+        for (rid, list) in S.routeStops where drawn(rid) { ids.formUnion(list) }
         let fav = Set(favs)
         let stops = ids.compactMap { S.stops[$0] }.sorted { $0.id < $1.id }.map { MapStop(stop: $0, isFav: fav.contains($0.id)) }
         // 1-3 focused routes get direction-of-travel chevrons (GTFS shape point order = travel direction)
         var chevrons: [MapChevron] = []
-        if let f = vis.focus, (1...3).contains(f.count) {
-            for rid in f where !hidden.contains(rid) {
+        if !planDim, let f = vis.focus, (1...3).contains(f.count) {
+            for rid in f {
                 let color = Color(hex: S.routes[rid]?.color)
                 for (li, line) in (S.shapes[rid] ?? []).enumerated() {
                     // every 320 m like the web, but at most `maxChevrons` per line: each one is a SwiftUI
@@ -542,7 +583,7 @@ final class AppModel {
                 }
             }
         }
-        return MapLayers(lines: lines, stops: stops, hidden: hidden, chevrons: chevrons)
+        return MapLayers(lines: lines, stops: stops, hidden: hidden, focus: vis.focus, chevrons: chevrons)
     }
 
     /// Chevrons per shape line at most (3 focused routes: at most about 120 annotations).

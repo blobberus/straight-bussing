@@ -20,29 +20,28 @@ struct MapScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var typeSize
 
-    /// The trip drawn on the map: the started one, else the selected Directions option.
-    var plan: TripOption? {
-        if let t = model.activeTrip { return t.option }
-        if model.page == .directions, let r = model.dir.result, r.options.indices.contains(model.dir.selected) { return r.options[model.dir.selected] }
-        return nil
-    }
+    /// The trip drawn on the map: the started one, else the selected Directions option (`AppModel.mapPlan`).
+    var plan: TripOption? { model.mapPlan }
 
-    /// Directions with no shuttle option: the walk the whole way (sidewalk route once refined), like the web.
-    var walkOnly: [LatLon]? {
-        guard model.activeTrip == nil, model.page == .directions, let r = model.dir.result, r.options.isEmpty,
-              let f = model.dir.from?.coord, let t = model.dir.to?.coord else { return nil }
-        return r.walkOnlyCoords ?? [f, t]
-    }
+    /// Directions with no shuttle option: the walk the whole way (`AppModel.mapWalkOnly`).
+    var walkOnly: [LatLon]? { model.mapWalkOnly }
 
     var body: some View {
         @Bindable var camera = model.mapCamera
         let layers = model.mapLayers
-        let buses = model.mapBuses.filter { !layers.hidden.contains($0.rid) }
         let drawn = plan, ring = ringed   // once per body, not once per stop
         // you on the started trip (Kit TripYou, the same evaluation as the card, the alerts and the Live Activity)
         let you = model.activeTrip != nil ? model.tripYou : nil
         let youBus: String? = you.flatMap { $0.onBus && $0.point != nil ? $0.vehicleId : nil }
+        // never a hidden route's bus, unless its route is in focus (a route page); a bus on a faded route is faded (Kit
+        // RouteVisibility.busFaded, owner 2026-11-04), never the one you ride; the faded ones first, so they sit under
+        // the others
+        let shown = model.mapBuses.filter { !layers.hidden.contains($0.rid) || layers.focus?.contains($0.rid) == true }
+        let planRids = model.mapPlanRids
+        let faded = Set(shown.filter { $0.id != youBus && RouteVisibility.busFaded($0.rid, focus: layers.focus, plan: planRids) }.map(\.id))
+        let buses = shown.filter { faded.contains($0.id) } + shown.filter { !faded.contains($0.id) }
         let youOnDrawnBus = youBus != nil && buses.contains { $0.id == youBus }
+        let lineScale = camera.lineScale
         let labels = you?.stopLabels ?? []
         // a marker of its own: the boarding stop as a guess (no GPS), or the bus you ride when its marker is not drawn
         let youMark: (at: LatLon, guess: Bool)? = you.flatMap { y in
@@ -70,9 +69,10 @@ struct MapScreen: View {
                 }
                 .annotationTitles(.hidden)
             }
+            // thinner when the camera is far out (owner 2026-11-04), a focused route at its full width
             ForEach(layers.lines) { l in
                 MapPolyline(coordinates: l.coords)
-                    .stroke(l.color, style: StrokeStyle(lineWidth: l.width, lineCap: .round, lineJoin: .round))
+                    .stroke(l.color, style: StrokeStyle(lineWidth: l.focused ? l.width : l.width * lineScale, lineCap: .round, lineJoin: .round))
             }
             if let o = drawn {
                 ForEach(Array(o.walkLegs.enumerated()), id: \.offset) { item in
@@ -138,14 +138,20 @@ struct MapScreen: View {
             }
             ForEach(buses) { b in
                 let isYou = youOnDrawnBus && b.id == youBus
+                let isFaded = faded.contains(b.id)
+                let marker = BusMarker(route: model.route(b.rid), bearing: b.bearing, stale: b.stale, youText: isYou ? you?.text : nil,
+                                       number: b.number, picked: model.selectedBus == SelectedBus(rid: b.rid, vehicleId: b.id), faded: isFaded)
                 Annotation(b.label, coordinate: b.coord.cl, anchor: .center) {
-                    Button { model.busTapped(b.rid, vehicleId: b.id) } label: {
-                        BusMarker(route: model.route(b.rid), bearing: b.bearing, stale: b.stale, youText: isYou ? you?.text : nil,
-                                  number: b.number, picked: model.selectedBus == SelectedBus(rid: b.rid, vehicleId: b.id))
-                            .frame(minWidth: 44, minHeight: 44)
+                    if isFaded {
+                        // a faded bus takes no tap (the web: pointer-events none): the tap reaches the map, its stops and lines
+                        marker.frame(minWidth: 44, minHeight: 44).allowsHitTesting(false)
+                    } else {
+                        Button { model.busTapped(b.rid, vehicleId: b.id) } label: {
+                            marker.frame(minWidth: 44, minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(b.number != nil ? "Opens the route with this bus's times" : "Opens the route")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(b.number != nil ? "Opens the route with this bus's times" : "Opens the route")
                 }
                 .annotationTitles(.hidden)
             }
@@ -172,6 +178,13 @@ struct MapScreen: View {
         .onMapCameraChange(frequency: .continuous) { ctx in
             heading.mapTurned(ctx.camera.heading)   // the cone keeps pointing the real way on a rotated map
             model.mapLabels.cameraMoved { layoutLabels(proxy, scale: labelScale) }
+        }
+        // route lines thinner when the camera is far out (Kit RouteLineWidth, web lineWeight): written once a move ends,
+        // only when the 0.05 step changes
+        .onMapCameraChange(frequency: .onEnd) { ctx in
+            let w = model.mapCamera.safeRect.width > 0 ? Double(model.mapCamera.safeRect.width) : 390
+            let k = RouteLineWidth.scale(zoom: Landmarks.zoom(longitudeDelta: ctx.region.span.longitudeDelta, widthPoints: w))
+            if model.mapCamera.lineScale != k { model.mapCamera.lineScale = k }
         }
         // a tap on a route line opens the line drawn on top (owner 2026-10-27; not while a trip or walk is drawn), a tap
         // on empty map lowers the sheet to peek (web onMapTap). Simultaneous, so it never blocks the stop / bus buttons;
@@ -442,6 +455,9 @@ struct BusMarker: View {
     var number: Int? = nil
     /// The bus picked on its route page (its own times are shown there): an accent ring, like the web's highlight.
     var picked = false
+    /// On a faded route (Kit `RouteVisibility.busFaded`, owner 2026-11-04): smaller and see-through like its line, under
+    /// the other buses and not tappable (MapScreen). Label, heading and number stay; a stale faded bus is fainter still.
+    var faded = false
     var body: some View {
         ZStack {
             if youText != nil {
@@ -483,7 +499,8 @@ struct BusMarker: View {
                     .offset(x: 16, y: -11)
             }
         }
-        .opacity(stale ? 0.5 : 1)
+        .opacity(faded ? (stale ? 0.32 : 0.42) : (stale ? 0.5 : 1))
+        .scaleEffect(faded ? 0.8 : 1)
         .accessibilityLabel((youText ?? (number.map { "Bus \($0), \(route?.displayName ?? "Shuttle")" } ?? "\(route?.displayName ?? "Shuttle") bus"))
                             + (picked ? ", showing its times" : "") + (stale ? ", location may be old" : ""))
     }
