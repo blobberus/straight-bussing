@@ -362,7 +362,8 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
   ok(/Bus arrives at .+ \d{1,2}:\d{2}/.test(steps), "bus step with clock: " + steps);
   ok(/sidewalk route/.test(steps), "walking leg labeled sidewalk route: " + steps);
   ok(txt(content()).includes("Bus times are estimates from schedules and live predictions."), "estimate note");
-  await waitFor(() => $$("#map path.sb-walk").length > 0 && $$("#map .sb-plan-casing").length > 0, "plan drawn on the map (walk + bus legs)");
+  await waitFor(() => $$("#map path.sb-walk").length > 0 && $$("#map .sb-plan-bus").length > 0, "plan drawn on the map (walk + bus legs)");
+  eq($$("#map .sb-plan-casing, #map .sb-walk-casing, #map .sb-casing").length, 0, "no outlines on the plan or the lines (owner 2026-11-04)");
   // the bus leg follows the route's road shape (map/geometry.js alongShape), never straight stop-to-stop links
   const bus = [];
   SB.map.eachLayer((l) => { if (l instanceof W.L.Polyline && l.options.pane === "sbPlan" && !/sb-walk/.test(l.options.className || "")) bus.push(l.getLatLngs()); });
@@ -390,7 +391,7 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
   ok(near($("#topbar .searchbar").getBoundingClientRect(), bar), "the bar is back in the same place");
   ok($("#content [data-region='nearby-trip'] .tp-title"), "the trip in progress leads, above the next bus");
   await waitFor(() => D.activeElement === tt, "focus on the trip title");
-  ok($$("#map .sb-plan-casing").length > 0, "the trip stays on the map");
+  ok($$("#map .sb-plan-bus").length > 0, "the trip stays on the map");
   // on a trip only the trip's lines and their buses are drawn (owner 2026-11-04); they all come back when it ends
   const drawnLines = () => { let n = 0; SB.map.eachLayer((l) => { if (l instanceof W.L.Polyline && l.options.className === "sb-route") n++; }); return n; };
   const linesOf = (rids) => rids.reduce((n, rid) => n + (state().shapes[rid] || []).filter((p) => p && p.length >= 2).length, 0);
@@ -403,7 +404,7 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
   eq(fadedIcons().length, 0, "and none faded");
   click($('#content [data-action="journey:end"]'), "End trip");
   await waitFor(() => !state().journey && !$("#content .tp-title"), "trip ended");
-  await waitFor(() => $$("#map .sb-plan-casing").length === 0, "plan cleared from the map");
+  await waitFor(() => $$("#map .sb-plan-bus").length === 0, "plan cleared from the map");
   const shown = Object.keys(state().shapes).filter((rid) => !(state().hiddenRoutes || []).includes(String(rid)));
   await waitFor(() => drawnLines() === linesOf(shown) || null, "every line back after the trip");
   await waitFor(() => busIcons().length === T.routes.length && fadedIcons().length === 0 || null, "every bus back, none faded");

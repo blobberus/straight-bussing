@@ -66,7 +66,8 @@ test('network layer: polling does not repaint; changes do', () => {
   const layer = createNetworkLayer(m, { onStopTap: (id) => taps.push(id) });
   ok(layer.draw(net()), 'first draw');
   const el = m.getContainer(), first = paths(el);
-  ok(first.length >= 6 + 8, 'casing+line per shape and stop+halo per stop: ' + first.length);
+  eq(first.length, 3 + 8 * 2, 'one line per shape (no outline) and stop + halo per stop');
+  eq(el.querySelectorAll('path.sb-casing').length, 0, 'no outlines (owner 2026-11-04)');
   eq(layer.draw(net({ hidden: [] })), false, 'same inputs -> no redraw');
   ok(paths(el).every((p, i) => p === first[i]), 'same DOM nodes');
   ok(layer.draw(net({ hidden: ['r2'] })), 'hidden change redraws');

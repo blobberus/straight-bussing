@@ -1,5 +1,5 @@
 /**
- * map/layers.js: route network (casing + colored lines, stops with 44 px tap halos) and live bus
+ * map/layers.js: route network (colored lines, no outline since 2026-11-04; stops with 44 px tap halos) and live bus
  * markers. Every redraw is gated by a cheap signature so 10 s polling never repaints static layers;
  * bus markers are updated in place (setLatLng + class toggles) and recreated only when a bus changes
  * route. The pure helpers (idOf, sig, networkSig, busSig, lineWeight, routeLabel, focusSet) do not touch
@@ -138,9 +138,9 @@ export function routeLabel(rid, routes) {
 }
 
 /**
- * Network layer: route lines in two panes (unfocused, focused above), each route's casings drawn
- * right under its own lines in stack order so a higher-priority route covers lower ones where they
- * overlap; stops in their own group shown at zoom >= 14; chevrons along 1-3 focused routes.
+ * Network layer: route lines in two panes (unfocused, focused above), the colored line only (no outline, owner
+ * 2026-11-04: "Remove the outlines on each line"), in stack order so a higher-priority route covers lower ones where
+ * they overlap; stops in their own group shown at zoom >= 14; chevrons along 1-3 focused routes.
  * @param {L.Map} map
  * @param {{onStopTap:(id:string)=>void}} cb
  * lineAt(containerPoint) names the route line under a tap: the topmost one drawn (map/geometry.js lineAt).
@@ -171,16 +171,12 @@ export function createNetworkLayer(map, cb) {
       const front = !!focus?.has(rid), dim = dimAll || (focus && !front);
       const color = safeColor(routes[rid]?.color), pane = front ? 'sbFocusLines' : 'sbLines';
       const segs = (shapes[rid] || []).filter((pts) => pts && pts.length >= 2);
-      // all of a route's casings, then its lines: its own segments never cut each other, and it
-      // covers every route below it in the same pane
-      const casings = segs.map((pts) => L.polyline(pts, { pane, className: 'sb-casing', weight: w + 3,
-        opacity: dim ? 0.2 : 1, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(lines));
-      segs.forEach((pts, i) => {
+      for (const pts of segs) {
         const line = L.polyline(pts, { pane, className: 'sb-route', color, weight: w,
           opacity: dim ? 0.25 : 0.92, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(lines);
-        polys.push({ casing: casings[i], line, extra: 3 });
+        polys.push({ line, front });
         hits.push({ rid, ll: pts, bounds: L.latLngBounds(pts) });
-      });
+      }
     }
     const chevRoutes = !dimAll && fronts.length && fronts.length <= 3 ? fronts : [];
     chev.set(chevRoutes.map((rid) => ({ rid, color: routes[rid]?.color,
@@ -203,7 +199,7 @@ export function createNetworkLayer(map, cb) {
 
   function restyle() {
     const w = lineWeight(map.getZoom());
-    for (const p of polys) { p.line.setStyle({ weight: w }); p.casing.setStyle({ weight: w + p.extra }); }
+    for (const p of polys) p.line.setStyle({ weight: w });
     showStops();
     chev.redraw();
   }
@@ -215,7 +211,8 @@ export function createNetworkLayer(map, cb) {
    */
   function lineAt(p) {
     if (!hits.length || !p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
-    const width = lineWeight(map.getZoom()) + 3, reach = LINE_TAP_PX + width;   // drawn width = the casing
+    // the drawn width with the 3 px edge the lines had before 2026-11-04: the tap reach stays as it was
+    const width = lineWeight(map.getZoom()) + 3, reach = LINE_TAP_PX + width;
     const near = L.latLngBounds(map.containerPointToLatLng([p.x - reach, p.y + reach]), map.containerPointToLatLng([p.x + reach, p.y - reach]));
     const toPx = (ll) => { const c = map.latLngToContainerPoint(ll); return [c.x, c.y]; };
     const lines = hits.filter((h) => h.bounds.intersects(near)).map((h) => ({ rid: h.rid, px: h.ll.map(toPx), width }));

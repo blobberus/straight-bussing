@@ -74,14 +74,14 @@ test('networkSig: order matters (by content), polling with a new equal array doe
   ok(networkSig(net({ order: [] })) !== s);
 });
 
-test('network layer: lines stack by order, casing right under its own line, focus pane on top', () => {
+test('network layer: lines stack by order, no outline under them, focus pane on top', () => {
   const m = bareMap('t-order');
   const layer = createNetworkLayer(m, { onStopTap: () => {} });
   layer.draw(net({ order: ['r3', 'r1', 'r2', 'r4'] }));
   const lines = m.getPane('sbLines');
   eq(strokes(lines), ['#F7EB07', '#0099CC', '#FF9900', '#D62728'], 'bottom -> top: r4, r2, r1, r3');
   const kids = [...lines.querySelectorAll('path')];
-  ok(kids[0].classList.contains('sb-casing') && kids[1].classList.contains('sb-route'), 'casing then line per route');
+  ok(kids.length === 4 && kids.every((k) => k.classList.contains('sb-route')), 'one colored line per route, no outline (owner 2026-11-04)');
   eq(layer.draw(net({ order: ['r3', 'r1', 'r2', 'r4'] })), false, 'same order -> no repaint');
   ok(layer.draw(net({ order: ['r4', 'r3', 'r1', 'r2'] })), 'new order repaints');
   eq(strokes(lines).at(-1), '#F7EB07', 'r4 now on top');
