@@ -1,7 +1,7 @@
 import XCTest
 @testable import StraightBussingKit
 
-/// Port of web/tests/feedback-button.js (the pure rules) and feedback-welcome.js ("gave" wins over "silenced"):
+/// Port of web/tests/feedback-button.js (the pure rules) and feedback-shared.js ("gave" wins over "silenced"):
 /// the map's feedback button (owner 2026-11-02).
 final class FeedbackAskTests: XCTestCase {
     func testSchedule() {
