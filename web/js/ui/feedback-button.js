@@ -17,14 +17,15 @@
  *   progress, the sheet is expanded, the Settings-style overlay or any dialog is open, a text field has focus or the
  *   page is hidden (pingBlocker). Reduced motion: no movement at all, only the static badge.
  * - Tap: a panel in the Settings overlay's shell (ui/settings-overlay.js kind "feedback": same head with Done, card,
- *   scrim; Back, Escape, Done and a scrim tap close it): the feedback card (the popup's ask, WELCOME_BODY), Send
+ *   scrim; Back, Escape, Done and a scrim tap close it): the feedback card (FEEDBACK_LEAD, FEEDBACK_BODY), Send
  *   feedback (a real link to the form in a new tab), a note that the button then disappears, and under it the quiet
- *   "I already gave feedback". Send feedback (here, in the welcome popup or in Settings) records "gave", "I already
- *   gave feedback" records "silenced" (ui/feedback.js FEEDBACK_DONE_KEY): either one removes the button at once and on
- *   every later visit (also in other open tabs) and stops the welcome popup; Settings > Give feedback always stays.
- * - Shown like the welcome popup (also in demo mode); test seam: pages that boot the real app set
- *   sessionStorage[FEEDBACK_BTN_OFF_KEY] = "1" first (tests/e2e.js, e2e-demo.js, feedback-app.js) so it never sits in
- *   their flows; tests/feedback-button.js removes it to test the button.
+ *   "I already gave feedback". Send feedback (here or in Settings) records "gave", "I already gave feedback" records
+ *   "silenced" (ui/feedback.js FEEDBACK_DONE_KEY): either one removes the button at once and on every later visit
+ *   (also in other open tabs); Settings > Give feedback always stays.
+ * - The only feedback prompt since the beta welcome popup was removed (owner 2026-11-04: "Stop the give feedback sign
+ *   on every login to pop up. Keep the feedback button on the map screen."). Shown in live and demo mode; test seam:
+ *   pages that boot the real app set sessionStorage[FEEDBACK_BTN_OFF_KEY] = "1" first (tests/e2e.js, e2e-demo.js) so it
+ *   never sits in their flows; tests/feedback-button.js and feedback-app.js remove it to test the button.
  * Nothing leaves the device: the choice stays in this browser's storage (privacy.html "Your settings").
  */
 import { esc } from "../core/esc.js";
@@ -32,7 +33,7 @@ import { bus } from "../core/events.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen, overlayKind } from "./settings-overlay.js";
 import {
   feedbackLinkHTML, feedbackDone, markFeedbackDone, noteFeedbackOpened,
-  FEEDBACK_ICON, FEEDBACK_LEAD, FEEDBACK_NOTE, WELCOME_BODY, WELCOME_NOTE, FEEDBACK_DONE_KEY, DONE_SILENCED,
+  FEEDBACK_ICON, FEEDBACK_LEAD, FEEDBACK_NOTE, FEEDBACK_BODY, FEEDBACK_IN_SETTINGS, FEEDBACK_DONE_KEY, DONE_SILENCED,
 } from "./feedback.js";
 
 /** The ping schedule (owner: "This notification should ping every once in a while"). */
@@ -101,11 +102,11 @@ export function nextPingIn(count, sinceStart, o = SCHEDULE) {
 export function panelHTML() {
   return '<div class="fbp">'
     + `<div class="st-feedback fbp-card"><div class="st-fbhead">${FEEDBACK_ICON}<p class="st-fblead">${esc(FEEDBACK_LEAD)}</p></div>`
-    + `<p class="v-sec st-intro">${esc(WELCOME_BODY)}</p>`
+    + `<p class="v-sec st-intro">${esc(FEEDBACK_BODY)}</p>`
     + feedbackLinkHTML(FB_SEND, { cls: "v-btn v-btn--primary v-btn--block st-fbbtn", attrs: 'data-fbp="send"', icon: true })
     + `<p class="v-fine st-fbnote fbp-gone">${esc(FB_GONE)}</p></div>`
     + `<button type="button" class="v-btn v-btn--quiet fbp-silence" data-fbp="silence">${esc(FB_SILENCE)}</button>`
-    + `<p class="v-fine fbp-note">${esc(FEEDBACK_NOTE)} ${esc(WELCOME_NOTE)}</p>`
+    + `<p class="v-fine fbp-note">${esc(FEEDBACK_NOTE)} ${esc(FEEDBACK_IN_SETTINGS)}</p>`
     + "</div>";
 }
 

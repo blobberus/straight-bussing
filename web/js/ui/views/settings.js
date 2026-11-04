@@ -39,8 +39,8 @@ import { feedbackLinkHTML, noteFeedbackOpened, FEEDBACK_LEAD, FEEDBACK_ICON, FEE
 import { usageConfigured, resetId, cleanUsage, lastSend } from "../../data/usage.js";
 import { bus } from "../../core/events.js";
 
-/** Settings > Beta feedback, first in Settings (the welcome popup says the link is in Settings): the same tinted look
- * and "very helpful" ask as the popup, Give feedback as the card's primary button. */
+/** Settings > Beta feedback, first in Settings (the map feedback button's panel says the link is in Settings): the same
+ * tinted look and "very helpful" ask as that panel, Give feedback as the card's primary button. */
 export const FEEDBACK_LINE = "This is a beta. Tell us what works and what does not: it takes about a minute and directly shapes what gets fixed and built next.";
 export { FEEDBACK_NOTE };   // ui/feedback.js: the same note under the map feedback button's Send feedback
 /** @returns {string} */
@@ -404,7 +404,7 @@ function setNotify(ctx, change) {
 
 function onClick(e, root, ctx) {
   // Give feedback: the link opens the form by itself; the rider counts as having given feedback (ui/feedback.js):
-  // the map's feedback button goes and the welcome popup never asks again
+  // the map's feedback button goes for good
   if (e.target.closest?.('a[data-key="feedback"]')) return void noteFeedbackOpened();
   const b = e.target.closest?.("[data-st]");
   if (!b || !root.contains(b)) return;

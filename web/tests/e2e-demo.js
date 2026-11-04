@@ -6,7 +6,6 @@
  * Tests share one app instance.
  */
 import { test, eq, ok, holdRun, run } from "./lib.js";
-import { WELCOME_KEY } from "../js/ui/feedback.js";
 import { FEEDBACK_BTN_OFF_KEY } from "../js/ui/feedback-button.js";
 
 holdRun();
@@ -40,8 +39,7 @@ const dialog = () => D.querySelector("dialog.v-confirm[open]");
 
 async function boot() {
   localStorage.setItem("sb:hiddenRoutes", JSON.stringify([]));
-  sessionStorage.setItem(WELCOME_KEY, "1");   // test seam: the beta welcome popup counts as seen (feedback.test.html covers it)
-  sessionStorage.setItem(FEEDBACK_BTN_OFF_KEY, "1");   // and the map's feedback button stays hidden (the same page covers it)
+  sessionStorage.setItem(FEEDBACK_BTN_OFF_KEY, "1");   // test seam: the map's feedback button stays hidden (feedback.test.html covers it)
   F = document.createElement("iframe");
   F.style.cssText = "width:500px;height:900px;border:0";
   F.src = "../index.html?demo=1";

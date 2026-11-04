@@ -422,9 +422,8 @@ async function boot() {
   render();
   syncMap(store.get(), null);
   tripMap = startTripMap(store, map);   // you in the started trip + follow camera (same evaluation as the card and alerts)
-  // beta welcome popup, once per browser session, after this first real render is painted (owner 2026-10-13)
-  import("./ui/feedback.js").then((m) => m.welcomeAfterPaint()).catch((e) => console.warn("welcome popup", e));
-  // the feedback button under the locate button, until the rider gives feedback or silences it (owner 2026-11-02)
+  // the feedback button under the locate button, until the rider gives feedback or silences it (owner 2026-11-02); the
+  // only feedback prompt since the beta welcome popup was removed (owner 2026-11-04)
   import("./ui/feedback-button.js").then((m) => m.startFeedbackButton({ store, ctx })).catch((e) => console.warn("feedback button", e));
   // anonymous usage statistics (owner 2026-10-27; data/usage.js): nothing at all until a receiver is set, never in demo mode
   if (!DEMO) import("./data/usage.js").then((m) => m.usageConfigured() && import("./ui/views/about.js").then((a) => m.startUsage(store, { ver: a.APP_VERSION })))

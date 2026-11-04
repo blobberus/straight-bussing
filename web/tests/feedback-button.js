@@ -1,7 +1,8 @@
 // The map's feedback button (owner 2026-11-02; ui/feedback-button.js, feedback.test.html): the rules (shown until the
 // rider gave feedback or silenced it), the ping schedule and what makes a ping wait, reduced motion, the panel in the
-// Settings shell, Send feedback, I already gave feedback, persistence across reloads and tabs, the welcome popup staying
-// away afterwards, the CSS (under the locate button, colors, hidden at the full detent) and the real app.
+// Settings shell, Send feedback, I already gave feedback, persistence across reloads and tabs, the CSS (under the locate
+// button, colors, hidden at the full detent) and the real app. Since 2026-11-04 it is the only feedback prompt (the
+// welcome popup was removed; feedback-app.js checks the real app shows none).
 import { test, eq, ok } from "./lib.js";
 import { makeCtx, tick } from "./views-fixtures.js";
 import { createStore } from "../js/core/store.js";
@@ -11,8 +12,8 @@ import {
   feedbackButton, testOff,
 } from "../js/ui/feedback-button.js";
 import {
-  FEEDBACK_DONE_KEY, WELCOME_LOG_KEY, WELCOME_KEY, FEEDBACK_LEAD, WELCOME_BODY, FEEDBACK_NOTE, feedbackDone,
-  markFeedbackDone, maybeShowWelcome, _resetWelcome,
+  FEEDBACK_DONE_KEY, WELCOME_LOG_KEY, FEEDBACK_LEAD, FEEDBACK_BODY, FEEDBACK_IN_SETTINGS, FEEDBACK_NOTE, feedbackDone,
+  markFeedbackDone, _resetFeedback,
 } from "../js/ui/feedback.js";
 import { isSettingsOpen, overlayKind, closeSettingsOverlay, OVERLAY_ID } from "../js/ui/settings-overlay.js";
 
@@ -43,11 +44,11 @@ function clean() {
   for (const k of [FEEDBACK_DONE_KEY, WELCOME_LOG_KEY]) { keep[k] = localStorage.getItem(k); localStorage.removeItem(k); }
   const seam = sessionStorage.getItem(FEEDBACK_BTN_OFF_KEY);
   sessionStorage.removeItem(FEEDBACK_BTN_OFF_KEY);
-  _resetWelcome();
+  _resetFeedback();
   return () => {
     for (const [k, v] of Object.entries(keep)) { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); }
     if (seam === null) sessionStorage.removeItem(FEEDBACK_BTN_OFF_KEY); else sessionStorage.setItem(FEEDBACK_BTN_OFF_KEY, seam);
-    _resetWelcome();
+    _resetFeedback();
   };
 }
 /** A fixture button like index.html's (no CSS needed for the rules). */
@@ -117,9 +118,9 @@ test("feedback panel: the ask, Send feedback (the form, new tab), the note under
   box.innerHTML = panelHTML();
   const card = box.querySelector(".st-feedback");
   ok(card, "the Settings card look (accent tint)");
-  eq(card.querySelector(".st-fblead").textContent, FEEDBACK_LEAD, "the popup's ask first");
+  eq(card.querySelector(".st-fblead").textContent, FEEDBACK_LEAD, "the ask first (as in Settings)");
   ok(card.querySelector(".fb-badge[aria-hidden='true'] svg"), "the speech bubble, decoration only");
-  ok(card.textContent.includes(WELCOME_BODY), "beta, about a minute, shapes what gets fixed and built next");
+  ok(card.textContent.includes(FEEDBACK_BODY), "beta, about a minute, shapes what gets fixed and built next");
   const a = card.querySelector('a[data-fbp="send"]');
   eq([a.getAttribute("href"), a.getAttribute("target"), a.textContent.trim()], [FORM, "_blank", FB_SEND]);
   ok(/\bnoopener\b/.test(a.getAttribute("rel")) && /^Send feedback, .*new tab/.test(a.getAttribute("aria-label")), "rel + spoken label");
@@ -132,6 +133,7 @@ test("feedback panel: the ask, Send feedback (the form, new tab), the note under
   ok(!card.contains(quiet) && (gone.compareDocumentPosition(quiet) & Node.DOCUMENT_POSITION_FOLLOWING), "I already gave feedback under the note, outside the tinted card");
   ok(quiet.classList.contains("v-btn--quiet") && !quiet.classList.contains("v-btn--primary"), "less noticeable: a text button");
   ok(box.querySelector(".fbp-note").textContent.includes(FEEDBACK_NOTE), "what opening the form sends");
+  ok(box.querySelector(".fbp-note").textContent.includes(FEEDBACK_IN_SETTINGS), "and that Give feedback is also in Settings");
   eq(box.querySelectorAll(`a[href="${FORM}"]`).length, 1, "one link to the form");
   ok(!DASH.test(box.textContent), "no en / em dash");
 });
@@ -250,7 +252,7 @@ test("tap: a panel like the Settings menu (title, Done, scrim); Done and Escape 
   } finally { fb?.stop(); t.done(); t.b.remove(); restore(); }
 });
 
-test("Send feedback: opens the form (the link is never blocked), the button goes at once and for good, the popup never asks again", async () => {
+test("Send feedback: opens the form (the link is never blocked), the button goes at once and for good", async () => {
   const restore = clean();
   const t = shell();
   let fb = null;
@@ -263,20 +265,19 @@ test("Send feedback: opens the form (the link is never blocked), the button goes
     eq(nav.seen, [[FORM, false]], "the browser opens the form in a new tab");
     eq(feedbackDone(), "gave", "remembered as feedback given");
     eq(JSON.parse(localStorage.getItem(FEEDBACK_DONE_KEY)).how, "gave", "in localStorage " + FEEDBACK_DONE_KEY);
-    ok(JSON.parse(localStorage.getItem(WELCOME_LOG_KEY)).feedback > 0, "the welcome log too");
+    eq(localStorage.getItem(WELCOME_LOG_KEY), null, "nothing goes in the removed popup's log");
     ok(t.b.hidden && !fb.shown(), "the button is gone at once");
     await tick(5);
     ok(!isSettingsOpen(), "the panel closed");
     eq(document.activeElement, document.getElementById("locateBtn"), "focus on the neighbor, the locate button");
     eq(t.ctx.calls.toast, [FB_THANKS], "a thank-you toast");
-    // a later visit: the button never comes back, the popup never asks
+    // a later visit: the button never comes back
     fb.stop();
-    _resetWelcome();
+    _resetFeedback();
     fb = startFeedbackButton({ store: t.ctx.store, ctx: t.ctx, button: t.b, schedule: FAST });
     ok(t.b.hidden && !fb.shown(), "a reload: still gone");
     await sleep(FAST.first + 30);
     eq(fb.pings(), 0, "and no pings");
-    eq(maybeShowWelcome({ storage: { getItem: () => null, setItem() {} }, now: Date.now() + 400 * 86400000 }), null, "the welcome popup stays away for good");
   } finally { nav.off(); fb?.stop(); t.done(); t.b.remove(); restore(); }
 });
 
@@ -292,16 +293,15 @@ test("I already gave feedback: silences it for good (no form opened), Settings k
     eq(nav.seen, [], "no form opened");
     eq(feedbackDone(), "silenced");
     eq(JSON.parse(localStorage.getItem(FEEDBACK_DONE_KEY)).how, "silenced");
-    eq(JSON.parse(localStorage.getItem(WELCOME_LOG_KEY) || "{}").feedback || 0, 0, "the form was not opened");
+    eq(localStorage.getItem(WELCOME_LOG_KEY), null, "the form was not opened, the removed popup's log stays unwritten");
     ok(t.b.hidden, "the button is removed from the map");
     await tick(5);
     ok(!isSettingsOpen(), "the panel closed");
     eq(t.ctx.calls.toast, [FB_SILENCED]);
     fb.stop();
-    _resetWelcome();
+    _resetFeedback();
     fb = startFeedbackButton({ store: t.ctx.store, ctx: t.ctx, button: t.b, schedule: FAST });
     ok(t.b.hidden, "a reload: still gone");
-    eq(maybeShowWelcome({ storage: { getItem: () => null, setItem() {} } }), null, "the welcome popup stays away");
     fb.stop();
     // another tab silenced it: this tab's button goes when the storage event arrives
     localStorage.removeItem(FEEDBACK_DONE_KEY);
@@ -324,7 +324,7 @@ test("storage blocked: either choice hides the button for the rest of the visit;
     ok(b.hidden, "hidden for this visit");
     eq(localStorage.getItem(FEEDBACK_DONE_KEY), null, "nothing stored");
     fb.stop();
-    _resetWelcome();   // a reload
+    _resetFeedback();   // a reload
     fb = startFeedbackButton({ store, ctx: makeCtx(), button: b, schedule: FAST });
     ok(!b.hidden, "a new visit asks again (nothing was kept)");
     fb.stop();
@@ -429,15 +429,8 @@ async function openLive(style = "width:393px;height:852px;border:0;display:block
   await waitFor(() => w.__fbm && w.__fbm.feedbackButton(), "the feedback button started", 8000);
   return { f, w, d, fab: d.getElementById("feedbackBtn") };
 }
-/** Tests run in this page: the welcome popup stays out of the way (its own tests cover it). */
-function noPopup() {
-  const prev = sessionStorage.getItem(WELCOME_KEY);
-  sessionStorage.setItem(WELCOME_KEY, "1");
-  return () => { if (prev === null) sessionStorage.removeItem(WELCOME_KEY); else sessionStorage.setItem(WELCOME_KEY, prev); };
-}
-
 test("real app: the button under the locate button on the map; the panel opens like Settings; Send feedback removes it, also after a reload", async () => {
-  const restore = clean(), popup = noPopup();
+  const restore = clean();
   let v = null;
   try {
     v = await openLive();
@@ -472,14 +465,13 @@ test("real app: the button under the locate button on the map; the panel opens l
     v.d.getElementById("settingsBtn").click();
     const so = await waitFor(() => { const x = v.d.getElementById(OVERLAY_ID); return x && x.dataset.state === "open" && x.dataset.kind === "settings" ? x : null; }, "Settings");
     ok(so.querySelector(`a[href="${FORM}"]`), "Settings > Give feedback is still there");
-  } finally { v?.f.remove(); popup(); restore(); }
+  } finally { v?.f.remove(); restore(); }
 });
 
-test("real app: I already gave feedback silences it for good; the welcome popup stays away; the tests' seam hides the button", async () => {
+test("real app: I already gave feedback silences it for good, also a week later; the tests' seam hides the button", async () => {
   const restore = clean();
   let v = null;
   try {
-    sessionStorage.setItem(WELCOME_KEY, "1");
     v = await openLive();
     ok(!v.fab.hidden, "shown");
     v.fab.click();
@@ -489,19 +481,17 @@ test("real app: I already gave feedback silences it for good; the welcome popup 
     await waitFor(() => o.dataset.state === "closed", "the panel closes");
     eq(JSON.parse(localStorage.getItem(FEEDBACK_DONE_KEY)).how, "silenced");
     v.f.remove();
-    // a new visit a week later: neither the button nor the welcome popup
-    sessionStorage.removeItem(WELCOME_KEY);
+    // a new visit a week later (the old popup's log too): the button stays gone, nothing asks
     localStorage.setItem(WELCOME_LOG_KEY, JSON.stringify({ shown: Date.now() - 8 * 86400000, feedback: 0 }));
     v = await openLive();
     await sleep(800);
     ok(v.fab.hidden, "the button stays gone");
-    ok(!v.d.querySelector("dialog.v-welcome"), "and the welcome popup never asks again");
+    eq(v.d.querySelector("dialog[open]"), null, "and no popup asks instead");
     v.f.remove();
     // the tests' seam: a fresh rider, but the button stays hidden
     localStorage.removeItem(FEEDBACK_DONE_KEY);
-    sessionStorage.setItem(WELCOME_KEY, "1");
     sessionStorage.setItem(FEEDBACK_BTN_OFF_KEY, "1");
     v = await openLive();
     ok(v.fab.hidden, "sessionStorage " + FEEDBACK_BTN_OFF_KEY + " hides it");
-  } finally { v?.f.remove(); sessionStorage.setItem(WELCOME_KEY, "1"); restore(); }
+  } finally { v?.f.remove(); restore(); }
 });

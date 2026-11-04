@@ -1,64 +1,50 @@
 /**
  * @module ui/feedback
- * Beta feedback (owner 2026-10-13): the one place for the feedback form's address, the link that opens it, and the
- * welcome popup that asks for feedback every once in a while.
- * - FEEDBACK_URL: a Google Form. It opens in a new tab only when the rider taps "Give feedback" (Settings) or
- *   "Go to Feedback" (the welcome popup); nothing is added to its link. Not the support form (support.html +
- *   web/support-form.js SUPPORT_FORM_URL, a separate, pre-filled form).
- * - Welcome popup (native <dialog>, behaves like ui/confirm.js), more noticeable since 2026-11-02 (owner: "Make the
- *   feedback request notification a little more noticable (using different colors etc). Emphasize how it would be
- *   very helpful. Would it be possible to make this request only occur every once in a while and not every time the
- *   user reloads the site?"): an accent-tinted header band (--accent-bg, never the green live color) with a speech
- *   bubble icon, then "Your feedback would be very helpful." How often (constants below): never twice in one visit
- *   (sessionStorage WELCOME_KEY), at most once every WELCOME_EVERY_DAYS days (localStorage WELCOME_LOG_KEY, on the
- *   device only, never sent), and never again once the rider has given feedback (feedbackDone below). Storage blocked
- *   or private mode: at most once per browser session, or per page load when even sessionStorage is blocked.
- *   Cancel, Escape and a tap outside close it; "Go to Feedback" is a real link (new tab, never window.open) that
- *   also closes it. main.js opens it after the first real render, so it never delays the first paint or the data.
- *   Test seam: pages that boot the real app set sessionStorage[WELCOME_KEY] = "1" first (tests/e2e.js, e2e-demo.js).
+ * Beta feedback (owner 2026-10-13): the one place for the feedback form's address, the link that opens it, the words the
+ * feedback prompts share, and the memory of whether the rider already gave feedback.
+ * - FEEDBACK_URL: a Google Form. It opens in a new tab only when the rider taps "Send feedback" (the panel of the map's
+ *   feedback button, ui/feedback-button.js) or "Give feedback" (Settings); nothing is added to its link. Not the support
+ *   form (support.html + web/support-form.js SUPPORT_FORM_URL, a separate, pre-filled form).
+ * - No popup: the beta welcome popup (2026-10-13: once per browser session; at most once a week since 2026-11-02) was
+ *   removed on 2026-11-04 at the owner's request ("Stop the give feedback sign on every login to pop up. Keep the
+ *   feedback button on the map screen."). The map's feedback button is the only prompt; Settings > Give feedback always
+ *   stays. Nothing in this module runs at boot.
  * - Given feedback (owner 2026-11-02: "The app should remember if a particular user has already given feedback (or
  *   pressed the link)"): localStorage FEEDBACK_DONE_KEY = {how: "gave" | "silenced", at}. "gave" = the rider opened
- *   the form from anywhere (Send feedback on the map button's panel, Go to Feedback, Give feedback in Settings:
- *   noteFeedbackOpened; a form opened before 2026-11-02, WELCOME_LOG_KEY's feedback date, counts too); "silenced" =
- *   "I already gave feedback" on the panel. Either one removes the map's feedback button (ui/feedback-button.js) and
- *   stops the welcome popup for good; Settings > Give feedback always stays. Storage blocked: remembered for this
- *   page load only. Every change is announced on the app bus as "feedback:done".
+ *   the form from anywhere (Send feedback on the map button's panel, Give feedback in Settings: noteFeedbackOpened; a
+ *   form opened before 2026-11-02 counts too: the removed popup's log WELCOME_LOG_KEY, now only read, never written);
+ *   "silenced" = "I already gave feedback" on the panel. Either one removes the map's feedback button for good;
+ *   Settings > Give feedback always stays. Storage blocked: remembered for this page load only. Every change is
+ *   announced on the app bus as "feedback:done".
  */
 import { esc } from "../core/esc.js";
 import { bus } from "../core/events.js";
 
-/** How often the welcome popup may ask (owner 2026-11-02: "only occur every once in a while"). */
-export const WELCOME_EVERY_DAYS = 7;            // at most once a week; never again after the rider gave feedback
-const DAY_MS = 86400000;
 /** localStorage key: the rider gave feedback or silenced the ask, {how: "gave" | "silenced", at: ms}. */
 export const FEEDBACK_DONE_KEY = "sb-feedback-done";
 /** The panel's "less noticeable" choice (owner's words) records this; opening the form records "gave". */
 export const DONE_GAVE = "gave";
 export const DONE_SILENCED = "silenced";
+/** localStorage key of the removed welcome popup's log, {shown, feedback} (ms). Read only: its feedback date (the form
+ * opened before 2026-11-02) still counts as feedback given; nothing writes it any more. */
+export const WELCOME_LOG_KEY = "sb-welcome-log";
 
 /** The beta feedback form (owner 2026-10-13). */
 export const FEEDBACK_URL = "https://forms.gle/zK4hi2UfYsrXURR97";
-/** sessionStorage key: the welcome popup was shown in this browser session (never twice in one visit). */
-export const WELCOME_KEY = "sb-welcome-seen";
-/** localStorage key: {shown, feedback}, the times (ms) the popup last appeared and the form was last opened. */
-export const WELCOME_LOG_KEY = "sb-welcome-log";
-/** Owner's title, exactly (2026-10-13). */
-export const WELCOME_TITLE = "Welcome to the beta version of Straight Bussing!";
-/** The ask, also the first line of Settings > Beta feedback (owner 2026-11-02: "Emphasize how it would be very helpful"). */
+/** The ask, first on the map button's panel and in Settings > Beta feedback (owner 2026-11-02: "Emphasize how it would
+ * be very helpful"). */
 export const FEEDBACK_LEAD = "Your feedback would be very helpful.";
-export const WELCOME_BODY = "Straight Bussing is still in beta. The form takes about a minute, and every answer directly shapes what gets fixed and built next for everyone who rides the campus shuttles.";
-export const WELCOME_NOTE = "You can also find Give feedback in Settings at any time.";
+/** Why it helps (the map button's panel; Settings has its shorter FEEDBACK_LINE). */
+export const FEEDBACK_BODY = "Straight Bussing is still in beta. The form takes about a minute, and every answer directly shapes what gets fixed and built next for everyone who rides the campus shuttles.";
+/** Where else the form is (fine print on the map button's panel). */
+export const FEEDBACK_IN_SETTINGS = "You can also find Give feedback in Settings at any time.";
 /** Under every feedback link (Settings card, the map button's panel): what opening the form sends. */
 export const FEEDBACK_NOTE = "Opens a Google Form in a new tab. What you type is sent only when you press Submit there.";
 /** What a screen reader adds to a feedback link's visible label. */
 export const NEW_TAB = "opens a Google Form in a new tab";
-/** Speech bubble on an accent disc (decoration: the words carry the meaning). Popup header, Settings card, the map
- * button's panel. */
+/** Speech bubble on an accent disc (decoration: the words carry the meaning). Settings card, the map button's panel. */
 export const FEEDBACK_ICON = '<span class="fb-badge" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.4-4.3A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8.5 10h7M8.5 13.5h4.5"/></svg></span>';
 
-const GUARD_MS = 350;   // like ui/confirm.js: taps in the first moment after opening are ignored (a double tap)
-const PAINT_WAIT_MS = 400;   // welcomeAfterPaint: the longest wait for the next frame
-let shownThisLoad = false;
 let doneThisLoad = null;   // feedbackDone when storage could not keep it (private mode, blocked): this page load only
 
 /**
@@ -73,45 +59,25 @@ export function feedbackLinkHTML(label, { cls = "v-btn v-btn--secondary", attrs 
   return `<a class="${esc(cls)}" href="${esc(FEEDBACK_URL)}" target="_blank" rel="noopener" aria-label="${esc(`${label}, ${NEW_TAB}`)}"${attrs ? " " + attrs : ""}>${esc(label)}${arrow}</a>`;
 }
 
-function session() {
-  try { return window.sessionStorage; } catch (e) { return null; }   // the getter itself throws when storage is blocked
-}
 function local() {
-  try { return window.localStorage; } catch (e) { return null; }
+  try { return window.localStorage; } catch (e) { return null; }   // the getter itself throws when storage is blocked
 }
 
 /**
- * When the popup last appeared and the form was last opened (ms; 0 = never). Never throws.
- * @param {Storage|null} [storage] default: localStorage
- * @returns {{shown:number, feedback:number}}
+ * When the form was opened before 2026-11-02, from the removed popup's log (ms; 0 = never). Never throws.
+ * @param {Storage|null} storage
+ * @returns {number}
  */
-export function welcomeLog(storage = local()) {
+function legacyFeedbackAt(storage) {
   let v = null;
   try { v = storage ? JSON.parse(storage.getItem(WELCOME_LOG_KEY) || "null") : null; } catch (e) { v = null; }
-  const num = (x) => (Number.isFinite(x) && x > 0 ? x : 0);
-  return { shown: num(v && v.shown), feedback: num(v && v.feedback) };
-}
-function writeLog(storage, patch) {
-  try { if (storage) storage.setItem(WELCOME_LOG_KEY, JSON.stringify({ ...welcomeLog(storage), ...patch })); } catch (e) { /* private mode / blocked */ }
-}
-
-/**
- * May the popup ask again? Not within WELCOME_EVERY_DAYS of the last time it appeared, and never after the rider
- * opened the form (2026-11-02; until then it waited 30 days). A time in the future (the clock was changed) counts by
- * its distance, so a wrong clock never silences the popup for good. Pure.
- * @param {{shown?:number, feedback?:number}|null} log welcomeLog()
- * @param {number} [now] ms
- * @returns {boolean}
- */
-export function welcomeDue(log, now = Date.now()) {
-  if (log && Number.isFinite(log.feedback) && log.feedback > 0) return false;   // gave feedback: never again
-  const away = (t) => (Number.isFinite(t) && t > 0 ? Math.abs(now - t) : Infinity);
-  return away(log && log.shown) >= WELCOME_EVERY_DAYS * DAY_MS;
+  const t = v && v.feedback;
+  return Number.isFinite(t) && t > 0 ? t : 0;
 }
 
 /**
  * Has the rider given feedback (or said so)? "gave" | "silenced" | null. A form opened before 2026-11-02 (only the
- * welcome log's feedback date) counts as "gave"; storage blocked: what this page load recorded. Never throws.
+ * removed popup's log has its date) counts as "gave"; storage blocked: what this page load recorded. Never throws.
  * @param {Storage|null} [storage] default: localStorage
  * @returns {"gave"|"silenced"|null}
  */
@@ -120,7 +86,7 @@ export function feedbackDone(storage = local()) {
   try { v = storage ? JSON.parse(storage.getItem(FEEDBACK_DONE_KEY) || "null") : null; } catch (e) { v = null; }
   const how = v && (v.how === DONE_GAVE || v.how === DONE_SILENCED) ? v.how : null;
   if (how) return how;
-  if (welcomeLog(storage).feedback > 0) return DONE_GAVE;
+  if (legacyFeedbackAt(storage) > 0) return DONE_GAVE;
   return doneThisLoad;
 }
 
@@ -149,115 +115,13 @@ export function markFeedbackDone(how, { storage, now } = {}) {
 }
 
 /**
- * The rider opened the form (Send feedback on the map button's panel, Go to Feedback, Give feedback in Settings):
- * the date goes in the welcome log and the rider counts as having given feedback (markFeedbackDone "gave"): the map
- * button goes and the popup never asks again. Never throws.
+ * The rider opened the form (Send feedback on the map button's panel, Give feedback in Settings): they count as having
+ * given feedback (markFeedbackDone "gave"), so the map button goes for good. Never throws.
  * @param {{storage?:Storage|null, now?:number}} [o] storage: default localStorage
  */
 export function noteFeedbackOpened({ storage, now } = {}) {
-  const st = storage === undefined ? local() : storage, t = Number.isFinite(now) ? now : Date.now();
-  writeLog(st, { feedback: t });
-  markFeedbackDone(DONE_GAVE, { storage: st, now: t });
+  markFeedbackDone(DONE_GAVE, { storage, now });
 }
 
-/**
- * Was the welcome popup already shown in this browser session?
- * @param {Storage|null} [storage] default: sessionStorage
- * @returns {boolean}
- */
-export function welcomeSeen(storage = session()) {
-  try { return !!storage && storage.getItem(WELCOME_KEY) === "1"; } catch (e) { return false; }
-}
-
-/**
- * Show the welcome popup when it is due: not yet in this browser session or page load, the rider has not given feedback
- * (feedbackDone: never again after that, nor after "I already gave feedback"), and welcomeDue (once a week at most).
- * It counts as shown as soon as it opens, so a reload never shows it again.
- * @param {{storage?:Storage|null, log?:Storage|null, now?:number}} [o] storage: default sessionStorage; log: default
- *   localStorage; now: ms (tests pass their own)
- * @returns {Promise<string>|null} the popup's result ("feedback" | "cancel"), null when not shown
- */
-export function maybeShowWelcome({ storage, log, now } = {}) {
-  if (shownThisLoad) return null;
-  const st = storage === undefined ? session() : storage;
-  if (welcomeSeen(st)) return null;
-  const ls = log === undefined ? local() : log;
-  const t = Number.isFinite(now) ? now : Date.now();
-  if (feedbackDone(ls) || !welcomeDue(welcomeLog(ls), t)) return null;
-  shownThisLoad = true;
-  try { st && st.setItem(WELCOME_KEY, "1"); } catch (e) { /* private mode / blocked storage: once per page load */ }
-  writeLog(ls, { shown: t });
-  return showWelcome().then((how) => {
-    if (how === "feedback") noteFeedbackOpened({ storage: ls });
-    return how;
-  });
-}
-
-/** Tests only: forget that this page load showed the popup or recorded feedback without storage. */
-export function _resetWelcome() { shownThisLoad = false; doneThisLoad = null; }
-
-/**
- * The welcome popup itself. Cancel has focus first (the safe choice: nothing leaves the device by accident).
- * @returns {Promise<string>} "feedback" (Go to Feedback: the form opened in a new tab) | "cancel" | "none" (not shown)
- */
-export function showWelcome() {
-  if (typeof document === "undefined" || typeof HTMLDialogElement === "undefined") return Promise.resolve("none");
-  if (document.querySelector("dialog.v-welcome")) return Promise.resolve("none");   // already open
-  const opener = document.activeElement;
-  const dlg = document.createElement("dialog");
-  dlg.className = "v-dialog v-welcome";
-  dlg.setAttribute("aria-labelledby", "v-welcome-t");
-  dlg.setAttribute("aria-describedby", "v-welcome-b");
-  dlg.innerHTML = `<div class="v-welcome-band">${FEEDBACK_ICON}<h2 class="v-dlg-title" id="v-welcome-t">${esc(WELCOME_TITLE)}</h2></div>`
-    + `<div class="v-welcome-main"><div id="v-welcome-b"><p class="v-welcome-lead">${esc(FEEDBACK_LEAD)}</p>`
-    + `<p class="v-sec v-welcome-b">${esc(WELCOME_BODY)}</p><p class="v-fine v-welcome-note">${esc(WELCOME_NOTE)}</p></div>`
-    + '<div class="v-actions v-welcome-acts"><button type="button" class="v-btn v-btn--secondary" data-welcome="cancel">Cancel</button>'
-    + feedbackLinkHTML("Go to Feedback", { cls: "v-btn v-btn--primary", attrs: 'data-welcome="feedback"', icon: true }) + "</div></div>";
-  document.body.appendChild(dlg);
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (how) => {
-      if (done) return;
-      done = true;
-      resolve(how);
-      try { if (dlg.open) dlg.close(how); } catch (e) { /* already closed */ }
-      setTimeout(() => dlg.remove(), 0);   // after the link's own default action (the new tab) has run
-      if (opener && opener !== document.body && opener.isConnected) opener.focus?.({ preventScroll: true });
-    };
-    const openedAt = performance.now();
-    dlg.addEventListener("click", (e) => {
-      const early = e.detail !== 0 && performance.now() - openedAt < GUARD_MS;   // keyboard clicks have detail 0
-      const b = e.target.closest?.("[data-welcome]");
-      if (b) {
-        if (early) return void e.preventDefault();   // a ghost tap never opens the form
-        return void finish(b.dataset.welcome);       // the link keeps its default action: the form opens in a new tab
-      }
-      if (early || e.target !== dlg) return;
-      // the backdrop also targets the <dialog>; so does its own padding: only a tap outside the box closes it
-      const r = dlg.getBoundingClientRect();
-      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) finish("cancel");
-    });
-    dlg.addEventListener("cancel", (e) => { e.preventDefault(); finish("cancel"); });   // Escape
-    dlg.addEventListener("close", () => finish("cancel"));   // closed by the browser (Escape without a prior tap)
-    try { dlg.showModal(); } catch (e) { dlg.setAttribute("open", ""); }
-    dlg.querySelector('[data-welcome="cancel"]').focus();
-  });
-}
-
-/**
- * Boot hook (main.js, after the first real render): wait for the next paint, and for the page to be visible
- * (a tab opened in the background must not use up the week's one popup unseen), then maybe show it.
- * Never throws; never blocks anything.
- */
-export function welcomeAfterPaint() {
-  const go = () => { try { maybeShowWelcome(); } catch (e) { console.warn("welcome popup", e); } };
-  const whenVisible = () => {
-    if (!document.hidden) return go();
-    const on = () => { if (document.hidden) return; document.removeEventListener("visibilitychange", on); go(); };
-    document.addEventListener("visibilitychange", on);
-  };
-  let started = false;
-  const next = () => { if (!started) { started = true; setTimeout(whenVisible, 0); } };
-  if (typeof requestAnimationFrame === "function" && !document.hidden) requestAnimationFrame(next);
-  setTimeout(next, PAINT_WAIT_MS);   // a view that never paints a frame (some embedded / headless views) still gets it
-}
+/** Tests only: forget what this page load recorded without storage (as a reload does). */
+export function _resetFeedback() { doneThisLoad = null; }

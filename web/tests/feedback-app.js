@@ -1,20 +1,28 @@
-// The beta welcome popup in the REAL app (feedback.test.html): it opens on a first visit once the app has rendered,
-// never blocks the data, fits the phone and the desktop phone frame, and does not come back after a reload or on a new
-// visit within the week (same-origin iframes share this page's sessionStorage and localStorage).
+// The REAL app without the beta welcome popup (feedback.test.html; removed 2026-11-04, owner: "Stop the give feedback
+// sign on every login to pop up. Keep the feedback button on the map screen."): a first visit, a reload and a visit a
+// week after the old popup last appeared show no popup, and the map's feedback button still appears under the locate
+// button until the rider gives feedback (same-origin iframes share this page's sessionStorage and localStorage).
 // 1. live mode (e2e-stubs.js: fake feed, no location) in a 393 x 852 phone iframe; 2. ?demo=1 in a 1280 x 800
-// desktop window (phone frame), then a reload, then a new visit.
+// desktop window (phone frame), then a reload; 3. new visits with the old popup's log in storage.
 import { test, eq, ok } from "./lib.js";
-import { WELCOME_KEY, WELCOME_LOG_KEY, FEEDBACK_DONE_KEY } from "../js/ui/feedback.js";
+import { WELCOME_LOG_KEY, FEEDBACK_DONE_KEY, FEEDBACK_URL } from "../js/ui/feedback.js";
+import { FEEDBACK_BTN_OFF_KEY } from "../js/ui/feedback-button.js";
+import { OVERLAY_ID } from "../js/ui/settings-overlay.js";
 
-/** A first visit: no popup yet in this session, none ever in this browser, no feedback given. */
+const OLD_TITLE = "Welcome to the beta version of Straight Bussing!";   // the removed popup's title
+const OLD_SEEN_KEY = "sb-welcome-seen";   // the removed popup's per-session flag: without it the old app showed the popup
+const DAY = 86400000;
+
+/** A first visit: a fresh session, nothing in this browser, no feedback given, the button's test seam off. */
 function firstVisit() {
-  sessionStorage.removeItem(WELCOME_KEY);
+  sessionStorage.removeItem(OLD_SEEN_KEY);
+  sessionStorage.removeItem(FEEDBACK_BTN_OFF_KEY);
   localStorage.removeItem(WELCOME_LOG_KEY);
   localStorage.removeItem(FEEDBACK_DONE_KEY);
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function waitFor(fn, what, ms = 7000) {
+async function waitFor(fn, what, ms = 8000) {
   const t0 = Date.now();
   for (;;) {
     let v = null;
@@ -24,11 +32,18 @@ async function waitFor(fn, what, ms = 7000) {
     await sleep(25);
   }
 }
-const welcome = (d) => d.querySelector("dialog.v-welcome[open]");
 const inside = (a, b, m = 0) => a.left >= b.left + m - 0.5 && a.right <= b.right - m + 0.5 && a.top >= b.top - 0.5 && a.bottom <= b.bottom + 0.5;
+/** The feedback button once it is on screen. */
+const shownButton = (d) => { const b = d.getElementById("feedbackBtn"); return b && !b.hidden && b.getClientRects().length ? b : null; };
+/** No popup of any kind: no open dialog, no old popup markup, not its title. */
+function assertNoPopup(d, where) {
+  eq(d.querySelector("dialog[open]"), null, where + ": no open dialog");
+  eq(d.querySelector(".v-welcome"), null, where + ": no welcome popup markup");
+  ok(!d.body.textContent.includes(OLD_TITLE), where + ": not the old popup's title");
+}
 
 /** The real index.html with the e2e stubs and a store handle, written into a new iframe (like tests/e2e.js). */
-async function openLive(style) {
+async function openLive(style = "width:393px;height:852px;border:0;display:block") {
   const html = await (await fetch("../index.html", { cache: "no-store" })).text();
   const base = new URL("../", location.href).href;
   let page = html.replace(/<head>/i, `<head><base href="${base}"><script src="tests/e2e-stubs.js"></script>`);
@@ -41,60 +56,48 @@ async function openLive(style) {
   f.contentDocument.open();
   f.contentDocument.write(page);
   f.contentDocument.close();
-  return f;
+  const w = f.contentWindow, d = w.document;
+  await waitFor(() => w.__st && w.__st.get().staticLoaded && d.getElementById("app").dataset.view === "nearby", "the app rendered");
+  return { f, w, d };
 }
 
-test("real app (live feed, phone): the popup opens after the first render, data keeps loading, Cancel closes it", async () => {
+test("real app (live feed, phone), first visit: no popup; the map's feedback button appears under the locate button", async () => {
   firstVisit();
-  const f = await openLive("width:393px;height:852px;border:0;display:block");
+  const { f, w, d } = await openLive();
   try {
-    const w = f.contentWindow, d = w.document;
-    const dlg = await waitFor(() => welcome(d), "the welcome popup");
-    eq(d.getElementById("app").dataset.view, "nearby", "opened after the app shell rendered its first view");
-    eq(sessionStorage.getItem(WELCOME_KEY), "1", "marked in this browser session");
-    ok(JSON.parse(localStorage.getItem(WELCOME_LOG_KEY)).shown > 0, "its date remembered for the weekly rule");
-    eq(d.activeElement, dlg.querySelector('[data-welcome="cancel"]'), "focus in the popup");
-    await waitFor(() => w.__st.get().staticLoaded && w.__st.get().liveLoaded && w.__st.get().lastOk, "stops, routes and live data load underneath");
-    const r = dlg.getBoundingClientRect();
-    ok(inside(r, { left: 0, right: 393, top: 0, bottom: 852 }, 20), "fits the phone with margins: " + JSON.stringify([r.left, r.right, r.top, r.bottom]));
-    const sheet = d.getElementById("sheet").dataset.detent, view = w.__st.get().view;
-    d.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-    eq([d.getElementById("sheet").dataset.detent, w.__st.get().view], [sheet, view], "while it is open, Escape is the popup's (main.js leaves the sheet alone)");
-    await sleep(400);   // past the double-tap guard
-    dlg.querySelector('[data-welcome="cancel"]').dispatchEvent(new w.MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
-    await waitFor(() => !d.querySelector("dialog.v-welcome"), "popup closed and removed");
+    await waitFor(() => w.__st.get().liveLoaded && w.__st.get().lastOk, "live data loads");
+    const fab = await waitFor(() => shownButton(d), "the map's feedback button");
+    await sleep(1000);   // well past the next paint, when the old popup used to open
+    assertNoPopup(d, "first visit");
+    const L = d.getElementById("locateBtn").getBoundingClientRect(), B = fab.getBoundingClientRect();
+    ok(B.top > L.bottom && B.top - L.bottom <= 12 && Math.abs(B.right - L.right) < 1, "right under the locate button");
+    eq(d.elementFromPoint(B.left + B.width / 2, B.top + B.height / 2)?.closest("#feedbackBtn"), fab, "nothing covers it");
+    eq(fab.getAttribute("aria-label"), "Give feedback");
+    ok(d.activeElement === d.body || !d.activeElement?.closest("dialog"), "focus is not taken by any popup");
+    eq(sessionStorage.getItem(OLD_SEEN_KEY), null, "no popup flag written to this session");
+    eq(localStorage.getItem(WELCOME_LOG_KEY), null, "no popup date written to this browser");
     eq(w.__e2e.errors, [], "no console errors");
   } finally { f.remove(); }
 });
 
 let F = null;
-test("real app (?demo=1, desktop phone frame): shown inside the frame; Go to Feedback opens the form and closes it", async () => {
+test("real app (?demo=1, desktop phone frame), first visit: no popup; the feedback button is inside the frame", async () => {
   firstVisit();
   F = document.createElement("iframe");
   F.style.cssText = "width:1280px;height:800px;border:0;display:block";
   F.src = "../index.html?demo=1";
   document.body.appendChild(F);
   const w = F.contentWindow;
-  const dlg = await waitFor(() => w.document && welcome(w.document), "the welcome popup in demo mode");
+  const fab = await waitFor(() => w.document && shownButton(w.document), "the map's feedback button in demo mode");
   const d = w.document;
   ok(d.documentElement.classList.contains("is-framed"), "desktop phone frame");
-  const app = d.getElementById("app").getBoundingClientRect(), r = dlg.getBoundingClientRect();
-  ok(inside(r, app, 12), "inside the phone frame: " + JSON.stringify({ dlg: [r.left, r.right, r.top, r.bottom], app: [app.left, app.right, app.top, app.bottom] }));
-  await sleep(400);
-  const fab = await waitFor(() => { const b = d.getElementById("feedbackBtn"); return b && !b.hidden ? b : null; }, "the map's feedback button next to the popup");
-  const seen = [];
-  const stop = (e) => { if (e.target.closest?.("a[href]")) { seen.push([e.target.closest("a").href, e.defaultPrevented]); e.preventDefault(); } };
-  w.addEventListener("click", stop);   // after the app's own handlers: record, then keep the test page from opening a tab
-  dlg.querySelector('[data-welcome="feedback"]').dispatchEvent(new w.MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
-  w.removeEventListener("click", stop);
-  eq(seen, [["https://forms.gle/zK4hi2UfYsrXURR97", false]], "the link to the form is followed (new tab)");
-  await waitFor(() => !d.querySelector("dialog.v-welcome"), "popup closed");
-  ok(JSON.parse(localStorage.getItem(WELCOME_LOG_KEY)).feedback > 0, "the form's opening logged");
-  eq(JSON.parse(localStorage.getItem(FEEDBACK_DONE_KEY)).how, "gave", "Go to Feedback counts as feedback given");
-  ok(fab.hidden, "the map's feedback button went at once");
+  await sleep(1000);
+  assertNoPopup(d, "demo first visit");
+  const app = d.getElementById("app").getBoundingClientRect(), r = fab.getBoundingClientRect();
+  ok(inside(r, app, 4), "inside the phone frame: " + JSON.stringify({ fab: [r.left, r.right, r.top, r.bottom], app: [app.left, app.right, app.top, app.bottom] }));
 });
 
-test("real app: a reload in the same session does not show the popup again", async () => {
+test("real app: a reload in the same session shows no popup, and the button still asks (no feedback given yet)", async () => {
   ok(F, "previous test opened the app");
   try {
     const loaded = new Promise((r) => F.addEventListener("load", r, { once: true }));
@@ -106,36 +109,36 @@ test("real app: a reload in the same session does not show the popup again", asy
     s.textContent = 'import { store } from "./js/state.js"; window.__st = store;';
     d.head.appendChild(s);
     await waitFor(() => w.__st && w.__st.get().staticLoaded && d.getElementById("app").dataset.view === "nearby", "the reloaded app rendered");
-    await sleep(800);   // well past the next paint, when the first launch showed it
-    ok(!d.querySelector("dialog.v-welcome"), "no welcome popup after the reload");
-    eq(sessionStorage.getItem(WELCOME_KEY), "1");
-    ok(d.getElementById("feedbackBtn").hidden, "nor the feedback button: feedback was given");
+    await waitFor(() => shownButton(d), "the feedback button after the reload");
+    await sleep(1000);
+    assertNoPopup(d, "reload");
   } finally { F.remove(); F = null; }
 });
 
-test("real app: a new visit within the week (fresh session) does not show the popup; one a week later does", async () => {
-  const visit = async () => {
-    sessionStorage.removeItem(WELCOME_KEY);   // a new tab or browser restart: a fresh session, the same localStorage
-    const f = await openLive("width:393px;height:852px;border:0;display:block");
-    const w = f.contentWindow, d = w.document;
-    await waitFor(() => w.__st && w.__st.get().staticLoaded && d.getElementById("app").dataset.view === "nearby", "the app rendered");
-    await sleep(800);
-    return { f, d };
-  };
+test("real app: a new visit a week after the old popup last appeared shows no popup; the button asks until feedback was given", async () => {
+  let v = null;
   try {
-    const DAY = 86400000;
-    localStorage.removeItem(FEEDBACK_DONE_KEY);   // a rider who has not given feedback (the test above did)
-    localStorage.setItem(WELCOME_LOG_KEY, JSON.stringify({ shown: Date.now() - 3 * DAY, feedback: 0 }));
-    let v = await visit();
-    ok(!v.d.querySelector("dialog.v-welcome"), "shown 3 days ago: not again");
-    v.f.remove();
+    // a browser the old popup asked 8 days ago (it would have asked again now), no feedback given, a fresh session
+    firstVisit();
     localStorage.setItem(WELCOME_LOG_KEY, JSON.stringify({ shown: Date.now() - 8 * DAY, feedback: 0 }));
-    v = await visit();
-    ok(v.d.querySelector("dialog.v-welcome[open]"), "shown 8 days ago: asks again");
+    v = await openLive();
+    await waitFor(() => shownButton(v.d), "the feedback button");
+    await sleep(1000);
+    assertNoPopup(v.d, "a week later");
+    eq(JSON.parse(localStorage.getItem(WELCOME_LOG_KEY)).shown < Date.now() - 7 * DAY, true, "the old log is not rewritten");
     v.f.remove();
+    // a form opened from the old popup before 2026-11-02 (only the old log has its date): no popup and no button
+    firstVisit();
+    localStorage.setItem(WELCOME_LOG_KEY, JSON.stringify({ shown: Date.now() - 40 * DAY, feedback: Date.now() - 40 * DAY }));
+    v = await openLive();
+    await sleep(1000);
+    assertNoPopup(v.d, "feedback given before 2026-11-02");
+    ok(v.d.getElementById("feedbackBtn").hidden, "the old log's feedback date still counts: the button stays gone");
+    v.d.getElementById("settingsBtn").click();
+    await waitFor(() => { const o = v.d.getElementById(OVERLAY_ID); return o && o.dataset.state === "open" && o.dataset.kind === "settings" && o.querySelector(`a[href="${FEEDBACK_URL}"]`); }, "Settings > Give feedback is still there");
   } finally {
+    v?.f.remove();
     localStorage.removeItem(WELCOME_LOG_KEY);
     localStorage.removeItem(FEEDBACK_DONE_KEY);
-    sessionStorage.setItem(WELCOME_KEY, "1");
   }
 });
