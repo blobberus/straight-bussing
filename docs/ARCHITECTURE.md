@@ -460,8 +460,12 @@ absolutely needed and can be completed with one notification to the user, do so"
 `compass.request()` synchronously from `locate()` (every tap that asks for the location) and the locate button only
 when `mayAskCompass(store.locState)` (location already `granted`, so no location prompt can show in the same tap);
 never at launch (`locate({auto: true})`), at most one request in flight, never again once readings come. So the first
-share / locate tap shows the location prompt alone; a later locate tap may show the motion prompt alone; a blocked or
-switched-off location (Settings > Stop sharing) never reaches it. Without the compass the cone still follows the GPS
+share / locate tap shows the location prompt alone; a blocked or switched-off location (Settings > Stop sharing) never
+reaches it. Since 2026-11-04 (owner: "The build no longer shows the user heading. Allow the app to display user
+heading."; riders rarely tapped the locate button a second time, so the cone never appeared) the FIRST TAP ANYWHERE
+once location works asks too: main.js `askCompassOnTap`, a capture-phase document click listener, once per page load
+(`compass.request()` resolves granted / denied / error / skipped; an error, i.e. not counted as a tap, lets the next
+tap try again). That tap's only system prompt is the motion one; iOS keeps the answer for the session. Without the compass the cone still follows the GPS
 course while moving. Android / Chrome need no prompt for the sensors. Test: `tests/e2e-locprompt.js` (e2e.test.html). On while location sharing is on
 (`start` after a fix, `stop` in `stopLocation`), listener off while the page is hidden. Readings never enter the store:
 coalesced to one per animation frame, passed on only on a turn >= 2 deg or a width change, straight to

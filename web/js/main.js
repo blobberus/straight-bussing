@@ -120,6 +120,19 @@ const compass = createCompass({ onHeading: (deg, spread) => mapCall("setHeading"
 function askCompass() {
   if (mayAskCompass(store.get().locState)) compass.request();
 }
+/**
+ * The first tap anywhere in the app once location works also asks (owner 2026-11-04: "The build no longer shows the
+ * user heading. Allow the app to display user heading."): since 2026-11-02 the location tap itself never asks, and
+ * riders rarely tap the locate button a second time, so the cone never appeared. That tap's only system prompt is the
+ * motion one (location already works). Once per page load; a request that failed (not counted as a tap) lets the next
+ * tap try again. iOS keeps the answer for the session, so a later load usually asks without a prompt.
+ */
+let compassTapAsked = false;
+function askCompassOnTap() {
+  if (compassTapAsked || !mayAskCompass(store.get().locState)) return;
+  compassTapAsked = true;
+  compass.request().then((r) => { if (r === "error") compassTapAsked = false; });
+}
 const LOC_OFF = "sb-loc-off";   // the rider chose Stop sharing in Settings: no automatic location at the next launch
 const locOptOut = () => { try { return localStorage.getItem(LOC_OFF) === "1"; } catch (e) { return false; } };
 /** Settings > Stop sharing: forget the position, stop watching, remember the choice. */
@@ -307,6 +320,7 @@ function wireUI() {
   el.back.addEventListener("click", () => back());
   el.tabs.addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) navigate(b.dataset.tab); });
   el.locate.addEventListener("click", onLocateFab);
+  document.addEventListener("click", askCompassOnTap, true);   // capture: before any handler, synchronously in the tap
   // a tap on the context bar right after Retry is the same finger tapping again as the pill vanished (the bar moves up
   // into its place): ignore it, so a fast double tap on Retry never ends the trip (owner 2026-11-03; Retry is also at the
   // pill's left end, over the bar's label). Capture phase: it runs before the bar's own action handler.

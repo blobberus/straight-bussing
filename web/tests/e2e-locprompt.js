@@ -3,7 +3,9 @@
  * the user decides to press share location/use my location in the app. If this is not absolutely needed and can be
  * completed with one notification to the user, do so."). iOS Safari showed the location prompt AND "Motion &
  * Orientation Access" (the compass for the heading cone, ui/compass.js) from the same tap. Now the compass is asked
- * only in a tap where location already works (main.js askCompass, compass.js mayAskCompass).
+ * only in a tap where location already works (main.js askCompass, compass.js mayAskCompass), and since 2026-11-04 the
+ * first tap anywhere once location works asks too (main.js askCompassOnTap), so the heading cone appears without a
+ * second locate tap.
  * e2e.js registers these with its helpers; the test opens its own app iframe (e2e stubs), so the shared one is untouched.
  * The browser is modeled like Safari: a location request is a prompt until location is granted; the compass
  * permission prompts once, then answers without a prompt.
@@ -44,11 +46,22 @@ export function locPromptE2E({ test, ok, eq, waitFor, openApp }) {
       eq(log, ["location prompt"], "first tap: only the location prompt, no motion prompt");
       await waitFor(() => st().locState === "granted" && st().user, "position");
 
-      // 2. a later tap on the locate button: location already works, so the compass may ask, alone
+      // 2. the next tap ANYWHERE (owner 2026-11-04: "The build no longer shows the user heading": riders rarely tap the
+      //    locate button again): location already works, so the compass asks, alone
+      log.length = 0;
+      d.querySelector('#tabs button[data-tab="routes"]').click();
+      eq(prompts(), ["motion prompt"], "next tap anywhere: the motion prompt alone (log " + JSON.stringify(log) + ")");
+      eq(log.filter((x) => x.startsWith("motion")).length, 1, "asked once");
+      await new Promise((r) => setTimeout(r, 50));   // the answer settles
+      log.length = 0;
+      d.querySelector('#tabs button[data-tab="nearby"]').click();
+      eq(log.filter((x) => x.startsWith("motion")), [], "the tap after: no second ask from a plain tap (once per page load)");
+
+      // 2b. the locate button: location already works, at most one motion request in the tap, never a prompt now
       log.length = 0;
       d.getElementById("locateBtn").click();
-      eq(prompts(), ["motion prompt"], "second tap: the motion prompt alone (log " + JSON.stringify(log) + ")");
-      eq(log.filter((x) => x.startsWith("motion")).length, 1, "asked once, though the locate button and locate() both try");
+      eq(prompts(), [], "locate tap after the motion answer: no prompt (log " + JSON.stringify(log) + ")");
+      ok(log.filter((x) => x.startsWith("motion")).length <= 1, "at most one motion request, though the locate button and locate() both try");
       await waitFor(() => d.getElementById("locateBtn").getAttribute("aria-busy") !== "true", "locate finished");
 
       // 3. Settings > Stop sharing, then Share my location: location only (sharing was off, so no compass in that tap)

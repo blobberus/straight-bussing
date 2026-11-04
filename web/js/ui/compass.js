@@ -8,7 +8,8 @@
  *     for locations ... If this is not absolutely needed and can be completed with one notification to the user, do
  *     so"): main.js asks only
  *     in a tap where location is already granted and working (`mayAskCompass`), so the first share / locate tap
- *     shows the location prompt alone and a later locate tap may show the motion prompt alone. Chrome / Android
+ *     shows the location prompt alone, and the next tap anywhere in the app (owner 2026-11-04: "The build no longer
+ *     shows the user heading": riders rarely tap the locate button again) shows the motion prompt alone. Chrome / Android
  *     `deviceorientationabsolute` (or an `absolute` `deviceorientation`), heading = 360 - alpha, needs no prompt;
  *  2. the GPS course (`coords.heading`) while moving at least COURSE_MIN_MPS (walking or riding);
  *  3. nothing: the plain dot, as before.
@@ -111,10 +112,11 @@ export function changed(prev, next) {
  * Start the heading source.
  * @param {{onHeading:(deg:number|null, spread?:number)=>void, win?:object, doc?:object, now?:()=>number,
  *   raf?:(fn:Function)=>any}} o test seams: win (window), doc (document), now (ms), raf (requestAnimationFrame)
- * @returns {{start():void, stop():void, request():void, course(coords:object|null):void, current():object|null}}
+ * @returns {{start():void, stop():void, request():Promise<string>, course(coords:object|null):void, current():object|null}}
  *   start: location sharing is on; stop: it is off (cone gone, listener off); request: ask for the iOS compass
  *   permission (call inside a tap, only when mayAskCompass; at most one request in flight, none once readings
- *   come); course: a position fix (its heading + speed)
+ *   come), resolves "granted" | "denied" | "error" (threw or rejected: not in a tap) | "skipped" (nothing asked:
+ *   readings already come, a request is in flight, or no such API); course: a position fix (its heading + speed)
  */
 export function createCompass(o) {
   const win = o.win || globalThis, doc = o.doc || globalThis.document;
@@ -178,14 +180,14 @@ export function createCompass(o) {
     },
     request() {
       const D = win && win.DeviceOrientationEvent;
-      if (sawCompass || asking || !D || typeof D.requestPermission !== "function") return;
+      if (sawCompass || asking || !D || typeof D.requestPermission !== "function") return Promise.resolve("skipped");
       asking = true;   // one tap may reach here twice (the locate button, then locate()): one prompt
       try {
-        Promise.resolve(D.requestPermission())
-          .then((r) => { if (r === "granted") { detach(); attach(); } })
-          .catch(() => {})
-          .then(() => { asking = false; });
-      } catch (e) { asking = false; /* not in a tap, or no such API */ }
+        return Promise.resolve(D.requestPermission())
+          .then((r) => { if (r === "granted") { detach(); attach(); } return r === "granted" ? "granted" : "denied"; })
+          .catch(() => "error")
+          .then((r) => { asking = false; return r; });
+      } catch (e) { asking = false; return Promise.resolve("error"); /* not in a tap, or no such API */ }
     },
     course(c) {
       if (!c) return;
