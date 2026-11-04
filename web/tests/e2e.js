@@ -372,6 +372,12 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
     const inner = ll.slice(1, -1), onShape = inner.filter((p) => shapePts.some((s) => Math.abs(s[0] - p.lat) < 1e-6 && Math.abs(s[1] - p.lng) < 1e-6));
     ok(inner.length >= 3 && onShape.length >= inner.length - 2, `bus leg along the road shape: ${onShape.length}/${inner.length} inner points are shape vertices`);
   }
+  // the plan drawn: every line dims and the buses of the routes it does not ride fade with them (owner 2026-11-04)
+  const busIcons = () => $$("#map .sb-busicon"), fadedIcons = () => $$("#map .sb-busicon.is-faded");
+  await waitFor(() => busIcons().length === T.routes.length || null, "every stub bus drawn");
+  const fullBefore = busIcons().length - fadedIcons().length;
+  ok(fullBefore >= 1 && fadedIcons().length >= 1, `preview: the plan's buses full (${fullBefore}), the others faded (${fadedIcons().length})`);
+  ok(fadedIcons().every((e) => W.getComputedStyle(e).pointerEvents === "none"), "a faded bus takes no tap");
   // Start switches the sheet to Current trip with the trip in progress first (owner, 2026-10-12; iOS parity)
   click(await waitFor(() => $('#content .v-opt.is-on [data-action="dir:start"]'), "Start on the selected option"), "Start");
   const tt = await waitFor(() => state().view === "nearby" && $("#content .tp-title"), "Current trip with the trip in progress");

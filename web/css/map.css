@@ -138,7 +138,7 @@
 /* buses: 28 px rounded square in route color, white border, heading triangle, one-shot pulse */
 .sb-bus{position:absolute;left:50%;top:0;transform:translateX(-50%);box-sizing:border-box;min-width:28px;height:28px;padding:0 4px;
   border-radius:9px;border:2px solid #fff;background:var(--c,#555);color:var(--t,#fff);display:grid;place-items:center;
-  box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow);transition:opacity .22s,border-color .22s}
+  box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow);transition:opacity .22s,border-color .22s,transform .22s}
 .sb-bus-tx{position:relative;font:800 11.5px/1 -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;letter-spacing:-.01em;white-space:nowrap}
 .sb-bus-tx-sm{font-size:10px;letter-spacing:-.03em}
 .sb-bus-hd{position:absolute;inset:-2px;pointer-events:none;transition:transform .6s ease}
@@ -153,6 +153,12 @@
 .sb-busicon{overflow:visible}
 .sb-bus.is-stale{opacity:.5;border-color:#9a9aa0}
 .sb-bus.is-stale::after{display:none}
+/* a bus on a faded route (core/visibility.js busFaded, owner 2026-11-04): it steps back like its line (smaller and
+   see-through, under the other buses) and takes no tap, so taps reach the stops and lines in focus. Its label, heading
+   and number stay: only its prominence changes. A stale faded bus keeps the gray edge, a little fainter. */
+.leaflet-marker-icon.sb-busicon.is-faded{pointer-events:none}
+.sb-bus.is-faded{opacity:.42;transform:translateX(-50%) scale(.8);box-shadow:0 0 0 1px var(--sb-ring)}
+.sb-bus.is-faded.is-stale{opacity:.32}
 /* bus number (core/busnum.js: a route showing 2 or more buses): a white disc at the top right, readable on any route
    color and on the dark map */
 .sb-bus-num{position:absolute;right:-8px;top:-8px;min-width:17px;height:17px;padding:0 3px;box-sizing:border-box;border-radius:9px;

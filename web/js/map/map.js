@@ -31,6 +31,13 @@ function hub() {
     emit(x) { for (const fn of fns) { try { fn(x); } catch (e) { console.error(e); } } }, size: () => fns.size };
 }
 
+/** Route ids of a plan option's bus legs (the routes it rides; their buses stay at full strength, busFaded). */
+function planRoutes(o) {
+  const out = [];
+  for (const l of (o && o.legs) || []) if (l && l.type === 'bus' && l.rid != null && !out.includes(String(l.rid))) out.push(String(l.rid));
+  return out;
+}
+
 /** Signature of a plan option (legs, ids, geometry sizes). */
 function planSig(o) {
   if (!o) return '';
@@ -57,7 +64,7 @@ export function createMap(elId) {
     zoomDelta: 0.5, wheelPxPerZoomLevel: 90, tapTolerance: 15 }).setView(CAMPUS, 15);
   for (const [name, z] of Object.entries(PANES)) map.createPane(name).style.zIndex = String(z);
 
-  let dark = false, inset = 0, progUntil = 0, lastNet = null, planActive = false;
+  let dark = false, inset = 0, progUntil = 0, lastNet = null, planActive = false, planRids = null, lastBuses = null;
   const stopTap = hub(), busTap = hub(), userMove = hub(), mapTap = hub(), lineTap = hub();
   const basemap = createBasemap(map, dark);
   const credits = createCredits(map, { html: basemap.attribution });
@@ -74,7 +81,7 @@ export function createMap(elId) {
 
   /**
    * You on the trip (setTrip): on the bus = ring + "You" on its marker (the GPS dot steps back: same place, or
-   * worse); a bus not drawn (another route in focus) or the boarding stop as a guess = a marker of its own; GPS =
+   * worse; never faded); a bus not drawn (missing from the feed) or the boarding stop as a guess = a marker of its own; GPS =
    * the normal dot. Labels on your stops: "Board here" before boarding, the get-off count on board.
    */
   function renderYou() {
@@ -202,11 +209,16 @@ export function createMap(elId) {
     },
 
     /**
-     * Live buses, updated in place, drawn on their route line and moved along it (map/track.js).
+     * Live buses, updated in place, drawn on their route line and moved along it (map/track.js). A bus on a faded route
+     * is faded (core/visibility.js busFaded): routes out of focus, or, while a plan is drawn, the routes it does not ride.
      * @param {Array} list store.buses
      * @param {{routes, shapes?, hidden?:string[], focus?:string[]|null, nowS?:number}} o shapes: store.shapes
      */
-    drawBuses(list, o = {}) { buses.draw(list, o); if (you) renderYou(); },
+    drawBuses(list, o = {}) {
+      lastBuses = { list, o };
+      buses.draw(list, { ...o, plan: planRids });
+      if (you) renderYou();
+    },
 
     /**
      * You on the started trip (core/tripyou.js tripYou; null clears): the "You" marker and the labels on your
@@ -309,7 +321,8 @@ export function createMap(elId) {
 
     /**
      * Draw a trip option: bus legs along road shapes, walk legs dotted along leg.coords (else straight),
-     * board/alight dots, start/end pins. The network dims while a plan is shown. Returns the drawn points.
+     * board/alight dots, start/end pins. The network dims while a plan is shown, and so do the buses of every route the
+     * plan does not ride (busFaded). Returns the drawn points.
      * Option may also be a bare walk {from, to, coords?}. Pass fit:true to frame it when it changes.
      * @param {object|null} option planner Option
      * @param {{routes, shapes, routeStops, fit?:boolean}} [ctx]
@@ -323,6 +336,11 @@ export function createMap(elId) {
       planPts = option ? renderPlan(L, planG, option, ctx) : [];
       const active = !!option;
       if (active !== planActive) { planActive = active; favs.setDim(active); if (lastNet) network.draw(lastNet, planActive); }
+      const rids = active ? planRoutes(option) : null;
+      if (sig(rids || ['-']) !== sig(planRids || ['-'])) {
+        planRids = rids;
+        if (lastBuses) api.drawBuses(lastBuses.list, lastBuses.o);   // fade / un-fade the buses for the new plan
+      }
       if (ctx.fit && planPts.length > 1) api.fitTo(planPts, { maxZoom: 17 });
       return planPts;
     },

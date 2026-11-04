@@ -46,8 +46,15 @@ test('MapApi.setTrip: on the bus = ring + "You" on its marker, GPS dot steps bac
   api.setTrip(you({ phase: 'waiting', source: 'stop', onBus: false, stopsAway: 2, stopsLeft: null, ...ll(0, 0), text: 'Waiting at A st.' }));
   const g = el.querySelector('.sb-youicon .sb-you--stop');
   ok(g && g.querySelector('.sb-you-pill').textContent === 'You (est.)');
-  // your bus is not drawn (another route in focus): a You marker of its own at the bus position
+  // another route in focus: the buses fade, never yours (it keeps its ring)
   api.drawBuses([bus('7', 2.5, 2.5), bus('8', 3, 3)], { routes, focus: ['r9'], nowS: 1020 });
+  api.setTrip(you());
+  const iconOf = (b) => [...el.querySelectorAll('.sb-busicon')].find((e) => e.querySelector(b));
+  ok(iconOf('.sb-bus.is-you') && !iconOf('.sb-bus.is-you').classList.contains('is-faded'), 'your bus: full strength in any focus');
+  eq(el.querySelectorAll('.sb-busicon.is-faded').length, 1, 'the other bus fades');
+  eq(el.querySelectorAll('.sb-youicon').length, 0, 'no second You marker');
+  // your bus is not drawn (its route hidden): a You marker of its own at the bus position
+  api.drawBuses([bus('7', 2.5, 2.5), bus('8', 3, 3)], { routes, hidden: ['r1'], nowS: 1030 });
   api.setTrip(you());
   ok(el.querySelector('.sb-youicon .sb-you--bus'), 'standalone You on the bus position');
   api.setTrip(null);

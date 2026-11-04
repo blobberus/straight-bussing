@@ -4,7 +4,8 @@
  * bus markers are updated in place (setLatLng + class toggles) and recreated only when a bus changes
  * route. The pure helpers (idOf, sig, networkSig, busSig, lineWeight, routeLabel, focusSet) do not touch
  * Leaflet, so this module can be imported without `L` for unit tests.
- * Lines stack by `order` (index 0 on top); focused routes always above unfocused ones.
+ * Lines stack by `order` (index 0 on top); focused routes always above unfocused ones. A bus is faded exactly when its
+ * route is (core/visibility.js busFaded, owner 2026-11-04).
  */
 import { safeColor, textOn } from '../core/esc.js';
 import { bearing as geoBearing } from '../core/geo.js';
@@ -13,6 +14,7 @@ import { lineAt as pickLine, LINE_TAP_PX } from './geometry.js';
 import { unwrapDeg } from './geometry.js';
 import { prepareShape, follow, pathCum, pointAt, advance, headingAt } from './track.js';
 import { busKey, busNumbers } from '../core/busnum.js';
+import { busFaded } from '../core/visibility.js';
 
 const ids = new WeakMap();
 let nextId = 1;
@@ -82,12 +84,12 @@ export function networkSig(o, dimAll = false) {
 }
 
 /**
- * Per-marker signature for a bus (position, heading, stale, label, color, focused).
+ * Per-marker signature for a bus (position, heading, stale, label, color, focused, number, picked, faded).
  * @returns {string}
  */
-export function busSig(rid, lat, lon, bearing, stale, label, color, focused = false, num = 0, selected = false) {
+export function busSig(rid, lat, lon, bearing, stale, label, color, focused = false, num = 0, selected = false, faded = false) {
   return sig(rid, lat.toFixed(6), lon.toFixed(6), Number.isFinite(bearing) ? Math.round(bearing) : '', stale ? 1 : 0, label, color,
-    focused ? 1 : 0, num || 0, selected ? 1 : 0);
+    focused ? 1 : 0, num || 0, selected ? 1 : 0, faded ? 1 : 0);
 }
 
 /** A bus must move this far before its heading is derived from movement (no feed bearing). */
@@ -287,8 +289,11 @@ const easeInOut = (k) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
 /**
  * Bus layer: rounded-square badges in route color with a heading triangle, one-shot pulse on each
  * moved position, dimmed when stale (> 60 s). Heading = feed bearing, else derived from movement (busHeading);
- * focused routes get a larger arrow. Non-focused routes' buses are not shown while a focus is set; hidden routes
- * never are.
+ * focused routes get a larger arrow. Hidden routes' buses are never shown (unless that route is in focus). A bus on a
+ * faded route is faded too (owner 2026-11-04; core/visibility.js busFaded: other routes in focus, or a drawn plan
+ * that does not ride it; o.plan = the plan's route ids): smaller, see-through, under the other buses, no pulse, and
+ * it takes no tap (a tap there reaches the map, the stops and the lines in focus). Stale keeps its gray edge. The bus
+ * you ride is never faded.
  * Movement (2026-10-18, owner: smooth, never off the roads and the route lines): a report near its route's line is
  * drawn on the line and each move is animated along it (map/track.js follow; o.shapes), at constant speed over one
  * poll, or eased in about 1 to 2.5 s when it catches up after a reload or a gap in the feed; the heading turns with
@@ -386,10 +391,18 @@ export function createBusLayer(map, cb, opt = {}) {
     return target;
   }
 
+  /** Faded (busFaded, never the bus you ride): its look, no taps, under the other buses. */
+  function dress(m) {
+    const faded = !!m.faded && m.key !== youId;
+    m.mk.setZIndexOffset(m.sel ? 650 : m.key === youId ? 700 : faded ? 300 : 500);
+    const icon = m.mk.getElement();
+    if (icon) { icon.classList.toggle('is-faded', faded); icon.firstElementChild?.classList.toggle('is-faded', faded); }
+  }
+
   /** Mark (or unmark) a bus marker as the one you are on: it moves with the bus, glide included. */
   function markYou(m, on) {
     const el = m.mk.getElement()?.firstElementChild;
-    m.mk.setZIndexOffset(on ? 700 : 500);
+    dress(m);
     if (!el) return;
     el.classList.toggle('is-you', on);
     const ring = el.querySelector('.sb-you-ring');
@@ -414,8 +427,8 @@ export function createBusLayer(map, cb, opt = {}) {
     const k = id == null ? null : String(id);
     if (k !== youId) {
       const old = youId != null ? markers.get(youId) : null;
+      youId = k;   // first: the old marker's name and fade read it
       if (old) markYou(old, false);
-      youId = k;
       const m = k != null ? markers.get(k) : null;
       if (m) markYou(m, true);
     }
@@ -425,6 +438,7 @@ export function createBusLayer(map, cb, opt = {}) {
   function draw(buses, o = {}) {
     const now = o.nowS ?? Date.now() / 1000;
     const hidden = new Set((o.hidden || []).map(String)), focus = focusSet(o.focus);
+    const plan = Array.isArray(o.plan) ? o.plan : null;
     const nums = busNumbers(buses), sel = o.selected != null ? String(o.selected) : null;
     const seen = new Set(), listed = new Set();
     let changed = 0;
@@ -434,7 +448,7 @@ export function createBusLayer(map, cb, opt = {}) {
       const lat = +v?.position?.latitude, lon = +v?.position?.longitude;
       if (id == null || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
       listed.add(String(id));
-      if (focus ? !focus.has(rid) : hidden.has(rid)) continue;
+      if (hidden.has(rid) && !focus?.has(rid)) continue;   // never a hidden route's bus; other routes in focus: faded
       const key = String(id);
       seen.add(key);
       const color = safeColor(o.routes?.[rid]?.color), label = routeLabel(rid, o.routes);
@@ -442,10 +456,10 @@ export function createBusLayer(map, cb, opt = {}) {
       const feed = v.position.bearing == null || v.position.bearing === '' ? NaN : +v.position.bearing;
       const brg = busHeading(feed, m && m.rid === rid ? m.ll : null, [lat, lon], m ? m.brg : NaN, (a, b) => map.distance(a, b));
       const stale = v.timestamp ? now - v.timestamp > STALE_S : false;
-      const focused = !!focus?.has(rid);
+      const focused = !!focus?.has(rid), faded = busFaded(rid, o.focus, plan);
       const num = nums.get(key) || 0, picked = key === sel;
       const name = o.routes?.[rid]?.long || o.routes?.[rid]?.short || label;
-      const s = busSig(rid, lat, lon, brg, stale, label, color, focused, num, picked);
+      const s = busSig(rid, lat, lon, brg, stale, label, color, focused, num, picked, faded);
       if (m && m.s === s) continue;
       changed++;
       const prep = prepareShape(o.shapes?.[rid]);
@@ -460,7 +474,7 @@ export function createBusLayer(map, cb, opt = {}) {
         const info = { id: key, rid, label: v.vehicle?.label != null ? String(v.vehicle.label) : '' };
         mk.on('click', () => cb.onBusTap(info));
         mk.addTo(group);
-        m = { key, rid, color, label, name, num, sel: false, mk, s: '', ll: [lat, lon], brg: NaN, disp: start, to: r0.to, anim: null, vt, seen: now, rot: NaN };
+        m = { key, rid, color, label, name, num, sel: false, faded: false, mk, s: '', ll: [lat, lon], brg: NaN, disp: start, to: r0.to, anim: null, vt, seen: now, rot: NaN };
         markers.set(key, m);
         if (key === youId) markYou(m, true);
         nameMarker(m);
@@ -478,13 +492,13 @@ export function createBusLayer(map, cb, opt = {}) {
       if (Number.isFinite(vt)) m.vt = vt;
       const el = m.mk.getElement()?.firstElementChild;
       if (m.num !== num || m.name !== name) { m.num = num; m.name = name; if (el) setNum(el, num); nameMarker(m); }
-      if (m.sel !== picked) { m.sel = picked; m.mk.setZIndexOffset(picked ? 650 : m.key === youId ? 700 : 500); }
+      if (m.sel !== picked || m.faded !== faded) { m.sel = picked; m.faded = faded; dress(m); }
       if (el) {
         el.classList.toggle('is-picked', picked);
         el.classList.toggle('is-stale', stale);
         el.classList.toggle('no-hd', !Number.isFinite(m.rot));
         el.classList.toggle('is-focus', focused);
-        if (moved && !stale) pulse(el);
+        if (moved && !stale && !(faded && key !== youId)) pulse(el);
       }
     }
     for (const [key, m] of markers) {

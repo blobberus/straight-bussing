@@ -54,6 +54,7 @@ test('busSig / lineWeight / routeLabel', () => {
   eq(busSig('r1', 41.1, -87.1, 90.2, false, 'CEN', '#FF9900'), a, 'sub-degree bearing jitter ignored');
   ok(busSig('r1', 41.1001, -87.1, 90, false, 'CEN', '#FF9900') !== a, 'moved');
   ok(busSig('r1', 41.1, -87.1, 90, true, 'CEN', '#FF9900') !== a, 'stale');
+  ok(busSig('r1', 41.1, -87.1, 90, false, 'CEN', '#FF9900', false, 0, false, true) !== a, 'faded');
   eq(lineWeight(13), 4); eq(lineWeight(15), 5); eq(lineWeight(17), 6); eq(lineWeight(5), 3.5);
   eq(routeLabel('r1', routes), 'CEN'); eq(routeLabel('r2', routes), 'N'); eq(routeLabel('zz', routes), '?');
   eq(routeLabel('x', { x: { short: '', long: 'Friend Center/Metra' } }), 'FCM');
@@ -103,9 +104,48 @@ test('bus layer: in-place updates, recreate only on route change, stale + hidden
   eq(layer.draw([bus(1, 'r3', 1.5, 1), bus(2, 'r2', 3, -2)], { ...o, hidden: ['r2'] }), 1, 'hidden route removed');
   eq(m.getContainer().querySelectorAll('.sb-bus').length, 1);
   layer.draw([bus(1, 'r3', 1.5, 1), bus(2, 'r2', 3, -2)], { ...o, focus: ['r2'] });
-  eq(m.getContainer().querySelectorAll('.sb-bus').length, 1, 'focus shows focused route only');
-  m.getContainer().querySelector('.sb-busicon').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  eq(m.getContainer().querySelectorAll('.sb-bus').length, 2, 'focus: the other route\'s bus stays, faded');
+  const icons = [...m.getContainer().querySelectorAll('.sb-busicon')];
+  const r2icon = icons.find((e) => e.textContent.includes('N')), r3icon = icons.find((e) => e.textContent.includes('RED'));
+  ok(r3icon.classList.contains('is-faded') && r3icon.querySelector('.sb-bus').classList.contains('is-faded'), 'the bus on the faded route is faded');
+  ok(!r2icon.classList.contains('is-faded'), 'the focused route\'s bus is not');
+  eq(getComputedStyle(r3icon).pointerEvents, 'none', 'a faded bus takes no tap');
+  const settle = (el) => { for (const a of el.getAnimations()) a.finish(); return getComputedStyle(el); };   // CSS transitions
+  ok(+settle(r3icon.querySelector('.sb-bus')).opacity < 0.5, 'and steps back');
+  ok(+r3icon.style.zIndex < +r2icon.style.zIndex, 'under the buses in focus');
+  r2icon.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   eq(taps[0]?.rid, 'r2'); eq(taps[0]?.label, 'B2');
+  layer.draw([bus(1, 'r3', 1.5, 1), bus(2, 'r2', 3, -2)], { ...o, focus: ['r2'], hidden: ['r3'] });
+  eq(m.getContainer().querySelectorAll('.sb-bus').length, 1, 'a hidden route\'s bus is never drawn');
+  layer.draw([bus(1, 'r3', 1.5, 1), bus(2, 'r2', 3, -2)], { ...o, focus: ['r3'], hidden: ['r3'] });
+  ok([...m.getContainer().querySelectorAll('.sb-busicon')].some((e) => e.textContent.includes('RED') && !e.classList.contains('is-faded')),
+    'a hidden route in focus (its route page) shows its bus');
+  // a plan drawn (Directions, a started trip) with no focus: the buses of the routes it rides stay, the rest fade
+  layer.draw([bus(1, 'r3', 1.5, 1), bus(2, 'r2', 3, -2)], { ...o, plan: ['r2'] });
+  const faded = () => [...m.getContainer().querySelectorAll('.sb-busicon.is-faded')].map((e) => e.textContent.trim());
+  eq(faded(), ['RED'], 'plan rides r2: only the r3 bus fades');
+  layer.draw([bus(1, 'r3', 1.5, 1, { timestamp: 900 }), bus(2, 'r2', 3, -2)], { ...o, plan: ['r2'] });
+  const st = [...m.getContainer().querySelectorAll('.sb-bus.is-faded')][0];
+  ok(st.classList.contains('is-stale'), 'stale and faded together: the stale edge stays');
+  eq(settle(st).borderTopColor, 'rgb(154, 154, 160)', 'the gray stale edge');
+  layer.draw([bus(1, 'r3', 1.5, 1), bus(2, 'r2', 3, -2)], { ...o, plan: [] });
+  eq(faded().sort(), ['N', 'RED'], 'a walk plan rides no route: every bus fades');
+  layer.draw([bus(1, 'r3', 1.5, 1), bus(2, 'r2', 3, -2)], o);
+  eq(faded(), [], 'no focus, no plan: none faded');
+  m.remove();
+});
+
+test('bus layer: the bus you ride is never faded', () => {
+  const m = bareMap('t-busyou');
+  const layer = createBusLayer(m, { onBusTap: () => {} });
+  const o = { routes, hidden: [], focus: ['r2'], nowS: 1010 };
+  layer.draw([bus(1, 'r3', 1.5, 1), bus(2, 'r2', 3, -2)], o);
+  const r3 = () => [...m.getContainer().querySelectorAll('.sb-busicon')].find((e) => e.textContent.includes('RED'));
+  ok(r3().classList.contains('is-faded'));
+  ok(layer.setYou('1'), 'your bus is drawn');
+  ok(!r3().classList.contains('is-faded') && r3().querySelector('.sb-bus.is-you'), 'on it: full strength, with the You ring');
+  layer.setYou(null);
+  ok(r3().classList.contains('is-faded'), 'off it: faded again');
   m.remove();
 });
 
