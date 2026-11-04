@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>offroute golden (running)</title></head>
+<body>
+<!-- Not a test page (the suite runs *.test.html): experiments/routeknower/E27-scripts/make_golden.py --expect opens it in
+     headless Edge to store web/js/core/offroute.js's answers on the real polls of fixtures/offroute_golden.json (the web test
+     core-offroute.js and the iOS Kit OffRouteTests check against them). -->
+<pre id="result">running...</pre>
+<script type="module">
+import { offRouteStep } from "../js/core/offroute.js";
+const fx = await (await fetch("fixtures/offroute_golden.json", { cache: "no-store" })).json();
+const out = {};
+for (const c of fx.cases) {
+  let tracks = {};
+  const expect = [], trace = [];
+  for (const p of c.polls) {
+    const buses = p.v.map(([veh, rid, lat, lon, vt]) => ({ vehicle: { id: veh }, trip: { route_id: rid }, position: { latitude: lat, longitude: lon }, timestamp: vt }));
+    const r = offRouteStep(tracks, buses, { shapes: fx.shapes, service: fx.service, routes: fx.routes, alerts: [], nowS: p.h, feedTs: p.h });
+    tracks = r.tracks;
+    expect.push(r.hidden);
+    trace.push([p.h, r.hidden.join(","), Object.entries(tracks).map(([k, t]) => k + ":" + Math.round((p.h - t.since) / 60) + "m/" + Math.round(t.dmax)).join(" ")]);
+  }
+  out[c.name] = { expect, trace };
+}
+document.getElementById("result").textContent = JSON.stringify(out);
+document.title = "TESTS pass=1 fail=0";
+</script>
+</body>
+</html>
