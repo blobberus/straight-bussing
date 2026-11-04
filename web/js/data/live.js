@@ -2,8 +2,11 @@
 // Failure keeps the last good data and sets failed:true so the UI can show it.
 // store.buses holds only vehicles that are operating (core/operating.js): ghosts that stopped
 // reporting, unknown routes and buses on out-of-service routes without predictions are dropped here,
-// so the map, route detail, counts, alerts and planner never show them.
+// so the map, route detail, counts, alerts and planner never show them. Buses that have not followed their
+// route for a long time (core/offroute.js: garage runs, parked off the line) are dropped too, with their trip
+// updates, so no arrival time comes from a bus the map does not show.
 import { operatingBuses } from '../core/operating.js';
+import { offRouteStep, dropHidden } from '../core/offroute.js';
 
 /** Passio feed base URL. */
 export const BASE = 'https://passio3.com/chicago/passioTransit/gtfs/realtime/';
@@ -81,6 +84,7 @@ export function startLive(store, opts = {}) {
   const doc = typeof document !== 'undefined' ? document : null;
   let timer = 0, inflight = null, ctl = null, fails = 0, stopped = false;
   let lastBuses = [], lastBusesAt = 0;    // the last poll that had buses (EMPTY_HOLD_S); [] once an empty is believed
+  let offTracks = {}, offHidden = [];      // core/offroute.js clocks between polls; the vehicles it hides now
 
   /** Paused: the page is hidden and nothing needs data in the background. */
   const hidden = () => !!(doc && doc.hidden) && !keepAlive();
@@ -130,6 +134,16 @@ export function startLive(store, opts = {}) {
       const s = store.get();
       patch.buses = operatingBuses(patch.buses, { routes: s.routes, service: s.service, trips: patch.trips || s.trips,
         feedTs: patch.feedTs, nowS: nowFn(), staticLoaded: s.staticLoaded });
+      const off = offRouteStep(offTracks, patch.buses, { shapes: s.shapes, service: s.service, alerts: patch.alerts || s.alerts,
+        routes: s.routes, nowS: nowFn(), feedTs: patch.feedTs });
+      offTracks = off.tracks;
+      offHidden = off.hidden;
+      if (offHidden.length && !patch.trips) patch.trips = s.trips;   // the store's trips still list a newly hidden bus
+    }
+    if (offHidden.length && (patch.buses || patch.trips)) {
+      const d = dropHidden(patch.buses, patch.trips, offHidden);
+      if (patch.buses) patch.buses = d.buses;
+      if (patch.trips) patch.trips = d.trips;
     }
     const ok = vp.status === 'fulfilled' && tu.status === 'fulfilled';
     if (ok) { fails = 0; patch.lastOk = Date.now() / 1000; patch.failed = false; }

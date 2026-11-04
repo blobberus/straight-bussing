@@ -1,9 +1,11 @@
-// Tests for core/offroute.js (buses not following their route for a long time are hidden).
+// Tests for core/offroute.js (buses not following their route for a long time are hidden) and its use in data/live.js.
 // Synthetic lines plus real bus reports from the archived raw polls (fixtures/offroute_golden.json, made by
 // experiments/routeknower/E27-scripts/make_golden.py; the iOS Kit OffRouteTests replays the same file).
 import { test, eq, ok } from "./lib.js";
 import { OFF_M, HIDE_IN_S, HIDE_OUT_S, HOURS_PAD_S, FOLLOW_M, RETURN_M, GAP_S, closestOnLine, inListedHours, detourAlert,
   offRouteStep, dropHidden } from "../js/core/offroute.js";
+import { startLive } from "../js/data/live.js";
+import { createStore } from "../js/core/store.js";
 
 const NOON = 1791997200;              // Wed 2026-10-14 12:00 Chicago (CDT)
 const NIGHT = 1792033200;             // Wed 22:00: route A ended at 21:00, past the 30 min pad
@@ -176,4 +178,34 @@ test("offroute real: DC-022 garage runs hidden, the Downtown Campus Connector de
   ok(/^00:2[78]/.test(at("dc022:4327")), "East: " + at("dc022:4327"));
   ok(!Object.keys(hiddenFrom).some((k) => k.startsWith("dcc:") || k.startsWith("apostolic:")), "riders on board: never hidden");
   ok(/^13:2[23]/.test(at("garage:4324")), "parked at the garage inside its hours: " + at("garage:4324"));
+});
+
+test("live: an off-route bus leaves store.buses and its trip updates leave store.trips", async () => {
+  let now = NOON, pos = GARAGE;
+  const feeds = () => ({
+    vehiclePositions: { header: { timestamp: now }, entity: [{ vehicle: bus("g", "A", pos, now) }, { vehicle: bus("ok", "A", [41.79, -87.61], now) }] },
+    tripUpdates: { header: { timestamp: now }, entity: [
+      { trip_update: { trip: { trip_id: "t", route_id: "A" }, vehicle: { id: "g" }, stop_time_update: [{ stop_id: "S", arrival: { time: now + 300 } }] } },
+      { trip_update: { trip: { trip_id: "t", route_id: "A" }, vehicle: { id: "ok" }, stop_time_update: [{ stop_id: "S", arrival: { time: now + 600 } }] } }] },
+    serviceAlerts: { header: { timestamp: now }, entity: [] },
+  });
+  const fetch = async (url) => {
+    const f = feeds(), name = Object.keys(f).find((k) => url.includes(k));
+    return { ok: true, status: 200, json: async () => f[name] };
+  };
+  const store = createStore({ routes, service, shapes, staticLoaded: true, buses: [], trips: [], alerts: [], feedTs: 0 });
+  const live = startLive(store, { fetch, intervalMs: 600000, now: () => now });
+  const ids = () => store.get().buses.map((b) => b.vehicle.id);
+  const tripVehs = () => store.get().trips.map((t) => t.vehicle.id);
+  for (; now < NOON + HIDE_IN_S; now += 60) await live.pollNow();
+  eq(ids(), ["g", "ok"], "14 min off its route: still shown");
+  await live.pollNow();
+  eq(ids(), ["ok"], "15 min: hidden");
+  eq(tripVehs(), ["ok"], "its arrival times go with it");
+  pos = [41.7902, -87.605];
+  now += 10;
+  await live.pollNow();
+  live.stop();
+  eq(ids(), ["g", "ok"], "back on its line: shown at once");
+  eq(tripVehs(), ["g", "ok"]);
 });
