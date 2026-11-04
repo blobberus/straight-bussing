@@ -2,7 +2,7 @@
  * map/layers.js: route network (colored lines, no outline since 2026-11-04; stops with 44 px tap halos) and live bus
  * markers. Every redraw is gated by a cheap signature so 10 s polling never repaints static layers;
  * bus markers are updated in place (setLatLng + class toggles) and recreated only when a bus changes
- * route. The pure helpers (idOf, sig, networkSig, busSig, lineWeight, routeLabel, focusSet) do not touch
+ * route. The pure helpers (idOf, sig, networkSig, busSig, lineWeight, lineTapWidth, routeLabel, focusSet) do not touch
  * Leaflet, so this module can be imported without `L` for unit tests.
  * Lines stack by `order` (index 0 on top); focused routes always above unfocused ones. A bus is faded exactly when its
  * route is (core/visibility.js busFaded, owner 2026-11-04).
@@ -113,13 +113,33 @@ export function busHeading(feedBearing, prev, cur, last, distFn) {
   return Number.isFinite(last) ? last : NaN;
 }
 
+/** The route line weight before 2026-11-04 (4 px at z13, 5 at z15, 6 at z17): focused lines and the tap reach keep it. */
+const fullWeight = (z) => Math.max(3.5, Math.min(6.5, 4 + (z - 13) * 0.5));
+
 /**
- * Route line weight in px for a zoom level (4 at z13, 5 at z15, 6 at z17).
+ * Route line weight in px for a zoom level. Street level (z17 and closer) keeps 6 to 6.5 px; zoomed out the lines are
+ * 30% thinner (owner 2026-11-04: "Make the bus lines slightly thinner from the zoomed out view to not overclutter the
+ * map"): 3.5 px at the campus view (z15, was 5), 2.8 at z13 (was 4), 15% thinner at z16. A focused route (route page,
+ * highlights, station filter) keeps the full weight, so it reads above the thinner rest and its chevrons fit on it.
+ * @param {number} z
+ * @param {boolean} [focused]
+ * @returns {number}
+ */
+export function lineWeight(z, focused = false) {
+  const full = fullWeight(z);
+  if (focused) return full;
+  const k = Math.max(0.7, Math.min(1, 0.7 + (z - 15) * 0.15));
+  return Math.round(full * k * 100) / 100;
+}
+
+/**
+ * Width (px) a tap on a route line is measured from (lineAt: LINE_TAP_PX beyond half of it): the full weight plus the
+ * 3 px white edge the lines had before 2026-11-04, so the thinner, edgeless lines keep the same finger-sized reach.
  * @param {number} z
  * @returns {number}
  */
-export function lineWeight(z) {
-  return Math.max(3.5, Math.min(6.5, 4 + (z - 13) * 0.5));
+export function lineTapWidth(z) {
+  return fullWeight(z) + 3;
 }
 
 /**
@@ -165,14 +185,14 @@ export function createNetworkLayer(map, cb) {
     lines.clearLayers(); stopsG.clearLayers(); polys = []; stopPts = []; hits = [];
     const routes = o.routes || {}, shapes = o.shapes || {}, hidden = new Set((o.hidden || []).map(String));
     const focus = focusSet(o.focus);
-    const w = lineWeight(map.getZoom());
+    const z = map.getZoom();
     const { back, front: fronts } = stackOrder(Object.keys(shapes), o);
     for (const rid of [...back, ...fronts]) {
       const front = !!focus?.has(rid), dim = dimAll || (focus && !front);
       const color = safeColor(routes[rid]?.color), pane = front ? 'sbFocusLines' : 'sbLines';
       const segs = (shapes[rid] || []).filter((pts) => pts && pts.length >= 2);
       for (const pts of segs) {
-        const line = L.polyline(pts, { pane, className: 'sb-route', color, weight: w,
+        const line = L.polyline(pts, { pane, className: 'sb-route', color, weight: lineWeight(z, front),
           opacity: dim ? 0.25 : 0.92, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(lines);
         polys.push({ line, front });
         hits.push({ rid, ll: pts, bounds: L.latLngBounds(pts) });
@@ -198,8 +218,8 @@ export function createNetworkLayer(map, cb) {
   }
 
   function restyle() {
-    const w = lineWeight(map.getZoom());
-    for (const p of polys) p.line.setStyle({ weight: w });
+    const z = map.getZoom();
+    for (const p of polys) p.line.setStyle({ weight: lineWeight(z, p.front) });
     showStops();
     chev.redraw();
   }
@@ -211,8 +231,7 @@ export function createNetworkLayer(map, cb) {
    */
   function lineAt(p) {
     if (!hits.length || !p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
-    // the drawn width with the 3 px edge the lines had before 2026-11-04: the tap reach stays as it was
-    const width = lineWeight(map.getZoom()) + 3, reach = LINE_TAP_PX + width;
+    const width = lineTapWidth(map.getZoom()), reach = LINE_TAP_PX + width;   // the reach of a finger, not the thinner drawn line
     const near = L.latLngBounds(map.containerPointToLatLng([p.x - reach, p.y + reach]), map.containerPointToLatLng([p.x + reach, p.y - reach]));
     const toPx = (ll) => { const c = map.latLngToContainerPoint(ll); return [c.x, c.y]; };
     const lines = hits.filter((h) => h.bounds.intersects(near)).map((h) => ({ rid: h.rid, px: h.ll.map(toPx), width }));

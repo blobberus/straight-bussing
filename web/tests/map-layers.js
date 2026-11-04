@@ -1,6 +1,6 @@
 /** Tests for map/layers.js signatures + in-place updates, and the MapApi in map/map.js (needs Leaflet). */
 import { test, eq, ok, near } from './lib.js';
-import { idOf, sig, focusSet, networkSig, busSig, lineWeight, routeLabel, createNetworkLayer, createBusLayer } from '../js/map/layers.js';
+import { idOf, sig, focusSet, networkSig, busSig, lineWeight, lineTapWidth, routeLabel, createNetworkLayer, createBusLayer } from '../js/map/layers.js';
 import { createMap } from '../js/map/map.js';
 import { P, squareLoop, stop } from './map-fixtures.js';
 
@@ -55,7 +55,10 @@ test('busSig / lineWeight / routeLabel', () => {
   ok(busSig('r1', 41.1001, -87.1, 90, false, 'CEN', '#FF9900') !== a, 'moved');
   ok(busSig('r1', 41.1, -87.1, 90, true, 'CEN', '#FF9900') !== a, 'stale');
   ok(busSig('r1', 41.1, -87.1, 90, false, 'CEN', '#FF9900', false, 0, false, true) !== a, 'faded');
-  eq(lineWeight(13), 4); eq(lineWeight(15), 5); eq(lineWeight(17), 6); eq(lineWeight(5), 3.5);
+  // owner 2026-11-04: 30% thinner zoomed out, unchanged at street level; focused routes and the tap reach keep the full weight
+  eq(lineWeight(13), 2.8); eq(lineWeight(15), 3.5); eq(lineWeight(16), 4.68); eq(lineWeight(17), 6); eq(lineWeight(18), 6.5); eq(lineWeight(5), 2.45);
+  eq(lineWeight(13, true), 4); eq(lineWeight(15, true), 5); eq(lineWeight(17, true), 6);
+  eq(lineTapWidth(15), 8, 'tap reach as with the old 3 px edge'); eq(lineTapWidth(17), 9);
   eq(routeLabel('r1', routes), 'CEN'); eq(routeLabel('r2', routes), 'N'); eq(routeLabel('zz', routes), '?');
   eq(routeLabel('x', { x: { short: '', long: 'Friend Center/Metra' } }), 'FCM');
 });
@@ -68,6 +71,7 @@ test('network layer: polling does not repaint; changes do', () => {
   const el = m.getContainer(), first = paths(el);
   eq(first.length, 3 + 8 * 2, 'one line per shape (no outline) and stop + halo per stop');
   eq(el.querySelectorAll('path.sb-casing').length, 0, 'no outlines (owner 2026-11-04)');
+  eq(paths(el).filter((p) => p.classList.contains('sb-route')).map((p) => p.getAttribute('stroke-width')), ['3.5', '3.5', '3.5'], 'thinner at z15');
   eq(layer.draw(net({ hidden: [] })), false, 'same inputs -> no redraw');
   ok(paths(el).every((p, i) => p === first[i]), 'same DOM nodes');
   ok(layer.draw(net({ hidden: ['r2'] })), 'hidden change redraws');
@@ -77,6 +81,12 @@ test('network layer: polling does not repaint; changes do', () => {
   eq(dim.length, 2, 'two non-focus routes dimmed');
   const front = m.getPane('sbFocusLines').querySelectorAll('path.sb-route');
   eq(front.length, 1, 'focused route drawn in the top pane');
+  eq(front[0].getAttribute('stroke-width'), '5', 'the focused route keeps the full weight');
+  m.setZoom(17, { animate: false });
+  layer.restyle();
+  eq(paths(el).filter((p) => p.classList.contains('sb-route')).map((p) => p.getAttribute('stroke-width')).sort(), ['6', '6', '6'], 'street level: unchanged');
+  m.setZoom(15, { animate: false });
+  layer.restyle();
   const halo = el.querySelector('path.sb-halo');
   halo.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   eq(taps.length, 1, 'stop tap via 44 px halo');
