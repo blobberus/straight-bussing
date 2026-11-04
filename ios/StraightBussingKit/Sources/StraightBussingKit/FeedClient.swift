@@ -38,6 +38,10 @@ public struct LiveState: Sendable, Equatable {
     /// empty answer is believed (rider safety: "No shuttles are reporting live locations" is at most one poll late).
     /// Each bus keeps its own report time, so stale dimming and `Operating` work as before.
     public static let emptyHoldS = 30.0
+    /// `OffRoute` clocks between polls (web data/live.js offTracks) and the vehicles it hides now: they are left out of
+    /// `buses`, and their trip updates out of `trips`.
+    public var offTracks: [String: OffRoute.Track] = [:]
+    public var offHidden: [String] = []
     public init() {}
 
     public func staleLevel(now: Double) -> StaleLevel {
@@ -60,7 +64,7 @@ extension LiveState {
     /// Merge a poll like data/live.js `run()`: success needs vehiclePositions + tripUpdates; alerts failing
     /// alone is tolerated; failure keeps the last good data and sets `failed`; each feed that did succeed
     /// is still applied; ONE empty vehicle answer in service keeps the last list (`emptyHoldS`); buses are
-    /// filtered to operating vehicles.
+    /// filtered to operating vehicles, then buses long off their route are dropped with their trip updates (`OffRoute`).
     public func applying(_ poll: FeedPoll, staticData: StaticData?, now: Double) -> LiveState {
         var s = self
         s.loaded = true
@@ -91,6 +95,15 @@ extension LiveState {
             let ctx = Operating.Context(routes: staticData?.routes ?? [:], service: staticData?.service ?? ServiceData(),
                                         trips: s.trips, feedTs: s.feedTs, now: now, staticLoaded: !(staticData?.isEmpty ?? true))
             s.buses = Operating.operatingBuses(newBuses, ctx)
+            let off = OffRoute.step(s.offTracks, buses: s.buses, shapes: staticData?.shapes ?? [:], service: staticData?.service,
+                                    alerts: s.alerts, routes: staticData?.routes ?? [:], now: now, feedTs: s.feedTs)
+            s.offTracks = off.tracks
+            s.offHidden = off.hidden
+        }
+        if !s.offHidden.isEmpty && (newBuses != nil || tuOK) {
+            let d = OffRoute.dropHidden(buses: s.buses, trips: s.trips, hidden: s.offHidden)
+            s.buses = d.buses
+            s.trips = d.trips
         }
         if vpOK && tuOK { s.lastOk = now; s.failed = false } else { s.failed = true }
         return s
