@@ -808,3 +808,12 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   stop still stacks), tests/e2e-backnav.js in e2e.test.html (3, the real app with real map line taps: My Routes >
   Central > 53rd Street Express > Back or browser back = the custom route page, unchanged; Routes list > line > map tap
   on another line > Back = Routes list; a single line > Back and browser back). sw `sb-v2-80`.
+
+### Context bar stays when the sheet is expanded (2026-11-04, owner: "When the menu is expanded, the current trip showing at the top of the screen should still show (same way as the settings button)")
+The map context bar (#ctxbar: "Only showing routes for: <trip>" + Show all, "My route: <name>" + Clear, "Lines active
+at <time>" + Clear) no longer hides at the full detent. Like the status pill it keeps its place under the search bar and
+the full detent stops 8 px below it: sheet.css shortens `--v-full` by `--ctx-h` (ui/contextbar.js keeps it = the bar's
+real height, so larger text works) when the bar shows, by both heights when the pill shows too. Only the expanded sheet
+moves when the bar comes or goes; peek never does (tests ui-shell-layout.js, ui-shell-e2e.js "context chip"). The
+locate and feedback buttons still step aside at the full detent. iOS: RootView `ctx` no longer checks `.full`; the bar
+is part of `chromeH`, so the expanded sheet stops below it the same way.

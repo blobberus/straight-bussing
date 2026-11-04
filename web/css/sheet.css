@@ -68,11 +68,13 @@
   color: var(--text-2); font-weight: 600;
 }
 
-/* full detent stops below the status pill (always visible for safety; main.js keeps --pill-h = its
-   measured height), so the pill never covers the grab handle. The context chip does NOT change the
-   detent: it hides at the full detent instead (base.css), so showing / clearing a custom route or a
-   journey never moves the sheet or its content. */
+/* full detent stops below the status pill (always visible for safety; ui/pill.js keeps --pill-h = its
+   measured height) and below the context bar (the trip / my route bar stays visible when the sheet is
+   expanded, owner 2026-11-04; ui/contextbar.js keeps --ctx-h), so neither covers the grab handle. Only the
+   expanded sheet moves when the bar comes or goes; the collapsed one never does. */
 #app:has(#pill:not([hidden])) { --v-full: calc(var(--v-max) - var(--pill-h, 44px) - 8px); }
+#app:has(#ctxbar:not([hidden])) { --v-full: calc(var(--v-max) - var(--ctx-h, 32px) - 8px); }
+#app:has(#pill:not([hidden])):has(#ctxbar:not([hidden])) { --v-full: calc(var(--v-max) - var(--pill-h, 44px) - 8px - var(--ctx-h, 32px) - 8px); }
 
 /* scrolling content: bottom padding equals the part of the sheet hidden below the screen / behind the
    bottom navigation, so the last row can always be scrolled into view in every detent */

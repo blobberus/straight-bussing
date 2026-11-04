@@ -29,7 +29,10 @@ struct RootView: View {
         GeometryReader { geo in
             let inDirections = model.page == .directions
             // On the Routes list the list's own bar says the same thing with the same button (one action per intent).
-            let ctx = ContextBar.shows(model) && model.detent != .full && !(model.tab == .routes && model.page == nil)
+            // It stays when the sheet is expanded, like the search bar and Settings (owner 2026-11-04: "When the menu is
+            // expanded, the current trip showing at the top of the screen should still show"): it is part of chromeH,
+            // so the expanded sheet stops below it.
+            let ctx = ContextBar.shows(model) && !(model.tab == .routes && model.page == nil)
             let topReserved: CGFloat = chromeH > 1 ? chromeH + 14 : 8
             let tabH: CGFloat = keyboardUp ? 0 : Self.tabBarHeight
             let available = max(200, geo.size.height - tabH - topReserved)
