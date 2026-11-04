@@ -1,8 +1,10 @@
 // Layout tests for the floating chrome vs the bottom sheet (SHELL): the real tokens.css / base.css /
 // sheet.css in an iframe with the index.html chrome, as a phone (393x852) and as the desktop phone frame.
-// The sheet must not move, resize or change its content padding when the context chip (#ctxbar)
-// appears / disappears, at any detent; the chip hides at the full detent; the status pill always shows
-// and the full detent stops below it; a status pill change never moves the sheet at peek / half.
+// The collapsed / half sheet must not move, resize or change its content padding when the context chip
+// (#ctxbar) appears / disappears; the chip stays visible at the full detent too (owner 2026-11-04: "When the
+// menu is expanded, the current trip showing at the top of the screen should still show (same way as the
+// settings button)") and the full detent stops below it; the status pill always shows and the full detent
+// stops below it; a status pill change never moves the sheet at peek / half.
 import { test, eq, ok, near } from "./lib.js";
 import { createSheet } from "../js/ui/sheet.js";
 
@@ -31,7 +33,10 @@ async function frame(w, h) {
     f, d, $, rect,
     set(o) {
       if ("detent" in o) { $("sheet").dataset.detent = o.detent; $("sheet").dataset.rest = o.detent; }   // a settled sheet
-      if ("chip" in o) $("ctxbar").hidden = !o.chip;
+      if ("chip" in o) {
+        $("ctxbar").hidden = !o.chip;
+        if (o.chip) $("app").style.setProperty("--ctx-h", $("ctxbar").offsetHeight + "px");   // as ui/contextbar.js does
+      }
       if ("pill" in o) $("pill").hidden = !o.pill;
       void d.body.offsetHeight;
     },
@@ -43,7 +48,7 @@ async function frame(w, h) {
 }
 
 for (const [name, w, h] of [["phone", 393, 852], ["desktop frame", 1000, 900]]) {
-  test(`layout (${name}): the context chip never moves or resizes the sheet, at any detent`, async () => {
+  test(`layout (${name}): the context chip never moves the collapsed / half sheet; the full sheet stops 8px below it`, async () => {
     const t = await frame(w, h);
     try {
       for (const pill of [false, true]) {
@@ -51,7 +56,11 @@ for (const [name, w, h] of [["phone", 393, 852], ["desktop frame", 1000, 900]]) 
           t.set({ detent, pill, chip: false });
           const a = t.geo();
           t.set({ chip: true });
-          eq(t.geo(), a, `${detent}, pill ${pill}: chip shown`);
+          if (detent !== "full") eq(t.geo(), a, `${detent}, pill ${pill}: chip shown`);
+          else {
+            eq(t.geo().h, a.h, `full, pill ${pill}: the sheet element never resizes (--v-max)`);
+            near(t.rect("sheet").top, t.rect("ctxbar").bottom + 8, 1, `full, pill ${pill}: sheet starts 8px below the chip`);
+          }
           t.set({ chip: false });
           eq(t.geo(), a, `${detent}, pill ${pill}: chip cleared`);
         }
@@ -59,19 +68,17 @@ for (const [name, w, h] of [["phone", 393, 852], ["desktop frame", 1000, 900]]) 
     } finally { t.done(); }
   });
 
-  test(`layout (${name}): chip shows over the map, hides at the full detent; never over the grab handle`, async () => {
+  test(`layout (${name}): chip shows in every detent, the full one too (owner 2026-11-04); never over the grab handle`, async () => {
     const t = await frame(w, h);
     try {
       for (const pill of [false, true]) {
-        for (const detent of ["peek", "half"]) {
+        for (const detent of ["peek", "half", "full"]) {
           t.set({ detent, pill, chip: true });
           ok(t.visible("ctxbar"), `chip visible at ${detent}`);
           ok(t.rect("ctxbar").bottom <= t.rect("sheet").top - 8, `chip clear of the grab area at ${detent} (pill ${pill})`);
           if (pill) ok(t.rect("ctxbar").top >= t.rect("pill").bottom, "chip below the pill");
         }
-        t.set({ detent: "full", pill, chip: true });
-        ok(!t.visible("ctxbar"), "chip hidden at full");
-        eq(t.f.contentWindow.getComputedStyle(t.$("ctxbar")).pointerEvents, "none", "hidden chip takes no taps");
+        eq(t.f.contentWindow.getComputedStyle(t.$("ctxbar")).pointerEvents, "auto", "the chip takes taps at full");
         ok(!t.visible("locateBtn"), "locate button hidden at full");
       }
     } finally { t.done(); }
@@ -86,7 +93,7 @@ for (const [name, w, h] of [["phone", 393, 852], ["desktop frame", 1000, 900]]) 
         t.set({ pill: true });
         eq(t.geo(), a, `pill shown at ${detent}: sheet unchanged`);
       }
-      t.set({ detent: "full", pill: true, chip: true });
+      t.set({ detent: "full", pill: true, chip: false });
       ok(t.visible("pill"), "pill visible at full");
       near(t.rect("sheet").top, t.rect("pill").bottom + 8, 1, "full sheet starts 8px below the pill");
       const withPill = t.geo();
@@ -99,8 +106,10 @@ for (const [name, w, h] of [["phone", 393, 852], ["desktop frame", 1000, 900]]) 
       t.$("app").style.setProperty("--pill-h", "62px");
       t.set({ detent: "half", pill: true, chip: true });
       near(t.rect("ctxbar").top, t.rect("pill").top + 62 + 8, 1, "chip below a 62px pill");
-      t.set({ detent: "full" });
+      t.set({ detent: "full", chip: false });
       near(t.rect("sheet").top, t.rect("pill").top + 62 + 8, 1, "full detent below a 62px pill");
+      t.set({ chip: true });
+      near(t.rect("sheet").top, t.rect("ctxbar").bottom + 8, 1, "full detent below a 62px pill and the chip");
     } finally { t.done(); }
   });
 }

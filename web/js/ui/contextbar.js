@@ -1,7 +1,8 @@
 /**
  * @module ui/contextbar
  * Map context bar (SHELL): a small floating bar under the status pill that says why the map shows
- * fewer routes than usual, with a one-tap way out.
+ * fewer routes than usual, with a one-tap way out. It stays when the sheet is expanded (owner 2026-11-04);
+ * its height is kept in --ctx-h on #app so the expanded sheet stops below it.
  *   journey set          -> "Only showing routes for: <label>" + route chips + "Show all" (journey:end)
  *   custom route applied -> "My route: <name>" + "Clear" (custom:clear)
  *   Lines by Time on     -> "Lines active at <time>" + "Clear" (time:clear; core/custom.js clearTimeView)
@@ -138,9 +139,13 @@ export function mountContextBar(el, store, opts = {}) {
     el.hidden = !html;
     if (html) marquee();
   };
+  // --ctx-h on #app = the bar's real height (larger text makes it taller): the expanded sheet stops below it (sheet.css)
+  const app = opts.app || (typeof document !== "undefined" ? document.getElementById("app") : null);
   const ro = typeof ResizeObserver === "function" ? new ResizeObserver(() => {
     const w = el.clientWidth;
     if (w !== width) { width = w; if (!el.hidden) marquee(); }
+    const h = el.offsetHeight + "px";
+    if (app && h !== "0px" && app.style.getPropertyValue("--ctx-h") !== h) app.style.setProperty("--ctx-h", h);
   }) : null;
   ro?.observe(el);
   const hover = (on) => (e) => { if (e.pointerType === "mouse" && anim) { if (on) anim.pause(); else anim.play(); } };
