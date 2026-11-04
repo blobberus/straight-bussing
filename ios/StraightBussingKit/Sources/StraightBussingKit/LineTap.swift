@@ -1,5 +1,18 @@
 import Foundation
 
+/// Route line widths on the map (web map/layers.js lineWeight, owner 2026-11-04: "Make the bus lines slightly thinner
+/// from the zoomed out view to not overclutter the map"): 30% thinner at the campus view and wider (zoom 15 and out),
+/// as drawn at street level from zoom 17, in between by zoom. A focused route keeps its full width.
+public enum RouteLineWidth {
+    /// The factor on a route line's width at a map zoom (Leaflet zoom, `Landmarks.zoom`), in steps of 0.05 so a
+    /// camera move redraws the lines only when the width really changes: 0.7 up to zoom 15, 1 from zoom 17.
+    public static func scale(zoom: Double) -> Double {
+        guard zoom.isFinite else { return 1 }
+        let k = max(0.7, min(1, 0.7 + (zoom - 15) * 0.15))
+        return (k * 20).rounded() / 20
+    }
+}
+
 /// A tap on a route line on the map (owner 2026-10-27: "the uppermost line on the layers ... should open as if the
 /// user clicked the specific route"). Port of web map/geometry.js `segDistPx` / `lineAt`: the TOPMOST drawn line within
 /// `reach` points of the tap, plus half its drawn width, wins, even where a line below it passes closer. Pure: the app

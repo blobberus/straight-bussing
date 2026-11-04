@@ -158,15 +158,15 @@ export function createMap(elId): MapApi
 // MapApi (all methods idempotent, cheap to call every poll):
 setTheme(isDark)                 // swaps OpenFreeMap style via map/style.js (positron/dark patched for legible street names + house numbers; OSM raster fallback if maplibre missing)
 setBottomInset(px)               // visible-map padding from the sheet; fits/flies respect it
-drawNetwork({routes, shapes, routeStops, stopRoutes, stops, hidden:[], focus:[]|null, dark})  // casing+color route lines (dim non-focused to .25), stops at zoom>=14 with 44px tap halo
-drawBuses(buses, {routes, shapes, hidden, focus, nowS})   // rounded-square badge in route color, heading triangle, pulse ring, stale (>60 s) dimmed; on its route line and moved along it (map/track.js, below); recreate marker only if route changes
+drawNetwork({routes, shapes, routeStops, stopRoutes, stops, hidden:[], focus:[]|null, dark})  // colored route lines, no outline (2026-11-04), thinner zoomed out (lineWeight), dim non-focused to .25; stops at zoom>=14 with 44px tap halo
+drawBuses(buses, {routes, shapes, hidden, focus, nowS})   // rounded-square badge in route color, heading triangle, pulse ring, stale (>60 s) dimmed, faded with its faded route (busFaded, 2026-11-04); on its route line and moved along it (map/track.js, below); recreate marker only if route changes
 setSelectedStop(stop|null)       // {id,lat,lon}
 setUser(pos|null)                // blue dot
 setHeading(deg|null, spread?)    // heading cone on the dot (2026-10-14): accent wedge, deg clockwise from north, spread = width (default 60, 20..160);
                                  // fed by ui/compass.js straight from main.js (never the store), DOM written only on a change; null hides it
 highlightStops(items|null, {onPick})   // items [{id,lat,lon}] ring highlights; null clears
 drawFavorites(stops|null)        // [{id,name?,lat,lon}] gold star badges (map/favorites.js), pane z422 (above stops, below highlights/selection/buses), all zooms (smaller <z14), taps -> onStopTap; selected favorite gets a wider unfilled ring; faded while a plan is drawn
-drawPlan(option|null, {routes, shapes, routeStops})  // bus legs follow road shapes (geometry.alongShape); walk legs dashed along leg.coords else straight; start/end pins
+drawPlan(option|null, {routes, shapes, routeStops})  // bus legs follow road shapes (geometry.alongShape); walk legs dashed along leg.coords else straight; start/end pins; no outlines; the buses of routes it does not ride fade
 fitTo(points|bounds, {maxZoom})  flyTo({lat,lon}, zoom)
 onStopTap(fn) onBusTap(fn) onUserMove(fn)
 // map/geometry.js (pure, unit-tested)
@@ -235,9 +235,12 @@ journey: null|{rids:[rid], label:string, kind:'plan'|'station'}   // NOT persist
 effectiveHidden(state): rid[]      // journey ? every route not in journey.rids : hiddenRoutes
 isVisible(state, rid): boolean
 activeCustomRoute(state): custom|null
-mapFocus(state): rid[]|null        // route view [routeId] > (journey: null) > routeFilter.ids > active custom highlight > null
+mapFocus(state): rid[]|null        // route view [routeId] > (journey or a trip: null) > routeFilter.ids > active custom highlight > null
 drawOrder(state, focus?): rid[]    // focus first, then routeOrder, then data order; top-most first
-mapVisibility(state): {hidden, focus, order}   // main.js passes these to drawNetwork / drawBuses
+tripRoutes(state): rid[]|null      // the trip in progress (journey kind 'plan'): its bus legs' routes, [] for a walk
+mapHidden(state): rid[]            // on a trip: every route but the trip's (a walk: all); else effectiveHidden (2026-11-04)
+busFaded(rid, focus, plan?): bool  // other routes in focus, or a drawn plan that does not ride it (2026-11-04)
+mapVisibility(state): {hidden, focus, order}   // hidden = mapHidden; main.js passes these to drawNetwork / drawBuses
 ```
 Lists (Nearby, stop, arrivals, route list) MUST pass `effectiveHidden(state)` wherever they used `state.hiddenRoutes`.
 
@@ -696,7 +699,8 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
 - **Line taps.** Route lines stay non-interactive Leaflet layers (stop halos, buses, favorites and controls keep winning
   their own taps). `map.js`'s map click asks the network layer `lineAt(containerPoint)`: every drawn route polyline is
   projected to container pixels (only those whose bounds come near the tap) and `map/geometry.js lineAt` returns the
-  TOPMOST line within `LINE_TAP_PX` (14 px) plus half its drawn width (the casing), in the network's own draw order
+  TOPMOST line within `LINE_TAP_PX` (14 px) plus half its width (`lineTapWidth`: the full weight plus the 3 px edge the
+  lines had before 2026-11-04, so thinner lines keep the same reach), in the network's own draw order
   (`stackOrder`: routeOrder, focused routes above dimmed ones), even where a lower line passes closer. Hidden routes are
   not drawn, so never tapped. A hit fires `MapApi.onLineTap(rid)` instead of `onMapTap`; with no listener, or while a
   trip plan is drawn (the network is a dim backdrop then), the tap stays an empty-map tap.
@@ -804,3 +808,34 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   stop still stacks), tests/e2e-backnav.js in e2e.test.html (3, the real app with real map line taps: My Routes >
   Central > 53rd Street Express > Back or browser back = the custom route page, unchanged; Routes list > line > map tap
   on another line > Back = Routes list; a single line > Back and browser back). sw `sb-v2-80`.
+
+## Faded buses, trip-only lines, thinner lines without outlines (2026-11-04, owner: "The buses on faded routes should also be faded. If on a trip, only the lines on the particular trip should be displayed.", "Remove the outlines on each line.", "Make the bus lines slightly thinner from the zoomed out view to not overclutter the map.")
+- **One rule, core/visibility.js.** `tripRoutes(state)` = the trip in progress (`journey.kind === 'plan'`): its bus legs'
+  routes, `[]` for a walk. `mapHidden(state)` = every route but the trip's while a trip is in progress (a walk draws no
+  bus line), else `effectiveHidden`; `mapVisibility().hidden` is `mapHidden`, so main.js gives the network and the buses
+  the same answer. A display rule only: nothing saved changes (hiddenRoutes, custom routes), and every line comes back
+  when the trip ends or is cancelled. Lists and arrivals keep `effectiveHidden` (a walk still hides no route there).
+  `mapFocus` gives no focus during a trip (a walk would otherwise bring back a custom route's highlights), except a
+  route page the rider opens: it still draws that route (focused routes are drawn even when hidden), the trip's lines
+  dimmed (owner to confirm). The Directions preview before Start is not a trip: every line stays, dimmed under the plan.
+- **Faded buses.** `busFaded(rid, focus, plan)`: with routes in focus (route page, station filter, a custom route's
+  highlights) a bus off them is faded; with no focus and a plan drawn (Directions, a started trip; map.js passes the
+  plan's bus-leg routes as `plan`) a bus on a route the plan does not ride is faded; the bus to catch never is, nor the
+  bus you ride. These buses used to be hidden while a focus was set (web) or drawn at full strength (web with a plan,
+  iOS with a focus); now they show, faded. Faded (layers.js `dress`, css `.is-faded`): scale .8, opacity .42, under the
+  other buses (z offset 300), no pulse, and no tap (`pointer-events: none`: a tap there reaches the map, its stops and
+  its lines in focus). Label, heading and number stay; a stale faded bus keeps the gray stale edge at opacity .32.
+- **No outlines.** Route lines, planned bus legs and the walking dots are drawn without the white (light) / dark gray
+  (dark) casing (`sb-casing`, `sb-plan-casing`, `sb-walk-casing` and their panes are gone; the planned bus leg is
+  `sb-plan-bus`). The dashed walk stays legible on both basemaps. Weakest without an edge: the yellow 53rd Street
+  Express on the light basemap and the dark blue line on the dark one (for the owner; no edge added back).
+- **Thinner zoomed out.** `layers.js lineWeight(z, focused)`: 30% thinner up to zoom 15 (3.5 px at the campus view, was
+  5; 2.8 at z13), 15% at z16, unchanged from z17 (6 / 6.5 px); a focused route keeps the full weight so it reads above the
+  rest and its chevrons fit. `lineTapWidth(z)` keeps the line tap reach as it was.
+- iOS: Kit `RouteVisibility.tripRoutes / mapHidden / busFaded` (VisibilityCustomTests), `RouteLineWidth.scale(zoom:)`
+  (0.7 to 1 in 0.05 steps); AppModel `mapPlanRids`, `buildLayers` (focused routes drawn even when hidden, every line
+  dimmed while a plan is drawn, as the web), MapScreen (faded `BusMarker` without a button, faded buses first, non-focused
+  lines `width x MapCameraModel.lineScale` set when a camera move ends). The iPhone never had line outlines.
+- Tests: core-custom.js (trip-only lines, walk, busFaded), map-layers.js (no outline, weights, faded buses, taps, plan,
+  stale + faded, the bus you ride), map-direction.js, map-trip.js, e2e.js (the Directions preview fades the other buses;
+  a started trip draws only its lines and buses; all come back after End trip). sw `sb-v2-85`.

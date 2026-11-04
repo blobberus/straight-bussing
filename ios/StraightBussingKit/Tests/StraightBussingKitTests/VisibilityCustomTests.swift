@@ -27,6 +27,55 @@ final class VisibilityCustomTests: XCTestCase {
         XCTAssertNil(RouteVisibility.activeCustomRoute(base(custom: cr, active: "gone")))
     }
 
+    /// web core-custom.js "on a trip the map shows only the trip's lines; a walk shows none (owner 2026-11-04)"
+    func testTripShowsOnlyItsLines() {
+        func trip(_ rids: [String]) -> Journey { Journey(rids: rids, label: "To X", kind: .plan) }
+        XCTAssertNil(RouteVisibility.tripRoutes(base()))
+        XCTAssertNil(RouteVisibility.tripRoutes(base(journey: Journey(rids: ["c"], label: "S", kind: .station))), "a station journey is not a trip")
+        XCTAssertEqual(RouteVisibility.tripRoutes(base(journey: trip(["b"]))), ["b"])
+        XCTAssertEqual(RouteVisibility.tripRoutes(base(journey: trip([]))), [], "a walk: no route")
+        XCTAssertEqual(RouteVisibility.mapHidden(base(hidden: ["b"], journey: trip(["b", "c"]))), ["a", "d"])
+        XCTAssertEqual(RouteVisibility.mapVisibility(base(hidden: ["b"], journey: trip(["b", "c"]))).hidden, ["a", "d"])
+        let walk = base(hidden: ["b"], journey: trip([]))
+        XCTAssertEqual(RouteVisibility.mapHidden(walk), ["a", "b", "c", "d"], "a walking trip draws no bus line")
+        XCTAssertEqual(RouteVisibility.effectiveHidden(walk), ["b"], "lists and arrivals unchanged")
+        var after = walk
+        after.journey = nil
+        XCTAssertEqual(RouteVisibility.mapHidden(after), ["b"], "the lines come back when the trip ends")
+        XCTAssertEqual(after.hiddenRoutes, ["b"])
+        let cr = [CustomRoute(id: "x", name: "X", rids: ["a", "b"], highlight: ["a"])]
+        XCTAssertNil(RouteVisibility.mapFocus(base(custom: cr, active: "x", journey: trip([]))), "a walk: no highlight comes back")
+        XCTAssertNil(RouteVisibility.mapFocus(base(journey: trip(["c"]), filter: ["a"])))
+        XCTAssertEqual(RouteVisibility.mapVisibility(base(journey: trip(["c"]), view: "route", routeId: "a")).focus, ["a"],
+                       "a route page opened during a trip still focuses its route")
+        XCTAssertEqual(RouteVisibility.mapHidden(base(journey: Journey(rids: ["c"], label: "S", kind: .station))), ["a", "b", "d"])
+        XCTAssertEqual(RouteVisibility.mapHidden(base(hidden: ["d"])), ["d"], "no trip: effectiveHidden")
+    }
+
+    /// web core-custom.js "busFaded = the bus's route is faded (owner 2026-11-04)"
+    func testBusFaded() {
+        XCTAssertFalse(RouteVisibility.busFaded("a", focus: nil), "no focus, no plan: none")
+        XCTAssertFalse(RouteVisibility.busFaded("a", focus: []), "an empty focus is no focus")
+        XCTAssertTrue(RouteVisibility.busFaded("a", focus: ["b"]), "another route in focus")
+        XCTAssertFalse(RouteVisibility.busFaded("b", focus: ["b"]))
+        XCTAssertTrue(RouteVisibility.busFaded("a", focus: nil, plan: ["b"]), "a drawn plan that does not ride it")
+        XCTAssertFalse(RouteVisibility.busFaded("b", focus: nil, plan: ["b"]), "the plan rides it")
+        XCTAssertTrue(RouteVisibility.busFaded("b", focus: nil, plan: []), "a walk plan rides no route")
+        XCTAssertTrue(RouteVisibility.busFaded("b", focus: ["a"], plan: ["b"]), "focus decides first")
+        XCTAssertFalse(RouteVisibility.busFaded("a", focus: ["a"], plan: ["b"]))
+    }
+
+    /// web map-layers.js lineWeight: 30% thinner zoomed out, unchanged at street level (owner 2026-11-04)
+    func testRouteLineWidthScale() {
+        XCTAssertEqual(RouteLineWidth.scale(zoom: 13), 0.7)
+        XCTAssertEqual(RouteLineWidth.scale(zoom: 14.1), 0.7, "the iPhone's opening camera")
+        XCTAssertEqual(RouteLineWidth.scale(zoom: 15), 0.7)
+        XCTAssertEqual(RouteLineWidth.scale(zoom: 16), 0.85)
+        XCTAssertEqual(RouteLineWidth.scale(zoom: 17), 1)
+        XCTAssertEqual(RouteLineWidth.scale(zoom: 19), 1)
+        XCTAssertEqual(RouteLineWidth.scale(zoom: .nan), 1)
+    }
+
     func testDrawOrder() {
         XCTAssertEqual(RouteVisibility.drawOrder(base(order: ["c", "zz", "a"])), ["c", "a", "b", "d"])
         XCTAssertEqual(RouteVisibility.drawOrder(base(order: ["c", "a"]), focus: ["d"]), ["d", "c", "a", "b"])

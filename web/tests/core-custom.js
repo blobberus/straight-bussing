@@ -1,6 +1,6 @@
 // Tests for core/visibility.js and core/custom.js (My Routes, journeys, draw order)
 import { test, eq, ok } from "./lib.js";
-import { effectiveHidden, isVisible, mapFocus, drawOrder, mapVisibility, activeCustomRoute } from "../js/core/visibility.js";
+import { effectiveHidden, isVisible, mapFocus, drawOrder, mapVisibility, activeCustomRoute, tripRoutes, mapHidden, busFaded } from "../js/core/visibility.js";
 import * as C from "../js/core/custom.js";
 import { cleanCustom } from "../js/state.js";
 
@@ -25,6 +25,47 @@ test("visibility: focus precedence route view > journey > station filter > custo
   eq(mapFocus(base({ view: "route", routeId: "d", routeFilter: { ids: ["c"] } })), ["d"]);
   eq(mapFocus(base()), null);
   eq(activeCustomRoute(base({ customRoutes: cr, activeCustom: "gone" })), null);
+});
+
+test("visibility: on a trip the map shows only the trip's lines; a walk shows none (owner 2026-11-04)", () => {
+  const trip = (rids) => ({ rids, label: "To X", kind: "plan" });
+  eq(tripRoutes(base()), null, "no trip");
+  eq(tripRoutes(base({ journey: { rids: ["c"], label: "S", kind: "station" } })), null, "a station journey is not a trip");
+  eq(tripRoutes(base({ journey: trip(["b", 3]) })), ["b", "3"]);
+  eq(tripRoutes(base({ journey: { kind: "plan", label: "walk" } })), [], "a walk: no route");
+  // a bus trip: every other line hidden, even the ones the rider shows; the trip's own even when the rider hid it
+  eq(mapHidden(base({ hiddenRoutes: ["b"], journey: trip(["b", "c"]) })), ["a", "d"]);
+  eq(mapVisibility(base({ hiddenRoutes: ["b"], journey: trip(["b", "c"]) })).hidden, ["a", "d"]);
+  // a walk: no line at all on the map, while the lists (effectiveHidden) still hide nothing extra
+  const walk = base({ hiddenRoutes: ["b"], journey: trip([]) });
+  eq(mapHidden(walk), ["a", "b", "c", "d"], "a walking trip draws no bus line");
+  eq(effectiveHidden(walk), ["b"], "lists and arrivals unchanged");
+  // nothing saved changes: the same state without the trip shows what the rider chose
+  const after = { ...walk, journey: null };
+  eq(mapHidden(after), ["b"], "the lines come back when the trip ends");
+  eq(after.hiddenRoutes, ["b"]);
+  // no focus from a station filter or a custom route's highlights during a trip (focused routes would be drawn)
+  const cr = [{ id: "x", name: "X", rids: ["a", "b"], highlight: ["a"] }];
+  eq(mapFocus(base({ customRoutes: cr, activeCustom: "x", journey: trip([]) })), null, "a walk: no highlight comes back");
+  eq(mapFocus(base({ routeFilter: { ids: ["a"] }, journey: trip(["c"]) })), null);
+  // a route page the rider opens during a trip still focuses (and so draws) that route
+  eq(mapVisibility(base({ view: "route", routeId: "a", journey: trip(["c"]) })).focus, ["a"]);
+  // the station journey keeps the old rule
+  eq(mapHidden(base({ journey: { rids: ["c"], label: "S", kind: "station" } })), ["a", "b", "d"]);
+  eq(mapHidden(base({ hiddenRoutes: ["d"] })), ["d"], "no trip: effectiveHidden");
+});
+
+test("visibility: busFaded = the bus's route is faded (owner 2026-11-04)", () => {
+  eq(busFaded("a", null), false, "no focus, no plan: none");
+  eq(busFaded("a", []), false, "an empty focus is no focus");
+  eq(busFaded("a", ["b"]), true, "another route in focus");
+  eq(busFaded("b", ["b"]), false, "its route in focus");
+  eq(busFaded(7, ["7"]), false, "ids compared as text");
+  eq(busFaded("a", null, ["b"]), true, "a drawn plan that does not ride it");
+  eq(busFaded("b", null, ["b"]), false, "the plan rides it: the bus to catch stays");
+  eq(busFaded("b", null, []), true, "a walk plan rides no route");
+  eq(busFaded("b", ["a"], ["b"]), true, "focus decides first (a route page during a trip)");
+  eq(busFaded("a", ["a"], ["b"]), false);
 });
 
 test("visibility: draw order = focus, then routeOrder, then data order; unknown ids dropped", () => {

@@ -132,7 +132,10 @@ public struct StatePatch: Hashable, Sendable {
     }
 }
 
-/// One answer to "which routes does the user see right now" (web/js/core/visibility.js).
+/// One answer to "which routes does the user see right now" (web/js/core/visibility.js). The map adds two rules of its
+/// own (owner 2026-11-04: "The buses on faded routes should also be faded. If on a trip, only the lines on the particular
+/// trip should be displayed."): during a trip in progress it draws only the trip's lines (`mapHidden`; a walk draws
+/// none), and a bus is faded exactly when its route is (`busFaded`).
 public enum RouteVisibility {
     /// Route ids hidden right now (a journey wins over the user's hidden list).
     public static func effectiveHidden(_ s: RouteState) -> [String] {
@@ -156,6 +159,7 @@ public enum RouteVisibility {
     public static func mapFocus(_ s: RouteState) -> [String]? {
         if s.view == "route", let rid = s.routeId { return [rid] }
         if let j = s.journey, !j.rids.isEmpty { return nil }
+        if tripRoutes(s) != nil { return nil }   // a walk: no line at all (mapHidden), no highlight either
         if let f = s.routeFilter?.ids, !f.isEmpty { return f }
         if let c = activeCustomRoute(s), !c.highlight.isEmpty { return c.highlight }
         return nil
@@ -176,9 +180,40 @@ public enum RouteVisibility {
         public var order: [String]
     }
 
-    /// Everything the map needs to know about visibility, in one call.
+    /// Route ids of the trip in progress (a journey of kind `.plan`, started in Directions): the routes of its bus legs,
+    /// [] for a trip with no bus; nil when no trip is in progress (web `tripRoutes`).
+    public static func tripRoutes(_ s: RouteState) -> [String]? {
+        guard let j = s.journey, j.kind == .plan else { return nil }
+        return j.rids
+    }
+
+    /// Routes not drawn on the map (web `mapHidden`). During a trip in progress, every route but the trip's (owner
+    /// 2026-11-04; a walk shows no bus line at all), whatever the rider hid or applied: a display rule only, nothing saved
+    /// changes, the lines come back when the trip ends. Otherwise `effectiveHidden`. Lists and arrivals keep
+    /// `effectiveHidden`. A route page opened during a trip still draws its own route (focused routes are drawn even
+    /// when hidden).
+    public static func mapHidden(_ s: RouteState) -> [String] {
+        guard let trip = tripRoutes(s) else { return effectiveHidden(s) }
+        let keep = Set(trip)
+        return s.routeIds.filter { !keep.contains($0) }
+    }
+
+    /// Is a bus on route `rid` drawn faded (web `busFaded`, owner 2026-11-04: "The buses on faded routes should also be
+    /// faded")? Its route is faded when other routes are in focus, or, with no focus, when a drawn trip plan (Directions,
+    /// a started trip) does not ride it. The routes a drawn plan rides keep their buses at full strength.
+    /// - Parameters:
+    ///   - focus: `mapFocus`
+    ///   - plan: route ids of the drawn plan's bus legs; nil when no plan is drawn ([] = a walk)
+    public static func busFaded(_ rid: String, focus: [String]?, plan: [String]? = nil) -> Bool {
+        if let f = focus, !f.isEmpty { return !f.contains(rid) }
+        if let p = plan { return !p.contains(rid) }
+        return false
+    }
+
+    /// Everything the map needs to know about visibility, in one call. `hidden` is `mapHidden` (a trip in progress shows
+    /// only its own lines).
     public static func mapVisibility(_ s: RouteState) -> MapVisibility {
         let focus = mapFocus(s)
-        return MapVisibility(hidden: effectiveHidden(s), focus: focus, order: drawOrder(s, focus: focus))
+        return MapVisibility(hidden: mapHidden(s), focus: focus, order: drawOrder(s, focus: focus))
     }
 }

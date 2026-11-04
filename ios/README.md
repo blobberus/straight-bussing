@@ -48,7 +48,8 @@ data-geocode.js) so the Swift port provably behaves the same.
 | core/time.js | Arrivals.swift (`TimeFmt`) | clock, minsUntil, ago, etaLabel |
 | core/arrivals.js | Arrivals.swift | arrivalsFor, staleLevel (err > 60 s / old > 300 s / late > 120 s), runningCount, activeAlerts, alertRouteIds (2026-10-16, DC-009: an alert's route id may be Passio's own, a route's `alias_ids` = `Route.aliasIds`) |
 | core/operating.js | Operating.swift | ghost (> 5 min older than the feed), unknown route, out of service without predictions |
-| core/visibility.js | RouteState.swift (`RouteVisibility`) | effectiveHidden, mapFocus, drawOrder, mapVisibility |
+| core/visibility.js | RouteState.swift (`RouteVisibility`) | effectiveHidden, mapFocus, drawOrder, mapVisibility, tripRoutes / mapHidden / busFaded (2026-11-04) |
+| map/layers.js lineWeight (2026-11-04) | LineTap.swift (`RouteLineWidth.scale`) | route lines 30% thinner zoomed out (zoom 15 and out), full width from zoom 17; focused routes keep it |
 | core/custom.js, state.js cleanCustom | Custom.swift, RouteState.swift | every function returns a `StatePatch` (the web's store patch) |
 | core/schedule.js | Schedule.swift | America/Chicago, after-midnight spans, calendar exceptions; `nextStartToday` and `restingText` (2026-10-17, owner: saved routes that are not running say when they run again today) |
 | core/predict.js | Predict.swift (`SchedulePredictor`) | segments.json + optional learned model (v1/v2 blending, quantiles) |
@@ -225,7 +226,9 @@ gallery "28-livestates", "29-livestates-end") draws the card in all four states 
 ## App screens (SwiftUI, iOS 17)
 
 - Map (MapKit `Map` iOS 17 API): route polylines in route colors stacked by the user's map order (focused routes
-  on top, others dimmed), stops (favorites as stars), bus badges with route chip and heading, your location,
+  on top, others dimmed; every line dimmed while a plan is drawn; thinner when the camera is far out; no outlines),
+  stops (favorites as stars), bus badges with route chip and heading (faded with their faded route; during a trip only
+  the trip's lines and buses), your location,
   the selected/started trip (bus legs in route color along the road shape between the stops, dashed walks on
   sidewalks, destination pin; the walk-only line when no shuttle helps), and the names of the busiest buildings, the
   UChicago dorms and the places the shuttles serve ("Map labels" above).
@@ -538,6 +541,7 @@ actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
 | My Routes: empty state "Save the routes you ride", hint text, New button | done | |
 | Favorite stations: next bus, "No upcoming buses on your visible routes", Edit (reorder / remove), empty hint | done | drag + swipe-to-delete in Edit instead of arrow buttons |
 | My Routes: Service alerts row (count badge) + About row | done | the iOS Settings row was dropped 2026-10-10 (the gear is on screen; one entry per intent) |
+| Faded buses, trip-only lines, thinner lines (2026-11-04, owner: "The buses on faded routes should also be faded. If on a trip, only the lines on the particular trip should be displayed.", "Make the bus lines slightly thinner from the zoomed out view"): web core/visibility.js `tripRoutes` / `mapHidden` / `busFaded` = Kit `RouteVisibility` (same names), web map.js `planRoutes` = `AppModel.mapPlanRids`, web layers.js stackOrder (a focused route drawn even when hidden) + dimAll (every line dimmed under a plan) = `AppModel.buildLayers` (`planDim`), web faded marker (`is-faded`: scale .8, opacity .42, under the rest, no tap) = `BusMarker(faded:)` without a Button, faded buses first; web `lineWeight(z, focused)` = Kit `RouteLineWidth.scale(zoom:)` x `MapLine.width` (non-focused lines; `MapCameraModel.lineScale`, written when a camera move ends). "Remove the outlines on each line": the iPhone never drew any (single `MapPolyline` strokes) | done (CI; not yet seen on a real iPhone) | `VisibilityCustomTests` (trip-only lines, walk, busFaded, line width scale); iPhone trips always have a bus (no walk Start), the walk rule is ported for parity |
 | Custom route detail: "Showing on the map · N routes", Show on map / Stop showing, Edit / Delete, per-route status + "· N min at <nearest stop>", Highlight toggles + footers | done | |
 | Custom route editor: name "My route N", groups Running now / Scheduled, no live location / Not running, "Choose at least one route.", Delete custom route; new route is shown on the map + toast | done | before: not applied on save, no groups |
 | Settings: theme; service alerts (count, "Checking for service alerts…", period text, official contact when none, out-of-date note) | done | |

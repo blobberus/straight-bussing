@@ -7,6 +7,9 @@
  * its routes; otherwise store.hiddenRoutes applies (applying a custom route rewrites hiddenRoutes, see
  * core/custom.js). Focus (others dimmed, not hidden) comes from the route detail view, then the
  * journey, then the station filter, then the applied custom route's highlight list.
+ * The map adds two rules of its own (owner 2026-11-04: "The buses on faded routes should also be faded. If on a
+ * trip, only the lines on the particular trip should be displayed."): during a trip in progress it draws only the
+ * trip's lines (mapHidden; a walk draws none), and a bus is faded exactly when its route is (busFaded).
  */
 
 /**
@@ -53,6 +56,7 @@ export function mapFocus(state) {
   if (!state) return null;
   if (state.view === 'route' && state.routeId) return [String(state.routeId)];
   if (state.journey && state.journey.rids && state.journey.rids.length) return null;   // already hidden down to these
+  if (tripRoutes(state)) return null;   // a walk: no line at all (mapHidden), no highlight either
   const f = state.routeFilter && state.routeFilter.ids;
   if (f && f.length) return f.map(String);
   const c = activeCustomRoute(state);
@@ -77,13 +81,59 @@ export function drawOrder(state, focus = null) {
 }
 
 /**
- * Everything the map needs to know about visibility, in one call.
+ * Route ids of the trip in progress (store.journey of kind 'plan', started in Directions): the routes of its bus legs,
+ * [] for a trip with no bus (the walk option); null when no trip is in progress.
+ * @param {{journey?:{kind?:string, rids?:string[]}|null}} state
+ * @returns {string[]|null}
+ */
+export function tripRoutes(state) {
+  const j = state && state.journey;
+  if (!j || j.kind !== 'plan') return null;
+  return Array.isArray(j.rids) ? j.rids.map(String) : [];
+}
+
+/**
+ * Routes not drawn on the map. During a trip in progress, every route but the trip's (owner 2026-11-04: "If on a
+ * trip, only the lines on the particular trip should be displayed"; a walk shows no bus line at all), whatever the
+ * rider hid or applied: a display rule only, nothing saved changes, and the lines come back when the trip ends.
+ * Otherwise effectiveHidden. Lists and arrivals keep effectiveHidden (a walk there hides no route). A route page the
+ * rider opens during a trip still draws its own route (mapFocus; focused routes are drawn even when hidden).
+ * @param {object} state
+ * @returns {string[]}
+ */
+export function mapHidden(state) {
+  const trip = tripRoutes(state);
+  if (!trip) return effectiveHidden(state);
+  const keep = new Set(trip);
+  return Object.keys((state && state.routes) || {}).filter((rid) => !keep.has(rid));
+}
+
+/**
+ * Is a bus on route `rid` drawn faded (owner 2026-11-04: "The buses on faded routes should also be faded")? Its
+ * route is faded when other routes are in focus (route page, station filter, a custom route's highlights: the line
+ * dims to .25), or, with no focus, when a trip plan is drawn (Directions, a started trip) that does not ride it. The
+ * routes a drawn plan rides keep their buses at full strength: the bus to catch is never the faded one.
+ * @param {string} rid
+ * @param {string[]|null} focus mapFocus
+ * @param {string[]|null} [plan] route ids of the drawn plan's bus legs; null when no plan is drawn
+ * @returns {boolean}
+ */
+export function busFaded(rid, focus, plan = null) {
+  const r = String(rid);
+  if (Array.isArray(focus) && focus.length) return !focus.some((f) => String(f) === r);
+  if (Array.isArray(plan)) return !plan.some((p) => String(p) === r);
+  return false;
+}
+
+/**
+ * Everything the map needs to know about visibility, in one call. `hidden` is mapHidden (a trip in progress shows only
+ * its own lines).
  * @param {object} state
  * @returns {{hidden:string[], focus:string[]|null, order:string[]}}
  */
 export function mapVisibility(state) {
   const focus = mapFocus(state);
-  return { hidden: effectiveHidden(state), focus, order: drawOrder(state, focus) };
+  return { hidden: mapHidden(state), focus, order: drawOrder(state, focus) };
 }
 
 /** Views where the map belongs to a trip being planned or picked: a map tap there never leaves the view. */

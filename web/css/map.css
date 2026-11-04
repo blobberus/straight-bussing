@@ -1,15 +1,15 @@
-/* map.css: map overlays (route casings, stops, favorites, selection, buses, user dot, trip plan, map credit).
+/* map.css: map overlays (route lines, stops, favorites, selection, buses, user dot, trip plan, map credit).
    Owned by map/ (agent C). Theme: map.js toggles .sb-dark on the map element (.sb-map); every overlay
    color below comes from these variables so a theme switch never needs a redraw. --sb-accent is the UI accent
    token (tokens.css: --accent-fill on light, --accent on dark; a separate system blue until the 2026-10-10 design audit). */
 .sb-map{
-  --sb-land:#eeefeb;--sb-casing:rgba(255,255,255,.92);--sb-stop-fill:#fff;--sb-stop-multi:#5c5c63;
+  --sb-land:#eeefeb;--sb-stop-fill:#fff;--sb-stop-multi:#5c5c63;
   --sb-accent:var(--accent-fill,#0071e3);--sb-live:#1e9e4a;--sb-danger:#d63a2e;--sb-text:#111114;--sb-text2:#5c5c63;
   --sb-chrome:rgba(255,255,255,.82);--sb-chrome-solid:#fff;--sb-ring:rgba(0,0,0,.22);--sb-shadow:0 1px 4px rgba(0,0,0,.28);
   background:var(--sb-land);
 }
 .sb-map.sb-dark{
-  --sb-land:#18181b;--sb-casing:rgba(58,58,64,.95);--sb-stop-fill:#f5f5f7;--sb-stop-multi:#a1a1a8;
+  --sb-land:#18181b;--sb-stop-fill:#f5f5f7;--sb-stop-multi:#a1a1a8;
   --sb-accent:var(--accent,#409cff);--sb-live:#32d74b;--sb-danger:#ff6961;--sb-text:#f5f5f7;--sb-text2:#a1a1a8;
   --sb-chrome:rgba(28,28,30,.78);--sb-chrome-solid:#1c1c1e;--sb-ring:rgba(0,0,0,.6);--sb-shadow:0 1px 4px rgba(0,0,0,.6);
 }
@@ -35,8 +35,7 @@
 /* phone landscape (left panel, must match ui/sheet.js PANEL_MEDIA): right of the panel, at the map bottom */
 @media (min-width:768px) and (max-height:559px){.sb-credits{left:calc(var(--panel-w,380px) + 20px);bottom:6px}}
 
-/* route network (CSS beats Leaflet's stroke/fill attributes) */
-.sb-casing,.sb-plan-casing{stroke:var(--sb-casing)}
+/* route network (CSS beats Leaflet's stroke/fill attributes); route and plan lines have no outline (owner 2026-11-04) */
 .sb-stop{fill:var(--sb-stop-fill)}
 .sb-stop-multi{stroke:var(--sb-stop-multi)}
 .sb-halo{fill:transparent;cursor:pointer}
@@ -128,7 +127,6 @@
 
 /* trip plan */
 .sb-walk{stroke:var(--sb-accent)}
-.sb-walk-casing{stroke:var(--sb-casing)}
 .sb-plan-stop{fill:var(--sb-stop-fill)}
 .sb-pin-start{fill:var(--sb-live);stroke:#fff}
 .sb-pin-end{position:relative;width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);margin-top:2px;
@@ -138,7 +136,7 @@
 /* buses: 28 px rounded square in route color, white border, heading triangle, one-shot pulse */
 .sb-bus{position:absolute;left:50%;top:0;transform:translateX(-50%);box-sizing:border-box;min-width:28px;height:28px;padding:0 4px;
   border-radius:9px;border:2px solid #fff;background:var(--c,#555);color:var(--t,#fff);display:grid;place-items:center;
-  box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow);transition:opacity .22s,border-color .22s}
+  box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow);transition:opacity .22s,border-color .22s,transform .22s}
 .sb-bus-tx{position:relative;font:800 11.5px/1 -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;letter-spacing:-.01em;white-space:nowrap}
 .sb-bus-tx-sm{font-size:10px;letter-spacing:-.03em}
 .sb-bus-hd{position:absolute;inset:-2px;pointer-events:none;transition:transform .6s ease}
@@ -153,6 +151,12 @@
 .sb-busicon{overflow:visible}
 .sb-bus.is-stale{opacity:.5;border-color:#9a9aa0}
 .sb-bus.is-stale::after{display:none}
+/* a bus on a faded route (core/visibility.js busFaded, owner 2026-11-04): it steps back like its line (smaller and
+   see-through, under the other buses) and takes no tap, so taps reach the stops and lines in focus. Its label, heading
+   and number stay: only its prominence changes. A stale faded bus keeps the gray edge, a little fainter. */
+.leaflet-marker-icon.sb-busicon.is-faded{pointer-events:none}
+.sb-bus.is-faded{opacity:.42;transform:translateX(-50%) scale(.8);box-shadow:0 0 0 1px var(--sb-ring)}
+.sb-bus.is-faded.is-stale{opacity:.32}
 /* bus number (core/busnum.js: a route showing 2 or more buses): a white disc at the top right, readable on any route
    color and on the dark map */
 .sb-bus-num{position:absolute;right:-8px;top:-8px;min-width:17px;height:17px;padding:0 3px;box-sizing:border-box;border-radius:9px;
