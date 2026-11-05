@@ -147,5 +147,27 @@ export function walkFirst(options, walk, { from, to, t0, max = 4 } = {}) {
   const leg = { type: "walk", from, to, m, min, source: walk.source === "router" ? "router" : "estimate" };
   if (walk.coords) leg.coords = walk.coords;
   const w = { key: "walk", walkOnly: true, total: min, totalMin: Math.max(1, Math.round(min)), arrive, t0, walkMin: min, walkM: m, meets: [], legs: [leg] };
-  return [w, ...list].slice(0, max);
+  return [w, ...list.map((o) => besideWalk(o, min, arrive))].slice(0, max);
+}
+
+/**
+ * A bus option's criteria once walking the whole way is listed above it (walkFirst): it keeps "Least walking",
+ * "Earliest arrival" or "Shortest wait" only if it also beats the walk (walkMin minutes, arriving at walkArrive, no wait)
+ * within the same tolerance, so the list never claims what the option right above disproves (QA 2026-11-05: a trip
+ * that walked 12 min and arrived 7 min after a 7 min walk said "Least walking, earliest arrival, shortest wait").
+ * The order is unchanged; only `meets` (what the card says it minimizes) can lose criteria. Pure.
+ * @param {Object} o ranked bus option (with meets)
+ * @param {number} walkMin walking the whole way, minutes
+ * @param {number} walkArrive its arrival, unix s
+ * @returns {Object} o itself, or a copy with fewer meets
+ */
+export function besideWalk(o, walkMin, walkArrive) {
+  const s = optionStats(o), was = Array.isArray(o.meets) ? o.meets : [];
+  const meets = was.filter((id) => {
+    const c = CRITERIA.find((x) => x.id === id);
+    if (!c) return true;
+    if (id === "arrive") return s.arrive <= walkArrive + c.tol * 60 + EPS;
+    return s[id] <= (id === "walk" ? walkMin : 0) + c.tol + EPS;
+  });
+  return meets.length === was.length ? o : { ...o, meets };
 }

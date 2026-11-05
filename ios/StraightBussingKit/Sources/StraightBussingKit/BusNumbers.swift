@@ -106,4 +106,32 @@ extension Rank {
         let best = r.options.map(\.arrive).min() ?? .infinity
         return r.now + r.walkOnlyMin * 60 <= best
     }
+
+    /// A bus option's criteria once walking the whole way is listed above it (web core/rank.js besideWalk): it keeps
+    /// "Least walking", "Earliest arrival" or "Shortest wait" only if it also beats the walk (`walkMin` minutes,
+    /// arriving at `walkArrive`, no wait) within the same tolerance, so the list never claims what the option right
+    /// above disproves (QA 2026-11-05: a trip that walked 12 min and arrived 7 min after a 7 min walk said "Least
+    /// walking, earliest arrival, shortest wait"). Only `meets` can lose criteria; the order is unchanged.
+    public static func besideWalk(_ o: TripOption, walkMin: Double, walkArrive: Double) -> TripOption {
+        let s = optionStats(o)
+        let meets = o.meets.filter { c in
+            switch c {
+            case .arrive: return s.arrive <= walkArrive + c.tol * 60 + eps
+            case .walk: return s.walk <= walkMin + c.tol + eps
+            case .wait: return s.wait <= c.tol + eps
+            }
+        }
+        if meets.count == o.meets.count { return o }
+        var copy = o
+        copy.meets = meets
+        return copy
+    }
+
+    /// The bus options as listed (web walkFirst): under a walk-first card each goes through `besideWalk`; otherwise
+    /// `r.options` unchanged.
+    public static func listedOptions(_ r: PlanResult) -> [TripOption] {
+        guard walkFirst(r) else { return r.options }
+        let arrive = r.now + r.walkOnlyMin * 60
+        return r.options.map { besideWalk($0, walkMin: r.walkOnlyMin, walkArrive: arrive) }
+    }
 }

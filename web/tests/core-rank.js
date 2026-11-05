@@ -1,7 +1,7 @@
 // Tests for core/rank.js (trip option ranking: least walking, then earliest arrival, then shortest
 // wait, then how many criteria an option meets) and its use by core/planner.js.
 import { test, eq, ok } from "./lib.js";
-import { CRITERIA, optionStats, rankOptions, criteriaText, pickOptions, walkTotals, walkFirst, WALK_FIRST_MIN } from "../js/core/rank.js";
+import { CRITERIA, optionStats, rankOptions, criteriaText, pickOptions, walkTotals, walkFirst, WALK_FIRST_MIN, besideWalk } from "../js/core/rank.js";
 import { plan } from "../js/core/planner.js";
 
 const T = 1_800_000_000;
@@ -121,4 +121,24 @@ test("walk first: never without a bus option (the no-route screen keeps its help
   const again = walkFirst(walkFirst([busOpt("a", 9)], { m: 400, min: 5 }, { from: FROM, to: TO, t0: T0 }), { m: 480, min: 6 }, { from: FROM, to: TO, t0: T0 });
   eq(again.map((o) => o.key), ["walk", "a"], "an earlier walk option is replaced, never doubled");
   eq(again[0].walkMin, 6);
+});
+
+test("walk first: a bus option never claims what the walk above it disproves (QA 2026-11-05)", () => {
+  // seen live: walk 7 min (arrive 6:56) first, then a bus trip walking 12 min to ride one stop back, arriving 7:03, said
+  // "Least walking, earliest arrival, shortest wait"
+  const bus = (key, arriveMin, walk, wait) => ({ key, arrive: T0 + arriveMin * 60, total: arriveMin, totalMin: arriveMin,
+    legs: [{ type: "walk", min: walk }, { type: "bus", rid: "R", wait }] });
+  const ranked = rankOptions([bus("back", 14, 12, 2), bus("dcc", 24, 15, 8)]);
+  eq(criteriaText(ranked[0].meets), "Least walking, earliest arrival, shortest wait", "among the buses alone");
+  const r = walkFirst(ranked, { m: 586, min: 7 }, { from: FROM, to: TO, t0: T0 });
+  eq(r.map((o) => o.key), ["walk", "back", "dcc"], "the order stays");
+  eq(r[1].meets, [], "walks more, arrives later, waits 2 min: claims nothing next to the walk");
+  eq(r[2].meets, [], "the other bus neither");
+  // a bus that really walks less and arrives sooner keeps those; a 1 min wait still counts as no wait (tolerance)
+  const good = walkFirst(rankOptions([bus("near", 6, 2, 1)]), { m: 640, min: 8 }, { from: FROM, to: TO, t0: T0 });
+  eq(criteriaText(good[1].meets), "Least walking, earliest arrival, shortest wait");
+  const slow = besideWalk({ ...bus("x", 10, 3, 4), meets: ["walk", "arrive", "wait"] }, 8, T0 + 8 * 60);
+  eq(slow.meets, ["walk"], "less walking than the walk, but later and with a 4 min wait");
+  const same = { ...bus("y", 5, 1, 0), meets: ["walk"] };
+  ok(besideWalk(same, 8, T0 + 8 * 60) === same, "unchanged options are not copied");
 });

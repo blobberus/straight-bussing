@@ -238,12 +238,14 @@ struct DirectionsView: View {
                 // very close (owner 2026-10-30): walking the whole way is the first option when it takes 10 min or less
                 // or arrives no later than the best bus (Kit Rank.walkFirst)
                 let walkFirst = Rank.walkFirst(r)
+                // under the walk card a bus option never claims what the walk disproves (Kit Rank.listedOptions)
+                let listed = Rank.listedOptions(r)
                 if walkFirst {
                     walkOnlyCard(r, caption: "Close enough to walk").accessibilityIdentifier("dirWalkFirst")
                 }
-                // the walk counts as one of the (at most 4) options, like the web list
-                ForEach(Array(r.options.prefix(Planner.maxOpts - (walkFirst ? 1 : 0)).enumerated()), id: \.element.key) { item in
-                    OptionCard(option: item.element, index: item.offset, showCriteria: r.options.count > 1,
+                // the walk counts as one of the (at most 4) options, like the web list (also when saying what each minimizes)
+                ForEach(Array(listed.prefix(Planner.maxOpts - (walkFirst ? 1 : 0)).enumerated()), id: \.element.key) { item in
+                    OptionCard(option: item.element, index: item.offset, showCriteria: listed.count + (walkFirst ? 1 : 0) > 1,
                                selected: item.offset == model.dir.selected)
                 }
                 if !walkFirst {

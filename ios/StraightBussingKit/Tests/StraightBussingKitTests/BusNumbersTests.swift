@@ -138,4 +138,30 @@ final class BusNumbersTests: XCTestCase {
         XCTAssertFalse(Rank.walkFirst(PlanResult(now: NOW, options: bus, walkOnlyM: 960, walkOnlyMin: 12)), "12 min walk, 10 min bus: buses first")
         XCTAssertFalse(Rank.walkFirst(PlanResult(now: NOW, options: [], walkOnlyM: 300, walkOnlyMin: 4)), "no bus options: the walk card shows anyway")
     }
+
+    /// Port of web/tests/core-rank.js "walk first: a bus option never claims what the walk above it disproves".
+    func busOption(_ key: String, arriveMin: Double, walk: Double, wait: Double) -> TripOption {
+        let p = Place(name: "x", lat: 0, lon: 0)
+        let legs: [Leg] = [.walk(WalkLeg(from: p, to: p, m: walk * 80, min: walk)),
+                           .bus(BusLeg(rid: "R", board: p, alight: p, stopIds: [], path: [], stopsPassed: 1, wait: wait, waitLive: false,
+                                       ride: 1, source: .estimate, conf: 0.3, boardT: NOW + wait * 60, alightT: 0, tripId: nil, p10: nil, p90: nil))]
+        return TripOption(key: key, total: arriveMin, totalMin: Int(arriveMin), arrive: NOW + arriveMin * 60, t0: NOW,
+                          walkMin: walk, walkM: Int(walk * 80), meets: [], legs: legs)
+    }
+
+    func testBusOptionsUnderTheWalkClaimOnlyWhatTheyBeat() {
+        let ranked = Rank.rankOptions([busOption("back", arriveMin: 14, walk: 12, wait: 2), busOption("dcc", arriveMin: 24, walk: 15, wait: 8)])
+        XCTAssertEqual(Rank.criteriaText(ranked[0].meets), "Least walking, earliest arrival, shortest wait", "among the buses alone")
+        let listed = Rank.listedOptions(PlanResult(now: NOW, options: ranked, walkOnlyM: 586, walkOnlyMin: 7))
+        XCTAssertEqual(listed.map(\.key), ["back", "dcc"], "the order stays")
+        XCTAssertEqual(listed.map(\.meets), [[], []], "walks more, arrives later, waits: claims nothing next to the 7 min walk")
+        let good = Rank.listedOptions(PlanResult(now: NOW, options: Rank.rankOptions([busOption("near", arriveMin: 6, walk: 2, wait: 1)]),
+                                                 walkOnlyM: 640, walkOnlyMin: 8))
+        XCTAssertEqual(Rank.criteriaText(good[0].meets), "Least walking, earliest arrival, shortest wait", "less walking, sooner, 1 min wait")
+        var slow = busOption("x", arriveMin: 10, walk: 3, wait: 4)
+        slow.meets = [.walk, .arrive, .wait]
+        XCTAssertEqual(Rank.besideWalk(slow, walkMin: 8, walkArrive: NOW + 480).meets, [.walk])
+        let farWalk = PlanResult(now: NOW, options: ranked, walkOnlyM: 2400, walkOnlyMin: 30)
+        XCTAssertEqual(Rank.listedOptions(farWalk), ranked, "no walk card: the options as ranked")
+    }
 }
