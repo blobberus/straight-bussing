@@ -1,16 +1,16 @@
 /**
  * @module ui/settings-overlay
- * The Settings overlay (SETTINGS): an iOS-style modal panel that is separate from the sheet router.
- * Opening it lifts the sheet to its "full" detent and covers the WHOLE sheet, including its grab
- * handle and title, and the bottom navigation (owner: those must not look like part of Settings); a
- * scrim dims whatever is still visible behind it (map strip, floating buttons, context bar), and
- * the covered sheet header and content are inert. Closing restores the previous detent.
- * Closes on Done, Escape, a tap on the scrim, the gear (programmatic toggle), any navigation (e.g.
- * About), the browser's back (main.js keeps a history entry while it is open; bus 'settings:toggle') and if the sheet leaves "full". Accessible modal: role="dialog" aria-modal="true", focus
- * moves to the heading, Tab is trapped inside, focus returns to the opener (the gear) on close.
+ * The Settings overlay (SETTINGS): an iOS sheet that is separate from the sheet router (docs/DESIGN-SPEC-GLASS.md 9.8):
+ * a card from 10 below the safe area to the screen's bottom, top corners 28, bgSheet, over a scrim that dims everything
+ * behind it (map, the app's own sheet, the glass controls, the bottom row); the app's sheet keeps its state and, with
+ * the rest of the app, is inert while it is open. It zooms out of the button that opened it (mZoomSheet: scale from
+ * .6 with the button's center as the origin) and shrinks back into it. Closes on Done (a tinted checkmark circle named
+ * "Done"), Escape, a tap on the scrim, a swipe down on its header (HIG: Done needs an alternative), the gear
+ * (programmatic toggle), any navigation (e.g. About) and the browser's back (main.js keeps a history entry while it is
+ * open; bus 'settings:toggle'). Accessible modal: role="dialog" aria-modal="true", focus moves to the heading, Tab is
+ * trapped inside, focus returns to the opener (the gear) on close.
  *
- * The DOM is created from JS and appended to #app, so on desktop it lives inside the scaled iPhone
- * frame (ui/frame.js); positions are measured in #app's layout px (screen px / scale).
+ * The DOM is created from JS and appended to #app, so on desktop it lives inside the scaled iPhone frame (ui/frame.js).
  * Content is supplied by the caller (ui/views/settings.js): {render(state), mount(root, ctx), unmount(), refresh()}.
  * The same shell hosts Lines by Time (ui/views/timepick.js, owner 2026-10-18: "a separate menu that looks like the
  * settings menu"): openSettingsOverlay's opts give it its own title, a start button (Cancel) and the end button's
@@ -23,6 +23,12 @@ import { bus } from "../core/events.js";
 export const OVERLAY_ID = "settingsOverlay";
 const REFRESH_MS = 15000;
 const HIDE_MS = 380;
+/** A swipe down on the header this long (px) closes the sheet (or a quick flick, SWIPE_V px/ms). */
+export const SWIPE_CLOSE_PX = 90;
+const SWIPE_V = 0.6;
+/** The checkmark of Done and the cross of Cancel (Lucide check / x), drawn at 20 px. */
+const CHECK_SVG = '<svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"/></svg>';
+const X_SVG = '<svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 let el = null, body = null, heading = null, scrim = null, startSide = null, endBtn = null, endAction = null;
@@ -35,73 +41,33 @@ const reducedMotion = () => { try { return matchMedia("(prefers-reduced-motion: 
 const navKey = (s) => `${s?.view || ""}|${s?.stopId || ""}|${s?.routeId || ""}`;
 
 /**
- * Where the overlay goes, in the containing block's layout px (pure; unit-tested): exactly over the
- * sheet at its "full" detent. The sheet may be mid-transition: subtracting how far it still is below
- * its "full" position (ty) gives its top edge at "full", so the overlay lands where the sheet will settle.
- * @param {{sheet:{top:number, left:number, width:number, bottom:number}, origin:{left:number, top:number},
- *          k?:number, ty?:number, height:number, navBottom?:number|null}} g
- *   sheet: bounding rect (screen px); origin: containing block's top-left (screen px);
- *   navBottom: bottom of the navigation bar under the sheet (screen px), so the overlay covers it too;
- *   k: frame scale (screen px per layout px); ty: sheet's current translateY minus its translateY at "full" (layout px, sheetTy()); height: containing block height (layout px)
- * @returns {{top:number, left:number, width:number, bottom:number}}
+ * The zoom origin (mZoomSheet): the trigger's center in the sheet's own box, as a CSS transform-origin (pure; tested).
+ * Both rects are screen px; k = frame scale (screen px per layout px). Null when there is no trigger to grow from.
+ * @param {{left:number, top:number, width:number, height:number}|null} trigger
+ * @param {{left:number, top:number}} sheet
+ * @param {number} [k]
+ * @returns {string|null}
  */
-export function overlayBox({ sheet, origin, k = 1, ty = 0, height, navBottom = null }) {
+export function zoomOrigin(trigger, sheet, k = 1) {
+  if (!trigger || !(trigger.width > 0) || !sheet) return null;
   const s = k > 0 ? k : 1;
-  const top = (sheet.top - origin.top) / s - ty;
-  const sheetBottom = Math.max((sheet.bottom - origin.top) / s - ty, navBottom == null ? -Infinity : (navBottom - origin.top) / s);
-  return {
-    top: Math.max(0, top),
-    left: (sheet.left - origin.left) / s,
-    width: sheet.width / s,
-    bottom: Math.max(0, Math.round(height - sheetBottom)),
-  };
+  const x = (trigger.left + trigger.width / 2 - sheet.left) / s, y = (trigger.top + trigger.height / 2 - sheet.top) / s;
+  return `${Math.round(x)}px ${Math.round(y)}px`;
 }
 
-/**
- * How far (layout px) the sheet's top currently sits below where it settles at "full": its current
- * (possibly mid-transition) translateY minus the full detent's own translateY. The sheet element is
- * always --v-max tall (css/sheet.css), so at "full" it is still shifted down by --v-max - --v-full
- * while the status pill shows; ui/sheet.js's [data-sheet-probe="full"] is --v-full tall.
- * 0 without a transform (panel layout).
- */
-function sheetTy() {
-  const sheet = $("sheet");
-  try {
-    const t = sheet && getComputedStyle(sheet).transform;
-    if (!t || t === "none") return 0;
-    const probe = document.querySelector('[data-sheet-probe="full"]');
-    const fullTy = probe && probe.offsetHeight ? Math.max(0, sheet.offsetHeight - probe.offsetHeight) : 0;
-    return (new DOMMatrixReadOnly(t).m42 || 0) - fullTy;
-  } catch (e) { return 0; }
-}
-
-/** Measure the live DOM (#app, #sheet) and return the overlay box, or null. */
-function measure() {
-  const app = $("app") || document.body, sheet = $("sheet"), nav = $("tabs");
-  if (!sheet) return null;
-  const framed = app !== document.body && getComputedStyle(app).transform !== "none";
-  const ar = app.getBoundingClientRect();
-  const ty = sheetTy();
-  return overlayBox({
-    sheet: sheet.getBoundingClientRect(),
-    origin: framed ? { left: ar.left, top: ar.top } : { left: 0, top: 0 },
-    k: framed && app.offsetWidth ? ar.width / app.offsetWidth : 1,
-    ty, height: framed ? app.offsetHeight : document.documentElement.clientHeight || innerHeight,
-    navBottom: nav && nav.offsetHeight ? nav.getBoundingClientRect().bottom : null,
-  });
-}
-
-/** Re-measure and position the overlay (open, resize, orientation change). */
-export function placeOverlay() {
+/** Point the zoom at the trigger (the gear, the clock) so the sheet grows out of it and shrinks back into it. */
+function aimAt(trigger) {
   if (!el) return;
-  const b = measure();
-  if (!b) { el.style.cssText = ""; return; }
-  el.style.top = b.top + "px";
-  el.style.left = b.left + "px";
-  el.style.width = b.width + "px";
-  el.style.bottom = b.bottom + "px";
-  el.classList.toggle("sto--float", b.bottom > 0);
+  try {
+    const app = $("app"), framed = app && getComputedStyle(app).transform !== "none";
+    const k = framed && app.offsetWidth ? app.getBoundingClientRect().width / app.offsetWidth : 1;
+    const o = zoomOrigin(trigger && trigger.isConnected ? trigger.getBoundingClientRect() : null, el.getBoundingClientRect(), k);
+    if (o) el.style.transformOrigin = o; else el.style.removeProperty("transform-origin");
+  } catch (e) { /* layout unavailable */ }
 }
+
+/** Kept for callers of the first redesign (the sheet no longer positions it: css/settings.css does). */
+export function placeOverlay() {}
 
 function ensure() {
   if (el && el.isConnected) return el;
@@ -113,9 +79,9 @@ function ensure() {
   el.setAttribute("aria-labelledby", "stoTitle");
   el.dataset.state = "closed";
   el.hidden = true;
-  el.innerHTML = '<div class="sto-head"><span class="sto-side" data-sto="start" aria-hidden="true"></span>'
+  el.innerHTML = '<div class="sto-head"><span class="sto-grab" aria-hidden="true"></span><span class="sto-side" data-sto="start" aria-hidden="true"></span>'
     + '<h2 id="stoTitle" class="sto-title" tabindex="-1">Settings</h2>'
-    + '<span class="sto-side sto-side--end"><button type="button" class="sto-done" data-sto="done">Done</button></span></div>'
+    + '<span class="sto-side sto-side--end"><button type="button" class="sto-done" data-sto="done" aria-label="Done"></button></span></div>'
     + '<div class="sto-body" data-sto="body"></div>';
   body = el.querySelector('[data-sto="body"]');
   heading = el.querySelector("#stoTitle");
@@ -123,6 +89,7 @@ function ensure() {
   endBtn = el.querySelector('[data-sto="done"]');
   endBtn.addEventListener("click", () => { if (endAction) endAction(); else closeSettingsOverlay(); });
   bindActions(el, () => ctxRef);   // data-action rows inside (About)
+  swipeToClose(el.querySelector(".sto-head"));
   scrim = document.createElement("div");
   scrim.className = "sto-scrim";
   scrim.hidden = true;
@@ -140,18 +107,57 @@ function setHead(opts) {
   el.dataset.kind = opts.kind || "settings";
   startSide.textContent = "";
   startSide.setAttribute("aria-hidden", "true");
-  if (opts.start && opts.start.label) {
+  if (opts.start && opts.start.label) {   // Cancel: a 44 fill circle with a cross, named by its label (glass spec 9.9)
     const b = document.createElement("button");
     b.type = "button";
     b.className = "sto-done sto-start";
     b.dataset.sto = "start-btn";
-    b.textContent = opts.start.label;
+    b.setAttribute("aria-label", opts.start.label);
+    b.innerHTML = X_SVG;
     b.addEventListener("click", () => { if (opts.start.onClick) opts.start.onClick(); else closeSettingsOverlay(); });
     startSide.appendChild(b);
     startSide.removeAttribute("aria-hidden");
   }
-  endBtn.textContent = (opts.end && opts.end.label) || "Done";
+  // the end button: Done = a tinted checkmark circle named "Done" (iOS 26); any other label (Set time) = a tinted capsule
+  // with its words, because no symbol says it (glass spec 9.8, 9.9, 9.10)
+  const label = (opts.end && opts.end.label) || "Done", isDone = label === "Done";
+  endBtn.classList.toggle("is-check", isDone);
+  endBtn.setAttribute("aria-label", label);
+  if (isDone) endBtn.innerHTML = CHECK_SVG; else endBtn.textContent = label;
   endAction = (opts.end && opts.end.onClick) || null;
+}
+
+/** A swipe down on the header closes the sheet (it follows the finger by transform; a short drag springs back). */
+function swipeToClose(head) {
+  let st = null;
+  const y = (e) => (e.touches ? e.touches[0].clientY : e.clientY);
+  const down = (e) => {
+    if (!sess || e.target.closest("button, a, input")) return;
+    if (e.type === "pointerdown" && (e.pointerType === "touch" && "ontouchstart" in window || e.button !== 0)) return;
+    st = { y0: y(e), t0: performance.now(), dy: 0 };
+    el.classList.add("is-dragging");
+  };
+  const move = (e) => {
+    if (!st) return;
+    st.dy = Math.max(0, y(e) - st.y0);
+    el.style.transform = `translate3d(0, ${st.dy}px, 0)`;
+    if (e.cancelable && e.type === "touchmove") e.preventDefault();
+  };
+  const up = () => {
+    if (!st) return;
+    const { dy, t0 } = st, v = dy / Math.max(1, performance.now() - t0);
+    st = null;
+    el.classList.remove("is-dragging");
+    el.style.removeProperty("transform");
+    if (dy >= SWIPE_CLOSE_PX || (dy > 24 && v > SWIPE_V)) closeSettingsOverlay();
+  };
+  head.addEventListener("touchstart", down, { passive: true });
+  head.addEventListener("touchmove", move, { passive: false });
+  head.addEventListener("touchend", up);
+  head.addEventListener("touchcancel", up);
+  head.addEventListener("pointerdown", down);
+  window.addEventListener("pointermove", (e) => { if (st && e.pointerType !== "touch") move(e); });
+  window.addEventListener("pointerup", (e) => { if (st && e.pointerType !== "touch") up(); });
 }
 
 function focusables() {
@@ -224,8 +230,6 @@ export function openSettingsOverlay(ctx, content, opts = {}) {
   sess = { ctx, content, trigger: pickTrigger(opts.trigger), prev: sheet?.dataset.detent || null, key: navKey(ctx.store.get()), offs: [], inerted: [], opener: gear };
   ctxRef = ctx;
   setHead(opts);
-  const tyBefore = sheetTy();     // read before the detent change: computed style jumps to the end value
-  try { ctx.setDetent?.("full"); } catch (e) { /* no sheet */ }
   try {
     body.innerHTML = String(content.render(ctx.store.get()) ?? "");
     content.mount?.(body, ctx);
@@ -233,22 +237,17 @@ export function openSettingsOverlay(ctx, content, opts = {}) {
     console.error("settings overlay", e);
     body.innerHTML = `<p class="v-sec">Couldn't show ${opts.title || "Settings"}. Official service: 773.702.8181.</p>`;
   }
-  // Slide up together with the sheet: start as far below as the sheet still has to travel
-  // (it was just told to go "full"; sheetTy() is its distance to that position), or from off-screen when it does not move.
-  // Set before un-hiding, so the first computed style is already the start position.
-  sess.from = tyBefore > 24 ? tyBefore : 0;
-  el.style.setProperty("--sto-from", sess.from ? sess.from + "px" : "100%");
   el.removeAttribute("inert");
   scrim.hidden = false;
   el.hidden = false;
   el.dataset.state = "open";
-  placeOverlay();                 // forces style: the before-change style for the slide
+  aimAt(opts.opener === undefined ? sess.trigger : opts.opener || sess.trigger);   // forces style: the start of the zoom
   body.scrollTop = 0;
   el.classList.add("is-in");
   void scrim.offsetWidth;          // start the scrim fade from 0
   scrim.classList.add("is-in");
-  // the covered sheet (title, tabs, content) must not be reachable while Settings is on top
-  for (const id of ["sheetHead", "content", "tabs"]) {
+  // the app behind (its sheet, the glass controls, the bottom row) must not be reachable while Settings is on top
+  for (const id of ["sheetHead", "content", "tabs", "mapctl", "bottomrow", "topbar", "ctxbar"]) {
     const n = $(id);
     if (n && !n.inert) { n.inert = true; sess.inerted.push(n); }
   }
@@ -256,15 +255,6 @@ export function openSettingsOverlay(ctx, content, opts = {}) {
   gear?.setAttribute("aria-expanded", "true");
 
   on(document, "keydown", onKey, true);
-  let raf = 0;
-  const relayout = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(placeOverlay); };
-  on(window, "resize", relayout);
-  on(window, "orientationchange", relayout);
-  if (sheet && typeof MutationObserver === "function") {
-    const mo = new MutationObserver(() => { if (sess && sheet.dataset.detent !== "full") closeSettingsOverlay({ restore: false, focus: "title" }); });
-    mo.observe(sheet, { attributes: true, attributeFilter: ["data-detent"] });
-    sess.offs.push(() => mo.disconnect());
-  }
   const offStore = ctx.store.subscribe?.((s) => { if (sess && navKey(s) !== sess.key) closeSettingsOverlay({ restore: false, focus: "title" }); });
   if (typeof offStore === "function") sess.offs.push(offStore);
   const timer = setInterval(() => { if (!document.hidden) { try { content.refresh?.(); } catch (e) { console.error(e); } } }, REFRESH_MS);
@@ -278,13 +268,13 @@ export function openSettingsOverlay(ctx, content, opts = {}) {
 /**
  * Close the overlay.
  * @param {{restore?:boolean|string, focus?:'trigger'|'title'|'none'}} [opts]
- *   restore: true = previous sheet detent (default), a detent name, or false = leave the sheet alone;
+ *   restore: a detent name to put the app's sheet in (default: leave it as it is; Settings no longer moves it);
  *   focus: where focus goes ('trigger' = the gear, default; 'title' = the sheet title, only if focus was inside)
  * @returns {boolean} false if it was not open
  */
 export function closeSettingsOverlay(opts = {}) {
   if (!sess) return false;
-  const s = sess, restore = opts.restore ?? true, focus = opts.focus || "trigger";
+  const s = sess, restore = opts.restore ?? false, focus = opts.focus || "trigger";
   sess = null;
   const wasInside = el.contains(document.activeElement);
   s.offs.forEach((f) => { try { f(); } catch (e) { /* ignore */ } });
@@ -295,8 +285,7 @@ export function closeSettingsOverlay(opts = {}) {
   el.dataset.state = "closed";
   el.setAttribute("inert", "");
   const target = restore === true ? s.prev : restore || null;
-  // going back to the detent it opened from: move down with the sheet while fading; else slide off
-  el.style.setProperty("--sto-from", s.from && target === s.prev ? s.from + "px" : "100%");
+  aimAt(s.opener || s.trigger);   // shrink back into the button it came from
   el.classList.remove("is-in");
   if (target && $("sheet")?.dataset.detent !== target) { try { s.ctx.setDetent?.(target); } catch (e) { /* no sheet */ } }
   if (focus === "trigger" && s.trigger?.isConnected) s.trigger.focus({ preventScroll: true });

@@ -1,185 +1,200 @@
-/* Settings view (ui/views/settings.js). Theme tokens only; `st-` prefix. */
-.st-intro, .st-note { margin: 0 0 var(--s2); }
-.st-note { margin-top: var(--s3); }
-.st-pad { margin: var(--s2) 0; }
-.st-label { display: block; margin: var(--s3) 0 var(--s1); font-weight: 600; }
-/* Credits (owner 2026-10-16): the last item; the chevron turns down when the list is open */
-.st-credits { margin-top: var(--s3); }
-.st-credbtn { min-height: var(--tap); }
-.st-credchev svg { transition: transform var(--d-press) ease; }
-.st-credbtn[aria-expanded="true"] .st-credchev svg { transform: rotate(90deg); }
-.st-credbody { padding: 0 0 var(--s3); border-top: 1px solid var(--hairline); }
-.st-credh { margin: var(--s3) 0 var(--s1); color: var(--text); font-weight: 600; }
-.st-credlist { margin: 0; }
-.st-credlist li { margin: 0 0 var(--s1); }
-.st-count { margin-left: 6px; padding: 1px 8px; border-radius: var(--r-pill); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 600; vertical-align: 1px; }
-.st-theme { margin: var(--s1) 0; }
+/* Settings and Lines by Time (ui/views/settings.js, ui/settings-overlay.js, views/timepick.js, ui/wheel.js, ui/feedback.js).
+   An iOS grouped list on bgSheet: section titles, cards with 16 inner padding, switches, the beta feedback card (tintBg)
+   and Credits last. Prefix st- (Settings), sto- (the overlay card), wh- (wheels). docs/DESIGN-SPEC.md 10.13. */
+.st-intro, .st-note { margin: 0 0 var(--s-2); }
+.st > .st-intro, .st > .st-note, .st > .v-sec { padding: 0 var(--inset-content); }
+.st-note { margin-top: var(--s-3); }
+.st-pad { margin: var(--s-2) 0; padding: 0 var(--inset-content); }
+.v-card > .st-pad { padding: var(--s-3) var(--inset-content); margin: 0; }
+.st-label { display: block; margin: var(--s-3) 0 var(--s-2); padding: 0 var(--inset-content); font: var(--t-section); color: var(--label-2); }
+.st-theme { margin: 0; }
 
-/* alerts */
-.st-alerts { list-style: none; padding: var(--s1) var(--s4); }
-.st-alert { display: flex; gap: var(--s3); padding: var(--s2) 0; }
-.st-alert + .st-alert { border-top: 1px solid var(--hairline); }
+/* Credits (owner 2026-10-16): the last item; the chevron turns down when the list is open */
+.st-credits { margin-top: var(--s-6); }
+.st-credbtn { min-height: var(--tap); }
+.st-credchev .ic { transition: transform var(--m-quick) var(--ease-out); }
+.st-credbtn[aria-expanded="true"] .st-credchev .ic { transform: rotate(90deg); }
+.st-credbody { padding: 0 var(--inset-content) var(--s-3); border-top: .5px solid var(--separator); }
+.st-credh { margin: var(--s-3) 0 var(--s-1); color: var(--label); font-weight: var(--w-semibold); }
+.st-credlist { margin: 0; padding: 0 0 0 1.1em; background: none; border-radius: 0; }
+.st-credlist li { margin: 0 0 var(--s-1); }
+.st-count { margin-left: var(--s-2); padding: 1px var(--s-2); border-radius: var(--r-capsule); background: var(--warn-bg); color: var(--warn); font: var(--t-caption); vertical-align: 1px; }
+
+/* service alerts */
+.st-alerts { list-style: none; margin: 0 0 var(--s-3); padding: var(--s-1) var(--inset-content); }
+.st-alert { display: flex; gap: var(--s-3); padding: var(--s-3) 0; }
+.st-alert + .st-alert { border-top: .5px solid var(--separator); }
 .st-alert p { margin: 2px 0; }
-.st-alertic { flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 2px; border-radius: 50%; background: var(--warn); color: var(--bg-solid); font-weight: 800; font-size: 14px; line-height: 1; }
+.st-alert .v-prim { display: block; -webkit-line-clamp: unset; }
+.st-alertic { flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-top: 2px; border-radius: 50%; background: var(--warn); color: var(--bg-card); font: var(--t-caption); font-weight: var(--w-bold); line-height: 1; }
 .st-when { font-variant-numeric: tabular-nums; }
-.st-empty { padding: var(--s3) var(--s4); }
+.st-empty { padding: var(--s-3) var(--inset-content); }
 .st-empty p { margin: 2px 0; }
 
-/* station */
-.st-station { padding: var(--s2) var(--s4); }
-.st-stationrow { display: flex; align-items: center; gap: var(--s3); min-height: 56px; }
+/* bus alerts: the station */
+.st-station { padding: var(--s-2) var(--inset-content); }
+.st-stationrow { display: flex; align-items: center; gap: var(--s-3); min-height: 56px; }
 .st-stationrow .v-grow > span { display: block; }
 .st-off { min-height: var(--tap); padding-left: 0; }
 .st-pick .v-grow > span { display: block; }
-.st-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.st-search input { box-sizing: border-box; width: 100%; min-height: 48px; padding: 0 var(--s4); border: 1px solid var(--hairline-strong); border-radius: var(--r-control); background: var(--surface); color: var(--text); font: inherit; font-size: 1rem; }
-.st-search input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.st-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-top: var(--s-1); }
+.st-search input { box-sizing: border-box; width: 100%; min-height: var(--tap); padding: 0 var(--s-3); border: 0; border-radius: var(--r-control); background: var(--bg-card); color: var(--label); font: var(--t-body); }
+.st-search input:focus-visible { outline: 2px solid var(--tint); outline-offset: 0; }
 
-/* options */
-.st-routes { margin: var(--s2) 0; padding: var(--s1) var(--s4) var(--s2); border: 0; min-width: 0; }
-.st-routes legend { float: left; width: 100%; margin: var(--s2) 0 0; padding: 0; }
-.st-check, .st-sw, .st-sel { display: flex; align-items: center; gap: var(--s3); min-height: 52px; cursor: pointer; position: relative; clear: both; }
-.st-check + .st-check, .st-kinds > * + * { border-top: 1px solid var(--hairline); }
-.st-check input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--accent-fill); }
-.st-kinds, .st-ios { padding: 0 var(--s4); }
+/* options: route checks, switches, the minutes menu */
+.st-routes { margin: 0 0 var(--s-3); padding: var(--s-1) var(--inset-content) var(--s-2); border: 0; min-width: 0; }
+.st-routes legend { float: left; width: 100%; margin: var(--s-2) 0 0; padding: 0; }
+.st-check, .st-sw, .st-sel { display: flex; align-items: center; gap: var(--s-3); min-height: 52px; padding: var(--s-2) 0; cursor: pointer; position: relative; clear: both; }
+.st-check + .st-check, .st-kinds > * + * { border-top: .5px solid var(--separator); }
+.st-check input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--tint-fill); }
+.st-kinds, .st-ios, .st-trip { padding: 0 var(--inset-content); }
 .st-sw .v-grow > span, .st-sel .v-grow { display: block; }
-.st-sel select { min-height: var(--tap); padding: 0 var(--s2); border: 1px solid var(--hairline-strong); border-radius: var(--r-control); background: var(--bg-solid); color: var(--text); font: inherit; }
+.st-sel select { min-height: var(--tap); padding: 0 var(--s-2); border: 0; border-radius: var(--r-control); background: var(--fill); color: var(--label); font: var(--t-body); }
 
-/* switch: native checkbox stays focusable/clickable on top, the knob is drawn behind it */
+/* switch (10.13): the native checkbox stays focusable and clickable on top, the drawn track and knob behind it; on =
+   tintFill, the knob position and an on-mark say the state (never color alone; green means live data only) */
 .st-sw input { position: absolute; right: 0; top: 50%; width: 51px; height: 31px; margin: -15.5px 0 0; opacity: 0; cursor: pointer; z-index: 1; }
-.st-knob { flex: none; position: relative; width: 51px; height: 31px; border-radius: var(--r-pill); background: var(--hairline-strong); transition: background-color var(--d-press) var(--ease); }
-.st-knob::after { content: ""; position: absolute; left: 2px; top: 2px; width: 27px; height: 27px; border-radius: 50%; background: var(--knob); box-shadow: var(--shadow-knob); transition: transform var(--d-press) var(--ease); }
-.st-sw input:checked + .st-knob { background: var(--accent); }   /* the one accent: green means live data only */
+.st-knob::after { content: ""; position: absolute; left: 2px; top: 2px; width: 27px; height: 27px; border-radius: 50%; background: var(--bg-card); box-shadow: var(--e-knob); transition: transform var(--m-quick) var(--ease-out); }
+.st-sw input:checked + .st-knob { background: var(--tint-fill); }
 .st-sw input:checked + .st-knob::after { transform: translateX(20px); }
-.st-sw input:focus-visible + .st-knob { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* state is not color alone: an "I" bar marks the on position */
-.st-sw input:checked + .st-knob::before { content: ""; position: absolute; left: 12px; top: 10px; width: 2px; height: 11px; border-radius: 1px; background: var(--on-accent); }
+/* glass spec 8.11: while pressed the knob stretches (iOS 26 turns it to glass); off under reduced motion */
+.st-knob::after { transform-origin: 13.5px 50%; }
+.st-sw:active input:not(:checked) + .st-knob::after { transform: scaleX(1.15); }
+.st-sw:active input:checked + .st-knob::after { transform: translateX(16px) scaleX(1.15); }
+.st-sw input:focus-visible + .st-knob { outline: 2px solid var(--tint); outline-offset: 2px; }
+.st-sw input:checked + .st-knob::before { content: ""; position: absolute; left: 12px; top: 10px; width: 2px; height: 11px; border-radius: 1px; background: var(--on-fill); }
 
-/* status */
-.st-status { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); }
+/* the next bus at the chosen station */
+.st-status { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--inset-content); }
 .st-status .v-grow > span { display: block; }
-.st-ok { vertical-align: -3px; color: var(--accent); }
+.st-ok { display: inline-block; vertical-align: -3px; color: var(--tint); }
 
-/* Settings overlay (ui/settings-overlay.js): a card stacked exactly over the full-detent sheet, so
-   the sheet's title and tabs are covered; .sto-scrim dims everything still visible behind it.
-   JS sets top/left/width/bottom in #app layout px. z (tokens.css --z-*): scrim and card sit above the sheet
-   and floating chrome, below the dialog scrim and toasts. */
+/* Settings and Lines by Time (ui/settings-overlay.js; docs/DESIGN-SPEC-GLASS.md 9.8, 9.9): an iOS sheet from 10 below
+   the safe area to the screen's bottom, top corners 28, opaque bgSheet (content layer, never glass), e3, over a scrim
+   that dims the whole app. It zooms out of the button that opened it (mZoomSheet: scale .6 to 1 with the button's
+   center as transform-origin, set by JS) and shrinks back into it; reduced motion: a short fade. A grab bar on top says
+   it can be swiped down. Head: the title centered; Done = a 44 tintFill circle with a white checkmark (named "Done");
+   Cancel = a 44 fill circle with a cross (named "Cancel"); Set time = a tintFill capsule with its words. */
 .sto-scrim {
   position: fixed; inset: 0; z-index: var(--z-overlay-scrim);
   background: var(--scrim); opacity: 0;
-  transition: opacity var(--d-sheet) var(--ease-exit);
+  transition: opacity var(--m-zoom-sheet) var(--ease-exit);
 }
 .sto-scrim.is-in { opacity: 1; }
 .sto-scrim[hidden] { display: none; }
 .sto {
-  position: fixed; z-index: var(--z-overlay); left: 0; right: 0; bottom: 0; top: 30%;
+  position: fixed; z-index: var(--z-overlay); left: 0; right: 0; bottom: 0; top: calc(var(--safe-t) + 10px);
   display: flex; flex-direction: column;
-  background: var(--bg-solid); color: var(--text);
-  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
-  box-shadow: var(--shadow-card), 0 -1px 0 var(--hairline);
+  background: var(--bg-sheet); color: var(--label);
+  border-radius: var(--r-glass) var(--r-glass) 0 0;
+  box-shadow: var(--e-3);
   overflow: hidden;
-  /* --sto-from (set by JS): how far below its place it starts, = the distance the sheet travels */
-  transform: translate3d(0, var(--sto-from, 100%), 0);
-  transition: transform var(--d-sheet) var(--ease-spring), opacity var(--d-sheet) var(--ease-exit);
-  will-change: transform;
+  transform: scale(.6); opacity: 0;
+  transition: transform var(--m-zoom-sheet) var(--ease-zoom-sheet), opacity var(--m-zoom-sheet) var(--ease-zoom-sheet);
 }
-.sto.is-in { transform: none; }
-.sto[data-state="closed"] { opacity: 0; }
-.sto--float { border-radius: var(--r-sheet); border: 1px solid var(--hairline); }
+.sto.is-in { transform: none; opacity: 1; }
+.sto.is-dragging { transition: none; }
 .sto-head {
-  flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-  min-height: 56px; padding: 6px var(--s2) 0 var(--s4);
-  border-bottom: 1px solid var(--hairline);
+  position: relative; flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  min-height: calc(var(--sheet-header-min) + 8px); padding: 14px var(--s-3) 6px; touch-action: none;
+}
+.sto-head::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: .5px; background: var(--separator); }
+.sto-grab {   /* the 36 x 5 grab bar, 6 from the top: a swipe down closes */
+  position: absolute; left: 50%; top: 6px; width: 36px; height: 5px; margin-left: -18px;
+  border-radius: var(--r-capsule); background: var(--label-3); opacity: .6; pointer-events: none;
 }
 .sto-side { display: flex; min-width: 0; }
 .sto-side--end { justify-content: flex-end; }
-.sto-title { margin: 0; font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 600; text-align: center; white-space: nowrap; }
+.sto-title { margin: 0; font: var(--t-row-title); text-align: center; white-space: nowrap; }
 .sto-done {
-  min-width: var(--tap); min-height: var(--tap); padding: 0 var(--s2); border-radius: var(--r-control);
-  color: var(--accent); font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 600;
+  position: relative; min-width: var(--tap); min-height: var(--tap); padding: 0 var(--s-4); border-radius: var(--r-capsule);
+  display: inline-grid; place-items: center;
+  background: var(--tint-fill); color: var(--on-fill); font: var(--t-button); white-space: nowrap;
+  transition: opacity var(--m-press) var(--ease-out);
 }
-.sto-done:active { background: var(--surface); }
+.sto-done.is-check, .sto-start { width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0; border-radius: 50%; }
+.sto-start { background: var(--fill); color: var(--label); }
+.sto-done:active { opacity: .6; }
 .sto-body {
   flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
   overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y;
-  padding: 0 var(--s4) max(16px, var(--safe-b));
+  padding: 0 var(--inset-content) max(24px, var(--safe-b));
 }
-.sto-body > .st > .v-h:first-child { margin-top: var(--s3); }
+.sto-body > .st > .v-h:first-child { margin-top: var(--s-4); }
 
 @media (prefers-reduced-motion: reduce) {
-  .st-knob, .st-knob::after, .st-credchev svg { transition: none; }
-  /* no slide: a short fade only */
-  .sto { transform: none; opacity: 0; transition: opacity var(--d-press) linear; will-change: auto; }
+  .st-knob, .st-knob::after, .st-credchev .ic { transition: none; }
+  /* no zoom: a short fade only */
+  .sto, .sto.is-in { transform: none; }
+  .sto { transition: opacity var(--m-quick) linear; }
   .sto-scrim { transition: none; }
-  .sto.is-in { opacity: 1; }
 }
 @media (prefers-contrast: more) {
   .st-knob { outline: 1px solid currentColor; }
-  .sto { border-top: 2px solid var(--text); }
-  .sto-scrim { background: rgba(0, 0, 0, .55); }
-  .sto-head { border-bottom-color: var(--text); }
-  .sto-done { text-decoration: underline; text-underline-offset: 3px; }
+  .sto { border-top: 2px solid var(--label); }
+  .sto-head::after { background: var(--label); }
+  .sto-done { outline: 1px solid var(--label); outline-offset: 1px; }
 }
 @media (forced-colors: active) {
   .sto { border: 1px solid CanvasText; }
   .sto-done { border: 1px solid ButtonText; }
 }
 /* Location (owner 2026-10-12): share / stop sharing and the "we never collect your location" note */
-.st-loc { padding: var(--s3) var(--s4); }
-.st-loc .st-row { display: flex; align-items: center; margin-bottom: var(--s3); }
-.st-loc .st-row .v-prim { display: inline-flex; align-items: center; gap: 6px; }
-.st-loc .v-locoff { margin: 0 0 var(--s3); }
+.st-loc { padding: var(--s-3) var(--inset-content); }
+.st-loc .st-row { display: flex; align-items: center; margin-bottom: var(--s-3); }
+.st-loc .st-row .v-prim { display: inline-flex; align-items: center; gap: var(--s-2); }
+.st-loc .v-locoff { margin: 0 0 var(--s-3); padding: 0; background: none; }
+.st-loc .v-btn--block { margin: var(--s-2) 0; }
 .st-loc .st-disclaimer { margin-bottom: 0; }
 /* Usage statistics (data/usage.js): the same inner spacing as Location */
-.st-usage { padding: var(--s3) var(--s4); }
-.st-usage .st-intro { margin: 0 0 var(--s2); }
-.st-steps-h { margin: var(--s3) 0 var(--s1); font-size: var(--fs-body); font-weight: 650; color: var(--text); }
-.st-steps { margin: 0 0 var(--s3); padding-left: 1.4em; color: var(--text); font-size: var(--fs-body); line-height: var(--lh-body); }
-.st-steps li { margin: 0 0 var(--s2); }
-.st-other { margin: 0 0 var(--s3); }
-.st-other summary { min-height: var(--tap); display: flex; align-items: center; cursor: pointer; color: var(--accent); font-weight: 600; }
-.st-tried { margin: var(--s2) 0 0; }
+.st-usage { padding: var(--s-3) var(--inset-content); }
+.st-usage .st-intro { margin: 0 0 var(--s-2); }
+.st-steps-h { margin: var(--s-3) 0 var(--s-1); font: var(--t-row-title); color: var(--label); }
+.st-steps { margin: 0 0 var(--s-3); padding-left: 1.4em; color: var(--label); font: var(--t-row-detail); }
+.st-steps li { margin: 0 0 var(--s-2); }
+.st-other { margin: 0 0 var(--s-3); }
+.st-other summary { min-height: var(--tap); display: flex; align-items: center; cursor: pointer; color: var(--tint); font: var(--t-button); }
+.st-tried { margin: var(--s-2) 0 0; }
 
 /* Beta feedback (owner 2026-10-13, ui/feedback.js): the Settings card and the map feedback button's panel (the welcome
-   popup that shared this look was removed on 2026-11-04). One look since 2026-11-02 (owner: "more noticable (using
-   different colors etc)", "In the settings menu, the beta feedback should also be more prominent"): the accent tint
-   --accent-bg (never the green live color; --text and --text-2 stay AA on it in both themes), a speech bubble on an
-   accent disc (white mark on the accent fill), the "very helpful" ask in bold. */
+   popup that shared this look was removed on 2026-11-04), on the accent tint tintBg (never the live green; label and
+   label2 stay AA on it in both themes), a speech bubble on an accent disc. */
 .fb-badge { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px;
-  border-radius: var(--r-pill); background: var(--accent-fill); color: var(--on-accent); }
-.fb-badge svg { width: 22px; height: 22px; }
-.v-btn .fb-ext { width: 18px; height: 18px; }
-.st-feedback { margin: var(--s2) 0; padding: var(--s4); border-radius: var(--r-card); background: var(--accent-bg); }
-.st-fbhead { display: flex; align-items: center; gap: var(--s3); }
-.st-fblead { margin: 0; font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 650; color: var(--text); }
-.st-feedback .st-intro { margin: var(--s3) 0 0; }
-.st-feedback .st-fbbtn { margin: var(--s3) 0 0; }
-.st-feedback .st-fbnote { margin: var(--s2) 0 0; }
-/* the map feedback button's panel (js/ui/feedback-button.js, owner 2026-11-02): the Settings card in the Settings shell,
-   then the quieter "I already gave feedback" (accent text on the panel's own surface, not on the tint: 5.6:1 light) */
-.fbp { padding: var(--s3) 0 var(--s2); }
+  border-radius: var(--r-capsule); background: var(--tint-fill); color: var(--on-fill); }
+.fb-badge .ic { width: 20px; height: 20px; }
+.v-btn .fb-ext { width: var(--i-inline); height: var(--i-inline); }
+.st-feedback { margin: 0 0 var(--s-3); padding: var(--s-4) var(--inset-content); border-radius: var(--r-card); background: var(--tint-bg); }
+.st-fbhead { display: flex; align-items: center; gap: var(--s-3); }
+.st-fblead { margin: 0; font: var(--t-row-title); color: var(--label); }
+.st-feedback .st-intro { margin: var(--s-3) 0 0; padding: 0; }
+.st-feedback .st-fbbtn { margin: var(--s-3) 0 0; }
+.st-feedback .st-fbnote { margin: var(--s-2) 0 0; padding: 0; }
+/* the map feedback button's panel (js/ui/feedback-button.js, owner 2026-11-02): the Settings card in the Settings sheet,
+   then the quieter "I already gave feedback" (tint text on the sheet's own surface, not on the tint card) */
+.fbp { padding: var(--s-3) 0 var(--s-2); }
 .fbp .fbp-card { margin-top: 0; }
-.fbp .fbp-silence { display: flex; margin: var(--s2) auto 0; font-weight: 500; }
-.fbp .fbp-note { margin: var(--s2) 0 0; text-align: center; }
+.fbp .fbp-silence { display: flex; margin: var(--s-2) auto 0; }
+.fbp .fbp-note { margin: var(--s-2) 0 0; text-align: center; }
 @media (forced-colors: active) {
   .st-feedback { border: 1px solid CanvasText; }
   .fb-badge { border: 1px solid CanvasText; }
 }
 
 /* Lines by Time (views/timepick.js, owner 2026-10-18): the Settings card with Cancel / Set time in its head, a date and
-   a time on wheel columns like the iPhone alarm clock (ui/wheel.js: 40px rows, 5 in view, the chosen one in the band). */
-.sto[data-kind="time"] .sto-head { padding-left: var(--s2); }
-.sto-start { font-weight: 400; }
-.tp { padding-bottom: var(--s2); }
-.tp-h { margin-top: var(--s4); }
+   a time on wheel columns like the iPhone alarm clock (ui/wheel.js: 40 px rows, 5 in view, the chosen one in the band:
+   fill, radius 10; rows body, the chosen one rowTitle Semibold). */
+
+.tp { padding-bottom: var(--s-2); }
+.tp-h { margin-top: var(--s-4); }
 .wh {
-  position: relative; display: flex; justify-content: center; align-items: stretch; gap: var(--s1);
-  height: 200px; margin: var(--s1) 0 var(--s2);
+  position: relative; display: flex; justify-content: center; align-items: stretch; gap: var(--s-1);
+  height: 200px; margin: var(--s-1) 0 var(--s-2); padding: 0 var(--s-2);
+  border-radius: var(--r-card); background: var(--bg-card);
   font-variant-numeric: tabular-nums;
 }
 .wh-band {
-  position: absolute; left: 0; right: 0; top: 80px; height: 40px;
-  border-radius: var(--r-control); background: var(--surface); pointer-events: none;
+  position: absolute; left: var(--s-2); right: var(--s-2); top: 80px; height: 40px;
+  border-radius: var(--r-nested); background: var(--fill); pointer-events: none;
 }
 .wh-col {
   position: relative; flex: none; width: 64px; height: 200px;
@@ -194,27 +209,27 @@
 .wh-list { margin: 0; padding: 80px 0; list-style: none; }
 .wh-item {
   height: 40px; line-height: 40px; text-align: center; white-space: nowrap;
-  font-size: 1.375rem; color: var(--text-2); scroll-snap-align: center;
+  font: var(--t-body); font-size: var(--size-hero-title); line-height: 40px; color: var(--label-2); scroll-snap-align: center;
   cursor: pointer; user-select: none; -webkit-user-select: none;
 }
-.wh-item.is-sel { color: var(--text); font-weight: 500; }
+.wh-item.is-sel { color: var(--label); font-weight: var(--w-semibold); }
 /* keyboard focus: a ring around the chosen row (the column's own outline would be faded by its mask) */
-.wh-col:focus-visible .wh-item.is-sel { border-radius: var(--r-inner); box-shadow: inset 0 0 0 2px var(--accent); }
-.wh-colon { position: relative; align-self: center; font-size: 1.375rem; font-weight: 500; color: var(--text); }
-.tp-desc { margin: var(--s3) 0 var(--s2); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text); }
+.wh-col:focus-visible .wh-item.is-sel { border-radius: var(--r-nested); box-shadow: inset 0 0 0 2px var(--tint); }
+.wh-colon { position: relative; align-self: center; font: var(--t-hero-title); color: var(--label); }
+.tp-desc { margin: var(--s-3) 0 var(--s-2); padding: 0 var(--s-1); font: var(--t-row-detail); color: var(--label); }
 .tp-result {
-  margin: 0 0 var(--s2); padding: var(--s3); border-radius: var(--r-card); background: var(--surface);
-  font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text);
+  margin: 0 0 var(--s-2); padding: var(--s-3) var(--inset-content); border-radius: var(--r-card); background: var(--bg-card);
+  font: var(--t-row-detail); color: var(--label);
 }
 .tp-msg, .tp-when, .tp-note { display: block; }
-.tp-when, .tp-note { color: var(--text-2); }
-.tp-note { margin-top: var(--s2); font-size: var(--fs-cap); line-height: var(--lh-cap); }
-.tp-chips { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
-.tp-trip { color: var(--text); }
-.tp-disc .v-h { margin-top: var(--s4); }
+.tp-when, .tp-note { color: var(--label-2); }
+.tp-note { margin-top: var(--s-2); font: var(--t-footnote); }
+.tp-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-top: var(--s-2); }
+.tp-trip { color: var(--label); }
+.tp-disc .v-h { margin-top: var(--s-4); }
 @media (prefers-contrast: more) {
-  .wh-band { box-shadow: inset 0 0 0 1px var(--text); }
-  .wh-item { color: var(--text); }
+  .wh-band { box-shadow: inset 0 0 0 1px var(--label); }
+  .wh-item { color: var(--label); }
 }
 @media (forced-colors: active) {
   .wh-band { border: 1px solid CanvasText; }
