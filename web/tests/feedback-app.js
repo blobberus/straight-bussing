@@ -6,7 +6,7 @@
 // desktop window (phone frame), then a reload; 3. new visits with the old popup's log in storage.
 import { test, eq, ok } from "./lib.js";
 import { WELCOME_LOG_KEY, FEEDBACK_DONE_KEY, FEEDBACK_URL } from "../js/ui/feedback.js";
-import { FEEDBACK_BTN_OFF_KEY } from "../js/ui/feedback-button.js";
+import { FEEDBACK_BTN_OFF_KEY, crowds } from "../js/ui/feedback-button.js";
 import { OVERLAY_ID } from "../js/ui/settings-overlay.js";
 
 const OLD_TITLE = "Welcome to the beta version of Straight Bussing!";   // the removed popup's title
@@ -140,5 +140,44 @@ test("real app: a new visit a week after the old popup last appeared shows no po
     v?.f.remove();
     localStorage.removeItem(WELCOME_LOG_KEY);
     localStorage.removeItem(FEEDBACK_DONE_KEY);
+  }
+});
+
+test("real app, 320 pt wide, short, 200% text: an open status banner pushes Settings down; the feedback circle steps aside so Lines by Time stays reachable, then comes back", async () => {
+  firstVisit();
+  let v = null;
+  try {
+    // 320 x 520 with no safe areas (this test window) meets like a 320 x 568 iPhone SE (Display Zoom) with its status bar
+    v = await openLive("width:320px;height:520px;border:0;display:block");
+    const { w, d } = v, $ = (id) => d.getElementById(id);
+    d.documentElement.style.fontSize = "34px";   // 200% browser text (2 x 17)
+    d.documentElement.dataset.text = "ax";
+    const fab = await waitFor(() => shownButton(d), "the feedback button", 3000);
+    w.__e2e.feedFail = true;
+    w.dispatchEvent(new w.Event("online"));
+    const more = await waitFor(() => !$("pill").hidden && d.querySelector("#pill .pillmore"), "the status banner with Details", 3000);
+    await sleep(500);
+    ok(!fab.classList.contains("is-crowded"), "a closed banner leaves room: the circle shows");
+    more.click();
+    await waitFor(() => $("pill").classList.contains("is-open"), "Details open", 2000);
+    // the test runner's virtual time delivers no ResizeObserver notes after load: stand in for pill.js's (--pill-h = the
+    // banner's real height, so Row B follows it) and fire the resize that also re-checks the room
+    const settle = async () => { $("app").style.setProperty("--pill-h", $("pill").offsetHeight + "px"); w.dispatchEvent(new w.Event("resize")); await sleep(600); };
+    await settle();
+    ok($("settingsBtn").getBoundingClientRect().top >= $("pill").getBoundingClientRect().bottom, "Settings sits under the open banner");
+    ok(crowds(fab.getBoundingClientRect(), $("mapctl").getBoundingClientRect()), "the scene does crowd: the circle would meet the lower-right group");
+    ok(fab.classList.contains("is-crowded"), "so it steps aside");
+    eq(w.getComputedStyle(fab).pointerEvents, "none", "it takes no taps at once");
+    fab.style.transition = "none";   // the end state of its fade (this runner's virtual time draws no frames for transitions)
+    eq(w.getComputedStyle(fab).visibility, "hidden", "then hidden: no focus, not read out");
+    fab.style.removeProperty("transition");
+    const t = $("timeBtn").getBoundingClientRect();
+    eq(d.elementFromPoint(t.left + t.width / 2, t.top + 6)?.closest("#timeBtn"), $("timeBtn"), "Lines by Time takes its own taps");
+    more.click();
+    await settle();
+    ok(!fab.classList.contains("is-crowded"), "the banner closed: the circle is back");
+    eq(w.__e2e.errors, [], "no console errors");
+  } finally {
+    if (v) { v.w.__e2e.feedFail = false; v.f.remove(); }
   }
 });

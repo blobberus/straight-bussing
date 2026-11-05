@@ -71,13 +71,34 @@ export function buttonShown({ done, testOff } = {}) {
   return !done && !testOff;
 }
 
+/** Space (px) the circle keeps from the lower-right group (glass spec 11: 8 between floating controls). */
+export const CROWD_GAP = 8;
+
+/**
+ * Would the feedback circle cover or touch the lower-right group (Lines by Time over Locate)? It sits under Settings at
+ * the top while the group rides on the collapsed card, so on a short screen with large text, an open status banner or a
+ * tall trip header they meet (320 x 568 at 200% text during a trip: the circle covered Lines by Time). Then the circle
+ * steps aside: it is the one optional control there. Pure: two rects in the same units.
+ * @param {{left:number, right:number, top:number, bottom:number, width?:number}|null} fb the circle
+ * @param {{left:number, right:number, top:number, bottom:number, width?:number}|null} group the lower-right group
+ * @param {number} [gap]
+ * @returns {boolean}
+ */
+export function crowds(fb, group, gap = CROWD_GAP) {
+  if (!fb || !group || !(fb.right > fb.left) || !(group.right > group.left)) return false;
+  const cols = Math.min(fb.right, group.right) - Math.max(fb.left, group.left) > 0;
+  return cols && fb.bottom + gap > group.top && fb.top - gap < group.bottom;
+}
+
 /**
  * Why a due ping has to wait ("" = it may run now). Pure.
- * @param {{shown?:boolean, pageHidden?:boolean, trip?:boolean, detent?:string|null, overlay?:boolean, dialog?:boolean, typing?:boolean}} s
+ * @param {{shown?:boolean, crowded?:boolean, pageHidden?:boolean, trip?:boolean, detent?:string|null, overlay?:boolean, dialog?:boolean, typing?:boolean}} s
+ *   crowded: the circle stepped aside for the lower-right group (crowds)
  * @returns {string}
  */
 export function pingBlocker(s = {}) {
   if (!s.shown) return "hidden";
+  if (s.crowded) return "no room";
   if (s.pageHidden) return "page hidden";
   if (s.trip) return "trip in progress";
   if (s.detent === "full") return "sheet expanded";
@@ -143,11 +164,24 @@ export function startFeedbackButton({ store, ctx, button, schedule, now = () => 
   let timer = 0, pingTimer = 0, count = 0, shown = false, stopped = false;
   const offs = [];
 
+  // room under Settings (crowds): checked when the sheet settles or its header grows, when the status banner changes
+  // height (Details, a longer line), on resize and once the sheet's slide ends (the group's position at rest)
+  let crowded = false;
+  const group = document.getElementById("mapctl"), sheetEl = document.getElementById("sheet");
+  function checkRoom() {
+    if (stopped) return;
+    const on = shown && !btn.hidden && !!group && !!sheetEl && sheetEl.dataset.detent === "peek"
+      && crowds(btn.getBoundingClientRect(), group.getBoundingClientRect());
+    if (on === crowded) return;
+    crowded = on;
+    btn.classList.toggle("is-crowded", on);
+  }
+
   const blocker = () => {
     const s = store?.get?.() || {};
     const dlg = document.getElementById("dlg");
     return pingBlocker({
-      shown, pageHidden: document.hidden, trip: !!(s.journey && s.journey.kind === "plan"),
+      shown, crowded, pageHidden: document.hidden, trip: !!(s.journey && s.journey.kind === "plan"),
       detent: document.getElementById("sheet")?.dataset.detent || null, overlay: isSettingsOpen(),
       dialog: !!document.querySelector("dialog[open]") || !!(dlg && !dlg.hidden), typing: isTyping(),
     });
@@ -179,6 +213,7 @@ export function startFeedbackButton({ store, ctx, button, schedule, now = () => 
       clearTimeout(timer); clearTimeout(pingTimer); timer = 0;
       btn.classList.remove("is-ping");
     } else if (!was && !timer) plan(nextPingIn(count, now() - t0, S));
+    checkRoom();
     return shown;
   }
   function open() {
@@ -203,6 +238,20 @@ export function startFeedbackButton({ store, ctx, button, schedule, now = () => 
   const onStorage = (e) => { if (!e || e.key === FEEDBACK_DONE_KEY || e.key === null) refresh(); };   // another tab
   window.addEventListener("storage", onStorage);
   offs.push(() => window.removeEventListener("storage", onStorage));
+  let roomTimer = 0;
+  const roomSoon = () => { checkRoom(); clearTimeout(roomTimer); roomTimer = setTimeout(checkRoom, 450); };   // after the slide (--m-sheet 360 ms)
+  offs.push(() => clearTimeout(roomTimer));
+  offs.push(bus.on("sheet:inset", roomSoon));
+  window.addEventListener("resize", roomSoon);
+  offs.push(() => window.removeEventListener("resize", roomSoon));
+  const onSlid = (e) => { if (e.target === sheetEl && e.propertyName === "transform") checkRoom(); };
+  sheetEl?.addEventListener("transitionend", onSlid);
+  offs.push(() => sheetEl?.removeEventListener("transitionend", onSlid));
+  if (typeof ResizeObserver === "function") {
+    const ro = new ResizeObserver(roomSoon);
+    for (const id of ["pill", "sheetHead"]) { const n = document.getElementById(id); if (n) ro.observe(n); }
+    offs.push(() => ro.disconnect());
+  }
 
   const api = { shown: () => shown, pings: () => count, refresh, open, stop };
   current = api;

@@ -10,8 +10,22 @@ import { createStore } from "../js/core/store.js";
 import {
   PING_FIRST_MS, PING_EVERY_MS, PING_MAX, PING_RETRY_MS, PING_MS, FB_KIND, FB_TITLE, FB_LABEL, FB_SEND, FB_GONE, FB_SILENCE,
   FB_THANKS, FB_SILENCED, FEEDBACK_BTN_OFF_KEY, buttonShown, pingBlocker, nextPingIn, panelHTML, startFeedbackButton,
-  feedbackButton, testOff,
+  feedbackButton, testOff, crowds, CROWD_GAP,
 } from "../js/ui/feedback-button.js";
+
+test("feedback button: steps aside when it would cover or touch the lower-right group (crowds, 8 pt gap)", () => {
+  const box = (left, top, w, h) => ({ left, top, right: left + w, bottom: top + h, width: w, height: h });
+  const fb = box(264, 119, 44, 44);   // under Settings at 320 pt
+  eq(CROWD_GAP, 8);
+  eq(crowds(fb, box(264, 314, 44, 88)), false, "room to spare (320 x 568, default text)");
+  eq(crowds(fb, box(264, 171, 44, 88)), false, "exactly 8 apart: fine");
+  eq(crowds(fb, box(264, 170, 44, 88)), true, "7 apart: too close");
+  eq(crowds(fb, box(264, 138, 44, 88)), true, "overlapping (a tall trip header at 200% text)");
+  eq(crowds(fb, box(100, 138, 44, 88)), false, "another column: no clash");
+  eq(crowds(fb, box(264, 40, 44, 88)), true, "the group above it (an odd short window) also counts");
+  eq(crowds(null, box(264, 138, 44, 88)), false, "no circle");
+  eq(crowds(fb, box(264, 138, 0, 0)), false, "a hidden group (zero box)");
+});
 import {
   FEEDBACK_DONE_KEY, WELCOME_LOG_KEY, FEEDBACK_LEAD, FEEDBACK_BODY, FEEDBACK_IN_SETTINGS, FEEDBACK_NOTE, feedbackDone,
   markFeedbackDone, _resetFeedback,
@@ -107,6 +121,7 @@ test("feedback button: shown until feedback is given or silenced; a ping waits f
   eq(pingBlocker({ ...ok0, overlay: true }), "menu open");
   eq(pingBlocker({ ...ok0, dialog: true }), "dialog open");
   eq(pingBlocker({ ...ok0, typing: true }), "typing");
+  eq(pingBlocker({ ...ok0, crowded: true }), "no room", "stepped aside for the lower-right group: no ping");
   const s = sessionStorage.getItem(FEEDBACK_BTN_OFF_KEY);
   sessionStorage.setItem(FEEDBACK_BTN_OFF_KEY, "1");
   eq(testOff(), true, "seam read from sessionStorage");

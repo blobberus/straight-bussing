@@ -99,6 +99,12 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 .fbfab.is-ping .fbfab-dot::after { animation: fb-ring 1.3s var(--ease-standard) 2; }
 @keyframes fb-dot { 0%, 100% { transform: scale(1); } 25% { transform: scale(1.3); } }
 @keyframes fb-ring { 0% { transform: scale(1); opacity: .5; } 100% { transform: scale(3.4); opacity: 0; } }
+/* no room under Settings (a short screen with large text, an open status banner, a tall trip header): the circle steps
+   aside instead of covering the lower-right group (js/ui/feedback-button.js crowds; Settings > Give feedback stays) */
+#feedbackBtn.is-crowded {
+  visibility: hidden; opacity: 0; pointer-events: none;
+  transition: opacity var(--m-exit) var(--ease-exit), visibility 0s linear var(--m-exit);
+}
 /* a chip on the map (simulated buses, a trip, a filter) would make it the 7th blurred surface: solid tint then (12.1) */
 #app:has(#ctxbar:not([hidden])) .fbfab, #app:has(#pill[data-form="chip"]:not([hidden])) .fbfab {
   background: var(--tint-bg); -webkit-backdrop-filter: none; backdrop-filter: none;
