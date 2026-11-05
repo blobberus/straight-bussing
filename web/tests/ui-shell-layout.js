@@ -318,3 +318,15 @@ test("layout: simulated-buses chip + trip chip (demo): the trip chip in Row C st
     }
   } finally { t.done(); }
 });
+
+test("index.html: DOM order = the glass spec 11 focus and screen-reader order: status banner, Settings, feedback, trip chip, sheet header, content, lower-right group, tab bar, search; the map and its credit links last", async () => {
+  const html = await (await fetch("../index.html", { cache: "no-store" })).text();
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const order = ["pill", "settingsBtn", "feedbackBtn", "ctxbar", "grab", "back", "content", "timeBtn", "locateBtn", "tabs", "searchBar", "map"];
+  const nodes = order.map((id) => doc.getElementById(id));
+  nodes.forEach((n, i) => ok(n, "#" + order[i] + " in index.html"));
+  for (let i = 1; i < nodes.length; i++) {
+    ok(nodes[i - 1].compareDocumentPosition(nodes[i]) & Node.DOCUMENT_POSITION_FOLLOWING, `#${order[i - 1]} before #${order[i]}`);
+  }
+  eq(doc.getElementById("app").contains(doc.getElementById("map")), true, "the map stays inside #app (the desktop phone frame)");
+});

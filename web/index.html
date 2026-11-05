@@ -118,8 +118,6 @@
 <body>
 <!-- #app is a plain wrapper on phones; on desktop/tablet css/base.css turns it into a 393x852 iPhone frame (js/ui/frame.js scales it) -->
 <div id="app" class="app">
-<div id="map" role="region" aria-label="Shuttle map"></div>
-
 <!-- top rows (docs/DESIGN-SPEC-GLASS.md 3): Row A = the status banner (#pill, opaque, its Retry / See alert slot on the
      LEADING edge, owner 2026-11-03), Row B = the simulated-buses chip (#pill in its chip form) and the Settings circle
      with the feedback circle under it, the trip chip (#ctxbar) beside Settings or under the chip. Positions: css/base.css from --search-top and --pill-h. -->
@@ -179,6 +177,11 @@
   <svg class="ic" width="22" height="22" stroke-width="2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
 </button>
 </div>
+
+<!-- the map: drawn behind everything (fixed, --z-map), last in the DOM so the focus and screen-reader order is the
+     glass spec 11 order (status banner, Row B, trip chip, sheet, lower-right group, tab bar, search), then the map and
+     its credit links -->
+<div id="map" role="region" aria-label="Shuttle map"></div>
 
 <div id="dlg" class="scrim" hidden></div>
 <div id="toast" class="toast hide" role="status" aria-live="polite" aria-atomic="true"></div>
