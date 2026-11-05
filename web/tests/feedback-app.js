@@ -90,7 +90,9 @@ test("real app (?demo=1, desktop phone frame), first visit: no popup; the feedba
   const w = F.contentWindow;
   const fab = await waitFor(() => w.document && shownButton(w.document), "the map's feedback button in demo mode");
   const d = w.document;
-  ok(d.documentElement.classList.contains("is-framed"), "desktop phone frame");
+  // the iframe may boot before the test page has laid it out at 1280 x 800 (300 x 150 by default): frame.js then sets
+  // is-framed on the resize that follows, so wait for it rather than read it at once (flaked 2 runs in 5 under load)
+  await waitFor(() => d.documentElement.classList.contains("is-framed"), "desktop phone frame", 4000);
   await sleep(1000);
   assertNoPopup(d, "demo first visit");
   const app = d.getElementById("app").getBoundingClientRect(), r = fab.getBoundingClientRect();
