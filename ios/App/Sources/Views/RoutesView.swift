@@ -8,7 +8,9 @@ import StraightBussingKit
 /// route with no reporting bus is never "Not running" (rider safety), and a feed outage is "Live status unknown".
 /// Route search (owner 2026-11-04; web routes.js): a field under the bar; typing puts the matching routes first, best
 /// first (Kit RouteSearch), then "Other routes" in their usual groups. A display order only: nothing is stored, and the
-/// query lasts while the app runs.
+/// query lasts while the app runs. The matches sit right under the field (owner 2026-11-05: "Routes that come up in
+/// searching for my routes should appear right under the search bar above the phone numbers and other information"):
+/// the station filter chip, the feed notice, the operator's alerts and both numbers follow them, none removed.
 struct RoutesView: View {
     @Environment(AppModel.self) private var model
     @State private var naming = false
@@ -114,15 +116,18 @@ struct RoutesView: View {
 
     /// The matches (hidden ones keep their eye; ones that do not operate now are grayed and say "Not running now",
     /// owner 2026-11-05), or "No routes match" with Clear search.
-    @ViewBuilder func matchSection(_ top: [String], stopOf: [String: String], hidden: Set<String>, active: Set<String>?) -> some View {
+    /// With a station filter (its chip now sits below the matches) the heading names it ("1 route matches at Main") and
+    /// an empty result says only that station's routes were searched (web routes.js listHTML).
+    @ViewBuilder func matchSection(_ top: [String], stopOf: [String: String], hidden: Set<String>, active: Set<String>?, station: String? = nil) -> some View {
         if top.isEmpty {
             Section {
-                EmptyStateView(title: "No routes match", message: "Try a route name, a street or a stop.")
+                EmptyStateView(title: "No routes match", message: station.map { "Only routes to \($0) are searched. Clear the station filter to search every route." }
+                               ?? "Try a route name, a street or a stop.")
                 Button { query = "" } label: { Text("Clear search").frame(maxWidth: .infinity, minHeight: 44) }
                     .accessibilityIdentifier("routesClearSearch")
             }
         } else {
-            Section(header: ListHeader(RouteSearch.matchText(top.count))) {
+            Section(header: ListHeader(RouteSearch.matchText(top.count) + (station.map { " at \($0)" } ?? ""))) {
                 ForEach(top, id: \.self) { rid in
                     RouteRow(rid: rid, hidden: hidden.contains(rid), stop: stopOf[rid], idle: active.map { !$0.contains(rid) } ?? false)
                 }
@@ -139,6 +144,11 @@ struct RoutesView: View {
         let g = all.without(Set(found.top))
         topBar
         if total > 0 { searchSection }
+        if searching && total > 0 {
+            // the matches first, right under the field (owner 2026-11-05); everything else follows them
+            matchSection(found.top, stopOf: found.stopOf, hidden: Set(all.hidden), active: found.active,
+                         station: s.routeFilter.map { $0.label.isEmpty ? "this station" : $0.label })
+        }
         if let f = s.routeFilter {
             Section {
                 HStack {
@@ -183,7 +193,6 @@ struct RoutesView: View {
                 }
             }
             if searching {
-                matchSection(found.top, stopOf: found.stopOf, hidden: Set(all.hidden), active: found.active)
                 if g.count > 0 {
                     // the quiet divider (web .rt-qdiv): the routes that did not match, in their usual groups
                     Section(header: ListHeader(found.top.isEmpty ? "All routes" : "Other routes")) {}
