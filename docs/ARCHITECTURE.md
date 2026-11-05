@@ -927,4 +927,4 @@ is part of `chromeH`, so the expanded sheet stops below it the same way.
   lines `width x MapCameraModel.lineScale` set when a camera move ends). The iPhone never had line outlines.
 - Tests: core-custom.js (trip-only lines, walk, busFaded), map-layers.js (no outline, weights, faded buses, taps, plan,
   stale + faded, the bus you ride), map-direction.js, map-trip.js, e2e.js (the Directions preview fades the other buses;
-  a started trip draws only its lines and buses; all come back after End trip). sw `sb-v2-87`.
+  a started trip draws only its lines and buses; all come back after End trip). sw `sb-v2-88`.
