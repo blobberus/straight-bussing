@@ -36,7 +36,7 @@ import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen, overlayKind } from "../settings-overlay.js";
 import { locPlatform, locEnv, LOC_STEPS, LOC_ORDER, locResultText } from "../../core/lochelp.js";
 import { feedbackLinkHTML, noteFeedbackOpened, FEEDBACK_LEAD, FEEDBACK_ICON, FEEDBACK_NOTE } from "../feedback.js";
-import { usageConfigured, resetId, cleanUsage, lastSend } from "../../data/usage.js";
+import { usageConfigured, cleanUsage, lastSend } from "../../data/usage.js";
 import { bus } from "../../core/events.js";
 import { svg } from "../icons.js";
 
@@ -103,7 +103,6 @@ export function locNote(state) {
 export const USAGE_ALWAYS = "Always counted, anonymously: when each visit starts, with a random number made in this browser so that repeat visits count once. Your identity is never collected: no name, account, email, IP address, device details or location coordinates. Website only; the iPhone app collects nothing.";
 export const USAGE_DUR_SUB = "The length of each visit, to the nearest 5 seconds.";
 export const USAGE_ZONE_SUB = "Once per visit, only the name of the stop nearest you (within 400 m), never your location. Needs location to be on.";
-export const USAGE_RESET = "Get a new anonymous number";
 /** This visit's count, as the receiver answered (data/usage.js lastSend). */
 export function usageStatusText(ls = lastSend()) {
   if (!ls) return "";
@@ -117,8 +116,7 @@ export function usageHTML(state) {
   return `<div class="v-card st-usage"><p class="v-sec st-intro">${esc(USAGE_ALWAYS)}</p>`
     + (st ? `<p class="v-sec st-usage-status" role="status">${esc(st)}</p>` : "")
     + sw("usageDur", "Share how long I use the app", USAGE_DUR_SUB, u.dur)
-    + sw("usageZone", "Include my nearest stop", USAGE_ZONE_SUB, u.zone)
-    + `<button type="button" class="v-btn v-btn--secondary v-btn--block" data-st="usage-reset" data-key="usage-reset">${esc(USAGE_RESET)}</button></div>`;
+    + sw("usageZone", "Include my nearest stop", USAGE_ZONE_SUB, u.zone) + "</div>";   // no "new number" button (owner 2026-11-05)
 }
 
 const MINUTES = [0, 2, 5, 10];
@@ -337,7 +335,7 @@ ${usageConfigured() ? `<h3 class="v-h">Usage statistics</h3><div data-region="us
 <div data-region="perm">${DEMO ? "" : permHTML()}</div>
 <p class="v-sec st-note">${esc(ALERTS_NOTE)}</p>
 <h3 class="v-h">iPhone app</h3><div class="v-card st-ios">${sw("liveActivity", "Trip status on lock screen", "Live Activity with a minute counter and next stop. Coming to the iPhone app; your choice is saved for later.", n.liveActivity)}</div>
-<div class="v-card"><button type="button" class="v-row" data-action="about:open"><span class="v-grow"><span class="v-prim">About this app</span><span class="v-sec">Unofficial. Privacy, official contact</span></span></button></div>
+<div class="v-card st-about"><button type="button" class="v-row" data-action="about:open"><span class="v-grow"><span class="v-prim">About this app</span><span class="v-sec">Unofficial. Privacy, official contact</span></span></button></div>
 ${creditsHTML(false)}
 </div>`;
 }
@@ -449,9 +447,6 @@ function onClick(e, root, ctx) {
     if (open) body?.scrollIntoView?.({ block: "nearest" });
   } else if (what === "perm") {
     requestPermission().then((p) => { patch(root, "perm", permHTML(p)); if (p === "granted") ctx.toast?.("Notifications allowed"); });
-  } else if (what === "usage-reset") {
-    resetId();
-    ctx.toast?.("Done. Your next visit uses a new random number.");
   }
 }
 

@@ -19,7 +19,8 @@ address; the live site counts visits as below. Setting it back to `""` (and rest
 Every row also has `anon_id`, a random 128-bit number made in the browser the first time (localStorage `sb:usageId`),
 and `session_id`, a random number per visit. **The rider's identity is never collected**: the rows contain no name,
 account, email, phone number, IP address (Apps Script cannot see it), user agent, screen size, referrer, coordinates,
-searches or taps. The random number is not linked to any of those, and "Get a new anonymous number" in Settings replaces it.
+searches or taps. The random number is not linked to any of those; clearing the site's data in the browser replaces it (the Settings
+button "Get a new anonymous number" was removed on 2026-11-05, owner: "Remove the get a new anonymous number button").
 
 Never sent: in demo mode (`?demo=1`), from automated browsers, from pages not served over https (local testing), and
 from the iPhone app. The iPhone app's App Privacy label stays **Data Not Collected**.

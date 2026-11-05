@@ -2,7 +2,7 @@
 import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
 import { bindActions } from "../js/ui/actions.js";
-import { renderSettings, mountSettings, unmountSettings, locHTML, LOC_DISCLAIMER, LOC_ZONE_NOTE, USAGE_ALWAYS, USAGE_RESET, usageStatusText } from "../js/ui/views/settings.js";
+import { renderSettings, mountSettings, unmountSettings, locHTML, LOC_DISCLAIMER, LOC_ZONE_NOTE, USAGE_ALWAYS, usageStatusText } from "../js/ui/views/settings.js";
 import { renderAbout, ABOUT_USAGE } from "../js/ui/views/about.js";
 import { cleanNotify } from "../js/state.js";
 import { useMemoryOverlay, load } from "../js/core/storage.js";
@@ -30,7 +30,8 @@ test("usage views: Settings explains what is always counted, the identity line, 
     const h = renderSettings(fixture(base()), NOW);
     ok(h.includes('<h3 class="v-h">Usage statistics</h3>'));
     ok(USAGE_ALWAYS.includes("Your identity is never collected") && USAGE_ALWAYS.includes("Always counted, anonymously") && USAGE_ALWAYS.includes("the iPhone app collects nothing"));
-    ok(h.includes('data-st-in="usageDur"') && h.includes('data-st-in="usageZone"') && h.includes(USAGE_RESET));
+    ok(h.includes('data-st-in="usageDur"') && h.includes('data-st-in="usageZone"'));
+    ok(!h.includes('data-st="usage-reset"') && !/new anonymous number/i.test(h), "no new-number button (owner 2026-11-05)");
     ok(/data-st-in="usageDur"[^>]*checked/.test(h), "length on by default");
     ok(!/data-st-in="usageZone"[^>]*checked/.test(h), "nearest stop off by default");
     for (const t of [USAGE_ALWAYS, LOC_ZONE_NOTE, ABOUT_USAGE]) ok(!DASH.test(t), "no dash characters: " + t.slice(0, 30));
@@ -53,12 +54,7 @@ test("usage views: the switches save the choices; the location note says when th
     await tick();
     eq(ctx.store.get().usage, { dur: false, zone: true });
     ok(el.querySelector('[data-region="loc"]').textContent.includes("You turned on Include my nearest stop"), "location note updated");
-    const id = anonId().id;
-    click(el.querySelector('[data-st="usage-reset"]'));
-    await tick();
-    eq(load("usageId", null), null, "the number is forgotten");
-    ok(ctx.calls.toast.some((t) => /new random number/.test(t)), "the rider is told");
-    ok(id && anonId().id !== id, "the next visit makes a new one");
+    ok(!el.querySelector('[data-st="usage-reset"]'), "no new-number button (owner 2026-11-05)");
   } finally { unbind?.(); unmountSettings(); el.remove(); useMemoryOverlay(false); off(); }
 });
 

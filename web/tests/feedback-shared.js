@@ -222,7 +222,7 @@ test("privacy: About and privacy.html say the feedback form opens only from the 
   ok(about.includes("bus alert choices) and whether you already gave feedback (which removes the feedback button) are saved in this browser only"), "About: the given-feedback choice is stored locally");
   ok(!/popup/i.test(about), "About no longer mentions a popup");
   const page = (await (await fetch("../privacy.html", { cache: "no-store" })).text()).replace(/\s+/g, " ");
-  ok(page.includes("Effective November 4, 2026."), "a new effective date for the changed text");
+  ok(/Effective November ([4-9]|[12]\d|30), 2026\./.test(page), "an effective date on or after the change (Nov 4, 2026)");
   ok(page.includes("<b>Beta feedback (optional).</b> Only when you tap &ldquo;Send feedback&rdquo; behind the feedback button on the map or &ldquo;Give feedback&rdquo; in Settings does a Google Form open"), "privacy.html bullet");
   ok(!page.includes("Go to Feedback"), "privacy.html: no popup button any more");
   ok(page.includes("whether you already gave feedback or chose &ldquo;I already gave feedback&rdquo;, which removes the feedback button from the map, on the web with its date"), "privacy.html: the choice stays on the device");

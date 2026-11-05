@@ -773,7 +773,8 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   automated browsers or off https). Rows: `start` always (Chicago day / weekday / time to the minute, app kind, version,
   first visit), `end` = seconds on screen this visit (store `usage.dur`, default on, off by default with Global
   Privacy Control / Do Not Track), `place` = nearest stop name within 400 m or "Away from stops", once per visit (store
-  `usage.zone`, default off). Each row: `id` (random 128-bit, localStorage `sb:usageId`, `resetId()` for a new one)
+  `usage.zone`, default off). Each row: `id` (random 128-bit, localStorage `sb:usageId`; a new one only when the site's data is cleared: the Settings button
+  "Get a new anonymous number" was removed 2026-11-05, owner; `resetId()` stays as the tests' model of cleared data)
   and `sid` (random per visit; a new visit after 30 min in the background). No coordinates, IP, user agent or
   identity. Sender (2026-10-29): `fetch` text/plain POST (no preflight) with `credentials: "omit"` (no cookies, so no
   browser login rides along), redirect followed; Google's reply ("ok" / "dropped" / "error") is readable (the 302 and the
@@ -788,7 +789,7 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   of its previous one (alias for later rows) and cleans old ones at each summary refresh.
 - State: `usage: {dur, zone}` persisted (`cleanUsage`, KEYS.usage).
 - Settings > Usage statistics (only when configured): `USAGE_ALWAYS` (what is always counted; "Your identity is never
-  collected"), switches `usageDur` / `usageZone`, button "Get a new anonymous number". The location note adds
+  collected"), switches `usageDur` / `usageZone` (no new-number button since 2026-11-05). The location note adds
   `LOC_ZONE_NOTE` while the nearest stop is shared. About adds `ABOUT_USAGE` and drops "no tracking". privacy.html
   describes it (always / unless you turn it off / only if you turn it on; the iPhone app collects nothing).
 - Receiver `tools/usage/Code.gs` (Apps Script web app, tabs starts / ends / places, format checks, no formulas);

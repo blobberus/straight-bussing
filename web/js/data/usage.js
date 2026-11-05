@@ -152,7 +152,8 @@ export function anonId() {
   return { id: nid, made: true };
 }
 
-/** Settings > "Get a new anonymous number": forget this browser's number; the next visit makes a new one. */
+/** Forget this browser's number, as clearing the site's data does; the next visit makes a new one. (The Settings button
+ *  "Get a new anonymous number" was removed on 2026-11-05, owner; tests use this to model cleared site data.) */
 export function resetId() {
   remove(ID_KEY);
 }
