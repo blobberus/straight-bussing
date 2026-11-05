@@ -183,6 +183,21 @@ test('bus layer: slow glides are drawn in shared frames, once the fastest badge 
   m.remove();
 });
 
+test('bus layer: zoomed out, the heading notch still turns at a corner while the badge moves under a pixel a frame', () => {
+  const m = window.L.map(box('t-track-turn'), { zoomControl: false, attributionControl: false }).setView(P(2, 1), 12);
+  const routes = { r1: { short: 'CEN', color: '#FF9900' } }, shapes = { r1: [ell()] };
+  const s = prepareShape(shapes.r1)[0], corner = s.cum[1], pos = (x) => pointAt(s.line, s.cum, x);
+  const bus = (x, ts) => ({ vehicle: { id: 3 }, trip: { route_id: 'r1' }, position: { latitude: pos(x)[0], longitude: pos(x)[1] }, timestamp: ts });
+  const layer = manualLayer(m);
+  layer.draw([bus(corner - 60, 1000)], { routes, shapes, nowS: 1000 });
+  layer.draw([bus(corner + 60, 1010)], { routes, shapes, nowS: 1010 });   // 120 m in 9 s: about 4 px at zoom 12
+  const deg = () => { const t = m.getContainer().querySelector('.sb-bus-hd').style.transform; const d = parseFloat((/rotate\((-?[\d.]+)deg\)/.exec(t) || [])[1]); return ((d % 360) + 360) % 360; };
+  let ms = 0;
+  while (ms < GLIDE_MS / 2 + 400) { layer.step(16); ms += 16; }   // 400 ms past the corner
+  ok(deg() < 15 || deg() > 345, 'heading north (0) soon after the corner: ' + deg());
+  m.remove();
+});
+
 test('bus layer: a bus missing from a poll keeps its badge for MISSING_S, then continues along the line; no bus at all clears', () => {
   const m = window.L.map(box('t-track3'), { zoomControl: false, attributionControl: false }).setView(P(2, 1), 15);
   const routes = { r1: { short: 'CEN', color: '#FF9900' } }, shapes = { r1: [ell()] };

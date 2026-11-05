@@ -413,15 +413,17 @@ export function createBusLayer(map, cb, opt = {}) {
       if (zooming) { more = true; continue; }
       const e = done(a, t);
       const p = pointAt(a.path, a.cum, e * a.total);
-      moves.push([m, a, e, p]);
-      if (!due) due = e >= 1 || movedPx(m, p) >= STEP_PX;
+      const hd = a.along && a.f > 2 ? headingAt(a.s, advance(a.s, a.pos0, a.f * e)) : NaN;
+      moves.push([m, a, e, p, hd]);
+      // due: an animation ends, a badge moved a pixel, or its heading notch has to turn (a corner seen zoomed out)
+      if (!due) due = e >= 1 || movedPx(m, p) >= STEP_PX || (Number.isFinite(hd) && Number.isFinite(m.rot) && Math.abs(unwrapDeg(m.rot, hd) - m.rot) >= 2);
     }
     if (due) {
-      for (const [m, a, e, p] of moves) {
+      for (const [m, a, e, p, hd] of moves) {
         m.mk.setLatLng(p);
         m.disp = p;
         m.px = layerPx(p);
-        if (a.along && a.f > 2) turn(m, headingAt(a.s, advance(a.s, a.pos0, a.f * e)));
+        if (Number.isFinite(hd)) turn(m, hd);
         if (e >= 1) { m.anim = null; if (Number.isFinite(a.endHd)) turn(m, a.endHd); } else more = true;
       }
     } else if (moves.length) more = true;
