@@ -50,21 +50,24 @@ function planSig(o) {
 /**
  * Create the map inside element `elId`.
  * @param {string} elId
+ * @param {{dark?:boolean}} [opts] dark: the theme to start in, so a dark-mode launch never downloads (or shows, while the
+ *   style is unreachable) the light basemap first
  * @returns {object} MapApi: setTheme, setBottomInset, drawNetwork, drawBuses, setSelectedStop, drawFavorites,
  *   setUser, setHeading, highlightStops, drawPlan, setTrip, inView, setLandmarks, fitTo, flyTo, onStopTap, onBusTap, onLineTap,
  *   onUserMove, onMapTap
  *   (+ `leaflet` escape hatch)
  */
-export function createMap(elId) {
+export function createMap(elId, opts = {}) {
   const L = window.L;
   const el = document.getElementById(elId);
   el.classList.add('sb-map');
+  el.classList.toggle('sb-dark', !!(opts && opts.dark));
   // no Leaflet attribution control: map/credits.js shows the credit at load, then fades it out (no bubble, no (i))
   const map = L.map(el, { zoomControl: false, attributionControl: false, minZoom: 11, maxZoom: 18, zoomSnap: 0.25,
     zoomDelta: 0.5, wheelPxPerZoomLevel: 90, tapTolerance: 15 }).setView(CAMPUS, 15);
   for (const [name, z] of Object.entries(PANES)) map.createPane(name).style.zIndex = String(z);
 
-  let dark = false, inset = 0, progUntil = 0, lastNet = null, planActive = false, planRids = null, lastBuses = null;
+  let dark = !!(opts && opts.dark), inset = 0, progUntil = 0, lastNet = null, planActive = false, planRids = null, lastBuses = null;
   const stopTap = hub(), busTap = hub(), userMove = hub(), mapTap = hub(), lineTap = hub();
   const basemap = createBasemap(map, dark);
   const credits = createCredits(map, { html: basemap.attribution });

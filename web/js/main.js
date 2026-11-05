@@ -458,7 +458,7 @@ async function boot() {
   initGlassLite({ targets: [document.getElementById("map"), el.head] });   // glass spec 12.4: solid glass on a slow device
   try {
     if (!window.L) throw new Error("Leaflet not loaded");
-    map = createMap("map");
+    map = createMap("map", { dark: isDark() });   // the theme from the start: a dark launch loads only the dark basemap
   } catch (e) {
     console.warn("map unavailable", e);   // handled: lists and times work, the toast says so
     map = nullMap();

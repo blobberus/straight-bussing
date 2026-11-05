@@ -2,6 +2,7 @@
 import { test, eq, ok } from './lib.js';
 import { patchStyle, emptyStyle, PALETTE, campusFilter, symbolIds } from '../js/map/style.js';
 import { POSITRON, DARK } from './map-fixtures.js';
+import { createMap } from '../js/map/map.js';
 
 const ids = (s) => s.layers.map((l) => l.id);
 const byId = (s, id) => s.layers.find((l) => l.id === id);
@@ -236,4 +237,36 @@ test('basemap text check: the symbol layers are read once per style change, not 
   const gl2 = { getStyle: () => { reads++; return { layers: [{ id: 'other', type: 'symbol' }] }; } };
   eq(symbolIds(gl2, cache, 4), ['other'], 'a rebuilt map (WebGL context lost) is read again');
   eq(reads, 3);
+});
+
+test('basemap theme (QA 2026-11-05): a dark start builds the dark land first; with no style in, setTheme swaps the plain land at once', async () => {
+  // a fake GL layer records the styles it gets; the style downloads fail (offline, tiles down): the case where the
+  // map stayed light in dark mode, because createMap always started light and setDark only retried the download
+  const L = window.L, realGL = L.maplibreGL, realFetch = window.fetch;
+  if (!window.maplibregl || !realGL) { ok(true, 'no vector basemap on this page'); return; }
+  const made = [], styles = [];
+  const gl = { setStyle: (st) => styles.push(st), on() {}, getCanvas: () => null, isStyleLoaded: () => false };
+  const Fake = L.Layer.extend({ onAdd() {}, onRemove() {}, getMaplibreMap: () => gl });
+  L.maplibreGL = (o) => { made.push(o); return new Fake(); };
+  window.fetch = () => Promise.reject(new Error('offline (test)'));
+  const el = document.body.appendChild(document.createElement('div'));
+  el.id = 't-bm-theme'; el.style.cssText = 'width:300px;height:300px';
+  const bg = (st) => st && st.layers && st.layers[0] && st.layers[0].paint['background-color'];
+  let api = null;
+  try {
+    api = createMap('t-bm-theme', { dark: true });
+    if (!made.length) { ok(true, 'raster fallback here (no WebGL)'); return; }
+    ok(api.leaflet.getContainer().classList.contains('sb-dark'), 'overlays dark from the start');
+    eq(bg(made[0].style), PALETTE.dark.bg, 'the GL layer starts on the dark land, not the light one');
+    api.setTheme(false);   // before any download could answer: no style is in
+    eq(bg(styles[styles.length - 1]), PALETTE.light.bg, 'the light land at once, not only after a download that may never come');
+    api.setTheme(true);
+    eq(bg(styles[styles.length - 1]), PALETTE.dark.bg, 'and back');
+  } finally {
+    L.maplibreGL = realGL;
+    await new Promise((r) => setTimeout(r, 0));   // the rejected downloads settle on the fake
+    window.fetch = realFetch;
+    try { api?.leaflet.remove(); } catch (e) { /* */ }
+    el.remove();
+  }
 });

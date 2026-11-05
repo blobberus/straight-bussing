@@ -319,7 +319,14 @@ export function createBasemap(map, isDark) {
         if (contextLost()) checkGl(); else if (!loaded) { tries = 0; apply(); }
       });
       return { kind: 'vector', get layer() { return layer; }, attribution: ATTRIBUTION,
-        setDark(d) { if (!!d === dark) return; dark = !!d; tries = 0; apply(); },
+        setDark(d) {
+          if (!!d === dark) return;
+          dark = !!d; tries = 0;
+          // no style in yet (still loading, or unreachable: offline, tiles down): the plain land of the new theme at once,
+          // so a dark map never stays light (or the reverse) while the download is retried
+          if (!loaded) { try { layer.getMaplibreMap?.()?.setStyle(emptyStyle(dark)); } catch (e) { /* map mid-rebuild */ } }
+          apply();
+        },
         setLandmarks(list) { marks = Array.isArray(list) ? list : []; syncMarks(); },   // style not in yet: apply() / styledata
         /** Called each time the basemap has drawn and placed its labels (after a move, tiles, a style). @returns {()=>void} off */
         onIdle(fn) { if (typeof fn === 'function') idleFns.add(fn); return () => idleFns.delete(fn); },
