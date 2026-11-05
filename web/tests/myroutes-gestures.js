@@ -299,3 +299,23 @@ test("myroutes: empty states and the markup keep stable keys for in-place patchi
   ok(['data-key="h-custom"', 'data-key="cempty"', 'data-key="h-fav"', 'data-key="fempty"', 'data-key="links"'].every((k) => h.includes(k)), "keyed sections");
   ok(!h.includes('class="v-card mr-more"'), "the alerts/about card no longer shares the More button's class");
 });
+
+test("myroutes: at 200% text the swipe tray's labels (Details, Edit, Delete) fit their 72 pt buttons (capped at 1.35 x like iOS swipe actions)", async () => {
+  const html = document.documentElement, was = html.style.fontSize;
+  html.style.fontSize = "34px";   // 200% browser text
+  const m = mountList({ customRoutes: [C1, C2] }, 288);
+  try {
+    const row = m.row("c1");
+    row.classList.add("is-open");
+    const acts = [...row.querySelectorAll(".mr-act")];
+    eq(acts.length, 3, "three actions");
+    for (const a of acts) {
+      const r = document.createRange();
+      r.selectNodeContents(a);
+      const w = r.getBoundingClientRect().width;   // the words' own width (a centered overflow hides from scrollWidth)
+      ok(w <= a.clientWidth + 0.5, `"${a.textContent.trim()}" fits (${Math.round(w)} > ${a.clientWidth})`);
+      ok(a.offsetHeight >= 44, "44 pt tall");
+      ok(parseFloat(getComputedStyle(a).fontSize) <= 16.21, "label capped at 1.35 x caption");
+    }
+  } finally { m.done(); html.style.fontSize = was; }
+});

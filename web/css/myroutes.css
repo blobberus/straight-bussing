@@ -108,7 +108,7 @@
 .mr-acts { position: absolute; top: 0; right: 0; bottom: 0; width: 216px; display: flex; visibility: hidden; transition: visibility 0s linear var(--m-sheet); }
 .mr-swipe.is-open .mr-acts, .mr-swipe.is-drag .mr-acts { visibility: visible; transition-delay: 0s; }   /* hidden when closed: no red bleed at the card's rounded corners */
 .mr-act { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-1); min-height: var(--tap); margin: 0; padding: 0; border: 0; border-radius: 0;
-  color: var(--on-fill); font: var(--t-caption); cursor: pointer; }
+  color: var(--on-fill); font: var(--t-caption); font-size: min(var(--size-caption), var(--cap-caption)); line-height: 1.25; cursor: pointer; }
 .mr-act .ic { width: 20px; height: 20px; }
 .mr-act--info { background: var(--neutral-fill); }
 .mr-act--edit { background: var(--tint-fill); }

@@ -99,6 +99,7 @@
      Settings / Lines by Time sheet (an iOS sheet toolbar) and the time wheels (a system picker, with fixed 40 px rows) */
   --cap-body: 22.95px;
   --cap-hero-title: 27px;
+  --cap-caption: 16.2px;          /* the swipe tray's labels: three 72 pt buttons, like iOS swipe actions */
   --cap-row-detail: 20.25px;
   --cap-footnote: 17.55px;
   --cap-tab: 14.85px;
