@@ -357,3 +357,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 6126,Apostolic/Drexel,1793851117,2026-11-04 21:58:37,drop,3,2,12644,8611,Drexel Garage,1793851117,676400,4319;4324,3,3,0,,,1,
 5704,Downtown Campus Connector,1793851685,2026-11-04 22:08:05,drop,3,2,12648,132968,Roosevelt Station,1793851685,874028,12642;12647,6,4,0,,,1,
 5704,Downtown Campus Connector,1793851911,2026-11-04 22:11:51,drop,2,1,12647,132968,Roosevelt Station,1793851911,874028,12642,6,4,0,,,1,
+6126,Apostolic/Drexel,1793858374,2026-11-04 23:59:34,drop,2,1,4319,8630,Levi Hall (W),1793858374,676404,4324,3,3,0,,,,
