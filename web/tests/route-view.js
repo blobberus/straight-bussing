@@ -188,3 +188,18 @@ test("route header (DESIGN-SPEC 10.6): buses running, else never Not running whe
   eq(routeStatusText(fixture({ liveLoaded: false, buses: [] }), "R1", NOW), "", "before the first poll: nothing");
   eq(routeStatusText(fixture(), "nope", NOW), "", "unknown route");
 });
+
+test("route status line: '2 buses running · 53RD' stays on one line at 393 pt (the short name is inline, not a block under a dangling dot)", () => {
+  const s = fixture({ routeId: "R1" });
+  const box = document.createElement("div");
+  box.style.cssText = "position:absolute;left:-10000px;top:0;width:361px";   // 393 minus the sheet's 16 pt insets
+  box.innerHTML = renderRoute(s, NOW);
+  document.body.appendChild(box);
+  try {
+    const p = box.querySelector(".v-status"), short = p && p.querySelector(".v-sec");
+    ok(p && short, "status line with the short name");
+    eq(getComputedStyle(short).display, "inline", "the short name flows in the line");
+    const lh = parseFloat(getComputedStyle(p).lineHeight);
+    ok(p.getBoundingClientRect().height < lh * 1.5, `one line (${Math.round(p.getBoundingClientRect().height)} px for a ${lh} px line): "${p.textContent.trim()}"`);
+  } finally { box.remove(); }
+});

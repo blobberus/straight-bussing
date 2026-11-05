@@ -3,6 +3,7 @@
 
 /* status and today's hours under the title */
 .v-route > .v-status, .v-route > .r-today, .v-route > .r-nolive { padding: 0 var(--s-1); }
+.v-status .v-sec { display: inline; }   /* "2 buses running · 53RD" is one line (.v-sec is a block elsewhere) */
 .r-today { margin: 0 0 var(--s-3); }
 .r-k { font-weight: var(--w-semibold); color: var(--label); margin-right: var(--s-1); }
 .r-sched { font-weight: var(--w-semibold); color: var(--label-2); }
