@@ -3,7 +3,7 @@
 import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
 import { bindActions } from "../js/ui/actions.js";
-import { renderRoutes, listHTML, routeMatches, mountRoutes, unmountRoutes, _ui } from "../js/ui/views/routes.js";
+import { renderRoutes, listHTML, routeMatches, mountRoutes, unmountRoutes, _ui, notRunningText } from "../js/ui/views/routes.js";
 
 const base = (over = {}) => fixture({ routeOrder: [], customRoutes: [], activeCustom: null, prevHidden: [], favStops: [], journey: null, ...over });
 /** Route ids of the rows, top to bottom. */
@@ -137,4 +137,44 @@ test("routes search: hidden in map-order mode, back with the query after Done; b
   await tick();
   eq(ctx.store.get().hiddenRoutes.slice().sort(), ["R1", "R2", "R3"], "Hide all still acts on every route");
   done();
+});
+
+// ---- owner 2026-11-05: inactive routes stay in the results, grayed and said in words; active ones first ----
+const onlyR1 = (over = {}) => { const s = base(over); return { ...s, buses: s.buses.filter((b) => b.trip.route_id === "R1"), trips: s.trips.filter((t) => t.trip.route_id === "R1"), ...over }; };
+const rowHTML = (h, id) => { const a = h.indexOf(`<div class="v-routerow`, h.lastIndexOf(`<div class="v-routerow`, h.indexOf(`data-id="${id}"`))); return h.slice(a, h.indexOf("</div>", h.indexOf(`data-id="${id}"`)) + 6); };
+
+test("routes search: matches that run come first; the rest stay listed, grayed and saying so", () => {
+  const s = onlyR1(), h = listHTML(s, NOW, "library");   // both lines stop at Library; only R1 runs
+  eq(rowIds(h).slice(0, 2), ["R1", "R2"], "the running line first (list order alone would put B first)");
+  const r2 = rowHTML(h, "R2"), r1 = rowHTML(h, "R1");
+  ok(/class="v-routerow is-idle"/.test(r2) && !/is-idle/.test(r1), "only the one that does not run is grayed");
+  ok(r2.includes("Not running") && !r1.includes("Not running"), "and it says so in words");
+  eq(notRunningText(s, "R2", NOW).startsWith("Not running"), true);
+  ok(r2.includes('data-action="routes:toggle" data-id="R2"') && r2.includes('aria-label="Hide route B Blue Loop"'), "still has its eye");
+  const btn = (() => { const d = document.createElement("div"); d.innerHTML = h; return d.querySelector('[data-action="route:open"][data-id="R2"]'); })();
+  ok(/Blue Loop.*Not running/.test(btn.textContent), "the row's accessible name says it does not run");
+});
+
+test("routes search: a route the query names stays first even when it does not run", () => {
+  const h = listHTML(onlyR1(), NOW, "blue");
+  eq(rowIds(h)[0], "R2", "Blue Loop first");
+  ok(/class="v-routerow is-idle"/.test(rowHTML(h, "R2")), "grayed, though first");
+});
+
+test("routes search: hidden and not running says both (one middle dot per line); hidden alone keeps its own look", () => {
+  const h = listHTML(onlyR1({ hiddenRoutes: ["R2"] }), NOW, "library"), r2 = rowHTML(h, "R2");
+  ok(/class="v-routerow is-off is-idle"/.test(r2), "both looks");
+  ok(r2.includes('<span class="v-sec">Hidden from map and times</span>') && r2.includes("Not running"), "both said, on two lines");
+  ok(r2.includes('aria-label="Show route B Blue Loop"'), "the crossed-out eye of a hidden route");
+  for (const line of r2.match(/<span class="v-sec[^"]*">[^<]*<\/span>/g) || []) ok((line.match(/·/g) || []).length <= 1, "one middle dot per line: " + line);
+  const hid = listHTML(base({ hiddenRoutes: ["R1"] }), NOW, "library"), r1 = rowHTML(hid, "R1");
+  ok(/class="v-routerow is-off"/.test(r1) && !/is-idle/.test(r1) && r1.includes("1 bus running · Hidden from map and times"), "hidden but running: not grayed as not running");
+});
+
+test("routes search: live status unknown grays nothing and keeps the score order (never 'Not running' in an outage)", () => {
+  const h = listHTML(onlyR1({ liveLoaded: false }), NOW, "library");
+  ok(!h.includes("is-idle") && !h.includes("Not running now"), "nothing grayed");
+  eq(rowIds(h).slice(0, 2), ["R2", "R1"], "score order (ties: list order)");
+  eq(routeMatches(onlyR1({ liveLoaded: false }), "library", NOW).active, null);
+  ok(routeMatches(onlyR1(), "library", NOW).active.has("R1"), "the Show running rule's set otherwise");
 });

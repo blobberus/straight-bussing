@@ -23,12 +23,13 @@ import { nowS } from "../../core/time.js";
 import { hoursOn } from "../../core/schedule.js";
 import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibility.js";
 import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, showRunning, cleanName } from "../../core/custom.js";
-import { routeIndexFor, searchRoutes, splitByHits, matchText } from "../../core/routesearch.js";
+import { routeIndexFor, searchRoutes, splitByHits, matchText, rankByActive } from "../../core/routesearch.js";
 import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
 import { OFFICIAL_HTML } from "./pick.js";
 import { operatorAlertsHTML, callsHTML, operatorPhone } from "./alerts.js";
 import { stationToggleHTML } from "./journey.js";
 import { attachOrderDrag } from "./routes-drag.js";
+import { restingText } from "./myroutes.js";
 
 const EYE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYEOFF = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z" opacity=".45"/><circle cx="12" cy="12" r="3" opacity=".45"/><path d="M3 3l18 18"/></svg>';
@@ -72,16 +73,34 @@ function searchIndex(state) {
 }
 
 /**
- * Route search over the listed routes (the station filter's, when one is set): the matches, best first, with the
- * stop that matched (stop keyword matches). Empty query: no matches.
+ * Route search over the listed routes (the station filter's, when one is set): the matches with the stop that matched
+ * (stop keyword matches). Order (owner 2026-11-05, core rankByActive): the routes the query names first, then the
+ * ones operating now (the Show running rule, operatingIds), then the rest. Empty query: no matches.
  * @param {object} state
  * @param {string} q
- * @returns {{top:string[], stopOf:Map<string,string>}}
+ * @param {number} [now] unix seconds
+ * @returns {{top:string[], stopOf:Map<string,string>, active:Set<string>|null}} active: operating now; null = live
+ *   status unknown (feed not loaded or failing: no route is called not running, the order is the score's)
  */
-export function routeMatches(state, q) {
-  const hits = String(q || "").trim() ? searchRoutes(searchIndex(state), q) : [];
+export function routeMatches(state, q, now = nowS()) {
+  const active = liveNotKnown(state, now) ? null : new Set(operatingIds(state, now));
+  const hits = String(q || "").trim() ? rankByActive(searchRoutes(searchIndex(state), q), active) : [];
   const stopOf = new Map(hits.filter((h) => h.stop).map((h) => [h.id, h.stop]));
-  return { top: splitByHits(routeIds(state), hits).top, stopOf };
+  return { top: splitByHits(routeIds(state), hits).top, stopOf, active };
+}
+
+/**
+ * Status of a search result that does not operate now (owner 2026-11-05: shown grayed AND said in words):
+ * "Not running now · Scheduled from 4:00 PM today", "Not running now · No more service today", "Not running today"
+ * (myroutes.js restingText, iOS Schedule.restingText).
+ * @param {object} state
+ * @param {string} id
+ * @param {number} now
+ * @returns {string}
+ */
+export function notRunningText(state, id, now) {
+  const t = restingText(state, id, now);
+  return t.startsWith("Not running") ? t : `Not running now · ${t}`;
 }
 
 /**
@@ -116,14 +135,16 @@ const nameOf = (state, id) => { const r = state.routes?.[id] || {}; return r.lon
 /** "Not running", plus today's scheduled hours when there are any ("Not running · Today 7:00 AM to 11:30 PM"; iOS RouteRow). */
 export const idleText = (state, id, now) => { const h = hoursOn(state.service, id, now); return h && h.first ? `Not running · Today ${h.label}` : "Not running"; };
 
-function row(state, id, hidden, now, stop = null) {
+function row(state, id, hidden, now, stop = null, idle = false) {
   const r = state.routes[id] || {}, n = runningCount(state, id), name = nameOf(state, id);
   const tripOff = hidden && !!state.journey && !(state.hiddenRoutes || []).includes(id);   // hidden only by the journey
   // whether the route runs, also for a hidden one (owner 2026-10-17: a grayed line must still say if it is running)
-  const live = n ? `${n} bus${n > 1 ? "es" : ""} running` : liveUnknown(state, now) ? "Live status unknown" : noLiveStatus(state, id, now) || idleText(state, id, now);
-  const status = tripOff ? `${live} · Not part of this trip` : hidden ? `${live} · Hidden from map and times` : live;
+  const live = n ? `${n} bus${n > 1 ? "es" : ""} running` : liveUnknown(state, now) ? "Live status unknown" : idle ? notRunningText(state, id, now) : noLiveStatus(state, id, now) || idleText(state, id, now);
+  const why = tripOff ? "Not part of this trip" : hidden ? "Hidden from map and times" : "";
+  // a search result that does not run (idle) keeps one middle dot per line: why it is grayed goes on its own line
+  const status = why && !idle ? `${live} · ${why}` : live, more = why && idle ? `<span class="v-sec">${why}</span>` : "";
   const eye = tripOff ? "" : `<button type="button" class="v-eye" data-action="routes:toggle" data-id="${esc(id)}" aria-pressed="${hidden ? "false" : "true"}" aria-label="${hidden ? "Show" : "Hide"} route ${esc(r.short || "")} ${esc(name)}">${hidden ? EYEOFF : EYE}</button>`;
-  return `<div class="v-routerow${hidden ? " is-off" : ""}"><button type="button" class="v-row v-rowmain" data-action="route:open" data-id="${esc(id)}">${routeChip(id, state.routes)}<span class="v-grow"><span class="v-prim">${esc(name)}</span><span class="v-sec">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(status)}</span>${stop ? `<span class="v-sec rt-why">Stops at ${esc(stop)}</span>` : ""}</span></button>${eye}</div>`;
+  return `<div class="v-routerow${hidden ? " is-off" : ""}${idle ? " is-idle" : ""}"><button type="button" class="v-row v-rowmain" data-action="route:open" data-id="${esc(id)}">${routeChip(id, state.routes)}<span class="v-grow"><span class="v-prim">${esc(name)}</span><span class="v-sec">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(status)}</span>${more}${stop ? `<span class="v-sec rt-why">Stops at ${esc(stop)}</span>` : ""}</span></button>${eye}</div>`;
 }
 
 /**
@@ -292,9 +313,9 @@ export function listHTML(state, now = nowS(), q = R.q) {
   else if (empty && !state.routeFilter) h += (silentService(state, now) ? emptyState("No live locations right now", silentText(state, g.scheduled, now, OFFICIAL_PHONE)) : emptyState("No shuttles running right now", "Routes are listed below for reference.")) + help();
   const bulk = bulkHTML(state, g, now);   // before the search takes the matches out of the groups (same scope, same states)
   if (String(q || "").trim()) {
-    const { top, stopOf } = routeMatches(state, q), hiddenSet = new Set(g.hidden);
-    h += top.length
-      ? `<h3 class="v-h rt-qhead">${esc(matchText(top.length))}</h3><div class="v-list rt-qlist">${top.map((i) => row(state, i, hiddenSet.has(i), now, stopOf.get(i))).join("")}</div>`
+    const { top, stopOf, active } = routeMatches(state, q, now), hiddenSet = new Set(g.hidden);
+    h += top.length   // a match that does not operate now is grayed and says "Not running now" (owner 2026-11-05)
+      ? `<h3 class="v-h rt-qhead">${esc(matchText(top.length))}</h3><div class="v-list rt-qlist">${top.map((i) => row(state, i, hiddenSet.has(i), now, stopOf.get(i), !!active && !active.has(i))).join("")}</div>`
       : `<div class="rt-qnone">${emptyState("No routes match", "Try a route name, a street or a stop.")}<button type="button" class="v-btn v-btn--secondary" data-action="routes:search-clear">Clear search</button></div>`;
     const got = new Set(top), label = top.length ? "Other routes" : "All routes";
     for (const k of Object.keys(g)) g[k] = g[k].filter((i) => !got.has(i));
@@ -379,7 +400,7 @@ function setQuery(v) {
   clearTimeout(liveTimer);
   liveTimer = setTimeout(() => {
     const live = rootRef?.querySelector?.('[data-live="routes-q"]');
-    if (live) live.textContent = R.q.trim() ? matchText(routeMatches(curState(), R.q).top.length) : "";
+    if (live) live.textContent = R.q.trim() ? matchText(routeMatches(curState(), R.q, ctxRef?.now ? ctxRef.now() : nowS()).top.length) : "";
   }, 400);
 }
 

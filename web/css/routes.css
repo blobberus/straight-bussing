@@ -58,6 +58,11 @@
 .rt-qx:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .rt-qhead { margin-top: var(--s4); }
 .rt-why { overflow-wrap: anywhere; }
+/* a search result that does not operate now (owner 2026-11-05): a gray chip and a secondary-color name, and its text
+   says "Not running now". Unlike a hidden route (.is-off: the whole row faded, the crossed-out eye, "Hidden from map
+   and times"); a route both hidden and not running shows both. */
+.v-routerow.is-idle .chip { filter: grayscale(1); }
+.v-routerow.is-idle .v-prim { color: var(--text-2); }
 .rt-qnone { display: flex; flex-direction: column; align-items: center; gap: var(--s2); margin: var(--s2) 0 0; }
 .rt-qnone .empty { padding-bottom: 0; }
 .rt-qnone .v-btn { min-height: var(--tap); }
