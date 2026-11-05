@@ -112,8 +112,9 @@ struct RoutesView: View {
         }
     }
 
-    /// The matches, best first (hidden ones stay grayed with their eye), or "No routes match" with Clear search.
-    @ViewBuilder func matchSection(_ top: [String], stopOf: [String: String], hidden: Set<String>) -> some View {
+    /// The matches (hidden ones keep their eye; ones that do not operate now are grayed and say "Not running now",
+    /// owner 2026-11-05), or "No routes match" with Clear search.
+    @ViewBuilder func matchSection(_ top: [String], stopOf: [String: String], hidden: Set<String>, active: Set<String>?) -> some View {
         if top.isEmpty {
             Section {
                 EmptyStateView(title: "No routes match", message: "Try a route name, a street or a stop.")
@@ -122,7 +123,9 @@ struct RoutesView: View {
             }
         } else {
             Section(header: ListHeader(RouteSearch.matchText(top.count))) {
-                ForEach(top, id: \.self) { RouteRow(rid: $0, hidden: hidden.contains($0), stop: stopOf[$0]) }
+                ForEach(top, id: \.self) { rid in
+                    RouteRow(rid: rid, hidden: hidden.contains(rid), stop: stopOf[rid], idle: active.map { !$0.contains(rid) } ?? false)
+                }
             }
         }
     }
@@ -132,7 +135,7 @@ struct RoutesView: View {
         let all = groups
         let total = all.count
         let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty
-        let found = searching ? model.routeMatches(query) : (top: [String](), stopOf: [String: String]())
+        let found = searching ? model.routeMatches(query) : (top: [String](), stopOf: [String: String](), active: Set<String>?.none)
         let g = all.without(Set(found.top))
         topBar
         if total > 0 { searchSection }
@@ -180,7 +183,7 @@ struct RoutesView: View {
                 }
             }
             if searching {
-                matchSection(found.top, stopOf: found.stopOf, hidden: Set(all.hidden))
+                matchSection(found.top, stopOf: found.stopOf, hidden: Set(all.hidden), active: found.active)
                 if g.count > 0 {
                     // the quiet divider (web .rt-qdiv): the routes that did not match, in their usual groups
                     Section(header: ListHeader(found.top.isEmpty ? "All routes" : "Other routes")) {}
@@ -308,6 +311,9 @@ struct RouteRow: View {
     let hidden: Bool
     /// The stop whose name matched the route search ("Stops at …"), nil otherwise.
     var stop: String? = nil
+    /// A route search result that does not operate now (owner 2026-11-05): gray chip, secondary name, "Not running
+    /// now · …" (web routes.js row `is-idle`); hidden keeps its crossed-out eye and says so on its own line.
+    var idle = false
 
     var body: some View {
         let r = model.route(rid)
@@ -317,12 +323,15 @@ struct RouteRow: View {
         HStack(spacing: 10) {
             Button { model.push(.route(rid)) } label: {
                 HStack(spacing: 10) {
-                    RouteChip(route: r, rid: rid)
+                    RouteChip(route: r, rid: rid).grayscale(idle ? 1 : 0)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(model.longName(rid)).font(.body.weight(.medium)).foregroundStyle(hidden ? Palette.text2 : Palette.text)
+                        Text(model.longName(rid)).font(.body.weight(.medium)).foregroundStyle(hidden || idle ? Palette.text2 : Palette.text)
                         HStack(spacing: 4) {
                             if n > 0 { LiveDot() }
                             Text(subtitle(n, tripOff: tripOff)).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
+                        }
+                        if idle && (tripOff || hidden) {   // one middle dot per line: why it is grayed on its own line
+                            Text(tripOff ? "Not part of this trip" : "Hidden from map and times").font(.caption).foregroundStyle(Palette.text2)
                         }
                         if let stop {
                             Text("Stops at \(stop)").font(.caption).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
@@ -349,6 +358,10 @@ struct RouteRow: View {
     /// Whether the route runs, also for a hidden one (owner 2026-10-17: a grayed line must still say if it is
     /// running; web routes.js row), then why it is grayed.
     func subtitle(_ n: Int, tripOff: Bool) -> String {
+        if idle && n == 0 && !model.liveOutage {
+            let t = Schedule.restingText(model.staticData.service, rid, model.now)   // web routes.js notRunningText
+            return t.hasPrefix("Not running") ? t : "Not running now \u{00B7} \(t)"
+        }
         let live = liveStatus(n)
         if tripOff { return "\(live) · Not part of this trip" }
         if hidden { return "\(live) · Hidden from map and times" }

@@ -21,19 +21,22 @@ extension AppModel {
     }
 
     /// Route search over the listed routes (the station filter's, when one is set; owner 2026-11-04, web routes.js
-    /// routeMatches): the matches, best first, and the stop whose name matched. Empty query: no matches. A display
-    /// order only: nothing is stored.
-    func routeMatches(_ q: String) -> (top: [String], stopOf: [String: String]) {
-        guard !q.trimmingCharacters(in: .whitespaces).isEmpty else { return ([], [:]) }
+    /// routeMatches): the matches and the stop whose name matched. Order (owner 2026-11-05, Kit
+    /// `RouteSearch.rankByActive`): a route the query names first, then the ones operating now (`operatingRoutes`, the
+    /// Show running rule), then the rest. `active` is nil while live status is unknown (nothing is called not running).
+    /// Empty query: no matches. A display order only: nothing is stored.
+    func routeMatches(_ q: String) -> (top: [String], stopOf: [String: String], active: Set<String>?) {
+        let active: Set<String>? = (!liveLoaded || liveOutage) ? nil : Set(operatingRoutes())
+        guard !q.trimmingCharacters(in: .whitespaces).isEmpty else { return ([], [:], active) }
         let index: RouteSearch.Index
         if let c = routeSearchCache, c.version == staticVersion { index = c.index } else {
             index = RouteSearch.Index(staticData, ids: sortedRouteIds())
             routeSearchCache = (staticVersion, index)
         }
-        let hits = RouteSearch.search(index, q)
+        let hits = RouteSearch.rankByActive(RouteSearch.search(index, q), active: active)
         var stopOf: [String: String] = [:]
         for h in hits { if let s = h.stop { stopOf[h.id] = s } }
-        return (RouteSearch.split(routeList(), hits: hits).top, stopOf)
+        return (RouteSearch.split(routeList(), hits: hits).top, stopOf, active)
     }
 
     /// Show all / Hide all act on the station filter's routes, else on every route.
