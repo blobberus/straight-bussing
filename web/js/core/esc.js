@@ -55,3 +55,15 @@ export function textOn(hex) {
   const vsWhite = 1.05 / (L + 0.05);
   return vsDark >= vsWhite ? "#111114" : "#ffffff";
 }
+
+/**
+ * WCAG 2.x contrast ratio between two colors (1 to 21). Invalid input is treated as '#555555'.
+ * Used for the route badge ring and the map line casing rule (docs/DESIGN-SPEC.md 4.3, 11.3).
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+export function contrast(a, b) {
+  const x = lum(a), y = lum(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}

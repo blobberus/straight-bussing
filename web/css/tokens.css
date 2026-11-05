@@ -1,107 +1,186 @@
-/* Design tokens (docs/DESIGN.md section 1). Owner: D1.
-   Order of precedence: [data-theme=light|dark] on <html> first, then prefers-color-scheme.
-   Variable names are the shared vocabulary for every other stylesheet. */
+/* Design tokens: docs/DESIGN-SPEC.md section 14 is the contract (names and values are shared with the iPhone app:
+   ios/Shared/Palette.swift, Typography.swift, Metrics.swift). Light values in :root, dark in the prefers-color-scheme
+   block and [data-theme="dark"] (a forced theme wins over the system). No other stylesheet writes a literal color,
+   radius, font size or weight; they read these.
+   Old names (--bg, --text, --accent, --surface, --fs-*, --d-*, ...) stay at the bottom as aliases for code that has not
+   moved yet (and for tests that read them). Careful: --live is now the TEXT color (iOS Palette.live) and --live-mark
+   the 8 pt dot; before the redesign --live was the mark and --live-text the text. */
 :root {
-  /* color: light */
-  --bg: rgba(252, 252, 253, .86);
-  --bg-solid: #fcfcfd;         /* off-white: no pure #fff surfaces (docs/DESIGN.md "Color") */
-  --surface: #f2f2f7;
-  --surface-press: #e5e5ea;
-  --text: #111114;
-  --text-2: #5c5c63;
-  --hairline: rgba(60, 60, 67, .18);
-  --hairline-strong: rgba(60, 60, 67, .30);
-  --accent: #0066d6;          /* accent used as text/icon on light */
-  --accent-fill: #0071e3;     /* accent used as a fill (buttons, location dot); white text 4.7:1 */
-  --accent-bg: #d9e7f8;       /* accent tint for a highlighted card (beta feedback): --text 15:1, --text-2 5.3:1 on it (not for --accent text) */
-  --on-accent: #ffffff;
-  --live: #1e9e4a;
-  --live-text: #17803b;      /* --live as small text: 5:1 on white (--live is 3.4:1, fills only) */
-  --est-bg: rgba(60, 60, 67, .10);   /* "est." tag fill: --text-2 on it stays >= 4.5:1 */
-  --warn: #a35400;          /* 4.5:1+ as small text on --warn-bg */
+  /* ---- color (spec 4.1), light ---- */
+  --bg-sheet: #f2f2f7;            /* the sheet, tab bar, Settings and Lines by Time backgrounds (iOS grouped background) */
+  --bg-card: #fcfcfd;             /* grouped cards and rows on the sheet, option cards, dialogs (never pure white) */
+  /* ---- glass (DESIGN-SPEC-GLASS 5.2): the control layer floating over the map, and only there. 80% frosted fill
+     (legible with no blur over any backdrop, 5.3), a static rim and edge painted once, a soft shadow ---- */
+  --glass-fill: rgba(250, 250, 252, .80);
+  --glass-solid: #fafafc;         /* the same surface without blur: while moving, glass-lite, no backdrop-filter */
+  --glass-rim: inset 0 1px 0 rgba(255, 255, 255, .65), inset 0 0 0 .5px rgba(255, 255, 255, .40);
+  --glass-edge: 0 0 0 .5px rgba(17, 17, 20, .10);
+  --glass-shadow: 0 1px 2px rgba(30, 32, 45, .08), 0 6px 20px rgba(30, 32, 45, .12);
+  --label-glass-2: #3c3c43;       /* secondary text on glass (label2 and tint text are not allowed there, 5.3) */
+  /* tinted glass, only the feedback circle (8.5): tintBg at 85% with the glass filter; the tint icon keeps 3:1 over any
+     backdrop with no blur (3.2:1 light over black, 3.6:1 dark over white). Solid wherever --glass-fill is. */
+  --glass-tint-fill: color-mix(in srgb, var(--tint-bg) 85%, transparent);
+  --bg-chrome: var(--glass-fill);         /* old names: the first redesign's chrome material */
+  --bg-chrome-solid: var(--glass-solid);
+  --bg-inverse: #2c2c2e;          /* toasts */
+  --fill: rgba(118, 118, 128, .12);          /* secondary buttons, fields in the sheet, segmented track, skeletons */
+  --fill-pressed: rgba(118, 118, 128, .20);
+  --label: #111114;
+  --label-2: #5c5c63;
+  --label-3: #8e8e93;             /* decorative marks only (chevrons), never information */
+  --label-inverse: #f5f5f7;
+  --separator: rgba(60, 60, 67, .29);
+  --tint: #0060cc;                /* the one accent as text and icons */
+  --tint-fill: #0071e3;           /* primary fills, the location dot, the walking path */
+  --tint-bg: #d9e7f8;             /* tinted surfaces: Board here, the beta card */
+  --on-fill: #ffffff;
+  --live: #157a38;                /* live data as TEXT ("Live", "Now"); never on a fill */
+  --live-mark: #1e9e4a;           /* live data as a MARK (the 8 pt dot) */
+  --warn: #a35400;
   --warn-bg: #fff4e0;
-  --danger: #c4291c;
+  --danger: #b8261a;
   --danger-bg: #fdeceb;
-  --danger-fill: #c4291c;    /* red FILLS (Delete, count badge): white text 5.7:1 in both themes */
-  --on-danger: #ffffff;
-  --seg-on: #fcfcfd;
-  --knob: #fcfcfd;            /* switch knobs, both themes */
-  --shadow-rgb: 30, 32, 45;   /* shadows and scrims are tinted cool slate, never pure black */
-  --scrim: rgba(20, 22, 32, .4);
-  --marker-ring: rgba(0, 0, 0, .28);
-  --casing: rgba(255, 255, 255, .9);
+  --danger-fill: #c4291c;         /* red fills under white text (Delete confirm, count badge) */
+  --scrim: rgba(20, 22, 32, .40);
+  --shadow-rgb: 30, 32, 45;       /* cool slate shadows, never pure black */
+  --map-landmark: #565c66;
+  --map-casing: rgba(255, 255, 255, .95);
+  --map-casing-contrast: rgba(17, 17, 20, .75);   /* the flipped route edge: 3:1 for every route color over land, park, water */
+  --badge-ring: rgba(17, 17, 20, .22);
+  --map-ring: #ffffff;            /* bus marker ring (spec 11.4) */
+  --fav-mark: #ffcc00;            /* favorite stars (owner 2026-11-05: yellow, not brown): the map disc, the sheet stars;
+                                     a deeper gold than 53rd Street's lemon #F7EB07 (hue 48 vs 57) */
+  --fav-ink: #1c1c1e;             /* the star on the yellow disc: 11.3:1 */
+  --fav-edge: rgba(28, 28, 30, .6);   /* the yellow's edge on light surfaces: 4.3:1 on the land, 4.5:1 on white */
+  --neutral-fill: #636366;        /* neutral fills under white text (the Details swipe action): 6:1 */
+  --rail-dim-base: #fcfcfd;       /* passed parts of a timeline rail: the route color mixed toward this */
+  --rail-dim-pct: 45%;
+  --map-land: #f5f3ee;            /* = js/map/style.js PALETTE.light.bg (warm off-white, Apple Maps-like) */
+  --frame-page: #dcdce1;          /* the page around the desktop phone frame */
+  --frame-island: #000000;
+  --frame-shadow: 0 0 0 1px rgba(0, 0, 0, .28), 0 0 0 9px #1d1d1f, 0 0 0 10px rgba(0, 0, 0, .35), 0 28px 70px rgba(0, 0, 0, .28);
 
-  /* legacy aliases (v1 class names / other agents) */
-  --sheet-bg: var(--bg);
-  --text2: var(--text-2);
-  --hair: var(--hairline);
-  --warnbg: var(--warn-bg);
-  --dangerbg: var(--danger-bg);
+  /* ---- typography (spec 2, 14.2): root = body size (base.css), every role relative to it ---- */
+  --font: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --w-regular: 400;
+  --w-semibold: 600;
+  --w-bold: 700;
+  --size-sheet-title: calc(1rem * 22 / 17);
+  --size-hero-title: calc(1rem * 20 / 17);
+  --size-body: 1rem;
+  --size-row-detail: calc(1rem * 15 / 17);
+  --size-footnote: calc(1rem * 13 / 17);
+  --size-caption: calc(1rem * 12 / 17);
+  --size-tab: calc(1rem * 11 / 17);
+  --size-badge-xs: 10px;          /* route badge text over five characters in a 20 pt badge (spec 10.9) */
+  --size-eta-hero: 2rem;
+  --size-eta-row: calc(1rem * 22 / 17);
+  --t-sheet-title: 700 var(--size-sheet-title) / calc(1rem * 28 / 17) var(--font);
+  --t-hero-title: 600 var(--size-hero-title) / calc(1rem * 25 / 17) var(--font);
+  --t-row-title: 600 1rem / calc(1rem * 22 / 17) var(--font);
+  --t-body: 400 1rem / calc(1rem * 22 / 17) var(--font);
+  --t-button: 600 1rem / calc(1rem * 22 / 17) var(--font);
+  --t-row-detail: 400 var(--size-row-detail) / calc(1rem * 20 / 17) var(--font);
+  --t-section: 600 var(--size-row-detail) / calc(1rem * 20 / 17) var(--font);
+  --t-footnote: 400 var(--size-footnote) / calc(1rem * 18 / 17) var(--font);
+  --t-caption: 600 var(--size-caption) / calc(1rem * 16 / 17) var(--font);
+  --t-tab: 600 min(var(--size-tab), var(--cap-tab)) / 1.18 var(--font);
+  --t-badge: 700 var(--size-caption) / calc(1rem * 16 / 17) var(--font);
+  --t-badge-sm: 700 var(--size-tab) / calc(1rem * 13 / 17) var(--font);
+  --t-eta-hero: 700 2rem / calc(1rem * 41 / 17) var(--font);
+  --t-eta-row: 600 var(--size-eta-row) / calc(1rem * 28 / 17) var(--font);
+  --t-eta-unit: 400 var(--size-row-detail) / 1 var(--font);
+  --t-map-landmark: 600 12px / 14px var(--font);
+  --t-map-badge: 700 11px / 13px var(--font);
+  --t-map-badge-sm: 700 10px / 13px var(--font);   /* short names over 5 characters (spec 11.4) */
+  --t-map-callout: 600 13px / 16px var(--font);
+  --t-map-credit: 400 10px / 14px var(--font);
+  /* chrome caps (spec 2.2): search text, chips, map buttons and tab labels stop growing at 1.35 x */
+  --cap-body: 22.95px;
+  --cap-row-detail: 20.25px;
+  --cap-footnote: 17.55px;
+  --cap-tab: 14.85px;
 
-  /* elevation */
-  --shadow-sheet: 0 -8px 32px rgba(var(--shadow-rgb), .14);
-  --shadow-float: 0 2px 10px rgba(var(--shadow-rgb), .16);
-  --shadow-card: 0 -8px 28px rgba(var(--shadow-rgb), .22);   /* Settings card over the sheet */
-  --shadow-thumb: 0 1px 3px rgba(var(--shadow-rgb), .18);    /* selected segment */
-  --shadow-knob: 0 1px 3px rgba(var(--shadow-rgb), .3);      /* switch knob */
-  --shadow-chip: 0 1px 3px rgba(var(--shadow-rgb), .25);     /* bus chips on timelines */
-  --shadow-fab: var(--shadow-float);
-  --blur: blur(24px) saturate(1.8);
-
-  /* type */
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
-  --font-rounded: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
-  --fs-large: 1.75rem;   /* 28/34 */
-  --lh-large: 2.125rem;
-  --fs-title: 1.25rem;   /* 20/25 */
-  --lh-title: 1.5625rem;
-  --fs-eta: 2.125rem;    /* 34/36 */
-  --lh-eta: 2.25rem;
-  --fs-row: 1.0625rem;   /* 17/22 */
-  --lh-row: 1.375rem;
-  --fs-body: .9375rem;   /* 15/20 */
-  --lh-body: 1.25rem;
-  --fs-cap: .75rem;      /* 12/16 */
-  --lh-cap: 1rem;
-
-  /* spacing (4pt grid) */
-  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px;
+  /* ---- spacing and layout (spec 3, 14.3) ---- */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
+  --hair-gap: 2px;                /* inside composite marks only (badge rows) */
+  --inset-content: 16px;
+  --inset-chrome: 12px;
+  --gap-chrome: 8px;
   --tap: 44px;
+  --row-min: 44px;
+  --leading-slot: 40px;
+  --separator-inset: 68px;
+  --chrome-btn: 44px;             /* glass circles: Settings, the lower-right group's buttons */
+  --search-btn: 56px;             /* the search circle beside the tab bar */
+  --row-h: 56px;                  /* the floating bottom row: tab bar capsule and search circle */
+  --search-h: var(--chrome-btn);  /* old name: the top row's height (Row B: the Settings circle) */
+  --sheet-header-min: 56px;
+  --tab-h: var(--row-h);
+  --grab-zone: 16px;              /* the grab bar: 36 x 5, 6 from the top */
 
-  /* radii: the ONE scale (docs/DESIGN.md "Radius scale"); never write a literal radius in a component */
-  --r-pill: 999px;     /* fully round: search bar, nav indicator, toggles (Favorite, Highlight), switches, count badges, pills */
-  --r-sheet: 20px;     /* sheet, Settings card, dialogs */
-  --r-card: 14px;      /* cards, option cards, alert banners */
-  --r-control: 12px;   /* buttons, inputs, segmented controls, locate button, status pill, context chip */
-  --r-inner: 10px;     /* a control nested in a 12px control with a 2-3px inset: segment thumb, Clear, Retry */
-  --r-badge: 9px;      /* route badge = the bus marker's shape (route identity) */
-  --r-tag: 6px;        /* small tags: est. / live / sidewalk route, small route chips, bus chips on timelines */
-  --r-chip: var(--r-pill);   /* legacy alias */
+  /* ---- radii (spec 6) ---- */
+  --r-tag: 6px;
+  --r-control: 12px;
+  --r-card: 20px;                 /* glass spec 6: iOS 26 sections are rounder (was 14) */
+  --r-glass: 28px;                /* the collapsed card, the expanded sheet's top corners, the tab bar ends, sheets, dialogs */
+  --r-sheet: var(--r-glass);      /* old name (retired by the glass spec) */
+  --r-capsule: 999px;
+  --r-nested: 10px;               /* concentric, not a token of its own: a 12 control or 20 card with a 2 / 10 inset */
+  --r-marker: 7px;                /* the 26 pt bus marker (rTag in proportion) */
 
-  /* stacking: the ONE z-index scale (docs/DESIGN.md "Layers"); local 1 / 2 inside a component is fine */
+  /* ---- icons (spec 5) ---- */
+  --i-inline: 15px;
+  --i-row: 20px;
+  --i-tab: 24px;
+
+  /* ---- elevation (spec 8) ---- */
+  --e-1: 0 1px 2px rgba(var(--shadow-rgb), .10), 0 4px 14px rgba(var(--shadow-rgb), .12);
+  --e-2: 0 -1px 0 rgba(60, 60, 67, .12), 0 -8px 28px rgba(var(--shadow-rgb), .10);
+  --e-3: 0 10px 40px rgba(var(--shadow-rgb), .22);
+  --e-thumb: 0 1px 3px rgba(var(--shadow-rgb), .15);      /* segmented thumb */
+  --e-knob: 0 1px 3px rgba(var(--shadow-rgb), .30);       /* switch knob */
+  --e-marker: 0 1px 3px rgba(var(--shadow-rgb), .30);     /* map markers, bus chips on timelines */
+  --glass-filter: blur(14px) saturate(1.4);   /* glass spec 5.2 / 12.1 rule 4 (down from 20 px) */
+  --blur-chrome: var(--glass-filter);
+
+  /* ---- motion (spec 9) ---- */
+  --m-press: 100ms;
+  --m-quick: 150ms;
+  --m-standard: 250ms;
+  --m-exit: 200ms;
+  --m-sheet: 360ms;
+  --m-morph: 300ms;
+  --m-camera: 600ms;
+  --ease-out: cubic-bezier(0, 0, .58, 1);
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(.4, 0, 1, 1);
+  --ease-sheet: cubic-bezier(.32, .72, 0, 1);
+  /* glass motion (DESIGN-SPEC-GLASS 7) */
+  --m-glass-press: 160ms;         /* press on a glass control: scale 1.06 and back */
+  --m-materialize: 220ms;         /* glass appearing: scale .85 + fade in (mStandard curve) */
+  --m-materialize-exit: 160ms;    /* glass leaving (mExit curve) */
+  --m-tab-pill: 320ms;            /* the selection capsule sliding to the new tab */
+  --ease-tab-pill: cubic-bezier(.34, 1.25, .64, 1);
+  --m-zoom-sheet: 340ms;          /* Settings, Lines by Time and dialogs open out of their button */
+  --ease-zoom-sheet: cubic-bezier(.32, .72, 0, 1);
+  --m-minimize: 280ms;            /* the tab bar shrinking to a circle while a long list scrolls */
+  --m-banner: 250ms;              /* the status banner sliding in (8 px) */
+
+  /* ---- stacking: the ONE z-index scale (unchanged); local 1 / 2 inside a component is fine ---- */
   --z-map: 0;
   --z-sheet: 1000;
-  --z-nav: 1010;          /* bottom navigation */
-  --z-chip: 1090;         /* map context chip */
-  --z-float: 1100;        /* status pill, locate button, feedback button */
-  --z-search: 1105;       /* floating search bar */
+  --z-nav: 1010;          /* bottom bar */
+  --z-chip: 1090;         /* trip / filter chip */
+  --z-float: 1100;        /* status chip / banner */
+  --z-search: 1105;       /* the top rows' Settings and feedback circles */
   --z-overlay-scrim: 1140;
-  --z-overlay: 1150;      /* Settings */
+  --z-overlay: 1150;      /* Settings, Lines by Time */
   --z-dialog: 1200;       /* #dlg scrim + card */
   --z-toast: 1300;
   --z-frame: 5000;        /* desktop phone frame decorations (never take taps) */
 
-  /* motion */
-  --d-press: 120ms;
-  --d-swap: 220ms;
-  --d-sheet: 320ms;
-  --ease-enter: cubic-bezier(.2, .8, .2, 1);
-  --ease-exit: cubic-bezier(.4, 0, 1, 1);
-  --ease-spring: cubic-bezier(.32, .72, 0, 1);
-  --ease: var(--ease-enter);
-  --spring: var(--ease-spring);
-
-  /* safe areas + sheet detents (visible heights) */
+  /* ---- safe areas, app viewport, sheet geometry ---- */
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
@@ -109,18 +188,69 @@
   /* app viewport: the window on phones, the 393x852 phone frame on desktop/tablet (see base.css) */
   --app-w: 100vw;
   --app-h: 100vh;
-  /* Google-Maps-style chrome: floating search bar on top, bottom navigation under the sheet */
-  --nav-h: calc(58px + var(--safe-b));          /* bottom navigation (Current trip / Routes / My Routes) */
-  --top-clear: calc(var(--safe-t) + 66px);   /* below the 48px search bar (10px from the top, 8px gap) */
-  --chip-top: var(--top-clear);                 /* status pill, context chip and locate button (the map credit sits above the sheet, map/credits.js) */
-  /* sheet heights are measured from the top of the bottom navigation. The sheet element is always
-     --v-max tall (so a chip or pill appearing never changes its layout); --v-full is shorter while the
-     status pill shows (sheet.css), which only changes the full detent's translateY. */
-  --v-peek: 76px;    /* collapsed: the grab bar and the title line only (owner 2026-10-12, like Google Maps) */
+  /* the bottom row floats: its bottom edge max(12, safe bottom - 12) above the screen's (22 on Face ID iPhones, clear of
+     the home indicator; glass spec 3); --nav-h = the space it takes from the bottom (old name, kept for every calc) */
+  --bottom-inset: max(12px, calc(var(--safe-b) - 12px));
+  --nav-h: calc(var(--bottom-inset) + var(--row-h));
+  --search-top: calc(var(--safe-t) + 8px);                     /* the top rows start 8 below the safe area */
+  --top-clear: calc(var(--search-top) + var(--search-h) + var(--gap-chrome));   /* 8 below Row B (the Settings row) */
+  --chip-top: var(--top-clear);                                /* old name */
+  /* sheet heights are measured from the screen's bottom (glass spec 3: the expanded sheet reaches it, the bottom row
+     floats over it). The sheet element is always --v-max tall, from 8 below Row B to the bottom (a chip or banner
+     appearing never changes its layout); --v-full is shorter while a status banner shows (sheet.css), which only changes
+     the expanded state's translateY. --v-peek = the header's measured height (ui/sheet.js sets it on #app: the
+     collapsed card grows with text and never cuts the title); 72 = 16 grab zone + the 56 header row. The collapsed
+     visible height is --v-peek-vis (base.css: card + 8 + the bottom row). */
+  --v-peek: 72px;
   --v-half: calc(var(--app-h) * .42);
-  --v-max: calc(var(--app-h) - var(--nav-h) - var(--chip-top));
+  --v-max: calc(var(--app-h) - var(--top-clear));
   --v-full: var(--v-max);
   --panel-w: 380px;
+
+  /* ---- aliases for the old names (pre-redesign stylesheets, tests) ---- */
+  --bg: var(--bg-sheet);
+  --bg-solid: var(--bg-card);
+  --surface: var(--fill);
+  --surface-press: var(--fill-pressed);
+  --text: var(--label);
+  --text-2: var(--label-2);
+  --hairline: var(--separator);
+  --hairline-strong: var(--separator);
+  --accent: var(--tint);
+  --accent-fill: var(--tint-fill);
+  --accent-bg: var(--tint-bg);
+  --on-accent: var(--on-fill);
+  --on-danger: var(--on-fill);
+  --live-text: var(--live);
+  --knob: var(--bg-card);
+  --seg-on: var(--bg-card);
+  --casing: var(--map-casing);
+  --shadow-float: var(--e-1);
+  --shadow-sheet: var(--e-2);
+  --shadow-card: var(--e-3);
+  --shadow-thumb: var(--e-thumb);
+  --shadow-knob: var(--e-knob);
+  --shadow-chip: var(--e-marker);
+  --blur: var(--blur-chrome);
+  --s1: var(--s-1); --s2: var(--s-2); --s3: var(--s-3); --s4: var(--s-4); --s5: var(--s-5); --s6: var(--s-6);
+  --r-pill: var(--r-capsule);
+  --r-chip: var(--r-capsule);
+  --r-inner: var(--r-nested);
+  --r-badge: var(--r-tag);
+  --fs-large: var(--size-sheet-title);
+  --fs-title: var(--size-hero-title);
+  --fs-row: 1rem;
+  --fs-body: var(--size-row-detail);
+  --fs-cap: var(--size-caption);
+  --lh-row: calc(1rem * 22 / 17);
+  --lh-body: calc(1rem * 20 / 17);
+  --lh-cap: calc(1rem * 16 / 17);
+  --d-press: var(--m-press);
+  --d-swap: var(--m-standard);
+  --d-sheet: var(--m-sheet);
+  --ease-enter: var(--ease-standard);
+  --ease-spring: var(--ease-sheet);
+  --ease: var(--ease-standard);
 
   color-scheme: light;
 }
@@ -133,77 +263,128 @@
   :root { --app-w: 393px; --app-h: 852px; --safe-t: 54px; --safe-b: 34px; --safe-l: 0px; --safe-r: 0px; }
 }
 
-/* color: dark (system, unless the user forced light) */
+/* ---- color: dark (system, unless the user forced light) ---- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: rgba(28, 28, 30, .82);
-    --bg-solid: #1c1c1e;
-    --surface: #2c2c2e;
-    --surface-press: #3a3a3c;
-    --text: #f5f5f7;
-    --text-2: #a1a1a8;
-    --hairline: rgba(84, 84, 88, .55);
-    --hairline-strong: rgba(120, 120, 128, .7);
-    --accent: #409cff;
-    --accent-fill: #0071e3;
-    --accent-bg: #223042;     /* --text 12.3:1, --text-2 5.2:1, --accent 4.7:1 on it */
-    --on-accent: #ffffff;
+    --bg-sheet: #1c1c1e;
+    --bg-card: #2c2c2e;
+    --glass-fill: rgba(38, 38, 42, .80);
+    --glass-solid: #26262a;
+    --glass-rim: inset 0 1px 0 rgba(255, 255, 255, .16), inset 0 0 0 .5px rgba(255, 255, 255, .10);
+    --glass-edge: 0 0 0 .5px rgba(0, 0, 0, .50);
+    --glass-shadow: 0 0 0 transparent;
+    --label-glass-2: #c7c7cc;
+    --bg-inverse: #f2f2f7;
+    --fill: rgba(118, 118, 128, .24);
+    --fill-pressed: rgba(118, 118, 128, .36);
+    --label: #f5f5f7;
+    --label-2: #aeaeb2;
+    --label-3: #8d8d93;
+    --label-inverse: #111114;
+    --separator: rgba(84, 84, 88, .60);
+    --tint: #64b0ff;
+    --tint-fill: #0071e3;
+    --tint-bg: #223042;
     --live: #32d74b;
-    --live-text: #32d74b;
-    --est-bg: rgba(84, 84, 88, .25);
+    --live-mark: #32d74b;
     --warn: #ffb340;
     --warn-bg: #3a2a10;
-    --danger: #ff6961;
+    --danger: #ff8c85;
     --danger-bg: #3a1a18;
-    --danger-fill: #c4291c;   /* not --danger (#ff6961): white on it is 2.8:1 */
-    --seg-on: #636366;
-    --scrim: rgba(8, 8, 12, .55); --shadow-rgb: 8, 8, 12;
-    --marker-ring: rgba(0, 0, 0, .55);
-    --casing: rgba(28, 28, 30, .9);
-    --shadow-sheet: 0 0 0 1px var(--hairline);
-    --shadow-float: 0 0 0 1px var(--hairline);
+    --danger-fill: #c4291c;
+    --scrim: rgba(8, 8, 12, .55);
+    --shadow-rgb: 8, 8, 12;
+    --map-landmark: #b4b9c2;
+    --map-casing: rgba(32, 33, 36, .9);
+    --map-casing-contrast: rgba(245, 245, 247, .75);
+    --badge-ring: rgba(245, 245, 247, .30);
+    --map-ring: #202124;
+    --fav-mark: #ffd60a;
+    --fav-ink: #1c1c1e;
+    --fav-edge: #ffd60a;          /* no edge needed on dark: the yellow is 9.9:1 on the card, 11.4:1 on the land */
+    --map-land: #202124;
+    --rail-dim-base: #6e6e73;
+    --rail-dim-pct: 35%;
+    --frame-page: #0c0c0d;
+    --frame-shadow: 0 0 0 1px rgba(255, 255, 255, .14), 0 0 0 9px #2a2a2c, 0 0 0 10px rgba(255, 255, 255, .1), 0 28px 70px rgba(0, 0, 0, .6);
+    --e-1: inset 0 0 0 .5px rgba(255, 255, 255, .10);
+    --e-2: 0 -.5px 0 rgba(255, 255, 255, .10);
+    --e-3: 0 10px 40px rgba(8, 8, 12, .5), inset 0 0 0 .5px rgba(255, 255, 255, .10);
     color-scheme: dark;
   }
 }
-/* color: dark (user forced) */
+/* ---- color: dark (user forced) ---- */
 :root[data-theme="dark"] {
-  --bg: rgba(28, 28, 30, .82);
-  --bg-solid: #1c1c1e;
-  --surface: #2c2c2e;
-  --surface-press: #3a3a3c;
-  --text: #f5f5f7;
-  --text-2: #a1a1a8;
-  --hairline: rgba(84, 84, 88, .55);
-  --hairline-strong: rgba(120, 120, 128, .7);
-  --accent: #409cff;
-  --accent-fill: #0071e3;
-  --accent-bg: #223042;
-  --on-accent: #ffffff;
+  --bg-sheet: #1c1c1e;
+  --bg-card: #2c2c2e;
+  --glass-fill: rgba(38, 38, 42, .80);
+  --glass-solid: #26262a;
+  --glass-rim: inset 0 1px 0 rgba(255, 255, 255, .16), inset 0 0 0 .5px rgba(255, 255, 255, .10);
+  --glass-edge: 0 0 0 .5px rgba(0, 0, 0, .50);
+  --glass-shadow: 0 0 0 transparent;
+  --label-glass-2: #c7c7cc;
+  --bg-inverse: #f2f2f7;
+  --fill: rgba(118, 118, 128, .24);
+  --fill-pressed: rgba(118, 118, 128, .36);
+  --label: #f5f5f7;
+  --label-2: #aeaeb2;
+  --label-3: #8d8d93;
+  --label-inverse: #111114;
+  --separator: rgba(84, 84, 88, .60);
+  --tint: #64b0ff;
+  --tint-fill: #0071e3;
+  --tint-bg: #223042;
   --live: #32d74b;
-  --live-text: #32d74b;
-  --est-bg: rgba(84, 84, 88, .25);
+  --live-mark: #32d74b;
   --warn: #ffb340;
   --warn-bg: #3a2a10;
-  --danger: #ff6961;
+  --danger: #ff8c85;
   --danger-bg: #3a1a18;
   --danger-fill: #c4291c;
-  --seg-on: #636366;
-  --scrim: rgba(8, 8, 12, .55); --shadow-rgb: 8, 8, 12;
-  --marker-ring: rgba(0, 0, 0, .55);
-  --casing: rgba(28, 28, 30, .9);
-  --shadow-sheet: 0 0 0 1px var(--hairline);
-  --shadow-float: 0 0 0 1px var(--hairline);
+  --scrim: rgba(8, 8, 12, .55);
+  --shadow-rgb: 8, 8, 12;
+  --map-landmark: #b4b9c2;
+  --map-casing: rgba(32, 33, 36, .9);
+  --map-casing-contrast: rgba(245, 245, 247, .75);
+  --badge-ring: rgba(245, 245, 247, .30);
+  --map-ring: #202124;
+  --fav-mark: #ffd60a;
+  --fav-ink: #1c1c1e;
+  --fav-edge: #ffd60a;
+  --map-land: #202124;
+  --rail-dim-base: #6e6e73;
+  --rail-dim-pct: 35%;
+  --frame-page: #0c0c0d;
+  --frame-shadow: 0 0 0 1px rgba(255, 255, 255, .14), 0 0 0 9px #2a2a2c, 0 0 0 10px rgba(255, 255, 255, .1), 0 28px 70px rgba(0, 0, 0, .6);
+  --e-1: inset 0 0 0 .5px rgba(255, 255, 255, .10);
+  --e-2: 0 -.5px 0 rgba(255, 255, 255, .10);
+  --e-3: 0 10px 40px rgba(8, 8, 12, .5), inset 0 0 0 .5px rgba(255, 255, 255, .10);
   color-scheme: dark;
 }
 :root[data-theme="light"] { color-scheme: light; }
 
-/* high contrast: solid hairlines, no translucency, secondary text at full strength */
+/* Increase Contrast (spec 14.1): stronger secondary text and accent, opaque separators, solid chrome. The selector
+   lists repeat :root with the dark selectors' specificity, so these win over the theme blocks above. */
 @media (prefers-contrast: more) {
-  :root, :root[data-theme] {
-    --hairline: currentColor;
-    --hairline-strong: currentColor;
-    --text-2: var(--text);
-    --bg: var(--bg-solid);
-    --blur: none;
+  :root, :root:not([data-theme="dark"]), :root[data-theme="light"] {
+    --label-2: #3c3c43;
+    --tint: #004a9e;
+    --separator: #c6c6c8;
   }
+  /* glass turns solid with a contrasting border (glass spec 5.4) */
+  :root, :root:not([data-theme="light"]), :root[data-theme] { --glass-fill: var(--glass-solid); --glass-tint-fill: var(--tint-bg); --glass-filter: none; --glass-rim: inset 0 0 0 1px rgba(17, 17, 20, .55); }
+  :root[data-theme="dark"] { --label-2: #c7c7cc; --tint: #8ac4ff; --separator: #38383a; --glass-rim: inset 0 0 0 1px rgba(245, 245, 247, .55); }
 }
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --label-2: #c7c7cc; --tint: #8ac4ff; --separator: #38383a; --glass-rim: inset 0 0 0 1px rgba(245, 245, 247, .55); }
+}
+/* Reduce transparency (Chrome, Edge, Samsung; iPhone Safari cannot report it, hence the 80% fill): solid glass */
+@media (prefers-reduced-transparency: reduce) {
+  :root, :root:not([data-theme="light"]), :root[data-theme] { --glass-fill: var(--glass-solid); --glass-tint-fill: var(--tint-bg); --glass-filter: none; }
+}
+/* no backdrop-filter at all: solid glass (the same shapes) */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root, :root:not([data-theme="light"]), :root[data-theme] { --glass-fill: var(--glass-solid); --glass-tint-fill: var(--tint-bg); --glass-filter: none; }
+}
+/* glass-lite (glass spec 12.4, ui/frame.js): a slow device gets solid glass for the session */
+html.glass-lite, html.glass-lite:root:not([data-theme="light"]), html.glass-lite[data-theme] { --glass-fill: var(--glass-solid); --glass-tint-fill: var(--tint-bg); --glass-filter: none; }
