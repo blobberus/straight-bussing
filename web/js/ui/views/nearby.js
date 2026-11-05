@@ -159,7 +159,9 @@ export function nextHTML(state, now = nowS()) {
   if (!tripOn(state) && !N.anchor) return "";   // no trip: no nearby buses (owner 2026-11-04)
   const point = tripOn(state) ? pointOf(state) : N.anchor;
   if (!point) return favoritesHTML(state, now);
-  const anchor = !state.user && N.anchor ? `<div class="v-anchor"><span class="v-grow"><span class="v-sec">Showing stops near</span><span class="v-prim">${esc(N.anchor.label)}</span></span><button type="button" class="v-btn v-btn--quiet" data-action="nearby:clear-place" aria-label="Clear place ${esc(N.anchor.label)}">Clear</button></div>` : "";
+  // whenever the typed place is the point (always with no trip, even with location on): say so, with Clear, so its walk
+  // times never read as walks from where the rider stands and the place can be dropped again
+  const anchor = N.anchor && point === N.anchor ? `<div class="v-anchor"><span class="v-grow"><span class="v-sec">Showing stops near</span><span class="v-prim">${esc(N.anchor.label)}</span></span><button type="button" class="v-btn v-btn--quiet" data-action="nearby:clear-place" aria-label="Clear place ${esc(N.anchor.label)}">Clear</button></div>` : "";
   const s = nearest(state, point, 1)[0];
   // no bus reports: why the card has no times and who to call, right under it (rider safety)
   const guide = tripOn(state) && !!state.user;

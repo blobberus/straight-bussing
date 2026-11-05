@@ -77,6 +77,17 @@ test("current trip, a typed place: its nearest stop is the search's result (no w
   reset();
 });
 
+test("current trip, a typed place with location on and no trip: the place is named with Clear (its walk times are not from you)", () => {
+  reset();
+  N.anchor = { label: "Medici on 57th", lat: 41.7915, lon: -87.5925 };
+  const h = renderNearby(fixture({ user: USER, locState: "granted" }), NOW);
+  const anchor = at(h, "Showing stops near"), next = at(h, "pt-next");
+  ok(anchor < next && h.includes("Medici on 57th") && h.includes('data-action="nearby:clear-place"'), "the place and Clear above its nearest stop");
+  const trip = renderNearby(onTrip({ user: USER, locState: "granted" }), NOW);
+  ok(!trip.includes("Showing stops near"), "during a trip with location the nearest stop is yours: no place note");
+  reset();
+});
+
 test("current trip, trip in progress: the trip comes first, no hint, Routes to station stays in the trip actions", () => {
   reset();
   const rid = Object.keys(fixture().routes)[0];
