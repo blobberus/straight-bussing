@@ -38,6 +38,7 @@ import { locPlatform, locEnv, LOC_STEPS, LOC_ORDER, locResultText } from "../../
 import { feedbackLinkHTML, noteFeedbackOpened, FEEDBACK_LEAD, FEEDBACK_ICON, FEEDBACK_NOTE } from "../feedback.js";
 import { usageConfigured, resetId, cleanUsage, lastSend } from "../../data/usage.js";
 import { bus } from "../../core/events.js";
+import { svg } from "../icons.js";
 
 /** Settings > Beta feedback, first in Settings (the map feedback button's panel says the link is in Settings): the same
  * tinted look and "very helpful" ask as that panel, Give feedback as the card's primary button. */
@@ -123,7 +124,7 @@ export function usageHTML(state) {
 const MINUTES = [0, 2, 5, 10];
 const MAX_RESULTS = 6;
 const ui = { picking: false, query: "" };
-const OK = '<svg class="st-ok" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+const OK = svg("check", 16, { cls: "st-ok", stroke: 2.5 });
 let offStore = null, offUsage = null, abort = null, live = null;
 
 /** Current notify settings, validated. */

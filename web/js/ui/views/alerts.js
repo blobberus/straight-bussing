@@ -10,9 +10,10 @@ import { esc } from "../../core/esc.js";
 import { nowS, clock, shortDate, sameDay } from "../../core/time.js";
 import { activeAlerts, alertRouteIds } from "../../core/arrivals.js";
 import { routeChip, emptyState, skeleton, officialLinks, OFFICIAL_PHONE, OFFICIAL_TEL, OFFICIAL_URL } from "../components.js";
+import { svg } from "../icons.js";
 
-const WARN = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>';
-const INFO = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>';
+const WARN = svg("triangle-alert-fill", 17);
+const INFO = svg("info", 17);
 
 /**
  * Plain text of a GTFS-RT TranslatedString (or a bare string).
@@ -77,7 +78,8 @@ export function operatorPhone(state, now = nowS(), { rid = null } = {}) {
   return null;
 }
 
-const PHONE_IC = '<svg class="v-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>';   // Lucide phone
+const PHONE_IC = svg("phone", 17, { cls: "v-ic" });
+const CHEV = svg("chevron-right", 13, { stroke: 2.5 });
 
 /**
  * Who to call when no bus reports. With an operator number in the live alerts: "Call bus route help: <number as
@@ -146,7 +148,7 @@ export function renderAlerts(state, now = nowS()) {
   if (!state.liveLoaded) h += skeleton(2);
   else {
     const act = activeAlerts(state, now);
-    if (!act.length) h += emptyState("No active alerts", "Service changes will show up here.");
+    if (!act.length) h += emptyState("No active alerts", "Service changes will show up here.", { icon: "bell" });
     else h += '<ul class="v-alertlist">' + act.map((a) => alertItem(a, state, now)).join("") + "</ul>";
     if (state.failed) h += '<p class="v-foot v-foot--warn">Alerts may be out of date: the shuttle feed is not responding.</p>';
   }
@@ -170,7 +172,7 @@ export function alertBanner(state, now = nowS()) {
   const n = act.length;
   const head = n === 1 ? "Service alert" : `${n} service alerts`;
   const more = n > 1 ? ` and ${n - 1} more` : "";
-  return `<button type="button" class="v-row v-alertbanner" data-action="alerts:open" aria-label="${esc(`${head}: ${first}${more}. Open alerts`)}"><span class="v-alertic" aria-hidden="true">${WARN}</span><span class="v-grow v-alertline"><b>${esc(head)}:</b> <span class="v-alertfirst">${esc(first)}${esc(more)}</span></span><span class="v-chev" aria-hidden="true"><svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l6 6-6 6"/></svg></span></button>`;
+  return `<button type="button" class="v-row v-alertbanner" data-action="alerts:open" aria-label="${esc(`${head}: ${first}${more}. Open alerts`)}"><span class="v-alertic" aria-hidden="true">${WARN}</span><span class="v-grow v-alertline"><b>${esc(head)}:</b> <span class="v-alertfirst">${esc(first)}${esc(more)}</span></span><span class="v-chev" aria-hidden="true">${CHEV}</span></button>`;
 }
 
 registerView("alerts", {
