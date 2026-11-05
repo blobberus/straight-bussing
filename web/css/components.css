@@ -1,241 +1,295 @@
-/* Shared building blocks rendered by ui/components.js and used by views. Owner: D1.
-   View-specific layouts (timeline, option cards, direction fields...) live in views.css (D2). */
+/* Shared building blocks (docs/DESIGN-SPEC.md 10.8 to 10.13, 10.18, 10.20, 10.21), rendered by ui/components.js and by
+   the views. Two class families name the same components: the shell's (.row, .card, .prim, .sec, .cta) and the views'
+   (.v-row, .v-card, .v-prim, .v-sec, .v-btn); both get the same look here. View-specific layout lives in views.css and
+   the per-view files. Values come from tokens.css only. */
 
-/* section heading inside the sheet */
-.sheet-content h2, .h2 {
-  margin: var(--s4) 0 var(--s1);
-  font-size: .8125rem; line-height: 1rem; font-weight: 600; color: var(--text-2);
+/* ---------- section titles (10.8): sectionTitle, sentence case, aligned with card content; 24 above, 8 below ---------- */
+:where(.sheet-content h2), .h2, .v-h {   /* :where keeps it weaker than a view's own heading class (.mr-h, .r-h) */
+  margin: var(--s-6) 0 var(--s-2); padding: 0 var(--inset-content);
+  font: var(--t-section); color: var(--label-2);
 }
-.sheet-content p { margin: var(--s2) 0; }
+:where(.sheet-content p) { margin: var(--s-2) 0; }
 
-/* rows */
-.row {
-  position: relative; display: flex; align-items: center; gap: var(--s3);
-  width: 100%; min-height: 56px; padding: var(--s2) 0;
-  text-align: left; color: var(--text);
-  transition: background-color var(--d-press) var(--ease-enter), transform var(--d-press) var(--ease-enter);
+/* ---------- grouped card (10.8): bgCard, rCard, no shadow, no border; rows separated at the separator inset ---------- */
+.card, .v-card {
+  margin: 0 0 var(--s-3); padding: 0; border-radius: var(--r-card); background: var(--bg-card); overflow: hidden;
 }
-.row + .row::before {
-  content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--hairline);
-}
-/* a leading route chip is a fixed-width column so names and hairlines line up */
-.row > .chip:first-child, .v-row > .chip:first-child { min-width: 56px; }
-button.row:active { background: var(--surface-press); transform: scale(.98); }
-.row:focus-visible { outline-offset: -2px; border-radius: 8px; }
-.rowvis { display: flex; align-items: center; gap: var(--s3); flex: 1; min-width: 0; }
-.grow { flex: 1; min-width: 0; display: block; }
-.prim {
-  display: block; font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 590;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.sec {
-  display: block; color: var(--text-2); font-size: var(--fs-body); line-height: var(--lh-body);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.right { flex: none; color: var(--text-2); font-weight: 600; white-space: nowrap; }
-.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.muted { color: var(--text-2); }
-.foot { margin-top: var(--s3); font-size: var(--fs-cap); line-height: var(--lh-cap); color: var(--text-2); }
+.card:last-child, .v-card:last-child { margin-bottom: 0; }
+.cardhead { padding-top: 0; }
 
-/* live / status dots (always paired with text) */
-.dot-live, .dot-off {
-  display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px;
+/* ---------- rows (10.8): min 44; 12 vertical, 16 horizontal; leading slot 40 (badge or 20 icon), 12 gap, text column,
+   trailing ETA / value / toggle / chevron. Pressed: fillPressed. ---------- */
+.row, .v-row {
+  position: relative; display: flex; align-items: center; gap: var(--s-3);
+  width: 100%; min-height: var(--row-min); padding: var(--s-3) var(--inset-content);
+  border: 0; background: none; color: var(--label); font: var(--t-body); text-align: left;
+  transition: background-color var(--m-press) var(--ease-out);
 }
-.dot-live { background: var(--live); }
+button.row, button.v-row, a.v-row { cursor: pointer; }
+.row + .row::before, .v-row + .v-row::before, .v-row + .row::before, .row + .v-row::before {
+  content: ""; position: absolute; top: 0; left: var(--inset-content); right: 0; height: .5px; background: var(--separator);
+}
+.row:has(> .chip:first-child, > .rowvis > .chip:first-child, > .v-ic:first-child)::before,
+.v-row:has(> .chip:first-child, > .v-ic:first-child, > .v-chipbtn:first-child)::before,
+.row:has(> .chip:first-child) + .row::before, .v-row:has(> .chip:first-child) + .v-row::before,
+.v-row + .row:has(> .chip:first-child, > .rowvis > .chip:first-child)::before { left: var(--separator-inset); }
+button.row:active, button.v-row:active { background: var(--fill-pressed); }
+.row:focus-visible, .v-row:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; border-radius: var(--r-control); }
+.rowvis { display: flex; align-items: center; gap: var(--s-3); flex: 1; min-width: 0; }
+/* accessibility sizes (spec 10.8): the leading badge goes above the title and the trailing ETA under the text, left-aligned;
+   chevrons stay trailing; separators start at the card edge inset */
+html[data-text="ax"] :is(.row, .v-row):has(> .eta, > .chip:first-child),
+html[data-text="ax"] .rowvis { flex-wrap: wrap; row-gap: var(--s-1); }
+html[data-text="ax"] :is(.row, .v-row, .rowvis) > :is(.grow, .v-grow) { flex-basis: calc(100% - 40px); }
+html[data-text="ax"] :is(.row, .v-row, .rowvis):has(> .eta) > :is(.grow, .v-grow) { flex-basis: 100%; }
+html[data-text="ax"] :is(.row, .v-row, .rowvis) > .chip:first-child { min-width: 32px; }
+html[data-text="ax"] :is(.row, .v-row, .rowvis):has(> :is(.grow, .v-grow)) > .chip:first-child { flex-basis: auto; margin-right: 100%; }
+html[data-text="ax"] :is(.row, .v-row, .rowvis) > .eta { justify-content: flex-start; min-width: 0; }
+html[data-text="ax"] :is(.row, .v-row) + :is(.row, .v-row)::before { left: var(--inset-content); }
+/* the leading slot: a route badge or a 20 icon centered in 40 */
+.row > .chip:first-child, .rowvis > .chip:first-child, .v-row > .chip:first-child { min-width: var(--leading-slot); }
+.grow, .v-grow { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.prim, .v-prim {
+  display: block; margin: 0; font: var(--t-row-title); color: var(--label); overflow-wrap: break-word;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.sec, .v-sec {
+  display: block; margin: 0; font: var(--t-row-detail); color: var(--label-2); overflow-wrap: break-word;
+}
+.row .sec, .v-row .v-sec { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.right { flex: none; color: var(--label-2); font: var(--t-row-detail); white-space: nowrap; }
+.chips, .v-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.chips { margin-top: var(--s-1); }
+.muted { color: var(--label-2); }
+.foot { margin: var(--s-3) var(--inset-content) 0; font: var(--t-footnote); color: var(--label-2); }
+.v-chev, .row-chev { flex: none; display: inline-grid; place-items: center; color: var(--label-3); }
+.v-chev .ic, .row-chev .ic { width: 13px; height: 13px; }
+
+/* ---------- live / status marks (10.10): always paired with words ---------- */
+.dot-live, .dot-off, .v-livedot {
+  display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px;
+}
+.dot-live, .v-livedot { background: var(--live-mark); }
 .dot-live.late { background: var(--warn); }
-.dot-off { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-2); }
+.dot-off { background: transparent; box-shadow: inset 0 0 0 1.5px var(--label-2); }
+.src-live { color: var(--live); }
+.src-sched, .src-stale { color: var(--label-2); }
 
-/* route chip */
+/* ---------- route badge (10.9): rTag; 24 tall in rows, 20 inline; the short name is never truncated (longer names widen
+   the badge, over 5 characters drop to 10 pt); a ring when the color is under 3:1 against the surface
+   (ui/components.js routeChip: .lt = ring on light surfaces, .dk = ring on dark ones) ---------- */
 .chip {
   display: inline-grid; place-items: center; flex: none;
-  min-width: 36px; height: 28px; padding: 0 8px; border-radius: var(--r-badge);
-  font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 700; letter-spacing: .01em;
-  white-space: nowrap;
+  min-width: 32px; min-height: 24px; padding: 0 6px; border-radius: var(--r-tag);   /* min-height: the name grows with text, never clipped (2.2) */
+  font: var(--t-badge); white-space: nowrap;
 }
-.chip.sm { min-width: 28px; height: 20px; padding: 0 6px; border-radius: var(--r-tag); font-size: .6875rem; }
-.chip.ring, .chip.lt { box-shadow: inset 0 0 0 1.5px var(--text-2); }
+.chip.sm { min-width: 28px; min-height: 20px; padding: 0 5px; font: var(--t-badge-sm); }
+.chip.long { font-size: min(var(--size-tab), var(--size-badge-xs)); }
+.chip.sm.long { font-size: var(--size-badge-xs); }
+.chip.lt { box-shadow: inset 0 0 0 1px var(--badge-ring); }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .chip.lt { box-shadow: none; }
-  :root:not([data-theme="light"]) .chip.dk { box-shadow: inset 0 0 0 1.5px var(--text-2); }
+  :root:not([data-theme="light"]) .chip.dk { box-shadow: inset 0 0 0 1px var(--badge-ring); }
 }
 :root[data-theme="dark"] .chip.lt { box-shadow: none; }
-:root[data-theme="dark"] .chip.dk { box-shadow: inset 0 0 0 1.5px var(--text-2); }
+:root[data-theme="dark"] .chip.dk { box-shadow: inset 0 0 0 1px var(--badge-ring); }
+.chip.is-hidden { opacity: .4; }
 
-/* ETA numeral */
-.eta { flex: none; display: block; min-width: 56px; text-align: right; }
-.eta .num {
-  display: block; font: 700 var(--fs-eta)/var(--lh-eta) var(--font-rounded);
-  letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+/* ---------- ETA notation (10.10): numeral + the unit on its baseline ("4 min"), "Now" in live Semibold, clock time at
+   60 min or more, "~" + label2 when stale. Trailing, right-aligned, min width 64; numbers change without animation. ---------- */
+.eta {
+  flex: none; display: inline-flex; align-items: baseline; justify-content: flex-end; gap: .22em;
+  min-width: 64px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;
 }
-.eta .unit { display: block; font-size: var(--fs-cap); line-height: .875rem; font-weight: 600; color: var(--text-2); }
-.eta.now .num { font-size: 1.375rem; line-height: var(--lh-eta); color: var(--live); }
-.eta.stale .num, .eta.now.stale .num { color: var(--text-2); }
-
-/* grouped card */
-.card { background: var(--surface); border-radius: var(--r-card); padding: var(--s1) 14px; margin: var(--s2) 0; }
-.card .row + .row::before { left: 0; }
-.cardhead { padding-top: 10px; }
-
-/* buttons */
-.cta {
-  display: flex; align-items: center; justify-content: center; gap: var(--s2);
-  width: 100%; min-height: 48px; margin: var(--s2) 0; padding: 0 var(--s4);
-  border-radius: var(--r-control); background: var(--accent-fill); color: var(--on-accent);
-  font-weight: 600; font-size: var(--fs-row); text-align: center;
-  transition: transform var(--d-press) var(--ease-enter), filter var(--d-press);
+.eta .num { font: var(--t-eta-row); color: var(--label); font-variant-numeric: tabular-nums; }
+.eta .unit { font: var(--t-eta-unit); color: var(--label-2); }
+.eta.now .num { font: var(--t-row-title); color: var(--live); }
+.eta.clock .num { font: var(--t-row-title); }
+.eta.stale .num, .eta.now.stale .num { color: var(--label-2); }
+.eta.hero .num { font: var(--t-eta-hero); }
+.eta.hero .unit { font: var(--t-row-title); color: var(--label-2); }
+.eta.hero.now .num { font: var(--t-hero-title); }
+/* "est." is text, not a filled chip (10.10): label2 at the size of the text it follows */
+.est, .v-est {
+  display: inline; margin: 0; padding: 0; border-radius: 0; background: none;
+  color: var(--label-2); font-size: inherit; font-weight: var(--w-regular); white-space: nowrap; vertical-align: baseline;
 }
-.cta:active { transform: scale(.98); filter: brightness(.92); }
-.cta:focus-visible { outline-offset: 3px; }
-.cta.alt { background: var(--surface); color: var(--accent); }
-.cta.ghost { background: none; color: var(--text-2); font-weight: 500; }
-.cta.danger { background: var(--danger-bg); color: var(--danger); }
-.actions { display: flex; gap: var(--s2); margin: var(--s1) 0 var(--s2); }
-.actions .cta { margin: 0; flex: 1; font-size: 1rem; }
+.est-live { background: none; color: var(--label-2); }
+
+/* ---------- buttons (10.11): one primary per screen; capsules (glass spec 6, 8.11: iOS 26 bordered buttons) ---------- */
+.v-btn, .cta {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+  min-height: var(--tap); padding: 0 var(--s-4); border: 0; border-radius: var(--r-capsule);
+  font: var(--t-button); text-align: center; text-decoration: none; cursor: pointer;
+  transition: opacity var(--m-press) var(--ease-out), transform var(--m-press) var(--ease-out), background-color var(--m-press) var(--ease-out);
+}
+.v-btn:focus-visible, .cta:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+.v-btn .ic, .cta .ic, .v-btn .v-ic { flex: none; width: var(--i-row); height: var(--i-row); color: inherit; }
+.v-btn--primary, .cta { background: var(--tint-fill); color: var(--on-fill); }
+.v-btn--secondary, .cta.alt { background: var(--fill); color: var(--tint); }
+.v-btn--destructive, .cta.danger { background: var(--fill); color: var(--danger); }
+.v-btn--danger { background: var(--danger-fill); color: var(--on-fill); }
+.v-btn--primary:active, .cta:active, .v-btn--danger:active { opacity: .85; transform: scale(.98); }
+.v-btn--secondary:active, .cta.alt:active, .v-btn--destructive:active, .cta.danger:active { background: var(--fill-pressed); transform: scale(.98); }
+.v-btn--quiet, .cta.ghost, .v-link, .linkbtn {
+  background: none; color: var(--tint); font: var(--t-button); min-height: var(--tap); padding: 0 var(--s-2);
+}
+.v-btn--quiet:active, .cta.ghost:active, .v-link:active, .linkbtn:active { opacity: .6; transform: none; }
+.v-link, .linkbtn { position: relative; border: 0; cursor: pointer; }
+.v-btn--block, .cta { display: flex; width: 100%; min-height: 50px; margin: var(--s-3) 0; }
+.v-btn--block.v-btn--quiet { min-height: var(--tap); margin: var(--s-1) 0; }
+.v-btn:disabled, .cta:disabled, .v-btn[aria-disabled="true"] { opacity: .45; cursor: default; transform: none; }
+/* a row of equal buttons shares the width; labels stay on one line (stack instead of wrapping, 10.11) */
+.actions, .v-actions { display: flex; gap: var(--s-2); margin: var(--s-3) 0; }
+.actions .cta, .v-actions .v-btn { flex: 1 1 0; min-width: 0; margin: 0; padding: 0 var(--s-3); white-space: nowrap; }
+html[data-text="ax"] .actions, html[data-text="ax"] .v-actions { flex-direction: column; }
+html[data-text="ax"] .v-actions .v-btn { white-space: normal; min-height: 50px; }
+/* icon button (10.11): 44 x 44, icon 20, no fill in the sheet */
 .iconbtn {
   flex: none; width: var(--tap); height: var(--tap); display: grid; place-items: center;
-  border-radius: var(--r-control); color: var(--accent);
+  border-radius: 50%; color: var(--tint); transition: opacity var(--m-press) var(--ease-out);
 }
-.iconbtn:active { background: var(--surface); }
-.linkbtn { color: var(--accent); font-weight: 600; min-height: var(--tap); padding: 0 var(--s1); }
+.iconbtn:active { opacity: .6; }
 
-/* segmented control (tabs, theme, generic) */
-.seg, .themeseg {
-  display: flex; gap: 2px; padding: 2px; border-radius: var(--r-control); background: var(--surface);
+/* ---------- segmented control (10.12, glass spec 8.11): a capsule track in fill, 36 tall; a capsule thumb in bgCard ---------- */
+.seg, .themeseg, .v-seg {
+  display: flex; gap: 2px; padding: 2px; border-radius: var(--r-capsule); background: var(--fill);
 }
-.seg button, .themeseg button {
-  position: relative; flex: 1; min-height: 34px; padding: 0 var(--s2); border-radius: var(--r-inner);
-  font-weight: 600; font-size: .875rem; color: var(--text-2);
-  transition: background-color var(--d-press), color var(--d-press);
+.seg button, .themeseg button, .v-segbtn {
+  position: relative; flex: 1; min-height: 32px; padding: 0 var(--s-2); border: 0; border-radius: var(--r-capsule);
+  background: none; color: var(--label); font: var(--t-section); cursor: pointer;
+  transition: background-color var(--m-quick) var(--ease-out), box-shadow var(--m-quick) var(--ease-out);
 }
-.seg button::after, .themeseg button::after { content: ""; position: absolute; inset: -5px 0; } /* 44px hit area */
+.seg button::after, .themeseg button::after, .v-segbtn::after { content: ""; position: absolute; inset: -6px 0; }   /* 44 pt hit area */
 .seg button.on, .seg button[aria-current="page"], .seg button[aria-pressed="true"],
-.themeseg button.on, .themeseg button[aria-checked="true"] {
-  background: var(--seg-on); color: var(--text); box-shadow: var(--shadow-thumb);
+.themeseg button.on, .themeseg button[aria-checked="true"], .v-segbtn.is-on {
+  background: var(--bg-card); color: var(--label); box-shadow: var(--e-thumb);
 }
-.themeseg { margin: var(--s2) 0; }
+.themeseg { margin: var(--s-2) 0; }
 .themeseg button { min-width: 72px; }
 
-/* numeric badge */
-.badge {
-  display: inline-block; min-width: 18px; padding: 0 5px; border-radius: var(--r-pill);
-  background: var(--danger-fill); color: var(--on-danger); font-size: var(--fs-cap); line-height: 18px; font-weight: 700; text-align: center;
+/* ---------- switch (10.13): 51 x 31, on = tintFill; the knob position and an on-mark say the state, not color alone ---------- */
+.sw-track, .st-knob, .j-sw {
+  position: relative; flex: none; width: 51px; height: 31px; border-radius: var(--r-capsule);
+  background: var(--fill-pressed); transition: background-color var(--m-quick) var(--ease-out);
 }
 
-/* pills + source tags */
-.pill {
-  display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 0 10px; border-radius: var(--r-chip);
-  font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 600; background: var(--surface); color: var(--text-2);
+/* ---------- numeric badge (count) ---------- */
+.badge {
+  display: inline-block; min-width: 18px; padding: 0 5px; border-radius: var(--r-capsule);
+  background: var(--danger-fill); color: var(--on-fill); font: var(--t-caption); line-height: 18px; text-align: center;
 }
-.pill-live { color: var(--live-text, var(--live)); }
+
+/* ---------- small status labels (pill()): words in the status color, no filled chip ---------- */
+.pill {
+  display: inline-flex; align-items: center; gap: var(--s-1); min-height: 20px; padding: 0 var(--s-2);
+  border-radius: var(--r-capsule); font: var(--t-caption); background: var(--fill); color: var(--label-2);
+}
+.pill-live { background: none; padding: 0; color: var(--live); }
 .pill-warn { background: var(--warn-bg); color: var(--warn); }
 .pill-err { background: var(--danger-bg); color: var(--danger); }
-.pill-info { background: var(--surface); color: var(--text); }
-.est {
-  display: inline-block; padding: 0 6px; border-radius: var(--r-tag); background: var(--hairline); color: var(--text-2);
-  font-size: .6875rem; line-height: 1rem; font-weight: 600; vertical-align: 2px; white-space: nowrap;
-}
-.est-live { background: color-mix(in srgb, var(--live) 16%, transparent); color: var(--text); }
+.pill-info { background: var(--fill); color: var(--label); }
 
-/* empty / error / loading */
-.empty { padding: var(--s6) 0; text-align: center; color: var(--text-2); }
-.empty b { display: block; color: var(--text); font-size: var(--fs-row); line-height: var(--lh-row); margin-bottom: var(--s1); }
-.empty span { display: block; }
+/* ---------- empty state (10.20): inside a card, centered; optional 28 icon in label3 ---------- */
+.empty, .v-empty {
+  display: flex; flex-direction: column; align-items: center; gap: var(--s-1);
+  margin: 0 0 var(--s-3); padding: var(--s-6) var(--inset-content); border-radius: var(--r-card); background: var(--bg-card);
+  text-align: center; color: var(--label-2); font: var(--t-row-detail);
+}
+.empty .empty-ic, .v-empty .empty-ic { color: var(--label-3); margin-bottom: var(--s-1); }
+.empty .empty-ic .ic, .v-empty .empty-ic .ic { width: 28px; height: 28px; }
+.empty b, .v-empty b { display: block; color: var(--label); font: var(--t-row-title); }
+.empty span, .v-empty span { display: block; }
 .empty.error b { color: var(--danger); }
-.official { display: block; margin-top: var(--s3); font-size: .875rem; color: var(--text-2); }
-.official a { display: inline-block; min-height: 24px; }
-/* loading rows shaped like arrival rows (route badge, two lines, ETA) so nothing jumps when data lands */
-.skels { padding: var(--s1) 0; }
+.v-card .empty, .v-card .v-empty { margin: 0; background: none; }
+.official { display: block; margin-top: var(--s-3); font: var(--t-footnote); color: var(--label-2); }
+.official a { display: inline-block; padding: 12px 2px; margin: -12px 0; color: var(--tint); font-weight: var(--w-semibold); text-decoration: none; }
+
+/* ---------- skeleton (10.20): rows shaped like the rows that replace them, in a card; opacity .6 to 1 over 1.2 s ---------- */
+.skels { margin: 0 0 var(--s-3); padding: 0; border-radius: var(--r-card); background: var(--bg-card); overflow: hidden; }
 .skel {
-  position: relative; display: flex; align-items: center; gap: var(--s3); height: 56px;
+  position: relative; display: flex; align-items: center; gap: var(--s-3); min-height: 60px; padding: var(--s-3) var(--inset-content);
   animation: sb-shimmer 1.2s ease-in-out infinite alternate;
 }
-.skel + .skel::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--hairline); }
-.skel-chip, .skel-lines > span, .skel-eta { display: block; background: var(--surface); }
-.skel-chip { flex: none; width: 56px; height: 28px; border-radius: var(--r-badge); }
-.skel-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.skel-lines > span { width: 64%; height: 12px; border-radius: var(--r-tag); }
-.skel-lines > span + span { width: 36%; height: 10px; }
+.skel + .skel::before { content: ""; position: absolute; top: 0; left: var(--separator-inset); right: 0; height: .5px; background: var(--separator); }
+.skel-chip, .skel-lines > span, .skel-eta { display: block; background: var(--fill); border-radius: var(--r-tag); }
+.skel-chip { flex: none; width: 32px; height: 24px; margin: 0 4px; }
+.skel-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.skel-lines > span { width: 64%; height: 12px; }
+.skel-lines > span + span { width: 38%; height: 10px; }
 .skel:nth-child(3n) .skel-lines > span:first-child { width: 52%; }
 .skel:nth-child(3n + 1) .skel-lines > span:first-child { width: 72%; }
-.skel-eta { flex: none; width: 28px; height: 32px; border-radius: var(--r-tag); }
+.skel-eta { flex: none; width: 44px; height: 22px; }
 @keyframes sb-shimmer { from { opacity: .6; } to { opacity: 1; } }
+.v-card .skels, .card .skels { margin: 0; border-radius: 0; background: none; }
+.v-card .skels .skel:first-child::before { content: ""; position: absolute; top: 0; left: var(--inset-content); right: 0; height: .5px; background: var(--separator); }
 
-/* inputs */
+/* ---------- fields in the sheet: fill, rControl, 44 tall ---------- */
 input[type="search"], input[type="text"] {
-  width: 100%; min-height: var(--tap); padding: 0 var(--s3); border: 0; border-radius: var(--r-control);
-  background: var(--surface); color: var(--text); -webkit-appearance: none; appearance: none;
+  width: 100%; min-height: var(--tap); padding: 0 var(--s-3); border: 0; border-radius: var(--r-control);
+  background: var(--fill); color: var(--label); font: var(--t-body); -webkit-appearance: none; appearance: none;
 }
-input::placeholder { color: var(--text-2); opacity: 1; }
-.srch { display: block; margin: var(--s1) 0 var(--s2); }
+input::placeholder { color: var(--label-2); opacity: 1; }
+input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
+.srch { display: block; margin: var(--s-1) 0 var(--s-2); }
 
-/* dialog container (#dlg); views fill it with a .dlgcard */
+/* ---------- dialog container (#dlg) and cards (10.13): centered card over the scrim ---------- */
 .scrim {
   position: fixed; inset: 0; z-index: var(--z-dialog); background: var(--scrim);
-  display: flex; align-items: flex-end; justify-content: center;
-  padding: var(--s4) calc(var(--s4) + var(--safe-r)) calc(var(--s4) + var(--safe-b)) calc(var(--s4) + var(--safe-l));
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s-4) calc(var(--s-4) + var(--safe-r)) calc(var(--s-4) + var(--safe-b)) calc(var(--s-4) + var(--safe-l));
 }
 .dlgcard {
-  width: 100%; max-width: 380px; padding: var(--s5); border-radius: var(--r-sheet);
-  background: var(--bg-solid); color: var(--text); box-shadow: var(--shadow-sheet);
+  width: 100%; max-width: 360px; padding: var(--s-5); border-radius: var(--r-sheet);
+  background: var(--bg-card); color: var(--label); box-shadow: var(--e-3);
   max-height: calc(var(--app-h) - 32px); overflow: auto;
 }
-.dlgcard .cta { margin: var(--s2) 0 0; }
-.dlgt { margin: 0 0 var(--s1); font-size: var(--fs-title); line-height: var(--lh-title); font-weight: 650; }
-@media (min-width: 768px) and (max-height: 559px) { .scrim { align-items: center; } }
+.dlgcard .cta { margin: var(--s-2) 0 0; }
+.dlgt { margin: 0 0 var(--s-1); font: var(--t-row-title); }
 
-@media (forced-colors: active) {
-  .chip, .card, .cta, .seg button, .themeseg button, .badge, .pill, .est { border: 1px solid CanvasText; }
-  /* the selected segment is a fill + shadow normally, which forced colors flatten: mark it with Highlight */
-  .seg button.on, .seg button[aria-current="page"], .seg button[aria-pressed="true"],
-  .themeseg button.on, .themeseg button[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; border-color: Highlight; }
-  .dot-live, .dot-off { forced-color-adjust: none; }
+/* ---------- in-sheet alert row (10.18): warnBg, rCard, one line, opens Alerts ---------- */
+.v-row.v-alertbanner {
+  gap: var(--s-3); margin: 0 0 var(--s-3); padding: var(--s-3) var(--s-3) var(--s-3) var(--inset-content); min-height: var(--tap);
+  border-radius: var(--r-card); background: var(--warn-bg);
 }
-@media (prefers-contrast: more) {
-  .card, .cta.alt { outline: 1px solid currentColor; }
-}
-
-/* Current trip: service-alert row, ONE line (owner decision 2026-10-11: the next bus must fit the half detent under it;
-   the full alert is in its label and in Alerts) + favorites card (SHELL) */
-.v-row.v-alertbanner { gap: var(--s2); margin: 0 0 var(--s2); padding: 0 var(--s3); min-height: var(--tap); border-radius: var(--r-card); background: var(--warn-bg); }
 .v-alertbanner + .v-alertbanner::before, .v-alertbanner::before { display: none; }
-.v-alertbanner .v-alertic { display: grid; place-items: center; color: var(--warn); padding-top: 0; }
-.v-alertbanner .v-alertic svg { width: 20px; height: 20px; }
-.v-alertbanner .v-alertline { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text); }
-.v-alertbanner .v-alertline b { font-weight: 650; }
-/* who to call when no bus reports (alerts.js callsHTML): the operator's number from the live alert first, then
-   "Safety or urgent: 773.702.8181"; a label stacks at its colon instead of wrapping mid-phrase (320 px) */
-.v-calls { margin: var(--s3) 0 var(--s2); }
-.v-calls .v-btn { margin: 0 0 var(--s2); padding: var(--s2) var(--s4); text-align: center; }
-.v-calls .v-btn .v-ic { flex: none; width: 20px; height: 20px; }
+.v-row.v-alertbanner:active { background: color-mix(in srgb, var(--warn-bg) 80%, var(--warn)); }
+.v-alertbanner .v-alertic { display: grid; place-items: center; color: var(--warn); }
+.v-alertbanner .v-alertic .ic, .v-alertbanner .v-alertic svg { width: 17px; height: 17px; }
+.v-alertbanner .v-alertline { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--t-row-detail); color: var(--label); }
+.v-alertbanner .v-alertline b { font-weight: var(--w-semibold); }
+.v-alertbanner .v-chev { color: var(--label-2); }
+/* who to call when no bus reports (alerts.js callsHTML): the operator's number first (Primary), then
+   "Safety or urgent: 773.702.8181" (Secondary); a label stacks at its colon instead of wrapping mid-phrase (320 px) */
+.v-calls { margin: var(--s-3) 0 var(--s-2); }
+.v-calls .v-btn { margin: 0 0 var(--s-2); padding: var(--s-2) var(--s-4); text-align: center; white-space: normal; }
+.v-calls .v-btn .v-ic, .v-calls .v-btn .ic { flex: none; width: 17px; height: 17px; }
 .v-calltxt { display: inline-flex; flex-wrap: wrap; justify-content: center; column-gap: .3em; min-width: 0; }
 .v-calltxt > span { white-space: nowrap; }
 .v-callnum { font-variant-numeric: tabular-nums; }
 .v-calls .v-official { margin: 0; }
 /* the operator's alerts next to "no bus reports" empty states (alerts.js operatorAlertsHTML); call links in alert text */
 .v-opalerts .v-alert { margin-top: 0; }
-.v-opmore { display: block; margin: 0 auto var(--s2); }
-.v-alertbody a { color: var(--accent); font-weight: 600; text-decoration: none; display: inline-block; padding: 13px 2px; margin: -13px 0; }
-.v-favhead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); }
+.v-opmore { display: block; margin: 0 auto var(--s-2); }
+.v-alertbody a { color: var(--tint); font-weight: var(--w-semibold); text-decoration: none; display: inline-block; padding: 13px 2px; margin: -13px 0; }
+.v-favhead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); }
 .v-favhead .v-h { flex: 1; }
-.v-favmore { margin-right: calc(-1 * var(--s2)); }
-.v-favic { width: 56px; text-align: center; color: var(--warn); font-size: 18px; }
-@media (forced-colors: active) { .v-alertbanner { border: 1px solid CanvasText; } }
-@media (prefers-contrast: more) { .v-alertbanner { outline: 1px solid currentColor; } }
+.v-favhead .v-link { font: var(--t-section); margin-right: calc(var(--s-2) * -1); }
+/* favorite stars in the sheet: the map badge's yellow (owner 2026-11-05) with a thin dark edge on light cards (the yellow alone is 1.5:1) */
+.v-favic { width: var(--leading-slot); text-align: center; color: var(--fav-mark); }
+.v-favic .ic { stroke: var(--fav-edge); stroke-width: 1.5; }
 
-/* Press feedback for every control that had none (taste audit 2026-10-10, docs/DESIGN.md "Motion"): text buttons
-   dim, icon buttons get the pressed fill, toggles and segments press in. 120 ms; reduced motion: opacity only. */
-.v-link, .linkbtn, .v-chipbtn { transition: opacity var(--d-press) var(--ease-enter); }
-.v-link:active, .linkbtn:active, .v-chipbtn:active { opacity: .55; }
-.v-eye, .v-dswap, .mr-ibtn, .statuspill .pillbtn { transition: background-color var(--d-press) var(--ease-enter); }
-.v-eye:active, .v-dswap:active, .mr-ibtn:active:not(:disabled), .statuspill .pillbtn:active { background: var(--surface-press); }
-.v-fchip-x:active { background: color-mix(in srgb, var(--on-accent) 20%, transparent); }   /* the x sits on the accent fill */
-.seg button, .themeseg button, .v-segbtn, .mr-fav, .mr-hl, .j-only, .mr-act { transition: transform var(--d-press) var(--ease-enter), background-color var(--d-press), color var(--d-press); }
-.seg button:active, .themeseg button:active, .v-segbtn:active, .mr-fav:active, .mr-hl:active, .j-only:active, .mr-act:active { transform: scale(.97); }
-@media (prefers-reduced-motion: reduce) {
-  .seg button:active, .themeseg button:active, .v-segbtn:active, .mr-fav:active, .mr-hl:active, .j-only:active, .mr-act:active { transform: none; opacity: .7; }
+@media (forced-colors: active) {
+  .chip, .card, .v-card, .cta, .v-btn, .seg button, .themeseg button, .badge, .pill, .v-alertbanner { border: 1px solid CanvasText; }
+  /* the selected segment is a fill + shadow normally, which forced colors flatten: mark it with Highlight */
+  .seg button.on, .seg button[aria-current="page"], .seg button[aria-pressed="true"],
+  .themeseg button.on, .themeseg button[aria-checked="true"], .v-segbtn.is-on { forced-color-adjust: none; background: Highlight; color: HighlightText; border-color: Highlight; }
+  .dot-live, .dot-off, .v-livedot { forced-color-adjust: none; }
 }
-
-/* 44 px targets: the About / Settings appearance segments are 40 px tall (2 px inset in a 44 px control), and the
-   official phone / page links inside empty states are one text line; both keep their look and get a 44 px hit area */
-.v-segbtn::after { content: ""; position: absolute; inset: -2px 0; }
-.official a { padding: 10px 2px; margin: -10px 0; }
+@media (prefers-contrast: more) {
+  .card, .v-card, .empty, .v-empty, .v-btn--secondary, .cta.alt, .v-alertbanner { outline: 1px solid var(--separator); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .v-btn:active, .cta:active { transform: none; }
+  .skel { animation: none; }
+}

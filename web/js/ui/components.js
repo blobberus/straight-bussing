@@ -6,8 +6,9 @@
  * Class names used here are styled in css/components.css (D1). Interactive builders emit
  * `data-action` + `data-id` so ui/actions.js event delegation can route taps.
  */
-import { esc, safeColor, textOn, lum } from "../core/esc.js";
-import { minsUntil, nowS } from "../core/time.js";
+import { esc, safeColor, textOn, contrast } from "../core/esc.js";
+import { minsUntil, nowS, clock } from "../core/time.js";
+import { svg } from "./icons.js";
 import { staleLevel } from "../core/arrivals.js";
 
 /** Official service phone (display form). */
@@ -25,35 +26,22 @@ const SOURCE_DESC = {
   estimate: "Rough distance-based estimate",
 };
 
-const P = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
-const ICONS = {
-  back: '<path d="M15 4l-8 8 8 8"/>',
-  chevron: '<path d="M9 5l7 7-7 7"/>',
-  close: '<path d="M6 6l12 12M18 6L6 18"/>',
-  locate: '<path d="M3 11l18-8-8 18-2-8-8-2z"/>',
-  eye: '<path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/>',
-  eyeOff: '<path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z" opacity=".45"/><circle cx="12" cy="12" r="3" opacity=".45"/><path d="M3 3l18 18"/>',
-  alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
-  info: '<circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5v.5"/>',
-  swap: '<path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/>',
-  walk: '<circle cx="13" cy="4" r="2"/><path d="M10 21l2-6 3 3v3M8 12l2-4 4 1 2 3 3 1M10 8l-1 5"/>',
-  bus: '<rect x="4" y="3" width="16" height="15" rx="3"/><path d="M4 11h16M8 21v-3M16 21v-3M8 14.5h.01M16 14.5h.01"/>',
-  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
-  retry: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
-  clock: '<circle cx="12" cy="12" r="9.5"/><path d="M12 7v5l3 2"/>',
+/** Old icon names (views, tests) mapped onto the one set in ./icons.js. */
+const ICON_ALIAS = {
+  back: "chevron-left", chevron: "chevron-right", close: "x", locate: "navigation", eye: "eye", eyeOff: "eye-off",
+  alert: "triangle-alert", info: "info", swap: "arrow-up-down", walk: "walk", bus: "bus-front", search: "search",
+  retry: "rotate-cw", clock: "clock",
 };
 
 /**
- * Inline SVG icon (decorative, aria-hidden). Unknown names return ''.
- * @param {keyof ICONS|string} name back|chevron|close|locate|eye|eyeOff|alert|info|swap|walk|bus|search|retry|clock
+ * Inline SVG icon (decorative, aria-hidden). Unknown names return ''. Old names (back, chevron, locate...) and every
+ * ./icons.js name are accepted.
+ * @param {string} name
  * @param {number} [size=20]
  * @returns {string}
  */
 export function icon(name, size = 20) {
-  const body = ICONS[name];
-  if (!body) return "";
-  const s = Math.max(8, Math.min(64, Number(size) || 20));
-  return `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" ${P} aria-hidden="true" focusable="false">${body}</svg>`;
+  return svg(ICON_ALIAS[name] || name, size);
 }
 
 /**
@@ -65,6 +53,21 @@ export function icon(name, size = 20) {
 export function routeName(rid, routes) {
   const r = (routes && routes[rid]) || {};
   return String(r.short || r.long || "?");
+}
+
+/**
+ * The text on a route badge (iOS Route.chipText, docs/DESIGN-SPEC.md 10.9): the published short name, else the first
+ * letter of the long name ("E" for East), else '?'. Never truncated.
+ * @param {string} rid
+ * @param {Object} routes store.routes
+ * @returns {string} plain text (not escaped)
+ */
+export function chipText(rid, routes) {
+  const r = (routes && routes[rid]) || {};
+  const s = String(r.short || "").trim();
+  if (s) return s;
+  const l = String(r.long || "").trim();
+  return l ? l.charAt(0).toUpperCase() : "?";
 }
 
 /**
@@ -88,8 +91,9 @@ export function fmtDist(m) {
 }
 
 /**
- * Route color badge. Text color is chosen by luminance; colors with weak contrast against the
- * sheet get a ring (class lt for light-theme, dk for dark-theme; CSS decides which applies).
+ * Route color badge (spec 10.9): the badge text (chipText) in whichever of near-black / white reads better on the route
+ * color; a color under 3:1 against the card gets a ring (class lt for light mode, dk for dark mode; CSS decides which
+ * applies); names over 5 characters get the smaller size (class long). The full route name stays the badge's label.
  * @param {string} rid
  * @param {Object} routes store.routes
  * @param {{small?:boolean}} [opts]
@@ -97,10 +101,21 @@ export function fmtDist(m) {
  */
 export function routeChip(rid, routes, opts = {}) {
   const r = (routes && routes[rid]) || {};
-  const c = safeColor(r.color);
-  const L = lum(c);
-  const cls = "chip" + (L > 0.3 ? " lt" : "") + (L < 0.136 ? " dk" : "") + (opts.small ? " sm" : "");
-  return `<span class="${cls}" style="background:${c};color:${textOn(c)}">${esc(routeName(rid, routes))}</span>`;
+  const c = safeColor(r.color), name = chipText(rid, routes);
+  const cls = "chip" + ringClass(c) + (opts.small ? " sm" : "") + (name.length > 5 ? " long" : "");
+  return `<span class="${cls}" style="background:${c};color:${textOn(c)}">${esc(name)}</span>`;
+}
+
+/** The card surfaces a badge sits on (tokens.css --bg-card, light / dark). */
+export const BADGE_SURFACE = Object.freeze({ light: "#FCFCFD", dark: "#2C2C2E" });
+/**
+ * Ring classes for a route color (spec 4.3): " lt" when under 3:1 against the light card (ring shows in light mode),
+ * " dk" when under 3:1 against the dark card (ring shows in dark mode). Same shape either way.
+ * @param {string} color '#RRGGBB'
+ * @returns {string}
+ */
+export function ringClass(color) {
+  return (contrast(color, BADGE_SURFACE.light) < 3 ? " lt" : "") + (contrast(color, BADGE_SURFACE.dark) < 3 ? " dk" : "");
 }
 
 /**
@@ -116,9 +131,11 @@ export function etaBlock(unixS, opts = {}) {
   const t = typeof unixS === "number" && isFinite(unixS) ? unixS : n;
   const m = minsUntil(t, n);
   const tilde = stale ? "~" : "";
-  const sc = stale ? " stale" : "";
+  const sc = (stale ? " stale" : "") + (opts.hero ? " hero" : "");
   if (m < 1) return `<span class="eta now${sc}"><span class="num">${tilde}Now</span></span>`;
-  return `<span class="eta${sc}"><span class="num">${tilde}${m}</span><span class="unit">min</span></span>`;
+  // an hour or more away: the clock time reads better than "73 min" (spec 10.10)
+  if (m >= 60) return `<span class="eta clock${sc}"><span class="num">${tilde}${esc(clock(t))}</span></span>`;
+  return `<span class="eta${sc}"><span class="num">${tilde}${m}</span> <span class="unit">min</span></span>`;
 }
 
 /**
@@ -127,9 +144,9 @@ export function etaBlock(unixS, opts = {}) {
  * @returns {{html:string, text:string}}
  */
 export function liveLabel(level) {
-  if (!level) return { html: '<span class="dot-live" aria-hidden="true"></span>Live', text: "live" };
-  if (level === "late") return { html: '<span class="dot-live late" aria-hidden="true"></span>Live, delayed', text: "live, data delayed" };
-  return { html: '<span class="dot-off" aria-hidden="true"></span>Last known', text: "last known prediction, may be out of date" };
+  if (!level) return { html: '<span class="dot-live" aria-hidden="true"></span><span class="src-live">Live</span>', text: "live" };
+  if (level === "late") return { html: '<span class="dot-live late" aria-hidden="true"></span><span class="src-stale">Live, delayed</span>', text: "live, data delayed" };
+  return { html: '<span class="dot-off" aria-hidden="true"></span><span class="src-stale">Last known</span>', text: "last known prediction, may be out of date" };
 }
 
 /**
@@ -194,12 +211,14 @@ export function officialLinks() {
  * Empty / error state block.
  * @param {string} title
  * @param {string} [body]
- * @param {{official?:boolean, kind?:'empty'|'error'}} [opts] official -> append the official phone/link
+ * @param {{official?:boolean, kind?:'empty'|'error', icon?:string}} [opts] official -> append the official phone/link;
+ *   icon -> a 28 px ./icons.js glyph in label3 above the title (spec 10.20)
  * @returns {string}
  */
 export function emptyState(title, body, opts = {}) {
   const kind = opts.kind === "error" ? " error" : "";
-  return `<div class="empty${kind}"><b>${esc(title)}</b>${body ? `<span>${esc(body)}</span>` : ""}`
+  const ic = opts.icon ? `<span class="empty-ic" aria-hidden="true">${svg(opts.icon, 28)}</span>` : "";
+  return `<div class="empty${kind}">${ic}<b>${esc(title)}</b>${body ? `<span>${esc(body)}</span>` : ""}`
     + (opts.official ? officialLinks() : "") + "</div>";
 }
 

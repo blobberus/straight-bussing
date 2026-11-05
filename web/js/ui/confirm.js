@@ -11,6 +11,22 @@ import { esc } from "../core/esc.js";
 const GUARD_MS = 350;
 
 /**
+ * The dialog grows out of the button that opened it (docs/DESIGN-SPEC-GLASS.md 8.14, mZoomSheet): transform-origin at
+ * the button's center in the dialog's box. Without a visible opener it keeps the plain pop.
+ * @param {HTMLElement} dlg
+ * @param {Element|null} opener
+ */
+function zoomFrom(dlg, opener) {
+  try {
+    if (!opener || !opener.isConnected || opener === document.body) return;
+    const b = opener.getBoundingClientRect(), d = dlg.getBoundingClientRect();
+    if (!(b.width > 0 && d.width > 0)) return;
+    dlg.style.transformOrigin = `${Math.round(b.left + b.width / 2 - d.left)}px ${Math.round(b.top + b.height / 2 - d.top)}px`;
+    dlg.classList.add("is-zoom");
+  } catch (e) { /* layout unavailable */ }
+}
+
+/**
  * Ask the user to confirm. Resolves true only when the confirm button was pressed.
  * @param {{title:string, body?:string, confirmLabel?:string, cancelLabel?:string, danger?:boolean}} o cancelLabel: the
  *   safe choice's words (default "Cancel"; the demo pill's "Keep demo")
@@ -53,6 +69,7 @@ export function confirmDialog({ title, body = "", confirmLabel = "OK", cancelLab
     dlg.addEventListener("cancel", (e) => { e.preventDefault(); finish(false); });   // Escape
     dlg.addEventListener("close", () => finish(dlg.returnValue === "yes"));
     try { dlg.showModal(); } catch (e) { dlg.setAttribute("open", ""); }
+    zoomFrom(dlg, opener);
     dlg.querySelector('[data-confirm="no"]').focus();
   });
 }
