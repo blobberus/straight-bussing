@@ -105,6 +105,8 @@ test("nearby: favorites card lists favorites with next visible arrival", () => {
   ok(/Favorite One: route A in 5 minutes/.test(h), "hidden route B skipped, next visible is A: " + h.slice(0, 400));
   const j = favoritesHTML({ ...s, hiddenRoutes: [], journey: { rids: ["B"], label: "x" } }, NOW);
   ok(/Favorite One: route B in 2 minutes/.test(j), "journey decides visibility");
+  const one = favoritesHTML(base({ stops, trips: [{ trip: { trip_id: "t3", route_id: "A" }, stop_time_update: [{ stop_id: "s1", arrival: { time: NOW + 70 } }] }], favStops: ["s1"] }), NOW);
+  ok(/Favorite One: route A in 1 minute[,"]/.test(one), "one minute in the singular (QA 2026-11-05): " + one.slice(0, 300));
 });
 
 /* DESIGN-SPEC 10.5: the chip's labels match the iPhone app; badges first (up to 3, then "+N"); only the label truncates. */
