@@ -52,7 +52,7 @@ ${usageConfigured() ? `  <li>${esc(ABOUT_USAGE)}</li>
 <ul class="v-plain v-sec">
   <li>Live and schedule data: public Passio GTFS and GTFS-Realtime feeds.</li>
   <li>Map data and the campus places list: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL).</li>
-  <li>Map tiles: <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>, using <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>. Rendering: Leaflet and MapLibre GL.</li>
+  <li>Map tiles: <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>, using <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>. Rendering: Leaflet and MapLibre GL. Icons: Lucide.</li>
   <li>Place search: Photon by komoot. Walking routes: FOSSGIS OSRM and Valhalla.</li>
 </ul>
 <p class="v-foot" data-region="about-data">Version ${esc(APP_VERSION)}</p>

@@ -349,7 +349,8 @@ ${creditsHTML(false)}
  * same facts as About's credits. iOS: SettingsView creditsSection. Each part: [text] or [text, url].
  */
 export const CREDITS = Object.freeze([
-  { group: "App", items: [[["App made by "], ["blobberus", "https://github.com/blobberus"], ["."]]] },
+  { group: "App", items: [[["App made by "], ["blobberus", "https://github.com/blobberus"], ["."]],
+    [["Icons: "], ["Lucide", "https://lucide.dev"], [" (ISC), a few drawn for this app in the same style."]]] },
   { group: "Maps", items: [
     [["Map tiles and style: "], ["OpenFreeMap", "https://openfreemap.org"], [", in the "], ["OpenMapTiles", "https://openmaptiles.org/"], [" schema."]],
     [["Map data, streets, buildings and place names: "], ["OpenStreetMap", "https://www.openstreetmap.org/copyright"], [" contributors, ODbL."]],
