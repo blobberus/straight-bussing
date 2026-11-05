@@ -84,7 +84,7 @@ function buttonsFrame() {
       + `<span class="tp-tag tp-tag--board">Board</span><span class="tp-tag tp-tag--alight">Get off</span><span class="v-fchip"><span class="v-fchip-t">Routes to X</span></span>`
       + `<div class="mr-acts" style="visibility:visible;position:static;width:auto"><button class="mr-act mr-act--info">Details</button><button class="mr-act mr-act--edit">Edit</button><button class="mr-act mr-act--del">Delete</button></div>`
       + `<span class="t-ph" style="color:var(--text-2);background:var(--surface)">Station name (placeholder color on a field)</span></div>`
-      + `<div class="v-card"><button class="v-btn v-btn--secondary">In a card</button><span class="j-crit">Least walking</span></div>`
+      + `<div class="v-card"><button class="v-btn v-btn--secondary">In a card</button><button class="v-btn v-btn--destructive">End trip</button><span class="j-crit">Least walking</span></div>`
       + `</body></html>`;
     f.onload = () => setTimeout(() => resolve(f), 50);
     document.body.appendChild(f);
@@ -105,5 +105,108 @@ test("contrast: buttons, toggles, tags, badges and placeholders are >= 4.5:1 in 
   }
   f.remove();
   ok(n >= 40, "measured " + n);
+  ok(!bad.length, bad.join("; "));
+});
+
+// DESIGN-SPEC 4.2: every text / surface pair of the redesign is >= 4.5:1 in light and dark, measured from the real tokens
+// with translucent fills composited over the surface they sit on (the spec's table, and the redesign's own pairs).
+const PAIRS = [
+  ["label", "bg-sheet"], ["label", "bg-card"], ["label-2", "bg-sheet"], ["label-2", "bg-card"],
+  ["label-2", "fill", "bg-card"], ["label-2", "fill", "bg-sheet"], ["label", "fill", "bg-card"],
+  ["tint", "bg-sheet"], ["tint", "bg-card"], ["tint", "fill", "bg-card"], ["tint", "fill", "bg-sheet"], ["tint", "tint-bg"],
+  ["label-2", "tint-bg"], ["label", "tint-bg"],
+  ["live", "bg-sheet"], ["live", "bg-card"],
+  ["warn", "bg-card"], ["warn", "warn-bg"], ["label", "warn-bg"], ["tint", "warn-bg"],
+  ["danger", "bg-sheet"], ["danger", "bg-card"], ["danger", "fill", "bg-card"], ["danger", "danger-bg"], ["label", "danger-bg"], ["tint", "danger-bg"],
+  ["on-fill", "tint-fill"], ["on-fill", "danger-fill"], ["on-fill", "neutral-fill"],
+  ["label-inverse", "bg-inverse"], ["label", "bg-chrome-solid"], ["label-2", "bg-chrome-solid"],
+];
+test("contrast: the spec's token pairs (DESIGN-SPEC 4.2) are >= 4.5:1 in light and dark", async () => {
+  const f = document.createElement("iframe");
+  f.style.cssText = "position:absolute;left:-2000px;width:200px;height:200px";
+  f.srcdoc = '<!doctype html><html><head><link rel="stylesheet" href="../css/tokens.css"></head><body></body></html>';
+  await new Promise((r) => { f.onload = () => setTimeout(r, 30); document.body.appendChild(f); });
+  const win = f.contentWindow, doc = f.contentDocument, bad = [];
+  const col = (name) => rgba(win.getComputedStyle(doc.documentElement).getPropertyValue("--" + name).trim().replace(/^#([0-9a-f]{6})$/i, (m, h) => `rgb(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4), 16)})`));
+  for (const theme of ["light", "dark"]) {
+    doc.documentElement.dataset.theme = theme;
+    for (const [fgN, bgN, underN] of PAIRS) {
+      const under = underN ? col(underN) : null, bgTop = col(bgN), fgTop = col(fgN);
+      if (!bgTop || !fgTop || (underN && !under)) { bad.push(`${theme}: unreadable token ${fgN} / ${bgN}`); continue; }
+      const bg = under ? over(bgTop, under) : bgTop, fg = over(fgTop, bg), cr = ratio(fg, bg);
+      if (!(cr >= 4.5)) bad.push(`${theme} ${fgN} on ${bgN}${underN ? " over " + underN : ""}: ${cr.toFixed(2)}`);
+    }
+  }
+  f.remove();
+  ok(!bad.length, bad.join("; "));
+});
+
+test("contrast: text and icons on glass pass over the worst backdrop with no blur (DESIGN-SPEC-GLASS 5.3)", async () => {
+  // light glass over pure black, dark glass over pure white (blur only makes real maps better); label and labelGlass2
+  // as text need 4.5:1, tint as an icon 3:1; label2 and tint as TEXT must fail (they are not allowed on glass), which
+  // keeps the 80% fill honest if someone lowers it
+  const f = document.createElement("iframe");
+  f.style.cssText = "position:absolute;left:-2000px;width:200px;height:200px";
+  f.srcdoc = '<!doctype html><html><head><link rel="stylesheet" href="../css/tokens.css"></head><body></body></html>';
+  await new Promise((r) => { f.onload = () => setTimeout(r, 30); document.body.appendChild(f); });
+  const win = f.contentWindow, doc = f.contentDocument, bad = [];
+  const hex = (v) => v.trim().replace(/^#([0-9a-f]{6})$/i, (m, h) => `rgb(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4), 16)})`);
+  const col = (name) => rgba(hex(win.getComputedStyle(doc.documentElement).getPropertyValue("--" + name)));
+  const worst = { light: { r: 0, g: 0, b: 0, a: 1 }, dark: { r: 255, g: 255, b: 255, a: 1 } };
+  for (const theme of ["light", "dark"]) {
+    doc.documentElement.dataset.theme = theme;
+    const fill = col("glass-fill");
+    if (!fill || !(fill.a < 1)) { bad.push(`${theme}: glass-fill is not translucent (${JSON.stringify(fill)})`); continue; }
+    const bg = over(fill, worst[theme]);
+    for (const [fg, need] of [["label", 4.5], ["label-glass-2", 4.5], ["tint", 3]]) {
+      const cr = ratio(over(col(fg), bg), bg);
+      if (!(cr >= need)) bad.push(`${theme} ${fg} on glass: ${cr.toFixed(2)} < ${need}`);
+    }
+    for (const fg of ["label-2", "tint"]) {
+      const cr = ratio(over(col(fg), bg), bg);
+      if (cr >= 4.5) bad.push(`${theme} ${fg} as text on glass passes (${cr.toFixed(2)}): the rule in 5.3 no longer matches the fill`);
+    }
+    const solid = col("glass-solid");
+    if (!solid || solid.a < 1) bad.push(`${theme}: glass-solid must be opaque`);
+  }
+  f.remove();
+  ok(!bad.length, bad.join("; "));
+});
+
+// Owner 2026-11-05: "change the color of favorite station icons to yellow instead of brown". The star tokens are a real
+// yellow (not the old #A35400 brown, not 53rd Street's lemon #F7EB07 route color), the dark star on the map disc reads,
+// and the badge / sheet star stays visible: on light surfaces through the dark edge (the yellow alone is about 1.4:1),
+// on dark surfaces the yellow itself.
+test("contrast: favorite stars are yellow and stay visible on the land and the cards in light and dark", async () => {
+  const f = document.createElement("iframe");
+  f.style.cssText = "position:absolute;left:-2000px;width:200px;height:200px";
+  f.srcdoc = '<!doctype html><html><head><link rel="stylesheet" href="../css/tokens.css"></head><body></body></html>';
+  await new Promise((r) => { f.onload = () => setTimeout(r, 30); document.body.appendChild(f); });
+  const win = f.contentWindow, doc = f.contentDocument, bad = [];
+  const hex = (v) => v.trim().replace(/^#([0-9a-f]{6})$/i, (m, h) => `rgb(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4), 16)})`);
+  const col = (name) => rgba(hex(win.getComputedStyle(doc.documentElement).getPropertyValue("--" + name)));
+  const hsl = ({ r, g, b }) => {
+    const R = r / 255, G = g / 255, B = b / 255, mx = Math.max(R, G, B), mn = Math.min(R, G, B), l = (mx + mn) / 2, d = mx - mn;
+    if (!d) return { h: 0, s: 0, l };
+    const h = mx === R ? ((G - B) / d) % 6 : mx === G ? (B - R) / d + 2 : (R - G) / d + 4;
+    return { h: (h * 60 + 360) % 360, s: d / (1 - Math.abs(2 * l - 1)), l };
+  };
+  const lemon = hsl({ r: 0xf7, g: 0xeb, b: 0x07 }).h;   // 53rd Street Express (routes.json), a route color: stars must not look like it
+  for (const theme of ["light", "dark"]) {
+    doc.documentElement.dataset.theme = theme;
+    const mark = col("fav-mark"), ink = col("fav-ink"), edge = col("fav-edge"), land = col("map-land"), card = col("bg-card");
+    if (!mark || !ink || !edge || !land || !card) { bad.push(`${theme}: unreadable favorite token`); continue; }
+    const c = hsl(mark);
+    if (!(c.h >= 42 && c.h <= 54 && c.s >= 0.9 && c.l >= 0.45 && L(mark) >= 0.5)) bad.push(`${theme} fav-mark is not a clear yellow: ${JSON.stringify(c)}`);
+    if (!(Math.abs(c.h - lemon) >= 5)) bad.push(`${theme} fav-mark hue ${c.h.toFixed(1)} too close to 53rd Street's ${lemon.toFixed(1)}`);
+    const star = ratio(over(ink, mark), mark);
+    if (!(star >= 4.5)) bad.push(`${theme} star on the yellow disc: ${star.toFixed(2)}`);
+    for (const [name, base] of [["map-land", land], ["bg-card", card]]) {
+      // the visible boundary: on light the dark edge (composited over the surface), on dark the yellow itself
+      const seen = theme === "light" ? ratio(over(edge, base), base) : ratio(mark, base);
+      if (!(seen >= 3)) bad.push(`${theme} favorite star boundary on ${name}: ${seen.toFixed(2)} < 3`);
+    }
+  }
+  f.remove();
   ok(!bad.length, bad.join("; "));
 });

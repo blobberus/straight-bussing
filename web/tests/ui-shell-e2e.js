@@ -32,7 +32,7 @@ export function shellE2E(h, which) {
   };
 
   if (which === "chip") {
-    test("context chip: stays visible when the sheet is expanded, the expanded sheet stops below it (owner 2026-11-04); the collapsed sheet never moves", async () => {
+    test("context chip: showing / clearing a custom route never moves the sheet; still shown at the full detent, like Settings (owner 2026-11-04)", async () => {
       const rids = Object.keys(h.store().get().routes), R = rids[0];
       const apply = () => h.store().set({ customRoutes: [{ id: "e2s", name: "E2E shell", rids: [R], highlight: [] }], activeCustom: "e2s",
         prevHidden: [], hiddenRoutes: rids.filter((r) => r !== R) });
@@ -43,16 +43,15 @@ export function shellE2E(h, which) {
         const before = sheetGeo();
         apply();
         await waitFor(() => !$("#ctxbar").hidden, "chip shown");
+        eq(sheetGeo(), before, `chip shown at ${d}: sheet unchanged`);
         const vis = settled([$("#ctxbar")], () => h.W().getComputedStyle($("#ctxbar")).visibility);
-        eq(vis, "visible", `chip visible at ${d}`);
-        const top = settled([$("#sheet"), $("#ctxbar")], () => $("#sheet").getBoundingClientRect().top);
-        const bot = $("#ctxbar").getBoundingClientRect().bottom;
-        ok(bot <= top - 8, `chip clear of the grab handle at ${d} (${bot} vs ${top})`);
-        const geo = (g) => ({ top: g.top, h: g.h, tf: g.tf });   // the content inset follows data-rest, set once settled
-        if (d !== "full") eq(geo(sheetGeo()), geo(before), `chip shown at ${d}: sheet unchanged`);
+        eq(vis, "visible", `chip visibility at ${d}`);
+        ok($("#ctxbar").getBoundingClientRect().bottom <= before.top - 8, `chip clear of the grab handle and the title at ${d}`);
+        const c = $("#ctxbar").getBoundingClientRect(), hit = h.W().document.elementFromPoint(c.right - 20, c.top + c.height / 2);
+        ok(hit && hit.closest("#ctxbar"), `the chip's Clear takes taps at ${d} (${hit && (hit.id || hit.className)})`);
         clear();
         await waitFor(() => $("#ctxbar").hidden, "chip cleared");
-        await waitFor(() => JSON.stringify(geo(sheetGeo())) === JSON.stringify(geo(before)) || null, `chip cleared at ${d}: sheet back where it was`);
+        eq(sheetGeo(), before, `chip cleared at ${d}: sheet unchanged`);
       }
       setDetent("peek");
       h.store().set({ customRoutes: [] });

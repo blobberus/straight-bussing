@@ -1,7 +1,7 @@
 // ui/pill.js: status pill states, one icon per state (iOS RootView StatusPill parity, 2026-10-10). Pure + one DOM
 // render; no timers (this file is last on ui-shell.test.html, after the contextbar marquee test).
-import { test, eq, ok } from "./lib.js";
-import { pillState, pillIconSVG, createPill, PILL_ICONS } from "../js/ui/pill.js";
+import { test, eq, ok, near } from "./lib.js";
+import { pillState, pillIconSVG, createPill, PILL_ICONS, RETRY_HOLD_MS, BACK_MSG, CALL_TEXT, MORE_LABEL } from "../js/ui/pill.js";
 import { DEMO_PILL } from "../js/core/demo.js";
 
 const NOW = 1_800_000_000;
@@ -47,8 +47,10 @@ test("pill: render writes the icon, text, kind and Retry; the icon slot is creat
   host.innerHTML = '<div class="statuspill" hidden><span class="pilltext"></span><button class="pillbtn" hidden>Retry</button></div>';
   document.body.appendChild(host);
   const el = host.firstChild, p = createPill({ pill: el, text: el.querySelector(".pilltext"), retry: el.querySelector(".pillbtn") });
-  const ic = el.querySelector(".pillicon");
-  ok(ic && ic.getAttribute("aria-hidden") === "true" && el.firstChild === ic, "icon slot first, hidden from screen readers");
+  const ic = el.querySelector(".pillicon"), retry = el.querySelector(".pillbtn");
+  ok(ic && ic.getAttribute("aria-hidden") === "true", "icon slot created, hidden from screen readers");
+  ok(el.firstElementChild === retry && retry.nextElementSibling.matches('[data-action="alerts:open"]') && retry.nextElementSibling.nextElementSibling === ic,
+    "the action slot first, on the leading edge (Retry, See alert; owner 2026-11-03), then the icon");
   p.render({ ...fresh, failed: true, lastOk: NOW - 120 }, NOW);
   eq([el.hidden, el.className, el.dataset.icon, el.querySelector(".pillbtn").hidden], [false, "statuspill err", "feed", false]);
   ok(ic.querySelector("svg") && el.textContent.includes("Can't reach"), "icon + words");
@@ -86,4 +88,107 @@ test("pill: demo mode reads 'Simulated buses' (flask icon, tap to explain); feed
   p.render({ ...fresh, failed: true, lastOk: NOW - 120 }, NOW);
   ok(tap.hidden && !el.querySelector(".pillbtn").hidden, "feed error: Retry, no demo tap");
   host.remove();
+});
+
+// Owner 2026-11-03: "move the retry button to the left side of the notification so if the user spams it while on a route, it
+// doesn't shift and accidentally cancel their current trip". After a tap the banner holds still for RETRY_HOLD_MS.
+test("pill: after a Retry tap the banner holds still, then shows the feed's state", async () => {
+  const host = document.createElement("div");
+  host.innerHTML = '<div class="statuspill" hidden><button class="pillbtn" hidden>Retry</button><span class="pilltext"></span></div>';
+  document.body.appendChild(host);
+  const el = host.firstChild, retry = el.querySelector(".pillbtn"), p = createPill({ pill: el, text: el.querySelector(".pilltext"), retry });
+  p.render({ ...fresh, failed: true, lastOk: NOW - 120 }, NOW);
+  ok(!el.hidden && !retry.hidden, "error banner with Retry");
+  retry.click();
+  eq(retry.getAttribute("aria-busy"), "true", "busy while retrying");
+  const h0 = el.offsetHeight;
+  p.render(fresh, NOW);   // the feed is back at once
+  ok(!el.hidden && !retry.hidden && el.textContent.includes(BACK_MSG), "held: \"Live data is back.\" with Retry still in its slot");
+  eq(retry.getAttribute("aria-disabled"), "true", "taps absorbed (no poll, no action)");
+  eq(el.offsetHeight, h0, "the banner keeps its height");
+  retry.click();   // another tap restarts the hold (RETRY_HOLD_MS after the LAST tap)
+  await new Promise((r) => setTimeout(r, RETRY_HOLD_MS + 80));
+  ok(el.hidden && !retry.hasAttribute("aria-busy"), "after the hold: the current state (fresh = no banner)");
+  host.remove();
+});
+
+// Owner 2026-11-04: "Reduce the size of the reconnecting notification." One 44 pt line in the footnote role that still
+// says the times can't be relied on; the full sentence and the official number one tap away (Details); screen readers
+// always hear the full sentence; the line (and the Retry slot) never moves when the details open or close.
+test("pill: compact banner: a short line per state that still warns, the full sentence kept for screen readers", () => {
+  const cases = [
+    [{ ...fresh, failed: true, lastOk: NOW - 120 }, "Live data lost. Times may be off."],
+    [{ ...fresh, failed: true, lastOk: 0, feedTs: 0 }, "No live data. Don't rely on times."],
+    [{ ...fresh, feedTs: NOW - 150 }, "Live data delayed. Times may be off."],
+    [{ ...fresh, buses: [] }, "No shuttles running right now"],
+  ];
+  for (const [s, short] of cases) {
+    const p = pillState(s, NOW);
+    eq(p.short, short, p.msg);
+    ok(p.short.length <= 40, "short enough for one line beside the Retry slot: " + p.short.length);
+  }
+  const old = pillState({ ...fresh, feedTs: NOW - 400 }, NOW);
+  ok(/^Last update .+\. Times approximate\.$/.test(old.short) && old.msg.startsWith("Live data is out of date"), "out of date: " + old.short);
+  eq(pillState({ ...fresh, feedTs: 0, lastOk: NOW - 400, liveLoaded: true }, NOW).short.length > 0, true, "always a short line when there is a message");
+  for (const s of [{ ...fresh, failed: true, lastOk: NOW - 120 }, { ...fresh, failed: true, lastOk: 0, feedTs: 0 }, { ...fresh, feedTs: NOW - 150 }, { ...fresh, feedTs: NOW - 400 }]) {
+    ok(/off|rely|approximate/.test(pillState(s, NOW).short), "a feed problem's short line says the times can't be relied on: " + pillState(s, NOW).short);
+  }
+  eq(pillState({ ...fresh }, NOW, { demo: true }).short, "Simulated buses", "the demo chip keeps its words");
+  ok(!/[–—]/.test(cases.map((c) => c[1]).join(" ")) && !/UChicago|UGo/.test(CALL_TEXT), "no dashes, no university names");
+  eq(CALL_TEXT, "Call 773.702.8181");
+});
+
+test("pill: Details opens the full sentence and the call link under the line; the line and the Retry slot never move", () => {
+  const f = document.createElement("iframe");
+  f.style.cssText = "position:absolute;left:-10000px;top:0;width:393px;height:852px;border:0";
+  document.body.appendChild(f);
+  const d = f.contentDocument;
+  d.open();
+  d.write('<!doctype html><html><head><meta name="viewport" content="width=device-width">'
+    + ["tokens", "base"].map((n) => `<link rel="stylesheet" href="${new URL("../css/" + n + ".css", location.href).href}">`).join("")
+    + '<style>*,*::before,*::after{transition:none!important;animation:none!important}</style></head><body><div id="app" class="app">'
+    + '<div id="pill" class="statuspill" role="status" aria-live="polite" hidden><button id="pillRetry" class="pillbtn pillslot" type="button" hidden>Retry</button>'
+    + '<button id="pillAlert" class="pillbtn pillslot" type="button" data-action="alerts:open" hidden>See alert</button>'
+    + '<span id="pillIcon" class="pillicon" aria-hidden="true"></span><span id="pillText" class="pilltext"></span></div></div></body></html>');
+  d.close();
+  return new Promise((res) => setTimeout(res, 300)).then(() => {
+    try {
+      const el = d.getElementById("pill"), retry = d.getElementById("pillRetry"), text = d.getElementById("pillText");
+      const p = createPill({ pill: el, text, retry });
+      p.render({ ...fresh, failed: true, lastOk: 0, feedTs: 0 }, NOW);
+      const more = el.querySelector(".pillmore"), call = el.querySelector(".pillcall"), short = el.querySelector(".pillshort");
+      ok(more && more.tagName === "BUTTON" && more.getAttribute("aria-label") === MORE_LABEL && more.getAttribute("aria-expanded") === "false", "a Details button, closed");
+      eq(more.getAttribute("aria-controls"), "pillText");
+      eq(short.getAttribute("aria-hidden"), "true", "the short line is for the eye; the full sentence is read");
+      ok(text.textContent.includes("Don't rely on these times; call 773.702.8181."), "screen readers hear the full warning: " + text.textContent);
+      eq(short.textContent, "No live data. Don't rely on times.");
+      ok(call && call.hidden && call.getAttribute("href") === "tel:+17737028181" && call.textContent === CALL_TEXT, "the call link, hidden while closed");
+      const w = f.contentWindow, R = (x) => x.getBoundingClientRect();
+      const h0 = R(el).height, line0 = R(more), slot0 = R(retry);
+      ok(h0 <= 46, "one 44 pt line: " + h0);
+      ok(R(text).width <= 1, "the full sentence is visually hidden while closed");
+      eq(w.getComputedStyle(el).fontSize, "13px", "the footnote role (13 at the 17 px root)");
+      ok(Math.abs(slot0.left - R(el).left) < 1 && slot0.width >= 84 && slot0.height >= 44, "the Retry slot: 84 x 44 at the leading edge");
+      more.click();
+      eq([more.getAttribute("aria-expanded"), call.hidden, el.classList.contains("is-open")], ["true", false, true], "open");
+      ok(R(el).height > h0 + 30 && R(text).width > 100, "the full sentence shows under the line");
+      eq([R(more).top, R(more).left, R(retry).top, R(retry).left], [line0.top, line0.left, slot0.top, slot0.left], "the line and the Retry slot stay put");
+      ok(R(call).height >= 44 && R(call).top > R(text).top, "Call 773.702.8181 under the sentence, 44 pt tall");
+      p.render({ ...fresh, failed: true, lastOk: NOW - 120 }, NOW);
+      ok(el.classList.contains("is-open") && !call.hidden, "a new feed state keeps the details open");
+      ok(text.textContent.includes("Showing last known data") && short.textContent === "Live data lost. Times may be off.", "and updates both texts");
+      more.click();
+      eq([more.getAttribute("aria-expanded"), call.hidden], ["false", true], "closed again");
+      eq([R(more).top, R(retry).top], [line0.top, slot0.top], "closing moves nothing on the line");
+      near(R(el).height, h0, 1, "back to one line");
+      p.render(fresh, NOW);
+      ok(el.hidden, "fresh data: no banner");
+      p.render({ ...fresh, feedTs: NOW - 150 }, NOW);
+      ok(!el.classList.contains("is-open") && call.hidden, "a banner that comes back starts closed");
+      // the demo chip: no Details, the words in the chip
+      const q = createPill({ pill: el, text, retry }, { demo: true });
+      q.render({ ...fresh }, NOW);
+      ok(more.hidden && w.getComputedStyle(more).display === "none" && R(text).width > 40, "the demo chip shows its words, no Details");
+    } finally { f.remove(); }
+  });
 });

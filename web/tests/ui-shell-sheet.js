@@ -59,8 +59,8 @@ function makeSheet(initial) {
 }
 
 test("sheet: controller starts collapsed, toggles on taps, keeps its state for a 'half' request, emits sheet:inset", () => {
-  const insets = [];
-  const off = bus.on("sheet:inset", (p) => insets.push(p.px));
+  const insets = [], rests = [];
+  const off = bus.on("sheet:inset", (p) => { insets.push(p.px); rests.push(p.detent); });
   const { sheetEl, sh, grab, done } = makeSheet();
   const changes = [];
   sh.onChange((d) => changes.push(d));
@@ -82,9 +82,22 @@ test("sheet: controller starts collapsed, toggles on taps, keeps its state for a
   eq(sh.getDetent(), "peek");
   ok(!sh.stepDown(), "already collapsed");
   ok(insets.length >= 3 && insets.every((n) => typeof n === "number" && n >= 0), "inset emitted on settle: " + insets.length);
+  eq(rests[rests.length - 1], "peek", "the payload names the state the sheet rests in (Directions re-frames on a collapse)");
+  ok(rests.every((d) => d === "peek" || d === "full"), "only the two states: " + rests.join());
   eq(changes, ["full", "peek", "full", "peek"]);
   off();
   done();
+});
+
+test("sheet: the collapsed height is the header's own height, measured in the first frame (not at creation: no forced layout at boot)", async () => {
+  const { sheetEl, head, done } = makeSheet();
+  try {
+    const host = sheetEl.parentElement;
+    eq(host.style.getPropertyValue("--v-peek"), "", "nothing measured synchronously");
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    eq(host.style.getPropertyValue("--v-peek"), Math.round(head.offsetHeight) + "px", "the header's height, before the first paint");
+    eq(sheetEl.style.transition, "", "the first value is set without a slide, and the transition is back afterwards");
+  } finally { done(); }
 });
 
 test("sheet: grabber is an adjustable control: Resize panel, Collapsed / Expanded (iOS parity)", () => {

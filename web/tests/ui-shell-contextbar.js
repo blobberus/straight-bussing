@@ -2,7 +2,7 @@
 // alert banner + favorites card (SHELL).
 import { test, eq, ok, near } from "./lib.js";
 import { createStore } from "../js/core/store.js";
-import { contextBarHTML, endJourneyPatch, registerContextActions, mountContextBar, startMarquee, MARQUEE } from "../js/ui/contextbar.js";
+import { contextBarHTML, endJourneyPatch, registerContextActions, mountContextBar, MAX_CHIPS } from "../js/ui/contextbar.js";
 import { runAction, hasAction } from "../js/ui/actions.js";
 import { alertBanner } from "../js/ui/views/alerts.js";
 import { favoritesHTML, FAV_MAX } from "../js/ui/views/nearby.js";
@@ -24,7 +24,7 @@ test("contextbar: hidden when nothing narrows the map", () => {
 
 test("contextbar: journey shows label, route chips and Show all (escaped)", () => {
   const h = contextBarHTML(base({ journey: { rids: ["A", "B", "zzz"], label: EVIL, kind: "plan" } }));
-  ok(h.includes("Only showing routes for:"));
+  ok(h.includes("Only showing routes for Trip to"), "the full sentence for screen readers (iOS TripChip)");
   ok(!h.includes("<img"), "label escaped");
   ok(h.includes('data-action="journey:end"') && h.includes("Show all"));
   eq((h.match(/class="chip/g) || []).length, 2, "chips only for known routes");
@@ -38,6 +38,7 @@ test("contextbar: journey wins over an applied custom route", () => {
 test("contextbar: custom route shows its name and Clear", () => {
   const h = contextBarHTML(base({ customRoutes: [{ id: "c1", name: EVIL, rids: ["B"], highlight: [] }], activeCustom: "c1" }));
   ok(h.includes("My route:") && h.includes('data-action="custom:clear"'));
+  ok(/class="ctx-v"[^>]*>&lt;img/.test(h), "the visible label is the custom route's name (escaped)");
   ok(!h.includes("<img"), "name escaped");
 });
 
@@ -106,87 +107,34 @@ test("nearby: favorites card lists favorites with next visible arrival", () => {
   ok(/Favorite One: route B in 2 minutes/.test(j), "journey decides visibility");
 });
 
-/* Marquee: a bar laid out like css/base.css .ctxbar (copied rules, scoped to .t-cb) at a fixed width. */
-function bar(state, width = 240) {
-  if (!document.getElementById("t-cb-css")) {
-    const st = document.createElement("style");
-    st.id = "t-cb-css";
-    st.textContent = ".t-cb{position:absolute;left:-3000px;top:0;display:flex;align-items:center;gap:6px;font:13px/16px sans-serif}"
-      + ".t-cb .ctx-text{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-      + ".t-cb .ctx-run{display:inline-flex;gap:40px}.t-cb .ctx-text:not(.is-marquee) .ctx-run{display:inline}"
-      + ".t-cb .ctx-text.is-marquee{text-overflow:clip;margin-left:-6px;padding-left:6px}"
-      + ".t-cb .ctx-chips{display:flex;flex:none}.t-cb .ctx-btn{flex:none}.t-cb[hidden]{display:none}";
-    document.head.appendChild(st);
-  }
-  const el = document.createElement("div");
-  el.className = "t-cb";
-  el.style.width = width + "px";
-  el.innerHTML = contextBarHTML(state);
-  document.body.appendChild(el);
-  return el;
-}
-const LONG = base({ journey: { rids: ["A", "B"], label: "Regenstein Library to the Smart Museum of Art", kind: "plan" } });
-// Measure on a timer, not on animation frames: headless Edge (virtual time, under load) can go longer than the test
-// timeout without a frame, which made this test time out about 1 run in 30.
-const FRAME = { frame: (fn) => setTimeout(fn, 0), cancelFrame: (id) => clearTimeout(id) };
-const settle = () => new Promise((r) => setTimeout(r, 20));
-
-test("contextbar marquee: long text rests at the start, then glides until its copy sits where it began (seamless loop)", () => {
-  const el = bar(LONG);
-  try {
-    const a = startMarquee(el, { reduced: () => false });
-    ok(a, "animates when the text does not fit");
-    const box = el.querySelector(".ctx-text"), track = el.querySelector(".ctx-track"), copy = el.querySelector(".ctx-copy");
-    ok(box.classList.contains("is-marquee"), "marquee class (no ellipsis)");
-    ok(copy && copy.getAttribute("aria-hidden") === "true" && copy.textContent === track.textContent, "aria-hidden copy of the text");
-    const kf = a.effect.getKeyframes(), t = a.effect.getTiming();
-    const d = copy.getBoundingClientRect().left - track.getBoundingClientRect().left;
-    near(d, track.getBoundingClientRect().width + 40, 1, "glide distance = text + 40px gap");
-    eq(kf[0].transform, kf[1].transform, "rests at the start first");
-    near(kf[1].computedOffset, MARQUEE.restMs / t.duration, 1e-6, "rest share of the loop");
-    near(parseFloat(String(kf[2].transform).replace("translate3d(", "")), -d, 0.01, "ends with the copy where the text began: " + kf[2].transform);
-    near(t.duration, MARQUEE.restMs + (d / MARQUEE.pxPerS) * 1000, 1, "duration = rest + glide at pxPerS");
-    eq(t.iterations, Infinity, "repeats every once in a while");
-    ok(/Only showing routes for:/.test(track.textContent) && /Smart Museum/.test(track.textContent), "starts at the start of the title");
-    startMarquee(el, { reduced: () => false });
-    eq(el.querySelectorAll(".ctx-copy").length, 1, "rebuild keeps one copy");
-    eq(el.querySelector(".ctx-run").getAnimations().length, 1, "rebuild keeps one animation");
-  } finally { el.remove(); }
+/* DESIGN-SPEC 10.5: the chip's labels match the iPhone app; badges first (up to 3, then "+N"); only the label truncates. */
+test("trip chip: Trip to X / Routes to X / the Lines by Time name / the custom route name, badges first", () => {
+  const vis = (h) => new DOMParser().parseFromString(h, "text/html").querySelector(".ctx-v")?.textContent;
+  eq(vis(contextBarHTML(base({ journey: { rids: ["A"], label: "To Trader Joe's", to: "Trader Joe's", kind: "plan" } }))), "Trip to Trader Joe's");
+  eq(vis(contextBarHTML(base({ journey: { rids: ["A"], label: "To Library", kind: "plan" } }))), "Trip to Library", "older journeys without 'to'");
+  eq(vis(contextBarHTML(base({ journey: { rids: ["A"], label: "Reynolds Club", kind: "station" } }))), "Routes to Reynolds Club");
+  eq(vis(contextBarHTML(base({ timeView: { name: "Lines active at 4:00 PM", rids: ["A", "B"] } }))), "Lines active at 4:00 PM");
+  const many = contextBarHTML(base({ journey: { rids: ["A", "B", "C", "A2"], label: "x", kind: "station" }, routes: { ...routes, A2: { short: "A2", long: "Alpha 2", color: "#123456" } } }));
+  eq((many.match(/class="chip/g) || []).length, MAX_CHIPS, "up to 3 badges");
+  ok(many.includes(">+1<"), "then +1");
+  ok(many.indexOf("ctx-chips") < many.indexOf("ctx-text") && many.indexOf("ctx-text") < many.indexOf("ctx-btn"), "badges, label, action");
 });
 
-test("contextbar marquee: text that fits, reduced motion, and a hidden bar stay still", () => {
-  const short = bar(base({ customRoutes: [{ id: "c1", name: "Mine", rids: ["B"], highlight: [] }], activeCustom: "c1" }), 360);
-  const long = bar(LONG);
+test("trip chip CSS: only the label truncates, badges and the action keep their size (audit defect 2)", async () => {
+  const f = document.createElement("iframe");
+  f.style.cssText = "position:absolute;left:-3000px;top:0;width:393px;height:300px;border:0";
+  f.srcdoc = '<!doctype html><html><head><link rel="stylesheet" href="../css/tokens.css"><link rel="stylesheet" href="../css/base.css"><link rel="stylesheet" href="../css/components.css"></head><body>'
+    + '<div id="app" class="app"><div id="ctxbar" class="ctxbar">' + contextBarHTML(base({ journey: { rids: ["A", "B"], to: "Max Palevsky Residential Commons (NE Corner) and a very long name", label: "x", kind: "plan" } })) + "</div></div></body></html>";
+  await new Promise((r) => { f.onload = r; document.body.appendChild(f); });
+  await new Promise((r) => setTimeout(r, 50));
+  const d = f.contentDocument, w = f.contentWindow, bar = d.getElementById("ctxbar"), txt = bar.querySelector(".ctx-text"), btn = bar.querySelector(".ctx-btn");
+  for (const a of bar.getAnimations()) a.finish();   // the chip materializes (glass spec 7: scale .85 + fade); measure it at rest
   try {
-    eq(startMarquee(short, { reduced: () => false }), null, "fits: still");
-    ok(!short.querySelector(".ctx-copy") && !short.querySelector(".is-marquee"));
-    eq(startMarquee(long, { reduced: () => true }), null, "reduced motion: still");
-    ok(!long.querySelector(".ctx-copy") && !long.querySelector(".is-marquee"), "reduced motion: ellipsis kept");
-    long.hidden = true;
-    eq(startMarquee(long, { reduced: () => false }), null, "hidden bar: still");
-    eq(startMarquee(null), null, "no bar: no throw");
-  } finally { short.remove(); long.remove(); }
-});
-
-test("contextbar marquee: mountContextBar starts it on draw, a mouse hover pauses it, clearing stops it", async () => {
-  const el = bar(base());
-  el.hidden = true;
-  const store = createStore(base());
-  const off = mountContextBar(el, store, { reduced: () => false, ...FRAME });
-  try {
-    store.set({ journey: LONG.journey });
-    await Promise.resolve(); await Promise.resolve();
-    await settle();
-    const run = el.querySelector(".ctx-run"), [a] = run.getAnimations();
-    ok(a && a.playState === "running", "scrolling after the bar is drawn");
-    el.dispatchEvent(new PointerEvent("pointerenter", { pointerType: "mouse" }));
-    eq(a.playState, "paused", "mouse hover pauses");
-    el.dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse" }));
-    eq(a.playState, "running", "resumes when the mouse leaves");
-    el.dispatchEvent(new PointerEvent("pointerenter", { pointerType: "touch" }));
-    eq(a.playState, "running", "a touch does not pause it");
-    store.set({ journey: null });
-    await Promise.resolve(); await Promise.resolve();
-    ok(el.hidden && a.playState === "idle", "cleared: hidden and stopped");
-  } finally { off(); el.remove(); }
+    ok(w.getComputedStyle(txt).textOverflow === "ellipsis" && txt.scrollWidth > txt.clientWidth, "the long label ends in an ellipsis");
+    const br = btn.getBoundingClientRect(), rr = bar.getBoundingClientRect();
+    const words = d.createRange(); words.selectNodeContents(btn);
+    ok(br.right <= rr.right + 0.5 && words.getBoundingClientRect().width <= br.width, "Show all fully inside the chip, its words whole");
+    for (const c of bar.querySelectorAll(".chip")) ok(c.scrollWidth <= c.clientWidth + 1, "badge not clipped");
+    ok(bar.getBoundingClientRect().height >= 36 && bar.getBoundingClientRect().height < 48, "a 36 pt capsule: " + bar.getBoundingClientRect().height);
+  } finally { f.remove(); }
 });
