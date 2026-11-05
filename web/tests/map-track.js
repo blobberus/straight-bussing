@@ -1,7 +1,7 @@
 /** Tests for map/track.js (buses stay on their route line) and the bus layer's movement along it (needs Leaflet). */
 import { test, eq, ok, near } from './lib.js';
 import { prepareShape, pointAt, walk, locate, follow, headingAt, advance, ON_M } from '../js/map/track.js';
-import { createBusLayer, moveTiming, GLIDE_MS, MISSING_S } from '../js/map/layers.js';
+import { createBusLayer, moveTiming, GLIDE_MS, MISSING_S, STEP_PX } from '../js/map/layers.js';
 import { distM } from '../js/map/geometry.js';
 import { P, squareLoop } from './map-fixtures.js';
 
@@ -154,6 +154,32 @@ test('bus layer: a normal poll glides along the line at constant speed; reduced 
   r.draw([{ ...bus(pos(300), 1010), vehicle: { id: 9 } }], { routes, shapes, nowS: 1010 });
   near(distM(r.shown(9), pos(300)), 0, 1, 'reduced motion: there at once');
   eq(r.step(16), 0, 'and no frames are scheduled');
+  m.remove();
+});
+
+test('bus layer: slow glides are drawn in shared frames, once the fastest badge has moved a pixel (fewer glass redraws)', () => {
+  const m = window.L.map(box('t-track-batch'), { zoomControl: false, attributionControl: false }).setView(P(2, 1), 15);
+  const routes = { r1: { short: 'CEN', color: '#FF9900' }, r2: { short: 'RED', color: '#C8102E' } }, shapes = { r1: [ell()], r2: [ell()] };
+  const s = prepareShape(shapes.r1)[0], pos = (x) => pointAt(s.line, s.cum, x);
+  const bus = (id, rid, x, ts) => ({ vehicle: { id }, trip: { route_id: rid }, position: { latitude: pos(x)[0], longitude: pos(x)[1] }, timestamp: ts });
+  const layer = manualLayer(m);
+  layer.draw([bus(1, 'r1', 100, 1000), bus(2, 'r2', 300, 1000)], { routes, shapes, nowS: 1000 });
+  layer.draw([bus(1, 'r1', 220, 1010), bus(2, 'r2', 330, 1010)], { routes, shapes, nowS: 1010 });   // 120 m and 30 m in one poll
+  const px = (id) => m.project(layer.shown(id));   // screen px, not rounded
+  let frames = 0, drawn = 0, prev = [px(1), px(2)];
+  const fastPx = 120 / (40075016.686 * Math.cos(pos(160)[0] * Math.PI / 180) / 2 ** (15 + 8));
+  for (let i = 0; i < 2000 && layer.step(16); i++) {
+    frames++;
+    const now = [px(1), px(2)], moved = now.map((q, k) => q.distanceTo(prev[k]) > 1e-9);
+    if (moved[0] || moved[1]) drawn++;
+    ok(!moved[1] || moved[0], 'the slow badge never moves in a frame of its own');
+    if (moved[0]) ok(now[0].distanceTo(prev[0]) < STEP_PX + 0.5, 'and the fast one moves about a pixel per drawn frame');
+    prev = now;
+  }
+  ok(frames > 500, `the glide still runs every frame (${frames} frames)`);
+  ok(drawn <= Math.ceil(fastPx / STEP_PX) + 2 && drawn >= Math.floor(fastPx / STEP_PX) - 2, `${drawn} drawn frames for a ${fastPx.toFixed(1)} px move`);
+  near(distM(layer.shown(1), pos(220)), 0, 1, 'both end exactly at their reports');
+  near(distM(layer.shown(2), pos(330)), 0, 1);
   m.remove();
 });
 

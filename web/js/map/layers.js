@@ -308,6 +308,8 @@ export function notchRadius(w, h, deg) {
 
 /** A normal poll's glide (ms): about one poll interval, at constant speed, so the badge keeps moving. */
 export const GLIDE_MS = 9000;
+/** Bus frames are drawn once some badge has moved this far on screen (CSS px; Leaflet places badges at whole px). */
+export const STEP_PX = 1;
 /** A move along the line longer than this (m), or after a gap of more than GLIDE_GAP_S, catches up quickly. */
 const NORMAL_M = 350, GLIDE_GAP_S = 30;
 /** Off the line, a move longer than this (m) is drawn as a jump: a straight glide would cross the blocks. */
@@ -367,7 +369,7 @@ export function createBusLayer(map, cb, opt = {}) {
   const schedule = opt.frame || (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
   const reduce = opt.reduce || (() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
   map.on('zoomstart', () => { zooming = true; });
-  map.on('zoomend', () => { zooming = false; kick(); });
+  map.on('zoomend viewreset', () => { zooming = false; for (const m of markers.values()) m.px = null; kick(); });   // new zoom: new layer px
 
   /** Rotate the heading notch the short way round (unwrapDeg: never a spin across north), at its distance for the angle. */
   function turn(m, deg) {
@@ -395,23 +397,45 @@ export function createBusLayer(map, cb, opt = {}) {
     return m.to ? { li: m.to.li, pos: m.to.pos } : null;
   }
 
+  /* Frames are batched (2026-11-05 optimization run): a frame moves the badges only once some badge has moved at least
+     STEP_PX on screen since the last drawn frame (or an animation ends), and then it moves all of them. Leaflet draws a
+     badge at whole CSS px anyway, so nothing looks different, but a normal glide (2 to 4 px a second at the default zoom)
+     no longer gives every bus its own redraw: one redraw per pixel of the fastest bus instead of one per pixel of each
+     bus. Every redraw repaints the blurred glass over the map, so this is most of the idle GPU work. */
   function frame() {
     raf = 0;
     const t = clock();
-    let more = false;
+    let more = false, due = false;
+    const moves = [];
     for (const m of markers.values()) {
       const a = m.anim;
       if (!a) continue;
+      if (zooming) { more = true; continue; }
       const e = done(a, t);
-      if (!zooming) {
-        const p = pointAt(a.path, a.cum, e * a.total);
+      const p = pointAt(a.path, a.cum, e * a.total);
+      moves.push([m, a, e, p]);
+      if (!due) due = e >= 1 || movedPx(m, p) >= STEP_PX;
+    }
+    if (due) {
+      for (const [m, a, e, p] of moves) {
         m.mk.setLatLng(p);
         m.disp = p;
+        m.px = layerPx(p);
         if (a.along && a.f > 2) turn(m, headingAt(a.s, advance(a.s, a.pos0, a.f * e)));
+        if (e >= 1) { m.anim = null; if (Number.isFinite(a.endHd)) turn(m, a.endHd); } else more = true;
       }
-      if (e >= 1 && !zooming) { m.anim = null; if (Number.isFinite(a.endHd)) turn(m, a.endHd); } else more = true;
-    }
+    } else if (moves.length) more = true;
     if (more) raf = schedule(frame) || 1;
+  }
+  /** The badge's screen position (px at the current zoom, not rounded: latLngToLayerPoint rounds) for a lat/lon; null when
+      the map cannot say. */
+  function layerPx(p) {
+    try { const q = map.project(p); return Number.isFinite(q.x) && Number.isFinite(q.y) ? q : null; } catch (e) { return null; }
+  }
+  /** How far (px) a badge would move from where the last frame drew it; Infinity when unknown (draw it). */
+  function movedPx(m, p) {
+    const q = m.px && layerPx(p);
+    return q ? Math.max(Math.abs(q.x - m.px.x), Math.abs(q.y - m.px.y)) : Infinity;
   }
 
   function kick() {
@@ -431,6 +455,7 @@ export function createBusLayer(map, cb, opt = {}) {
     const { dur, ease } = moveTiming(r, total, dt, reduce());
     const endHd = r.along && r.f > 2 ? headingAt(prep[r.to.li], r.to.pos) : brg;
     m.to = r.to;
+    m.px = null;   // the next frame draws it (a new move starts from where it is)
     if (!dur) {
       m.anim = null;
       m.mk.setLatLng(target);
