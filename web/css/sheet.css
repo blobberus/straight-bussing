@@ -1,114 +1,211 @@
-/* Bottom sheet: 3 detents on phones and in the desktop phone frame; floating left panel only on wide,
-   short screens (phone landscape): (min-width: 768px) and (max-height: 559px), must match ui/sheet.js PANEL_MEDIA. Owner: D1.
-   Geometry: the sheet is always --v-max tall (tokens.css) and slides with translateY so only --vis px
-   show. Its height never changes, so the status pill appearing (which shortens --v-full) only moves the
-   full detent, with the normal transform transition, and never makes the sheet jump at peek / half.
-   It sits on top of the bottom navigation (#tabs.bottomnav, --nav-h); the search bar floats above it.
-   ui/sheet.js sets data-detent (peek|half|full) and --drag (px, live finger offset) on .sheet. */
-/* --drag changes on every frame of a drag: not inherited, so only the sheet's own transform recomputes, not
-   the style of every row inside it (that recompute made dragging stutter on phones) */
+/* Bottom sheet (docs/DESIGN-SPEC-GLASS.md 8.8, a delta on DESIGN-SPEC 10.6): two resting states (collapsed, expanded) on
+   phones and in the desktop phone frame; a floating left panel only on wide, short screens (phone landscape):
+   (min-width: 768px) and (max-height: 559px), which must match ui/sheet.js PANEL_MEDIA.
+   Collapsed = an inset glass card (12 from the sides, radius 28 all round) floating 8 above the bottom row; expanded =
+   the opaque full-width sheet, top corners 28, from 8 below the top rows to the screen's bottom, the bottom row floating
+   over it. Between them the card's glass turns opaque and grows to the edges (mSheetGlass): an opaque layer
+   (.sheet-solid) fades in over the glass plate (.sheet-glass) and scales from the card's width to the full width while
+   the drag progress p goes from 0 to 0.35. Only opacity and transform change per frame (ui/sheet.js writes them on the
+   two layers, the content and the lower-right group; nothing inherits, nothing is laid out).
+   Geometry: the element is always --v-max tall with its bottom on the screen's bottom and slides with translateY so
+   --vis px show: --v-peek-vis collapsed (card + 8 + the bottom row; base.css), --v-full expanded. ui/sheet.js sets
+   data-detent (peek|full), data-rest (after the settle), --drag (px, live finger offset), --v-peek (the header's
+   measured height) and --card-k (the card's width / the sheet's) on #app, and #app.is-moving while it moves. */
+/* --drag changes on every frame of a drag: not inherited, so only the sheet's own transform recomputes */
 @property --drag { syntax: "<length>"; inherits: false; initial-value: 0px; }
 .sheet {
-  position: fixed; z-index: var(--z-sheet); left: 0; right: 0; bottom: var(--nav-h);
+  position: fixed; z-index: var(--z-sheet); left: 0; right: 0; bottom: 0;
   height: var(--v-max);
   display: flex; flex-direction: column;
-  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
-  background: var(--bg);
-  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
-  box-shadow: var(--shadow-sheet);
-  --vis: var(--v-peek);
+  --vis: var(--v-peek-vis);
   --drag: 0px;
   transform: translate3d(0, calc(var(--v-max) - var(--vis) + var(--drag)), 0);
-  transition: transform var(--d-sheet) var(--ease-spring);
-  will-change: transform;
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .sheet { background: var(--bg-solid); }
-}
-/* two resting states (owner 2026-10-12: no midway stop): collapsed and expanded */
-.sheet[data-detent="peek"] { --vis: var(--v-peek); }
+  transition: transform var(--m-sheet) var(--ease-sheet);
+  pointer-events: none;           /* collapsed: only the card (header) and the lower-right group take taps; the map and */
+}                                 /* the bottom row around the card stay tappable */
+.sheet:not([data-rest="peek"]) { pointer-events: auto; }
+.sheet-head, .mapctl { pointer-events: auto; }
+/* two resting states (owner 2026-10-12: no midway stop) */
+.sheet[data-detent="peek"] { --vis: var(--v-peek-vis); }
 .sheet[data-detent="full"] { --vis: var(--v-full); }
-/* the content's bottom inset follows data-rest, which ui/sheet.js sets once the sheet has settled: changing it
-   lays out every row, so it never happens while the sheet moves (that was a visible hitch at release) */
-.sheet { --rest-vis: var(--v-peek); }
+/* the content's bottom inset follows data-rest, which ui/sheet.js sets once the sheet has settled */
+.sheet { --rest-vis: var(--v-peek-vis); }
 .sheet[data-rest="full"] { --rest-vis: var(--v-full); }
-.sheet.dragging { transition: none; }
+.sheet.dragging { transition: none; will-change: transform; }   /* will-change only while dragged (spec 9) */
 
-/* header: whole area is a drag handle */
+/* the two background layers (behind the header and the content; the sheet's transform carries them) */
+.sheet-bg { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.sheet-glass {   /* the collapsed card: header height, inset 12, radius 28 all round */
+  position: absolute; top: 0; left: var(--inset-chrome); right: var(--inset-chrome); height: var(--v-peek);
+  border-radius: var(--r-glass);
+}
+.sheet-solid {   /* the opaque sheet: full width, top corners 28; at rest collapsed invisible and card-wide */
+  position: absolute; inset: 0; border-radius: var(--r-glass) var(--r-glass) 0 0;
+  background: var(--bg-sheet); box-shadow: var(--e-2);
+  transform-origin: 50% 0; transform: scaleX(var(--card-k, .94)); opacity: 0;
+  transition: transform var(--m-sheet) var(--ease-sheet), opacity var(--m-sheet) var(--ease-sheet);
+}
+.sheet[data-detent="full"] .sheet-solid { transform: none; opacity: 1; }
+/* expanded at rest the glass plate is hidden under the opaque layer: stop blurring it (12.1) */
+.sheet[data-rest="full"][data-detent="full"] .sheet-glass { visibility: hidden; }
+.sheet.dragging .sheet-solid, .sheet.dragging .sheet-content, .sheet.dragging .mapctl { transition: none; }
+
+/* header (min 56 + the 16 grab zone): the whole area is the drag handle; Back (a 44 fill circle), the title (2 lines,
+   then an ellipsis), one trailing summary or action. It sits inside the card (12 + 16 from the screen's edges) in both
+   states. A hairline appears under it once the content scrolls. */
 .sheet-head {
-  flex: none; padding: 0 var(--s4) var(--s2);
+  position: relative; flex: none; margin: 0 var(--inset-chrome); padding: 0 var(--inset-content);
   touch-action: none; user-select: none; -webkit-user-select: none;
 }
-.grab {
-  display: block; position: relative; width: 100%; height: 28px; cursor: grab;
+.sheet-head::after {
+  content: ""; position: absolute; left: calc(-1 * var(--inset-chrome)); right: calc(-1 * var(--inset-chrome)); bottom: 0; height: .5px; background: var(--separator);
+  opacity: 0; transition: opacity var(--m-quick) var(--ease-out);
 }
+.sheet.is-scrolled .sheet-head::after { opacity: 1; }
+/* on the glass card (collapsed, at rest) text follows the glass rules (5.3): label and labelGlass2 only, no tint text */
+.sheet:not([data-rest="full"]) .sheet-head { --label-2: var(--label-glass-2); --tint: var(--label); --live: var(--label); }
+.grab { display: block; position: relative; height: var(--grab-zone); cursor: grab; }
 .sheet.dragging .grab { cursor: grabbing; }
-.grab::before { /* the visible 36x5 grabber */
-  content: ""; position: absolute; left: 50%; top: 8px;
-  width: 36px; height: 5px; margin-left: -18px; border-radius: var(--r-pill);
-  background: var(--hairline-strong);
+.grab::before { /* the visible 36 x 5 grab bar, 6 from the top */
+  content: ""; position: absolute; left: 50%; top: 6px;
+  width: 36px; height: 5px; margin-left: -18px; border-radius: var(--r-capsule);
+  background: var(--label-glass-2); opacity: .6;
 }
-.grab::after { content: ""; position: absolute; left: 0; right: 0; top: -8px; bottom: -8px; } /* 44px hit area */
-.grab:focus-visible { outline-offset: -2px; border-radius: 8px; }
+.grab::after { content: ""; position: absolute; left: 0; right: 0; top: 0; bottom: -12px; }   /* hit area into the header */
+.grab:focus-visible { outline-offset: -2px; border-radius: var(--r-tag); }
 
-.titleline { display: flex; align-items: center; gap: var(--s2); min-height: 36px; }
+.titleline { display: flex; align-items: center; gap: var(--s-3); min-height: var(--sheet-header-min); padding: var(--s-1) 0; }
+/* Back (glass spec 8.10): a 44 circle with a fill background, the chevron in label (fills on glass, never glass on glass) */
 .back {
-  flex: none; width: var(--tap); height: var(--tap); margin: -4px 0 -4px -14px;
-  display: grid; place-items: center; color: var(--accent); border-radius: var(--r-control);
+  flex: none; width: var(--tap); height: var(--tap); margin: 0 0 0 -6px;
+  display: grid; place-items: center; color: var(--label); border-radius: 50%; background: var(--fill);
+  transition: opacity var(--m-press) var(--ease-out);
 }
-.back:active { background: var(--surface); }
+.back .ic { width: 19px; height: 19px; }
+.back:active { opacity: .6; }
+.titletext { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 .sheet-title {
-  flex: 1; min-width: 0; margin: 0;
-  font-size: var(--fs-large); line-height: var(--lh-large); font-weight: 700; letter-spacing: -.02em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin: 0; font: var(--t-sheet-title); color: var(--label); overflow-wrap: break-word;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
-.sheet-title.sm { font-size: var(--fs-title); line-height: var(--lh-title); font-weight: 650; letter-spacing: -.01em; }
+/* a trip in progress (O3): the current step in rowTitle with the trip under it in rowDetail */
+.sheet-title.is-step { font: var(--t-row-title); }
+.sheet-sub { margin: 0; font: var(--t-row-detail); color: var(--label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet-sub:empty { display: none; }
 .titleright {
-  flex: none; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--text-2); font-weight: 600;
+  flex: none; max-width: 52%; display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2);
+  color: var(--label-2); font: var(--t-row-detail); white-space: nowrap;
 }
+.titleright:empty { display: none; }
+/* the one-line answer in the collapsed header (spec 10.6): a badge, the ETA numeral and the live dot (ringed on glass);
+   or "Arriving In" over the ETA during a trip; or one action (Edit map order, New) */
+.hm { display: inline-flex; align-items: center; gap: var(--s-2); color: var(--label); }
+.hm-row { display: inline-flex; align-items: center; gap: var(--s-2); }
+.hm .eta { min-width: 0; }
+.hm .dot-live { margin: 0; box-shadow: 0 0 0 1.5px var(--glass-solid); }
+.hm--stack { flex-direction: column; align-items: flex-end; gap: 0; }
+.hm--stack .eta { line-height: 1; }
+.hm-cap { font: var(--t-caption); color: var(--label-2); }
+.hm--text { font: var(--t-row-detail); color: var(--label-2); white-space: normal; text-align: right; }
+/* a header action ("Edit map order", "New"): a text button, 44 pt tall, flush with the edge */
+.titleright .v-btn--quiet { min-height: var(--tap); margin-right: calc(var(--s-2) * -1); padding: 0 var(--s-2); gap: var(--s-1); font: var(--t-section); white-space: nowrap; }
+.titleright .v-btn--quiet .ic { width: var(--i-inline); height: var(--i-inline); }
 
-/* full detent stops below the status pill (always visible for safety; ui/pill.js keeps --pill-h = its
-   measured height) and below the context bar (the trip / my route bar stays visible when the sheet is
-   expanded, owner 2026-11-04; ui/contextbar.js keeps --ctx-h), so neither covers the grab handle. Only the
-   expanded sheet moves when the bar comes or goes; the collapsed one never does. */
-#app:has(#pill:not([hidden])) { --v-full: calc(var(--v-max) - var(--pill-h, 44px) - 8px); }
-#app:has(#ctxbar:not([hidden])) { --v-full: calc(var(--v-max) - var(--ctx-h, 32px) - 8px); }
-#app:has(#pill:not([hidden])):has(#ctxbar:not([hidden])) { --v-full: calc(var(--v-max) - var(--pill-h, 44px) - 8px - var(--ctx-h, 32px) - 8px); }
+/* accessibility sizes (html[data-text="ax"], spec 13.7): the trailing summary moves under the title instead of squeezing it */
+html[data-text="ax"] .titleline { flex-wrap: wrap; row-gap: 0; }
+html[data-text="ax"] .titleright { flex-basis: 100%; max-width: none; justify-content: flex-start; padding-bottom: var(--s-2); }
+html[data-text="ax"] .titleline:has(.back:not([hidden])) .titleright { padding-left: calc(var(--tap) - 6px + var(--s-3)); }
+html[data-text="ax"] .titleright .v-btn--quiet { margin-left: calc(var(--s-2) * -1); }
 
-/* scrolling content: bottom padding equals the part of the sheet hidden below the screen / behind the
-   bottom navigation, so the last row can always be scrolled into view in every detent */
+/* expanded state stops below the status banner (always visible for safety; ui/pill.js keeps --pill-h = its measured
+   height), so the banner never covers the grab bar. The simulated-buses chip alone does NOT change it (it shares Row B
+   with Settings), nor does the trip chip beside Settings; both chips together do (below). */
+#app:has(#pill:not([hidden]):not([data-form="chip"])) { --v-full: calc(var(--v-max) - var(--pill-h, 44px) - var(--gap-chrome)); }
+/* the trip chip stays visible when expanded (owner 2026-11-04, glass spec 18 D5): beside Settings it needs no room; in Row
+   C, under the simulated-buses chip (demo mode), the expanded sheet starts 8 below it */
+#app:has(#pill[data-form="chip"]:not([hidden])):has(#ctxbar:not([hidden])) { --v-full: calc(var(--v-max) - 36px - var(--gap-chrome)); }
+
+/* scrolling content: invisible on the collapsed card (it fades in with the opaque layer), bottom padding = the part of
+   the sheet hidden below the screen + the floating bottom row + 20, so the last row scrolls clear of the bar; 16
+   between the header and the first section (spec 3) */
 .sheet-content {
   flex: 1; min-height: 0;
   overflow-y: auto; overflow-x: hidden;
   overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
-  padding: var(--s1) var(--s4) calc(var(--v-max) - var(--rest-vis) + 16px);   /* the bottom bar handles the safe area */
+  padding: var(--s-1) var(--inset-content) calc(var(--v-max) - var(--rest-vis) + var(--nav-h) + 24px);
   touch-action: pan-y;
   outline: none;
+  opacity: 0;
+  transition: opacity var(--m-sheet) var(--ease-sheet);
 }
-.sheet.dragging .sheet-content { overflow-y: hidden; }
+.sheet[data-detent="full"] .sheet-content { opacity: 1; }
+.sheet.dragging .sheet-content { overflow-y: hidden; will-change: opacity; }
+/* a soft scroll edge behind the floating bar (no blur; glass spec 8.8, iOS scrollEdgeEffectStyle(.soft)): bgSheet
+   fading in over the 24 px above the bottom row, then at 90% behind it down to the screen's edge, so rows scrolling under
+   the bar never show through its gaps (between the capsule and the search circle, under it, around the minimized
+   circle). The content's bottom padding (+ 24) lets the last row end where the fade starts. */
+.sheet[data-rest="full"]::after {
+  content: ""; position: absolute; left: 0; right: 0; height: calc(var(--nav-h) + 24px); pointer-events: none;
+  bottom: calc(var(--v-max) - var(--v-full));
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--bg-sheet) 90%, transparent) 24px);
+}
 
-/* wide + short (landscape phones): floating left panel, no detents */
+/* the lower-right group (glass spec 8.4): Lines by Time over Locate, a 44 x 88 glass capsule riding 8 above the card's
+   top trailing corner (the sheet's transform carries it); it fades out between p .10 and .30 (ui/sheet.js while
+   dragging) and is hidden and unfocusable when expanded */
+.mapctl {
+  position: absolute; right: var(--inset-chrome); bottom: calc(100% + var(--gap-chrome));
+  width: var(--chrome-btn); display: flex; flex-direction: column; align-items: stretch;
+  border-radius: calc(var(--chrome-btn) / 2);
+  transition: opacity var(--m-sheet) var(--ease-sheet), visibility 0s linear 0s;
+}
+.mapctl-btn {
+  position: relative; width: var(--chrome-btn); height: var(--chrome-btn); display: grid; place-items: center;
+  color: var(--label); border-radius: calc(var(--chrome-btn) / 2);
+}
+.mapctl-btn::before { content: ""; position: absolute; inset: 2px; border-radius: inherit; background: var(--fill-pressed); opacity: 0; transition: opacity var(--m-press) var(--ease-out); }
+.mapctl-btn:active::before { opacity: 1; }
+.mapctl-btn:focus-visible { outline-offset: -3px; }
+.mapctl-sep { height: .5px; margin: 0 8px; background: var(--separator); }
+/* Locate states (DESIGN-SPEC 10.4, kept): the filled glyph while the map follows you, busy while locating */
+#locateBtn { color: var(--tint); }
+#locateBtn[aria-busy="true"] .ic { opacity: .45; }
+#locateBtn .ic-on { display: none; }
+#locateBtn.is-on .ic-on { display: block; }
+#locateBtn.is-on .ic-off { display: none; }
+@media not all and (min-width: 768px) and (max-height: 559px) {
+  .sheet[data-detent="full"] .mapctl {
+    opacity: 0; visibility: hidden;
+    transition: opacity var(--m-exit) var(--ease-exit), visibility 0s linear var(--m-sheet);
+  }
+}
+
+/* wide + short (landscape phones): an opaque floating left panel, no detents; the group at the map's bottom right */
 @media (min-width: 768px) and (max-height: 559px) {
   .sheet {
-    left: calc(var(--safe-l) + 12px); right: auto; top: calc(var(--safe-t) + 12px); bottom: calc(12px + 58px);
-    width: var(--panel-w); height: auto;
-    border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+    left: calc(var(--safe-l) + 12px); right: auto; top: calc(var(--safe-t) + 12px); bottom: calc(12px + var(--row-h) + 8px);
+    width: var(--panel-w); height: auto; pointer-events: auto;
     transform: none !important; transition: none;
-    box-shadow: var(--shadow-float);
   }
+  .sheet-solid { transform: none; opacity: 1; border-radius: var(--r-glass); box-shadow: var(--e-1); }
+  .sheet-glass { display: none; }
+  .sheet-content { opacity: 1; padding-bottom: 16px; }
+  .sheet-head { margin: 0; }
+  .sheet[data-rest="full"]::after { display: none; }
   .grab { display: none; }
-  .sheet-head { padding-top: var(--s3); touch-action: auto; }
-  .sheet-content { padding-bottom: 16px; }
+  .sheet-head { padding-top: var(--s-3); touch-action: auto; }
+  .mapctl { position: fixed; right: calc(var(--safe-r) + 12px); bottom: 12px; }
 }
 
 @media (prefers-contrast: more) {
-  .sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--bg-solid); border: 1px solid var(--text); }
+  .sheet-solid { box-shadow: 0 -1px 0 var(--label); }
+  .grab::before { opacity: 1; background: var(--label-2); }
 }
 @media (forced-colors: active) {
-  .sheet { border: 1px solid CanvasText; }
+  .sheet-solid, .sheet-glass { border: 1px solid CanvasText; }
   .grab::before { background: CanvasText; }
 }
+/* reduced motion: the sheet settles with a 150 ms ease and no overshoot */
 @media (prefers-reduced-motion: reduce) {
-  .sheet { transition: transform var(--d-press) linear; }
+  .sheet, .sheet-solid, .sheet-content { transition: transform var(--m-quick) ease-out, opacity var(--m-quick) ease-out; }
 }

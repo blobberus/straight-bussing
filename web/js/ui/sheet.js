@@ -19,7 +19,8 @@
  * events followed on the whole window while pressed. The content drags the sheet when it is scrolled to the top.
  * Grabber = an adjustable control for screen readers and the keyboard (role="slider" "Resize panel", value
  * Collapsed / Expanded): arrows / Page Up / Page Down / Home / End, Enter / Space and taps toggle.
- * Emits bus 'sheet:inset' {px} (visible sheet height over the map; 0 in panel mode) on every settle.
+ * Emits bus 'sheet:inset' {px, detent} (visible sheet height over the map, 0 in panel mode; the state it rests in) on
+ * every settle.
  *
  * Geometry lives in css/sheet.css (--v-peek/--v-full; the element itself is always --v-max tall, so at "full"
  * its translateY is --v-max - --v-full, not 0, while the status pill shows); this module measures it with hidden
@@ -117,10 +118,10 @@ export function stepDetent(d, dir) {
 /** Panel (left column, no detents) layout. Must match css/sheet.css, base.css, components.css. */
 export const PANEL_MEDIA = "(min-width: 768px) and (max-height: 559px)";
 
-function makeProbe(varName, host) {
+function makeProbe(varName, host, name) {
   const p = document.createElement("div");
   p.setAttribute("aria-hidden", "true");
-  p.dataset.sheetProbe = varName.replace("--v-", "");
+  p.dataset.sheetProbe = name || varName.replace("--v-", "");
   p.style.cssText = `position:fixed;left:-9px;top:0;width:1px;visibility:hidden;pointer-events:none;height:var(${varName})`;
   (host || document.body).appendChild(p);   // next to the sheet, so per-#app overrides of --v-* apply
   return p;
@@ -137,7 +138,9 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   const grab = grabEl || sheetEl.querySelector(".grab");
   const panelMq = matchMedia(panelMedia || PANEL_MEDIA);
   const host = sheetEl.parentElement || document.body;
-  const probes = { peek: makeProbe("--v-peek", host), half: makeProbe("--v-half", host), full: makeProbe("--v-full", host) };
+  // visible heights from the screen's bottom: collapsed = the card + 8 + the floating bottom row (glass spec 3)
+  const probes = { peek: makeProbe("--v-peek-vis", host, "peek"), half: makeProbe("--v-half", host), full: makeProbe("--v-full", host) };
+  const solidEl = sheetEl.querySelector(".sheet-solid"), ctlEl = sheetEl.querySelector(".mapctl");
   const listeners = new Set();
   const offs = [];
   const pick = (d) => (DETENTS.includes(d) ? d : null);
@@ -153,7 +156,34 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   const measure = () => ({ peek: probes.peek.offsetHeight, full: probes.full.offsetHeight });
   const isPanel = () => panelMq.matches;
   const inset = () => (isPanel() ? 0 : measure()[detent] || 0);
-  const emitInset = () => bus.emit("sheet:inset", { px: inset() });
+  const emitInset = () => bus.emit("sheet:inset", { px: inset(), detent });
+
+  /* ---- glass spec 8.8 (mSheetGlass): while the finger moves the sheet, the card's glass turns into the opaque sheet by
+     the drag progress p (0 collapsed .. 1 expanded): the opaque layer and the content fade in and the layer grows from
+     the card's width to the full width by p .35; the lower-right group fades out between p .10 and .30. Only opacity
+     and transform, written on those three elements (nothing inherits, nothing is laid out). At rest and while settling,
+     css/sheet.css drives the same properties from data-detent. #app.is-moving swaps moving glass to solid (12.1). ---- */
+  let cardK = 0.94;
+  const fitCard = () => {
+    const w = sheetEl.offsetWidth || 0;
+    cardK = w > 48 ? Math.round(((w - 24) / w) * 10000) / 10000 : 0.94;
+    host.style.setProperty("--card-k", String(cardK));
+  };
+  const moving = (on) => host.classList.toggle("is-moving", !!on && !isPanel());
+  function paintP(vis, sizes) {
+    const span = sizes.full - sizes.peek;
+    const p = span > 0 ? Math.min(1, Math.max(0, (vis - sizes.peek) / span)) : detent === "full" ? 1 : 0;
+    const o = Math.min(1, p / 0.35);
+    if (solidEl) { solidEl.style.opacity = String(o); solidEl.style.transform = `scaleX(${cardK + (1 - cardK) * o})`; }
+    contentEl.style.opacity = String(o);
+    if (ctlEl) ctlEl.style.opacity = String(1 - Math.min(1, Math.max(0, (p - 0.1) / 0.2)));
+    return p;
+  }
+  function clearP() {
+    if (solidEl) { solidEl.style.removeProperty("opacity"); solidEl.style.removeProperty("transform"); }
+    contentEl.style.removeProperty("opacity");
+    ctlEl?.style.removeProperty("opacity");
+  }
 
   if (grab) {   // adjustable control: slider semantics with two named values
     const a = { role: "slider", "aria-label": "Resize panel", "aria-orientation": "vertical", "aria-valuemin": "0", "aria-valuemax": "1" };
@@ -170,7 +200,7 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
      only once the sheet has settled: changing it lays out every row, which must not happen while it moves. */
   function rest(now) {
     clearTimeout(restTimer);
-    const apply = () => { if (sheetEl.dataset.rest !== detent) sheetEl.dataset.rest = detent; };
+    const apply = () => { if (sheetEl.dataset.rest !== detent) sheetEl.dataset.rest = detent; moving(false); };
     if (now || !sheetEl.dataset.rest) return apply();
     const ms = (parseFloat(sheetEl.style.transitionDuration) || baseMs() || 0) + 60;
     restTimer = setTimeout(apply, ms);
@@ -188,6 +218,7 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     if (!DETENTS.includes(d)) return;
     const changed = d !== detent;
     detent = d;
+    if (changed) moving(true);   // solid glass while it settles; rest() clears it
     paint();
     rest(!changed || isPanel());
     if (changed) for (const fn of [...listeners]) {
@@ -223,6 +254,8 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
       drag.caught = true;
       sheetEl.classList.add("dragging");
       sheetEl.style.setProperty("--drag", drag.home - at + "px");
+      moving(true);
+      paintP(at, sizes);
     }
   }
   function track(yRaw) {
@@ -238,6 +271,7 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
       if (Math.abs(dy) < SLOP && drag.source !== "touch") return false;
       drag.moved = true;
       sheetEl.classList.add("dragging");
+      moving(true);
     }
     if (Math.abs(y - drag.lastY) >= DIR_STEP) {
       drag.lastDir = Math.sign(y - drag.lastY);
@@ -248,6 +282,7 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     if (drag.samples.length > 12) drag.samples.shift();
     drag.eff = rubberBand(drag.startVis - dy, drag.sizes.peek, drag.sizes.full);
     sheetEl.style.setProperty("--drag", drag.home - drag.eff + "px");   // --drag is not inherited: cheap
+    paintP(drag.eff, drag.sizes);
     return true;
   }
   function end(cancelled) {
@@ -261,10 +296,11 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     }
     sheetEl.classList.remove("dragging");
     sheetEl.style.removeProperty("--drag");
-    if (!d.moved) return;
+    clearP();   // from here css/sheet.css transitions the layers from these values to the resting state's
+    if (!d.moved) { moving(false); return; }
     suppressClick = true;
     setTimeout(() => (suppressClick = false), 350);
-    if (cancelled) return emitInset();
+    if (cancelled) { rest(false); return emitInset(); }
     const v = velocity(d.samples);
     const target = snapDetent(d.sizes, d.eff, v, d.lastDir);
     const ms = settleMs(Math.abs(d.sizes[target] - d.eff), v, d.base);
@@ -426,7 +462,7 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
   let raf = 0;
   const relayout = () => {
     cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(emitInset);
+    raf = requestAnimationFrame(() => { fitCard(); emitInset(); });
   };
   on(window, "resize", relayout);
   on(window, "orientationchange", relayout);
@@ -436,9 +472,40 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     offs.push(() => panelMq.removeEventListener("change", onMq));
   }
 
+  /* ---- collapsed height = the header's measured height (spec 10.6: grows with text, never cuts the title) ---- */
+  let peekPx = 0;
+  const fitPeek = (instant) => {
+    const h = Math.round(headEl.offsetHeight);
+    if (!h || h === peekPx) return;
+    peekPx = h;
+    if (instant === true) {   // the first measurement: no slide from the CSS default
+      sheetEl.style.transition = "none";
+      host.style.setProperty("--v-peek", h + "px");
+      void sheetEl.offsetHeight;
+      sheetEl.style.removeProperty("transition");
+    } else host.style.setProperty("--v-peek", h + "px");
+    if (detent === "peek") emitInset();
+  };
+  // The first measurement comes from the observer's first call in the first frame (after the layout the browser does
+  // anyway, before the paint), never synchronously here: reading offsetHeight now would lay out the page before the app
+  // has built it, then again after (about 30 ms of main-thread time at load with a 4x slower CPU, headless Edge).
+  if (typeof ResizeObserver === "function") {
+    let first = true;
+    const ro = new ResizeObserver(() => { fitPeek(first); first = false; });
+    ro.observe(headEl);
+    offs.push(() => ro.disconnect());
+  } else fitPeek(true);
+  offs.push(() => host.style.removeProperty("--v-peek"));
+  /* ---- a hairline under the header once the content scrolls (spec 10.6) ---- */
+  let scrolled = false;
+  on(contentEl, "scroll", () => {
+    const sc = contentEl.scrollTop > 0;
+    if (sc !== scrolled) { scrolled = sc; sheetEl.classList.toggle("is-scrolled", sc); }
+  }, { passive: true });
+
   paint();
   rest(true);
-  requestAnimationFrame(emitInset);
+  requestAnimationFrame(() => { fitCard(); emitInset(); });
 
   return {
     setDetent,
@@ -464,6 +531,8 @@ export function createSheet({ sheetEl, contentEl, headEl, grabEl, initial, panel
     isPanel,
     destroy() {
       offs.forEach((f) => f());
+      host.style.removeProperty("--card-k");
+      host.classList.remove("is-moving");
       Object.values(probes).forEach((p) => p.remove());
       listeners.clear();
       clearTimeout(restTimer);
