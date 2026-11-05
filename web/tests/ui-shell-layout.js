@@ -185,6 +185,27 @@ test("layout: content padding keeps the last row reachable (padding = sheet part
   } finally { t.done(); }
 });
 
+test("layout: the grab bar's hit area (12 px into the header) never covers Back: every point of the 44 pt circle goes back, not to the grab bar", async () => {
+  const t = await frame(393, 852);
+  try {
+    for (const detent of ["peek", "full"]) {
+      t.set({ detent });
+      if (!t.$("back")) {   // the app's markup: the grab bar is a div slider (index.html), Back a 44 circle in the title line
+        t.$("grab").outerHTML = '<div id="grab" class="grab" role="slider" tabindex="0" aria-label="Resize panel"></div>';
+        t.d.querySelector(".titleline").insertAdjacentHTML("afterbegin", '<button id="back" class="back" type="button" aria-label="Back">B</button>');
+      }
+      const b = t.rect("back"), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+      ok(b.width >= 44 && b.height >= 44, "Back is a 44 pt circle");
+      for (const [x, y, where] of [[cx, b.top + 2, "top edge"], [cx, cy, "center"], [cx, b.bottom - 2, "bottom edge"], [b.left + 3, cy, "leading edge"]]) {
+        const hit = t.d.elementFromPoint(x, y);
+        ok(hit && hit.closest("#back"), `${detent}: a tap on Back's ${where} lands on Back (${hit && (hit.id || hit.className)})`);
+      }
+      const g = t.rect("grab");
+      ok(t.d.elementFromPoint(g.left + g.width / 2, g.top + g.height / 2)?.closest("#grab"), `${detent}: the grab bar keeps its own strip`);
+    }
+  } finally { t.done(); }
+});
+
 test("layout: toast never covers the status pill", async () => {
   const t = await frame(393, 852);
   try {

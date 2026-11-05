@@ -75,9 +75,11 @@
 .grab:focus-visible { outline-offset: -2px; border-radius: var(--r-tag); }
 
 .titleline { display: flex; align-items: center; gap: var(--s-3); min-height: var(--sheet-header-min); padding: var(--s-1) 0; }
-/* Back (glass spec 8.10): a 44 circle with a fill background, the chevron in label (fills on glass, never glass on glass) */
+/* Back (glass spec 8.10): a 44 circle with a fill background, the chevron in label (fills on glass, never glass on glass).
+   Positioned so it paints over the grab bar's hit area (.grab::after reaches 12 px into the header): a tap on Back's top
+   edge goes back instead of collapsing the sheet. */
 .back {
-  flex: none; width: var(--tap); height: var(--tap); margin: 0 0 0 -6px;
+  position: relative; flex: none; width: var(--tap); height: var(--tap); margin: 0 0 0 -6px;
   display: grid; place-items: center; color: var(--label); border-radius: 50%; background: var(--fill);
   transition: opacity var(--m-press) var(--ease-out);
 }
