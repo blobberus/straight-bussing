@@ -210,3 +210,20 @@ test("contrast: favorite stars are yellow and stay visible on the land and the c
   f.remove();
   ok(!bad.length, bad.join("; "));
 });
+
+// Glass spec 5.4: wherever a rider asked for less see-through UI the glass turns solid. Forced colors (Windows High
+// Contrast) keep the author's alpha on the system colors, so without its own rule the glass stayed an 80% plate with the
+// map blurred through it (QA 2026-11-05).
+test("glass turns solid under forced colors, Increase Contrast and Reduce Transparency (glass spec 5.4)", async () => {
+  const css = await fetch("../css/tokens.css", { cache: "no-store" }).then((r) => r.text());
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(css);
+  for (const q of ["forced-colors: active", "prefers-contrast: more", "prefers-reduced-transparency: reduce"]) {
+    const blocks = [...sheet.cssRules].filter((r) => r instanceof CSSMediaRule && r.media.mediaText.replace(/[()]/g, "").trim() === q);
+    const decl = (p) => blocks.flatMap((b) => [...b.cssRules]).map((r) => r.style && r.style.getPropertyValue(p).trim()).filter(Boolean);
+    ok(blocks.length, `@media (${q}) in tokens.css`);
+    ok(decl("--glass-filter").includes("none"), `${q}: no blur`);
+    ok(decl("--glass-fill").includes("var(--glass-solid)"), `${q}: the solid glass fill`);
+    ok(decl("--glass-tint-fill").length > 0, `${q}: the tinted circle solid too`);
+  }
+});

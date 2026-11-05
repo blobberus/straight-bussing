@@ -384,6 +384,11 @@
 @media (prefers-reduced-transparency: reduce) {
   :root, :root:not([data-theme="light"]), :root[data-theme] { --glass-fill: var(--glass-solid); --glass-tint-fill: var(--tint-bg); --glass-filter: none; }
 }
+/* forced colors (Windows High Contrast): the system colors keep the author's alpha, so glass would stay an 80% plate with
+   the map blurred through it; solid, like Increase Contrast (glass spec 5.4; base.css adds the CanvasText borders) */
+@media (forced-colors: active) {
+  :root, :root:not([data-theme="light"]), :root[data-theme] { --glass-fill: var(--glass-solid); --glass-tint-fill: var(--tint-bg); --glass-filter: none; }
+}
 /* no backdrop-filter at all: solid glass (the same shapes) */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root, :root:not([data-theme="light"]), :root[data-theme] { --glass-fill: var(--glass-solid); --glass-tint-fill: var(--tint-bg); --glass-filter: none; }
