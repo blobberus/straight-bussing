@@ -1,62 +1,66 @@
-/* route view styles (ROUTE agent; see docs/ARCHITECTURE.md ownership). Builds on .v-tl in views.css. */
+/* Route detail (ui/views/route.js). Builds on .v-tl in views.css: the stop timeline is a card with the route's 4 px rail,
+   a thin parallel bus rail with direction chevrons, and the live buses as route-colored chips on it. */
 
-/* today's hours under the status line */
-.r-today { margin: -4px 0 var(--s2); }
-.r-k { font-weight: 600; color: var(--text); margin-right: 4px; }
-.r-sched { font-weight: 600; color: var(--text-2); }
-.r-sched.is-on { color: var(--text); }   /* schedule data, not live: never the live green or its dot (the words carry the state) */
+/* status and today's hours under the title */
+.v-route > .v-status, .v-route > .r-today, .v-route > .r-nolive { padding: 0 var(--s-1); }
+.r-today { margin: 0 0 var(--s-3); }
+.r-k { font-weight: var(--w-semibold); color: var(--label); margin-right: var(--s-1); }
+.r-sched { font-weight: var(--w-semibold); color: var(--label-2); }
+.r-sched.is-on { color: var(--label); }   /* schedule data, not live: never the live green or its dot (the words carry the state) */
+.r-nolive { margin: 0 0 var(--s-3); }
 
-/* where the buses are (text, also the accessible description of the rail) */
-.r-buslist { list-style: none; margin: var(--s2) 0; padding: 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
-.r-buslist li { display: block; padding: 0; }
-/* each bus is a button: pick it to see its own time at every station (core/busnum.js; 44 px target) */
-.r-busbtn { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 4px 8px; margin: 0; box-sizing: border-box;
-  border: 0; border-radius: var(--r-sm, 8px); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.r-busbtn:active { background: var(--fill-press, rgba(127,127,127,.12)); }
-.r-busbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.r-busbtn.is-picked { color: var(--text); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+/* where the buses are (text, also the accessible description of the rail); each bus is a button: pick it to see its own
+   time at every station (core/busnum.js; 44 px target) */
+.r-buslist { list-style: none; margin: 0 0 var(--s-3); padding: 0; border-radius: var(--r-card); background: var(--bg-card); overflow: hidden; font: var(--t-row-detail); color: var(--label-2); }
+.r-buslist li { display: block; padding: 0; position: relative; }
+.r-buslist li + li::before { content: ""; position: absolute; top: 0; left: 36px; right: 0; height: .5px; background: var(--separator); }
+.r-busbtn { display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: var(--tap); padding: var(--s-2) var(--inset-content); margin: 0; box-sizing: border-box;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.r-busbtn:active { background: var(--fill-pressed); }
+.r-busbtn:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
+.r-busbtn.is-picked { color: var(--label); font-weight: var(--w-semibold); background: var(--tint-bg); }
 .r-busnote .v-btn { flex: none; }
-.r-bus.is-picked, .v-tlbus.is-picked { outline: 2px solid var(--accent); outline-offset: 1px; }
+.r-bus.is-picked, .v-tlbus.is-picked { outline: 2px solid var(--tint); outline-offset: 1px; }
+.r-dot { flex: none; width: 8px; height: 8px; border-radius: 2px; }
 
-.r-dot { flex: none; width: 8px; height: 8px; border-radius: 2px; transform: translateY(-1px); }
-
-/* the parallel bus rail: a thin line beside the stop line, chevrons = direction of travel */
-.r-tl .v-tlstop { padding-left: 76px; }
-.r-seg { position: absolute; left: 47px; top: 50%; height: 100%; width: 2px; background: var(--hairline-strong); color: var(--text-2); pointer-events: none; }
+/* the parallel bus rail: a thin line beside the stop line; chevrons = direction of travel */
+.r-tl .v-tlstop { padding-left: 68px; }
+.r-tl .v-tlstop + .v-tlstop .v-tlbtn::before { left: 0; }
+.r-seg { position: absolute; left: 43px; top: 50%; height: 100%; width: 2px; background: var(--separator); color: var(--label-2); pointer-events: none; }
 .r-seg .r-chev { position: absolute; left: -4px; top: 50%; margin-top: -3px; }
 .r-tl .v-tlstop.is-loopend .r-seg { height: 50%; }
-.r-bus { position: absolute; left: 48px; z-index: 1; transform: translate(-50%, -50%); min-width: 26px; max-width: 46px; height: 22px; padding: 0 5px; box-sizing: border-box;
-  display: flex; align-items: center; justify-content: center; border-radius: var(--r-tag); font-size: var(--fs-cap); font-weight: 700; line-height: 1;
-  white-space: nowrap; overflow: hidden; box-shadow: 0 0 0 2px var(--bg-solid), var(--shadow-chip); pointer-events: none;
-  transition: top var(--d-swap, .25s) ease; }
+.r-bus { position: absolute; left: 44px; z-index: 1; transform: translate(-50%, -50%); min-width: 26px; max-width: 46px; height: 20px; padding: 0 5px; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center; border-radius: var(--r-tag); font: var(--t-badge-sm); line-height: 1;
+  white-space: nowrap; overflow: hidden; box-shadow: 0 0 0 2px var(--bg-card), var(--e-marker); pointer-events: none;
+  transition: top var(--m-standard) var(--ease-standard); }
 .r-bus::after { content: ""; position: absolute; left: 50%; bottom: -5px; margin-left: -4px; border: 4px solid transparent; border-bottom: 0; border-top-color: inherit; }
-.r-bus.is-stale { opacity: .55; outline: 2px dashed var(--text-2); outline-offset: 1px; }
-.r-loop { margin: 0 0 var(--s2) 40px; }
+.r-bus.is-stale { opacity: .55; outline: 2px dashed var(--label-2); outline-offset: 1px; }
+.r-loop { margin: 0 0 var(--s-3) var(--inset-content); }
 
 /* hours & service */
-.r-svc { margin-top: var(--s4); }
-.r-h { margin: 0 0 var(--s2); font-size: var(--fs-row); line-height: var(--lh-row, 1.3); font-weight: 650; }
-.r-stops-h { margin-top: var(--s4); }   /* closed route: the stops heading under Hours & service */
-.r-h3 { margin: var(--s3) 0 var(--s1); font-size: var(--fs-body); line-height: var(--lh-body); font-weight: 600; color: var(--text-2); }
-.r-week { padding: var(--s2) var(--s4); }
-.r-wrow { display: flex; gap: var(--s3); padding: 6px 0; font-size: var(--fs-body); line-height: var(--lh-body); }
-.r-wrow + .r-wrow { border-top: 1px solid var(--hairline); }
-.r-wrow dt { flex: 0 0 84px; font-weight: 600; }
-.r-wrow dd { margin: 0; color: var(--text-2); font-variant-numeric: tabular-nums; }
-.r-changes { list-style: none; padding: var(--s2) var(--s4); font-size: var(--fs-body); line-height: var(--lh-body); }
-.r-changes li { padding: 6px 0; }
-.r-changes li + li { border-top: 1px solid var(--hairline); }
-.r-tag { display: inline-block; margin-right: 4px; padding: 0 6px; border-radius: var(--r-chip); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-cap); font-weight: 700; }
-.r-nochange { margin: var(--s2) 0; }
-.r-hours { padding: var(--s3) var(--s4); }
+.r-svc { margin-top: var(--s-6); }
+.r-h { margin: 0 0 var(--s-2); padding: 0 var(--s-1); font: var(--t-hero-title); color: var(--label); }
+.r-stops-h { margin-top: var(--s-6); }   /* closed route: the stops heading under Hours & service */
+.r-h3 { margin: var(--s-6) 0 var(--s-2); padding: 0 var(--inset-content); font: var(--t-section); color: var(--label-2); }
+.r-week { margin: 0 0 var(--s-3); padding: var(--s-1) var(--inset-content); }
+.r-wrow { display: flex; gap: var(--s-3); padding: var(--s-3) 0; font: var(--t-row-detail); }
+.r-wrow + .r-wrow { border-top: .5px solid var(--separator); }
+.r-wrow dt { flex: 0 0 84px; font-weight: var(--w-semibold); color: var(--label); }
+.r-wrow dd { margin: 0; color: var(--label-2); font-variant-numeric: tabular-nums; }
+.r-changes { list-style: none; margin: 0 0 var(--s-3); padding: var(--s-1) var(--inset-content); font: var(--t-row-detail); color: var(--label); }
+.r-changes li { padding: var(--s-3) 0; }
+.r-changes li + li { border-top: .5px solid var(--separator); }
+.r-tag { display: inline-block; margin-right: var(--s-1); padding: 0 var(--s-2); border-radius: var(--r-capsule); background: var(--warn-bg); color: var(--warn); font: var(--t-caption); line-height: 20px; }
+.r-nochange { margin: var(--s-2) var(--inset-content); }
+.r-hours { padding: var(--s-3) var(--inset-content); }
 .r-bars { display: flex; align-items: flex-end; gap: 3px; height: 76px; padding-bottom: 16px; position: relative; }
 .r-bar { flex: 1 1 0; min-width: 6px; height: 100%; position: relative; display: flex; flex-direction: column; justify-content: flex-end; }
-.r-barfill { display: block; border-radius: 3px 3px 0 0; background: var(--accent-fill); min-height: 3px; }
-.r-barn { display: block; margin-bottom: 2px; text-align: center; font-size: 10px; line-height: 1; color: var(--text-2); font-variant-numeric: tabular-nums; order: -1; }
+.r-barfill { display: block; border-radius: 3px 3px 0 0; background: var(--tint-fill); min-height: 3px; }
+.r-barn { display: block; margin-bottom: 2px; text-align: center; font: var(--t-caption); font-weight: var(--w-regular); line-height: 1; color: var(--label-2); font-variant-numeric: tabular-nums; order: -1; }
 .r-bars.is-dense .r-barn { display: none; }
-.r-barfill.is-zero { min-height: 1px; background: var(--hairline-strong); }
-.r-barh { position: absolute; left: -6px; bottom: -15px; font-size: 10px; line-height: 1; color: var(--text-2); white-space: nowrap; }
-.r-bartext { margin: var(--s2) 0 0; padding: 0; list-style: none; font-size: var(--fs-cap); line-height: var(--lh-cap); }   /* one hour group per line */
+.r-barfill.is-zero { min-height: 1px; background: var(--separator); }
+.r-barh { position: absolute; left: -6px; bottom: -15px; font: var(--t-caption); font-weight: var(--w-regular); line-height: 1; color: var(--label-2); white-space: nowrap; }
+.r-bartext { margin: var(--s-3) 0 0; padding: 0; list-style: none; font: var(--t-footnote); }   /* one hour group per line */
 
 @media (prefers-reduced-motion: reduce) { .r-bus { transition: none; } }
 @media (prefers-contrast: more) { .r-seg { background: currentColor; } .r-bus { outline: 1px solid currentColor; } }

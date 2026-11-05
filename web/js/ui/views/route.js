@@ -24,7 +24,7 @@ import { arrivalsFor, staleLevel, runningCount, activeAlerts, alertText, alertRo
 import { effectiveHidden } from "../../core/visibility.js";
 import { serviceHoursAt, isScheduledNow, weekSummary, upcomingChanges, busesByHour, groupHours, hourLabel, dayKey, routeService } from "../../core/schedule.js";
 import { emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
-import { noLiveStatus } from "../../core/operating.js";
+import { noLiveStatus, scheduledNoLive } from "../../core/operating.js";
 import { noBusHelpHTML } from "./alerts.js";
 import { busKey, busNumbers, busName, selectedBus, busArrival } from "../../core/busnum.js";
 
@@ -155,6 +155,25 @@ export function routeClosed(state, rid, now) {
   return !runningCount(state, rid) && isScheduledNow(state.service, rid, now) !== true;
 }
 
+/**
+ * The collapsed header's trailing summary on a route page (DESIGN-SPEC 10.6; the iPhone app's routeStatus): "2 buses",
+ * "Status unknown" in a feed outage, "No live location" for a scheduled route with no reporting bus, else "Not running".
+ * Never "Not running" when we cannot know (ship checklist 1).
+ * @param {object} state
+ * @param {string} rid
+ * @param {number} [now]
+ * @returns {string}
+ */
+export function routeStatusText(state, rid, now = nowS()) {
+  if (!state || !state.routes || !state.routes[rid] || !state.staticLoaded) return "";
+  const n = runningCount(state, rid);
+  if (n > 0) return `${n} bus${n === 1 ? "" : "es"}`;
+  if (!state.liveLoaded) return "";
+  if (liveUnknown(state, now)) return "Status unknown";
+  if (scheduledNoLive(state, rid, now)) return "No live location";
+  return "Not running";
+}
+
 /** Status line under the title: buses running + today's scheduled hours. */
 function statusHtml(state, rid, r, n, now) {
   const unknown = liveUnknown(state, now), quiet = !n && !unknown && noLiveStatus(state, rid, now);   // scheduled, silent: not "not running"
@@ -237,6 +256,7 @@ registerView("route", {
   parent: "routes",
   detent: "half",
   tab: "routes",
+  meta: (state) => routeStatusText(state, state.routeId),
   replaceSelf: true,   // another line opened from this page (map line or bus tap) takes its place: Back goes to the menu below
   render: (state) => renderRoute(state),
 });

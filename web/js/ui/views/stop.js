@@ -12,13 +12,32 @@ import { nowS, ago, clock } from "../../core/time.js";
 import { arrivalsFor, staleLevel, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { toggleFav } from "../../core/custom.js";
-import { routeChip, arrivalRow, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
+import { routeChip, arrivalRow, etaBlock, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
+import { hav } from "../../core/geo.js";
+import { stopWalkMin } from "./tripinfo.js";
 import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
 import { noBusHelpHTML } from "./alerts.js";
 import { isStale, nameOf } from "./nearby-cards.js";
 import { minsUntil } from "../../core/time.js";
+import { pair, svg } from "../icons.js";
 
 /** The collapsed sheet's one-line summary at a stop (owner 2026-10-12: a map tap keeps the sheet collapsed): its next bus. */
+/**
+ * The collapsed header's trailing slot at a stop (spec 10.6): the next arrival as a route badge and its ETA. Trusted HTML.
+ * @param {object} state
+ * @param {number} [now]
+ * @returns {string}
+ */
+export function metaStopHTML(state, now = nowS()) {
+  const id = state.stopId;
+  if (!id || !state.staticLoaded || !state.liveLoaded) return "";
+  const a = arrivalsFor(state, id, { hidden: effectiveHidden(state), nowS: now })[0];
+  if (!a) return "";
+  const stale = isStale(state, now), m = minsUntil(a.t, now);
+  const say = `Next bus: ${state.routes?.[a.rid]?.long || nameOf(state, a.rid)}, ${m < 1 ? "now" : (stale ? "about " : "in ") + m + " minute" + (m === 1 ? "" : "s")}`;
+  return `<span class="hm" role="text" aria-label="${esc(say)}"><span class="hm-row" aria-hidden="true">${routeChip(a.rid, state.routes, { small: true })}${etaBlock(a.t, { stale, now })}${stale ? "" : '<span class="dot-live"></span>'}</span></span>`;
+}
+
 export function metaStop(state, now = nowS()) {
   const id = state.stopId;
   if (!id || !state.staticLoaded || !state.liveLoaded) return "";
@@ -44,7 +63,7 @@ export function updatedText(state, now) {
   return "Updated " + ago(state.lastOk, now);
 }
 
-const STAR = '<svg class="ic" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6-5.38-2.83-5.38 2.83 1.03-6L3.3 9.6l6-.9z" fill="var(--star-fill, none)" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+const STAR = pair("star", 17);
 
 /**
  * Favorite toggle button for a stop (state shown by icon fill AND label/aria-pressed).
@@ -54,7 +73,8 @@ const STAR = '<svg class="ic" width="22" height="22" viewBox="0 0 24 24" aria-hi
  */
 export function favButton(id, on) {
   const label = on ? "Remove from favorites" : "Add to favorites";
-  return `<button type="button" class="mr-fav${on ? " is-on" : ""}" data-action="stop:fav" data-id="${esc(id)}" aria-pressed="${on}" aria-label="${label}">${STAR}<span class="mr-favtxt">${on ? "Favorited" : "Favorite"}</span></button>`;
+  // a Secondary button with the star (spec 10.11: the outlined pill is retired); "Favorited" with the filled yellow star
+  return `<button type="button" class="v-btn v-btn--secondary mr-fav${on ? " is-on" : ""}" data-action="stop:fav" data-id="${esc(id)}" aria-pressed="${on}" aria-label="${label}">${STAR}<span class="mr-favtxt">${on ? "Favorited" : "Favorite"}</span></button>`;
 }
 
 /**
@@ -72,24 +92,29 @@ export function renderStop(state, now = nowS()) {
   const shown = all.filter((r) => !hidden.includes(r)), hid = all.filter((r) => hidden.includes(r));
   const addr = state.addresses?.[id]?.address;
   const fav = (state.favStops || []).includes(id);
+  // place details for a station (spec 10.14): the address and the walk, the routes as badges, then Directions (Primary),
+  // From here and Favorite (Secondary) in one row (stacked at accessibility sizes), then the arrivals in a card
+  const walk = state.user && Number.isFinite(st.lat) ? `${Math.max(1, Math.round(stopWalkMin(hav(state.user, st))))} min walk` : "";
+  const line = [addr || (walk ? "" : "Address not available"), walk].filter(Boolean).join(", ");
   let h = '<div class="v-stop">';
-  h += `<div class="v-stophead mr-stophead"><div class="mr-stoptop"><p class="v-sec v-addr">${addr ? esc(addr) : "Address not available"}</p>${favButton(id, fav)}</div>`;
-  h += `<p class="mr-label" id="mr-rts">Routes at this stop</p>`;
+  h += `<div class="v-stophead mr-stophead"><p class="v-sec v-addr">${esc(line)}</p>`;
+  h += `<p class="sr" id="mr-rts">Routes at this stop</p>`;
   h += shown.length
-    ? `<span class="v-chips" role="list" aria-labelledby="mr-rts">${shown.map((r) => `<span role="listitem"><button type="button" class="v-chipbtn" data-action="route:open" data-id="${esc(r)}" aria-label="Route ${esc(state.routes?.[r]?.long || r)}">${routeChip(r, state.routes)}</button></span>`).join("")}</span>`
+    ? `<span class="v-chips v-stopchips" role="list" aria-labelledby="mr-rts">${shown.map((r) => `<span role="listitem"><button type="button" class="v-chipbtn" data-action="route:open" data-id="${esc(r)}" aria-label="Route ${esc(state.routes?.[r]?.long || r)}">${routeChip(r, state.routes)}</button></span>`).join("")}</span>`
     : `<p class="v-sec">${all.length ? "None of your visible routes stop here." : "No routes listed for this stop."}</p>`;
   h += "</div>";
-  h += `<div class="v-actions"><button type="button" class="v-btn v-btn--primary" data-action="dir:to-stop" data-id="${esc(id)}">Directions to here</button><button type="button" class="v-btn v-btn--secondary" data-action="dir:from-stop" data-id="${esc(id)}">From here</button></div>`;
+  h += `<div class="v-actions v-stopacts"><button type="button" class="v-btn v-btn--primary" data-action="dir:to-stop" data-id="${esc(id)}" aria-label="Directions to here">${svg("corner-up-right", 17)}Directions</button><button type="button" class="v-btn v-btn--secondary" data-action="dir:from-stop" data-id="${esc(id)}">From here</button>${favButton(id, fav)}</div>`;
+  h += '<h3 class="v-h">Arrivals</h3>';
   if (!state.liveLoaded) h += skeleton(3);
   else {
     const arr = arrivalsFor(state, id, { hidden, nowS: now }).slice(0, MAX_ARRIVALS);
-    if (arr.length) h += '<div class="v-arrivals">' + arr.map((a) => arrivalRow(a, state, { now, action: "route:open" })).join("") + "</div>";
+    if (arr.length) h += '<div class="v-card v-arrivals">' + arr.map((a) => arrivalRow(a, state, { now, action: "route:open" })).join("") + "</div>";
     else {
       const running = (state.buses || []).length > 0, silent = !running && silentService(state, now);   // empty feed, routes scheduled
       const here = silent ? scheduledRoutes(state, now, { among: shown }) : [];
-      h += liveUnknown(state, now) ? emptyState("Live times unavailable", "Can't reach the shuttle feed, so we can't tell when the next bus comes.")   // feed outage != no service
-        : here.length ? emptyState("No live times right now", silentText(state, here, now, OFFICIAL_PHONE))
-        : emptyState("No upcoming arrivals", running ? "Nothing is predicted at this stop right now." : silent ? "No visible route at this stop is scheduled right now." : "No shuttles are running right now.");
+      h += liveUnknown(state, now) ? emptyState("Live times unavailable", "Can't reach the shuttle feed, so we can't tell when the next bus comes.", { icon: "wifi-off" })   // feed outage != no service
+        : here.length ? emptyState("No live times right now", silentText(state, here, now, OFFICIAL_PHONE), { icon: "antenna-off" })
+        : emptyState("No upcoming arrivals", running ? "Nothing is predicted at this stop right now." : silent ? "No visible route at this stop is scheduled right now." : "No shuttles are running right now.", { icon: "bus-front" });
       if (!running) h += noBusHelpHTML(state, now, { primary: false });   // "Directions to here" stays the one primary action
     }
   }
@@ -120,6 +145,7 @@ registerView("stop", {
   title: (state) => state.stops?.[state.stopId]?.name || "Stop",
   detent: "half",   // = keep the sheet as it is (ui/sheet.js): a map tap leaves it collapsed, the header names the stop
   meta: (state) => metaStop(state),
+  metaHTML: (state) => metaStopHTML(state),
   render: (state) => renderStop(state),
   unmount: () => {},
 });
