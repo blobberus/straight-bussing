@@ -114,6 +114,25 @@ test('landmarks layer: drawn above the route lines, by zoom, escaped, hidden fro
   m.remove();
 });
 
+test('landmarks layer: a pan that places the same names keeps their markers (no rebuild; 2026-11-05 optimization run)', () => {
+  box('t-lm-pan');
+  const m = window.L.map('t-lm-pan', { zoomControl: false, attributionControl: false, zoomSnap: 0.25 }).setView([41.7905, -87.599], 15);
+  m.createPane('sbLabels');
+  const layer = createLandmarkLayer(m, { pane: 'sbLabels' });
+  layer.setData([{ name: 'Regenstein Library', lat: 41.7922, lon: -87.5999, tier: 1, kind: 'library' }, { name: 'Max Palevsky Commons', lat: 41.7929, lon: -87.5998, tier: 1, kind: 'dorm' }]);
+  const before = [...m.getContainer().querySelectorAll('.sb-lm')];
+  ok(before.length >= 1, 'names placed');
+  m.panBy([12, -9], { animate: false });
+  layer.refresh();
+  const after = [...m.getContainer().querySelectorAll('.sb-lm')];
+  eq(after.length, before.length, 'the same names');
+  ok(after.every((x) => before.includes(x)), 'the same marker elements (moved with the map, not rebuilt)');
+  m.setZoom(15.5, { animate: false });
+  layer.refresh();
+  ok([...m.getContainer().querySelectorAll('.sb-lm')].every((x) => !before.includes(x)), 'a new zoom still redraws them');
+  m.remove();
+});
+
 test('landmarks: an easter-egg nickname replaces the name only close in (owner 2026-10-14, easter-eggs.json)', () => {
   const reg = { name: 'Regenstein Library', egg: 'The Reg', eggZ: 17.5 };
   eq([labelText(reg, 15), labelText(reg, 17.25), labelText(reg, 17.5), labelText(reg, 18)], ['Regenstein Library', 'Regenstein Library', 'The Reg', 'The Reg']);

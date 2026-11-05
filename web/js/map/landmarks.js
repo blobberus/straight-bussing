@@ -161,7 +161,9 @@ export function createLandmarkLayer(map, o = {}) {
     const me = typeof o.avoid === 'function' ? o.avoid() : null;
     if (me) { const p = map.latLngToContainerPoint(me), r = LABEL.ME_R; obstacles.push({ x: p.x - r, y: p.y - r, w: 2 * r, h: 2 * r }); }
     const placed = placeLabels(cands, obstacles, { w: size.x, h: size.y }, typeof o.textAt === 'function' ? o.textAt : null);
-    const s = placed.map((q) => `${q.id}:${Math.round(q.box.x)},${Math.round(q.box.y)}`).join(';') + '|' + z;
+    // in layer px (the same after a pan at this zoom), so a pan that places the same names keeps their markers instead of
+    // rebuilding every label (2026-11-05 optimization run)
+    const s = placed.map((q) => { const lp = map.containerPointToLayerPoint([q.box.x, q.box.y]); return `${q.id}:${Math.round(lp.x)},${Math.round(lp.y)}`; }).join(';') + '|' + z;
     if (s === sig) return;
     sig = s;
     group.clearLayers();
