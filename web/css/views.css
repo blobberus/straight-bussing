@@ -1,178 +1,230 @@
-/* View-specific styles (owner: D2). Shared tokens come from tokens.css (D1).
-   Every class is prefixed v- so it never collides with components.css / sheet.css. */
+/* View styles shared by several views (prefix v-; docs/DESIGN-SPEC.md 10.8 to 10.21). The shared primitives (.v-row,
+   .v-card, .v-prim, .v-sec, .v-btn, .v-h, .v-empty) are in components.css; per-view layouts in journey.css (Current
+   trip, Directions, search), trip.css (trip in progress), routes.css, route.css, myroutes.css, settings.css. */
 
-/* ---------- primitives ---------- */
-.v-grow { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.v-prim { font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 590; color: var(--text); margin: 0; overflow-wrap: anywhere; }
-.v-title { font-size: var(--fs-title); line-height: var(--lh-title); font-weight: 650; letter-spacing: -.01em; color: var(--text); }
-.v-sec { font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); margin: 0; }
+/* ---------- text helpers ---------- */
+.v-title { font: var(--t-hero-title); color: var(--label); }
 .v-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.v-ic { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; color: var(--accent); }
-.v-chev { flex: none; color: var(--text-2); display: inline-grid; place-items: center; opacity: .7; }
-.v-chev svg { width: 18px; height: 18px; }
-.v-h { margin: var(--s5) 0 var(--s1); font-size: var(--fs-body); line-height: var(--lh-body); font-weight: 600; color: var(--text-2); }
-.v-hint { margin: var(--s3) 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
-.v-fine { margin: var(--s1) 0 var(--s2); font-size: var(--fs-cap); line-height: var(--lh-cap); color: var(--text-2); }
-.v-lead { margin: var(--s1) 0 var(--s2); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
-.v-foot { margin: var(--s3) 0 var(--s2); font-size: var(--fs-cap); line-height: var(--lh-cap); color: var(--text-2); font-variant-numeric: tabular-nums; }
-.v-foot--warn { color: var(--warn); font-weight: 600; }
-.v-official { margin: var(--s2) 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); text-align: center; }
-.v-official a, .v-foot a, .v-about a:not(.v-btn) { color: var(--accent); font-weight: 600; text-decoration: none; display: inline-block; padding: 12px 2px; margin: -12px 0; }
+.v-ic { flex: none; display: inline-grid; place-items: center; width: var(--leading-slot); color: var(--tint); }
+.v-ic .ic { width: var(--i-row); height: var(--i-row); }
+/* footnotes (10.21): footnote label2, once at the end of the section they explain, 12 above the next section */
+.v-hint { margin: var(--s-3) 0; padding: 0 var(--s-1); font: var(--t-row-detail); color: var(--label-2); }
+.v-fine, .v-foot { margin: var(--s-3) var(--inset-content); font: var(--t-footnote); color: var(--label-2); font-variant-numeric: tabular-nums; }
+.v-lead { margin: var(--s-1) 0 var(--s-2); font: var(--t-row-detail); color: var(--label-2); }
+.v-foot--warn { color: var(--warn); font-weight: var(--w-semibold); }
+.v-official { margin: var(--s-3) var(--inset-content); font: var(--t-footnote); color: var(--label-2); text-align: center; }
+.v-official a, .v-foot a, .v-about a:not(.v-btn) { color: var(--tint); font-weight: var(--w-semibold); text-decoration: none; display: inline-block; padding: 12px 2px; margin: -12px 0; }
 
-/* ---------- rows and cards ---------- */
-.v-card { background: var(--surface); border-radius: var(--r-card); padding: 2px var(--s4); margin: var(--s2) 0; }
-.v-row { display: flex; align-items: center; gap: var(--s3); width: 100%; min-height: 56px; padding: var(--s2) 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform var(--d-press) var(--ease), opacity var(--d-press) var(--ease); }
-.v-row + .v-row::before { content: ""; position: absolute; top: 0; left: 40px; right: 0; height: 1px; background: var(--hairline); }
+/* ---------- card extras ---------- */
 .v-card > .v-row:first-child::before { display: none; }
-.v-row:has(> .chip:first-child)::before { left: 68px; }
-button.v-row:active { transform: scale(.98); opacity: .8; }
-.v-row:focus-visible, .v-tlbtn:focus-visible, .v-optmain:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; }
 .v-cardhead { min-height: 60px; }
-.v-hero { padding-bottom: var(--s1); }
-.v-none { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); min-height: 48px; padding: var(--s2) 0; border-top: 1px solid var(--hairline); }
-.v-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
-.v-livedot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--live); vertical-align: 1px; }
+.v-hero { padding-bottom: 0; }
+/* "No upcoming arrivals" inside a stop card, with the stop's routes */
+.v-none { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); min-height: var(--tap); padding: var(--s-3) var(--inset-content); position: relative; }
+.v-none::before { content: ""; position: absolute; top: 0; left: var(--inset-content); right: 0; height: .5px; background: var(--separator); }
 
-/* ---------- buttons ---------- */
-.v-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: var(--tap); padding: 0 var(--s4); border: 0; border-radius: var(--r-control); font: inherit; font-size: var(--fs-row); font-weight: 600; text-decoration: none; cursor: pointer; transition: transform var(--d-press) var(--ease), background var(--d-press) var(--ease); }
-.v-btn:active { transform: scale(.98); }
-.v-btn:focus-visible, .v-link:focus-visible, .v-eye:focus-visible, .v-dswap:focus-visible, .v-fchip-x:focus-visible, .v-chipbtn:focus-visible, .v-segbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.v-btn--primary { background: var(--accent-fill); color: var(--on-accent); min-height: 48px; }
-.v-btn--danger { background: var(--danger-fill); color: var(--on-danger); min-height: 48px; }
-.v-confirm-b { margin: var(--s2) 0 0; }
-.v-confirm-acts { margin-top: var(--s4); }
-.v-btn--secondary { background: var(--surface); color: var(--accent); min-height: 48px; }
-.v-btn--secondary:active { background: var(--surface-press); }
-.v-btn--quiet { background: none; color: var(--accent); padding: 0 var(--s2); font-size: var(--fs-body); }
-.v-btn--block { display: flex; width: 100%; margin: var(--s2) 0; }
-.v-btn .v-ic { color: inherit; width: 22px; height: 22px; }
-.v-actions { display: flex; gap: var(--s2); margin: var(--s2) 0 var(--s3); }
-.v-actions .v-btn { flex: 1 1 0; min-width: 0; padding: 0 var(--s3); font-size: var(--fs-body); text-align: center; }
-.v-actions .v-btn--primary { flex-grow: 1.4; }
-.v-link { min-height: var(--tap); padding: 0 var(--s2); border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
-.v-alt { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); margin: 0 0 var(--s1) calc(-1 * var(--s2)); }
+/* ---------- search field in the sheet: fill, rControl, 44, search icon 17 label2 ---------- */
+.v-search { position: relative; display: block; margin: 0 0 var(--s-2); }
+.v-search .v-ic { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 38px; color: var(--label-2); pointer-events: none; }
+.v-search .v-ic .ic { width: 17px; height: 17px; }
+.v-search input, .v-dfield input {
+  box-sizing: border-box; width: 100%; min-height: var(--tap); padding: 0 var(--s-3) 0 38px; border: 0;
+  border-radius: var(--r-control); background: var(--fill); color: var(--label); font: var(--t-body);
+  appearance: none; -webkit-appearance: none;
+}
+.v-search input::placeholder, .v-dfield input::placeholder { color: var(--label-2); opacity: 1; }
+.v-search input:focus-visible, .v-dfield input:focus-visible { outline: 2px solid var(--tint); outline-offset: 0; }
 
-/* ---------- search field ---------- */
-.v-search { position: relative; display: block; margin: var(--s1) 0 var(--s1); }
-.v-search .v-ic { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-2); pointer-events: none; }
-.v-search .v-ic svg { width: 18px; height: 18px; }
-.v-search input, .v-dfield input { box-sizing: border-box; width: 100%; min-height: var(--tap); padding: 0 var(--s3) 0 40px; border: 1px solid transparent; border-radius: var(--r-control); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-row); appearance: none; -webkit-appearance: none; }
-.v-search input::placeholder, .v-dfield input::placeholder { color: var(--text-2); opacity: 1; }
-.v-search input:focus-visible, .v-dfield input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+/* ---------- in-sheet notes: a card with rowDetail text; the warning form is warnBg ---------- */
+.v-locoff, .v-note, .v-anchor {
+  display: flex; align-items: center; gap: var(--s-3); margin: 0 0 var(--s-3); padding: var(--s-3) var(--inset-content);
+  border-radius: var(--r-card); background: var(--bg-card); font: var(--t-row-detail); color: var(--label-2);
+}
+.v-locoff b { color: var(--label); }
+.v-locoff--card { align-items: flex-start; }
+.v-loctried { display: block; margin-top: var(--s-2); color: var(--label); }
+.v-locoff .v-ic { width: auto; color: var(--label-2); }
+.v-note .v-btn--quiet { flex: none; }
+.v-anchor .v-prim { font: var(--t-row-title); }
+.v-stale {
+  display: flex; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-3); padding: var(--s-3) var(--inset-content);
+  border-radius: var(--r-card); background: var(--warn-bg); color: var(--label); font: var(--t-row-detail);
+}
+.v-stale::before {
+  content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warn);
+}
 
-/* ---------- empty / notices ---------- */
-.v-empty { display: flex; flex-direction: column; gap: 4px; padding: var(--s5) var(--s2); text-align: center; color: var(--text-2); font-size: var(--fs-body); line-height: var(--lh-body); }
-.v-empty b { color: var(--text); font-size: var(--fs-row); line-height: var(--lh-row); font-weight: 600; }
-.v-locoff, .v-note, .v-anchor { display: flex; align-items: center; gap: var(--s3); margin: var(--s2) 0; padding: var(--s3) var(--s4); border-radius: var(--r-card); background: var(--surface); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
-.v-locoff b { color: var(--text); }
-.v-cover .v-grow { display: flex; flex-direction: column; gap: 2px; }
-.v-cover b { color: var(--text); font-weight: 600; }
-.v-locoff .v-ic { color: var(--text-2); }
-.v-anchor .v-prim { font-size: var(--fs-body); }
-.v-stale { margin: var(--s2) 0; padding: var(--s2) var(--s3); border-radius: var(--r-control); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-body); font-weight: 600; }
+/* ---------- Routes to station ---------- */
+.v-choice { min-height: 60px; }
+.v-choice--primary { margin: 0 0 var(--s-3); border-radius: var(--r-card); background: var(--bg-card); }
+.v-choices .v-row + .v-row::before { left: var(--separator-inset); }
 
-/* ---------- pick ---------- */
-.v-choice { min-height: 64px; }
-.v-choice--primary { background: var(--surface); border-radius: var(--r-card); padding: var(--s2) var(--s4); margin: var(--s2) 0; box-sizing: border-box; }
-.v-choices .v-row + .v-row::before { left: 40px; }
-.v-dialog { width: min(92vw, 400px); max-height: 86vh; box-sizing: border-box; padding: var(--s5); border: 0; border-radius: var(--r-sheet); background: var(--bg-solid); color: var(--text); box-shadow: var(--shadow-sheet); font-family: var(--font); }
+/* ---------- native dialogs (confirm, picker lists): centered card over the scrim (10.13) ---------- */
+.v-dialog {
+  width: min(calc(100vw - 48px), 360px); max-height: 86vh; box-sizing: border-box; padding: var(--s-5); border: 0;
+  border-radius: var(--r-sheet); background: var(--bg-card); color: var(--label); box-shadow: var(--e-3); font: var(--t-body);
+}
 .v-dialog::backdrop { background: var(--scrim); }
-.v-dialog[open] { animation: v-pop var(--d-swap) var(--ease-enter); }
-.v-dlg-title { margin: 0; font-size: var(--fs-title); line-height: var(--lh-title); font-weight: 650; }
+.v-dialog[open] { animation: v-pop var(--m-standard) var(--ease-standard); }
+.v-dlg-title { margin: 0; font: var(--t-row-title); }
 .v-dlg-title:focus { outline: none; }
-.v-dlg-sub { margin: 4px 0 var(--s2); }
-.v-dlg-cancel { display: flex; width: 100%; margin-top: var(--s2); }
-@keyframes v-pop { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+.v-dlg-sub { margin: var(--s-1) 0 var(--s-3); font: var(--t-row-detail); color: var(--label-2); }
+.v-dlg-cancel { display: flex; width: 100%; margin-top: var(--s-2); }
+/* the confirm dialog (ui/confirm.js, spec 10.13): title rowTitle, message rowDetail, Cancel (Secondary) and the confirm
+   (Primary or Destructive confirm) side by side, stacked when a label would wrap (.v-actions at accessibility sizes) */
+.v-confirm-b { margin: var(--s-2) 0 0; font: var(--t-row-detail); color: var(--label-2); }
+.v-confirm-acts { margin: var(--s-5) 0 0; }
+@keyframes v-pop { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: none; } }   /* like an iOS alert: settles down to size */
+/* a confirmation grows out of the button that asked for it (glass spec 8.14, mZoomSheet; ui/confirm.js sets the origin);
+   reduced motion: the global rule makes it instant */
+.v-dialog.v-confirm.is-zoom[open] { animation: v-zoom var(--m-zoom-sheet) var(--ease-zoom-sheet); }
+@keyframes v-zoom { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
 
-/* ---------- stop ---------- */
-.v-stophead { display: flex; flex-direction: column; gap: var(--s1); margin: 0 0 var(--s1); }
-.v-chipbtn { display: inline-grid; place-items: center; min-width: var(--tap); min-height: var(--tap); padding: 0; border: 0; background: none; cursor: pointer; }
+/* ---------- stop (place details for a station, 10.14) ---------- */
+.v-stophead { display: flex; flex-direction: column; gap: var(--s-2); margin: 0 0 var(--s-1); padding: 0 var(--s-1); }
+.v-stopchips { gap: var(--s-2); padding: 6px 0; }
+/* Directions, From here, Favorite in one row sized by their words (spec 10.14); a narrow phone wraps the last one, the
+   accessibility sizes stack all three with Directions first (components.css .v-actions) */
+.v-stopacts { flex-wrap: wrap; }
+.v-stopacts .v-btn { flex: 1 1 auto; padding: 0 var(--s-3); }
+.v-chipbtn { position: relative; display: inline-grid; place-items: center; min-width: var(--tap); min-height: var(--tap); margin: -10px -6px; padding: 0; border: 0; background: none; cursor: pointer; }
+.v-chipbtn:active { opacity: .6; }
 .v-addr { margin: 0; }
 
-/* ---------- routes ---------- */
-.v-fchip { display: flex; align-items: center; gap: 2px; width: max-content; max-width: 100%; min-height: var(--tap); margin: var(--s1) 0 var(--s2); padding: 0 2px 0 var(--s4); border-radius: var(--r-chip); background: var(--accent-fill); color: var(--on-accent); font-weight: 600; font-size: var(--fs-body); box-sizing: border-box; }
+/* ---------- Routes station filter chip ("Routes to X" with a clear button) ---------- */
+.v-fchip {
+  display: flex; align-items: center; gap: 2px; width: max-content; max-width: 100%; min-height: 36px;
+  margin: 0 0 var(--s-3); padding: 0 2px 0 var(--s-4); border-radius: var(--r-capsule);
+  background: var(--tint-fill); color: var(--on-fill); font: var(--t-row-detail); font-weight: var(--w-semibold); box-sizing: border-box;
+}
 .v-fchip-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.v-fchip-x { flex: none; width: var(--tap); height: var(--tap); border: 0; border-radius: 50%; background: none; color: inherit; font-size: 24px; line-height: 1; cursor: pointer; }
-.v-routerow { display: flex; align-items: center; gap: var(--s1); position: relative; }
-.v-routerow + .v-routerow::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--hairline); }
+.v-fchip-x { position: relative; flex: none; display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: none; color: inherit; cursor: pointer; }
+.v-fchip-x::after { content: ""; position: absolute; inset: -4px; }
+.v-fchip-x:active { background: color-mix(in srgb, var(--on-fill) 20%, transparent); }
+/* the Routes list rows: a route button and the show / hide eye */
+.v-routerow { display: flex; align-items: center; gap: 0; position: relative; padding-right: var(--s-1); }
+.v-routerow + .v-routerow::before { content: ""; position: absolute; top: 0; left: var(--separator-inset); right: 0; height: .5px; background: var(--separator); z-index: 1; }
 .v-rowmain { flex: 1 1 auto; min-width: 0; }
-.v-routerow.is-off .v-rowmain { opacity: .55; }
+.v-routerow .v-rowmain::before { display: none; }
+.v-routerow.is-off .v-rowmain > .chip { opacity: .4; }
+.v-routerow.is-off .v-rowmain .v-prim { color: var(--label-2); }
 .v-list.is-dim .v-rowmain { opacity: .7; }
-.v-eye { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); border: 0; border-radius: var(--r-control); background: none; color: var(--accent); cursor: pointer; }
-.v-routerow.is-off .v-eye { color: var(--text-2); }
+.v-eye { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); border: 0; border-radius: 50%; background: none; color: var(--tint); cursor: pointer; transition: opacity var(--m-press) var(--ease-out); }
+.v-eye:active { opacity: .6; }
+.v-routerow.is-off .v-eye { color: var(--label-2); }
 
-/* ---------- route timeline ---------- */
-.v-status { margin: 0 0 var(--s2); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text); font-weight: 600; }
-.v-tl { list-style: none; margin: var(--s2) 0; padding: 0; }
-.v-tlstop { position: relative; padding-left: 32px; }
-.v-tlstop::before { content: ""; position: absolute; left: 10px; top: 0; bottom: 0; width: 4px; background: var(--rc, #888); }
+/* ---------- route timeline (route detail; 10.16 rail: 4 px line in the route color, 10 pt stops with a 2.5 pt ring) ---------- */
+.v-status { margin: 0 0 var(--s-1); font: var(--t-row-title); color: var(--label); }
+.v-tl { list-style: none; margin: 0 0 var(--s-3); padding: 0 var(--inset-content) 0 0; border-radius: var(--r-card); background: var(--bg-card); }
+.v-tlstop { position: relative; padding-left: 44px; }
+.v-tlstop::before { content: ""; position: absolute; left: 20px; top: 0; bottom: 0; width: 4px; background: var(--rc, var(--label-3)); }
 .v-tlstop:first-child::before { top: 50%; }
 .v-tlstop:last-child::before { bottom: 50%; }
-.v-tlstop::after { content: ""; position: absolute; left: 5px; top: 50%; margin-top: -7px; width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; background: var(--bg-solid); border: 3px solid var(--rc, #888); }
-.v-tlstop.has-bus::after { background: var(--rc, #888); box-shadow: 0 0 0 3px var(--bg-solid); }
-.v-tlbtn { display: flex; align-items: center; gap: var(--s3); width: 100%; min-height: 52px; padding: var(--s2) 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.v-tlbtn:active { opacity: .7; }
-.v-tlbus { align-self: flex-start; margin-top: 2px; padding: 1px 8px; border-radius: var(--r-chip); font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: 600; }
-.v-tleta { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
-.v-tleta.is-now { color: var(--live-text, var(--live)); }
+.v-tlstop::after { content: ""; position: absolute; left: 17px; top: 50%; margin-top: -5px; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; background: var(--bg-card); border: 2.5px solid var(--rc, var(--label-3)); }
+.v-tlstop.has-bus::after { left: 15px; width: 14px; height: 14px; margin-top: -7px; background: var(--rc, var(--label-3)); box-shadow: 0 0 0 2px var(--bg-card); border-width: 0; }
+.v-tlstop + .v-tlstop .v-tlbtn::before { content: ""; position: absolute; top: 0; left: 44px; right: 0; height: .5px; background: var(--separator); }
+.v-tlbtn { position: relative; display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: 52px; padding: var(--s-2) 0; border: 0; background: none; color: inherit; font: var(--t-body); text-align: left; cursor: pointer; }
+.v-tlbtn:active { opacity: .6; }
+.v-tlbus { align-self: flex-start; margin-top: 2px; padding: 0 var(--s-2); border-radius: var(--r-tag); font: var(--t-badge-sm); line-height: 20px; }
+.v-tleta { flex: none; min-width: 52px; text-align: right; font: var(--t-row-title); font-variant-numeric: tabular-nums; color: var(--label); white-space: nowrap; }
+.v-tleta.is-now { color: var(--live); }
 
-/* ---------- alerts ---------- */
+/* ---------- Alerts (10.18): one card per alert; title rowTitle, the operator's text verbatim, "Until ..." footnote ---------- */
 .v-alertlist { list-style: none; margin: 0; padding: 0; }
-.v-alert { position: relative; display: flex; gap: var(--s3); padding: var(--s3) var(--s3); margin: var(--s2) 0; border-radius: var(--r-card); background: var(--surface); }
+.v-alert { position: relative; display: flex; gap: var(--s-3); margin: 0 0 var(--s-3); padding: var(--s-3) var(--inset-content); border-radius: var(--r-card); background: var(--bg-card); }
 .v-alert.is-severe { background: var(--warn-bg); }
-.v-alertic { flex: none; color: var(--warn); padding-top: 1px; }
-.v-alertbody { margin-top: 2px; white-space: pre-line; }
-.v-alertmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: var(--s2) 0 0; }
-.v-aboutrow { margin-top: var(--s3); border-top: 1px solid var(--hairline); }
+.v-alert .v-prim { -webkit-line-clamp: unset; display: block; }
+.v-alertic { flex: none; color: var(--tint); padding-top: 2px; }
+.v-alert.is-severe .v-alertic { color: var(--warn); }
+.v-alertic .ic { width: 17px; height: 17px; }
+.v-alertbody { margin-top: var(--s-1); font: var(--t-body); color: var(--label); white-space: pre-line; max-width: 65ch; }
+.v-alertmeta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: var(--s-2) 0 0; }
+.v-alertmeta .v-sec { font: var(--t-footnote); }
+.v-aboutrow { margin-top: var(--s-3); border-radius: var(--r-card); background: var(--bg-card); }
+.v-aboutrow .v-ic { color: var(--tint); }
 
-/* ---------- about ---------- */
-.v-about p { margin: var(--s2) 0; }
-.v-unofficial { padding: var(--s3) var(--s4); }
-.v-unofficial .v-actions { flex-wrap: wrap; }
-.v-unofficial .v-btn { flex: 1 1 100%; }   /* stacked: "Official transportation page" never wraps */
-.v-unofficial .v-btn--secondary { background: var(--bg-solid); }
-.v-plain { margin: var(--s1) 0; padding-left: 1.1em; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text); }
-.v-plain li { margin: var(--s2) 0; }
-.v-seg { display: flex; gap: 2px; padding: 2px; border-radius: var(--r-control); background: var(--surface); }
-.v-segbtn { position: relative; flex: 1; min-height: 40px; border: 0; border-radius: var(--r-inner); background: none; color: var(--text); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
-.v-segbtn.is-on { background: var(--seg-on); box-shadow: var(--shadow-thumb); }
+/* ---------- About ---------- */
+.v-about p { margin: var(--s-2) 0; }
+.v-about > .v-sec, .v-about > p.v-sec { padding: 0 var(--inset-content); }
+.v-unofficial { padding: var(--s-4) var(--inset-content); }
+.v-unofficial .v-prim { -webkit-line-clamp: unset; display: block; }
+.v-unofficial .v-actions { flex-direction: column; }
+.v-unofficial .v-btn { flex: 1 1 auto; min-height: 50px; }   /* stacked: "Official transportation page" never wraps */
+.v-plain { margin: 0; padding: var(--s-3) var(--inset-content) var(--s-3) calc(var(--inset-content) + 1.1em); border-radius: var(--r-card); background: var(--bg-card); font: var(--t-row-detail); color: var(--label); max-width: 100%; }
+.v-plain li { margin: var(--s-2) 0; max-width: 65ch; }
+.v-plain.v-sec { color: var(--label-2); }
+.v-theme { margin: 0; }
 
-/* ---------- directions ---------- */
-.v-dirbox { position: relative; display: flex; flex-direction: column; gap: 6px; margin: var(--s1) 0 var(--s2); padding-right: 52px; }
+/* ---------- Directions field card (10.2): two 44 fields in fill (radius 10, concentric with the 20 card and its
+   10 inset), a hollow tint ring for Start and a dangerFill dot for Destination, the swap button at the trailing edge
+   centered between the fields, a clear button in a focused field ---------- */
+/* glass spec 9.2: the card is the first thing in the expanded sheet (content layer, solid bgCard, not glass), pinned at
+   the top while the suggestions and options scroll under it; a strip of the sheet color covers what scrolls above it */
+.v-dirbox {
+  position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; gap: var(--s-2);
+  margin: 0 0 var(--s-3); padding: 10px 56px 10px 10px; border-radius: var(--r-card); background: var(--bg-card);
+  box-shadow: 0 calc(-1 * var(--s-1)) 0 var(--s-1) var(--bg-sheet);
+}
 .v-dfield { position: relative; }
-.v-pin { position: absolute; left: 14px; top: 50%; width: 12px; height: 12px; margin-top: -6px; box-sizing: border-box; border-radius: 50%; border: 3px solid var(--bg-solid); box-shadow: 0 0 0 1px var(--hairline-strong); }
-.v-pin--a { background: var(--live); }
-.v-pin--b { background: var(--danger); }
+.v-dfield input { border-radius: var(--r-nested); padding-right: 40px; }
+.v-pin { position: absolute; left: 14px; top: 50%; width: 10px; height: 10px; margin-top: -5px; box-sizing: border-box; border-radius: 50%; }
+.v-pin--a { background: none; border: 2.5px solid var(--tint); }
+.v-pin--b { background: var(--danger-fill); }
 .v-si .v-pin { position: static; display: inline-block; margin: 0; }
-.v-dswap { position: absolute; right: 0; top: 50%; width: var(--tap); height: var(--tap); margin-top: -22px; display: grid; place-items: center; border: 0; border-radius: var(--r-control); background: var(--surface); color: var(--accent); cursor: pointer; }
+.v-dclear { position: absolute; right: 0; top: 0; display: none; place-items: center; width: var(--tap); height: var(--tap); border: 0; background: none; color: var(--label-3); cursor: pointer; }
+.v-dfield:focus-within input:not(:placeholder-shown) ~ .v-dclear { display: grid; }
+.v-dswap { position: absolute; right: 6px; top: 50%; width: var(--tap); height: var(--tap); margin-top: -22px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--tint); cursor: pointer; transition: opacity var(--m-press) var(--ease-out); }
+.v-dswap:active { opacity: .6; }
 .v-sugs { margin-top: 0; }
-.v-sugs .v-row { min-height: 52px; }
-.v-sugs .v-prim { font-size: 1rem; }
-.v-est { display: inline-block; padding: 0 6px; border-radius: var(--r-tag); background: var(--est-bg, var(--hairline)); color: var(--text-2); font-size: 11px; line-height: 16px; font-weight: 600; vertical-align: 2px; white-space: nowrap; }
-.v-opt { margin: var(--s2) 0; padding: 0 var(--s4) var(--s1); border-radius: var(--r-card); background: var(--surface); border: 2px solid transparent; }
-.v-opt.is-on { border-color: var(--accent-fill); }
-.v-optmain { display: flex; flex-direction: column; gap: 6px; width: 100%; min-height: 56px; padding: var(--s3) 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-button.v-optmain:active { opacity: .8; }
-.v-otop { display: flex; align-items: baseline; gap: var(--s2); width: 100%; }
-.v-otot { font-family: var(--font-rounded); font-size: 1.625rem; line-height: 1.875rem; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text); }
-.v-otot small { font-family: var(--font); font-size: var(--fs-cap); font-weight: 600; letter-spacing: 0; color: var(--text-2); }
-.v-oarr { margin-left: auto; font-size: var(--fs-body); font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.v-osum { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.v-wk { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-body); font-weight: 600; color: var(--text-2); }
-.v-arr { color: var(--text-2); font-size: var(--fs-row); }
-.v-steps { list-style: none; margin: 0; padding: var(--s2) 0; border-top: 1px solid var(--hairline); font-size: var(--fs-body); line-height: var(--lh-body); }
-.v-steps li { display: flex; gap: var(--s3); padding: var(--s2) 0; }
-.v-si { flex: none; min-width: 36px; display: inline-flex; justify-content: center; align-items: flex-start; padding-top: 2px; color: var(--text-2); }
-.v-stept { flex: 1 1 auto; min-width: 0; display: block; }
-.v-stepsub { display: block; margin-top: 2px; }
-.v-clock { font-variant-numeric: tabular-nums; }
+.v-sugs .v-row { min-height: 56px; }
+.v-sugs .v-ic { color: var(--label-2); }
 
-.v-estnote { margin: var(--s3) 0; }
+/* ---------- route option card (10.15): four lines collapsed; the selected one has a 2 pt tint border drawn inside,
+   the steps, Start and its footnote ---------- */
+.v-opt { position: relative; margin: 0 0 var(--s-3); padding: 0 var(--inset-content); border-radius: var(--r-card); background: var(--bg-card); }
+.v-opt.is-on { box-shadow: inset 0 0 0 2px var(--tint-fill); }
+.v-optmain { display: flex; flex-direction: column; gap: var(--s-1); width: 100%; min-height: 56px; padding: var(--s-4) 0; border: 0; background: none; color: inherit; font: var(--t-body); text-align: left; cursor: pointer; }
+button.v-optmain:active { opacity: .7; }
+.v-optmain:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; border-radius: var(--r-card); }
+.v-otop { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: var(--s-2); width: 100%; }
+.v-otot { font: var(--t-hero-title); color: var(--label); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.v-otot small { font: var(--t-hero-title); }
+.v-otot .v-est { font: var(--t-footnote); }
+.v-oarr { margin-left: auto; font: var(--t-row-title); color: var(--label); font-variant-numeric: tabular-nums; white-space: nowrap; }
+html[data-text="ax"] .v-oarr { margin-left: 0; flex-basis: 100%; }
+.v-osum { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); margin: var(--s-1) 0; }
+.v-wk { display: inline-flex; align-items: center; gap: 2px; font: var(--t-footnote); font-weight: var(--w-semibold); color: var(--label-2); }
+.v-wk .ic { width: var(--i-inline); height: var(--i-inline); }
+.v-arr { display: inline-grid; place-items: center; color: var(--label-3); }
+.v-arr .ic { width: 11px; height: 11px; }
+/* step list (10.16): a vertical timeline with a 24 pt rail column */
+.v-steps { list-style: none; margin: 0; padding: var(--s-2) 0 var(--s-3); border-top: .5px solid var(--separator); }
+.v-steps li { position: relative; display: flex; gap: var(--s-3); padding: var(--s-2) 0; }
+.v-steps li:not(:last-child)::after {   /* the rail between nodes: dotted for walks, the route color for rides */
+  content: ""; position: absolute; left: 11px; top: 34px; bottom: -6px; width: 2px;
+  background: radial-gradient(circle, var(--tint-fill) 1.4px, transparent 1.6px) 50% 0 / 3px 9px repeat-y;
+}
+.v-steps li.j-bus:not(:last-child)::after { left: 10px; width: 4px; background: var(--rc, var(--label-3)); border-radius: 2px; }
+.v-si { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; color: var(--tint); }
+.v-steps li.j-walk .v-si { background: var(--tint-bg); }
+.v-steps li.j-walk .v-si .ic { width: var(--i-inline); height: var(--i-inline); }
+.v-steps li.j-bus .v-si { width: 24px; overflow: visible; }
+.v-steps li.j-bus .v-si .chip { min-width: 28px; height: 20px; padding: 0 5px; font: var(--t-badge-sm); }
+.v-steps li.j-dest .v-si .v-pin { width: 14px; height: 14px; box-shadow: 0 0 0 2px var(--bg-card); }
+.v-stept { flex: 1 1 auto; min-width: 0; display: block; font: var(--t-body); color: var(--label); padding-top: 1px; }   /* body, the place and time Semibold (iOS StepRow) */
+.v-stept b { font-weight: var(--w-semibold); }
+.v-stepsub { display: block; margin-top: 2px; font: var(--t-row-detail); color: var(--label-2); }
+.v-steplive { display: flex; align-items: center; }
+.v-clock { font-variant-numeric: tabular-nums; }
+.v-estnote { margin: var(--s-3) var(--inset-content); }
 
 @media (prefers-reduced-motion: reduce) {
-  .v-row, .v-btn, .v-dialog[open] { transition: none; animation: none; }
-  button.v-row:active, .v-btn:active { transform: none; }
+  .v-dialog[open] { animation: none; }
 }
 @media (prefers-contrast: more) {
-  .v-card, .v-opt, .v-alert, .v-locoff, .v-note, .v-anchor { outline: 1px solid currentColor; }
+  .v-opt, .v-alert, .v-locoff, .v-note, .v-anchor, .v-tl, .v-plain { outline: 1px solid var(--separator); }
 }
+
+/* Current trip with no trip in progress (owner 2026-11-04, ui/views/nearby.js noTripHTML): the state in words, how to
+   start, one primary way to start; the empty-state card's look (10.20) */
+.pt-notrip .pt-notrip-go { margin-top: var(--s-3); }

@@ -11,15 +11,24 @@
  * leads), "Also nearby" (1 arrival each) or "Arriving soon", and the quiet "No trip in progress" hint last.
  * Never a dead end; denied location is a first-class state. Visibility follows core/visibility.js
  * effectiveHidden (journey > hidden routes / applied custom route).
+ * No trip in progress (owner 2026-11-04: "In the current trip menu, if a current trip is not selected, don't display
+ * nearby routes, rather, just show that no current trip is selected. Keep the favorites and search station bar. Also
+ * keep the alerts."; glass spec 18 D6, a deliberate departure from the next-bus-in-one-glance rule): the alert row,
+ * "No current trip selected" with how to start one (Search for a destination), the station search with its links, and
+ * the favorites. No nearest stop, no Arriving soon / Also nearby, no "Use my location" (location still works from
+ * the locate button and Settings); the collapsed header says "No current trip selected" instead of the next bus. A place
+ * typed in the search ("Type an address or place") still lists the stops near it: that is the search's own result.
  * With real location, each arrival says "Leave now" / "Leave in N min" or that it leaves before you
  * could walk to the stop (walking estimate, ./tripinfo.js catchNote; labeled est.).
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
-import { nowS, minsUntil } from "../../core/time.js";
+import { nowS, minsUntil, clock } from "../../core/time.js";
+import { locResultText } from "../../core/lochelp.js";
 import { arrivalsFor, liveUnknown } from "../../core/arrivals.js";
 import { routeChip, etaBlock, arrivalRow, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
+import { svg } from "../icons.js";
 import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
 import { stopsNear, matchStations, walkText, OFFICIAL_HTML, ICONS } from "./pick.js";
 import { createPlaceSearch, placeListHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
@@ -28,7 +37,7 @@ import { alertBanner, noBusHelpHTML } from "./alerts.js";
 import { stopWalkMin } from "./tripinfo.js";
 import { FAV_MAX, isStale, nameOf, guidedRow, pickArrivals, favoritesHTML, soonest } from "./nearby-cards.js";
 import { isPlanJourney } from "./journey.js";
-import { tripProgressHTML, tripMetaText } from "./tripprogress.js";
+import { tripProgressHTML, tripMetaText, tripMetaHTML, tripHeader } from "./tripprogress.js";
 
 export { FAV_MAX, guidedRow, pickArrivals, favoritesHTML };   // their home is ./nearby-cards.js (tests import them from here)
 
@@ -45,11 +54,11 @@ function noService(state, now) {
   // the operator's alert + who to call; the call is the primary button unless "Use my location" already is
   const help = noBusHelpHTML(state, now, { primary: !locPrimary(state) });
   // a feed outage is not a service outage: never claim "no shuttles" without live data
-  if (liveUnknown(state, now)) return emptyState(NO_LIVE, "Can't reach the shuttle feed, so we can't tell which shuttles are running. Check with the official service.") + help;
-  if ((state.buses || []).length) return emptyState("No upcoming arrivals", "No bus on your visible routes has a predicted arrival right now.") + OFFICIAL_HTML;
+  if (liveUnknown(state, now)) return emptyState(NO_LIVE, "Can't reach the shuttle feed, so we can't tell which shuttles are running. Check with the official service.", { icon: "wifi-off" }) + help;
+  if ((state.buses || []).length) return emptyState("No upcoming arrivals", "No bus on your visible routes has a predicted arrival right now.", { icon: "bus-front" }) + OFFICIAL_HTML;
   // fresh but empty feed while routes are scheduled: GPS off or service ended early, we can't tell (rider safety)
-  if (silentService(state, now)) return emptyState("No live locations right now", silentText(state, scheduledRoutes(state, now, { hidden: effectiveHidden(state) }), now, OFFICIAL_PHONE)) + help;
-  return emptyState("No shuttles running right now", "Check the official schedule for service hours.") + help;
+  if (silentService(state, now)) return emptyState("No live locations right now", silentText(state, scheduledRoutes(state, now, { hidden: effectiveHidden(state) }), now, OFFICIAL_PHONE), { icon: "antenna-off" }) + help;
+  return emptyState("No shuttles running right now", "Check the official schedule for service hours.", { icon: "bus-front" }) + help;
 }
 
 function stopCard(state, s, now, max, hero, guide) {
@@ -98,21 +107,45 @@ function soonList(state, now) {
   }).join("") + "</div>";
 }
 
+/**
+ * What the last location try did, for the blocked-location card (spec 13.3): "Tried at 4:06 PM (try 2): still blocked, so
+ * no popup. Tap "How to allow location" for the steps." ('' before any try).
+ * @param {{code:number, at:number, n:number}|null} err store.locErr
+ * @returns {string}
+ */
+export function triedText(err) {
+  if (!err || !err.at) return "";
+  if (err.code !== 1) return locResultText(err, (t) => clock(t));
+  return `Tried at ${clock(Math.round(err.at / 1000))}${err.n > 1 ? ` (try ${err.n})` : ""}: still blocked, so no popup. Tap "How to allow location" for the steps.`;
+}
+
 /** "Use my location" is the screen's one primary action (no location yet, not asking, not denied). */
 const locPrimary = (state) => !state.user && state.locState !== "asking" && state.locState !== "denied";
 
 function locBlock(state) {
   if (state.locState === "asking") return '<p class="v-hint" role="status">Finding your location&hellip;</p>';
   if (state.locState === "denied") {
-    return '<div class="v-locoff" role="status"><span class="v-ic" aria-hidden="true">' + ICONS.loc + '</span><span class="v-grow"><b>Location is blocked for this site.</b> Your browser will not ask again by itself; it has to be allowed in your settings. You can still search below.</span></div>'
+    // spec 13.3: one card first, the help and the retry inside it, and what the last try did in view (not a toast over
+    // the title, audit defect 3); then "Search stations" so the app stays usable
+    const tried = triedText(state.locErr);
+    return '<div class="v-locoff v-locoff--card" role="status"><span class="v-ic" aria-hidden="true">' + ICONS.loc + '</span><span class="v-grow"><b>Location is blocked for this site.</b> Your browser will not ask again by itself; it has to be allowed in your settings. You can still search below.'
+      + (tried ? `<span class="v-loctried">${esc(tried)}</span>` : "") + "</span></div>"
       + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="settings:open" data-section="loc">How to allow location</button>'
       + '<button type="button" class="v-btn v-btn--quiet v-btn--block" data-action="nearby:locate">Try location again</button>';
   }
   return '<button type="button" class="v-btn v-btn--primary v-btn--block" data-action="nearby:locate"><span class="v-ic" aria-hidden="true">' + ICONS.loc + "</span>Use my location</button>";
 }
 
-/** The no-trip hint: a quiet line at the end of the view (owner decision 2026-10-11: no card at the top). */
-export const NO_TRIP_HINT = "No trip in progress. Search for a destination above, choose a route and tap Start.";
+/** No trip in progress (owner 2026-11-04): what the view and the collapsed header say, and how to start one. */
+export const NO_TRIP_TITLE = "No current trip selected";
+export const NO_TRIP_HINT = "Search for a destination, choose a route and tap Start.";
+/** The no-trip card at the top (under the alert row): the state in words, how to start, one way to start. */
+export function noTripHTML() {
+  return `<div class="empty pt-notrip" role="status"><span class="empty-ic" aria-hidden="true">${svg("route", 28)}</span><b>${esc(NO_TRIP_TITLE)}</b><span>${esc(NO_TRIP_HINT)}</span>`
+    + '<button type="button" class="v-btn v-btn--primary v-btn--block pt-notrip-go" data-action="dir:open" data-focus="to">Search for a destination</button></div>';
+}
+/** Nearby buses only while a trip is in progress (owner 2026-11-04); a typed place still lists the stops near it. */
+const tripOn = (state) => isPlanJourney(state);
 
 /**
  * The next bus, first under the title (owner decision 2026-10-11; region nearby-next): with location (or a typed
@@ -123,17 +156,23 @@ export const NO_TRIP_HINT = "No trip in progress. Search for a destination above
  * @returns {string}
  */
 export function nextHTML(state, now = nowS()) {
-  const point = pointOf(state);
+  if (!tripOn(state) && !N.anchor) return "";   // no trip: no nearby buses (owner 2026-11-04)
+  const point = tripOn(state) ? pointOf(state) : N.anchor;
   if (!point) return favoritesHTML(state, now);
   const anchor = !state.user && N.anchor ? `<div class="v-anchor"><span class="v-grow"><span class="v-sec">Showing stops near</span><span class="v-prim">${esc(N.anchor.label)}</span></span><button type="button" class="v-btn v-btn--quiet" data-action="nearby:clear-place" aria-label="Clear place ${esc(N.anchor.label)}">Clear</button></div>` : "";
   const s = nearest(state, point, 1)[0];
   // no bus reports: why the card has no times and who to call, right under it (rider safety)
-  return anchor + (s ? stopCard(state, s, now, 3, true, !!state.user) + (noBusReports(state, now) ? noService(state, now) : "") : "");
+  const guide = tripOn(state) && !!state.user;
+  return anchor + (s ? stopCard(state, s, now, 3, true, guide) + (noBusReports(state, now) ? noService(state, now) : "") : "");
 }
 
 /** Body below the search field when nothing is typed: favorites (when the hero is a nearest stop), the rest. */
 export function bodyHTML(state, now = nowS()) {
-  return (pointOf(state) ? favoritesHTML(state, now) : "") + placesHTML(state, now) + (isPlanJourney(state) ? "" : `<p class="v-fine pt-hint">${esc(NO_TRIP_HINT)}</p>`);
+  if (!tripOn(state)) {   // owner 2026-11-04: the favorites, and a typed place's stops; nothing nearby by location
+    const place = N.anchor ? (nearList(state, N.anchor, now, false) ?? '<div class="v-empty"><b>No stops within 5 km of this place</b><span>Try another place or search a station.</span></div>') : "";
+    return favoritesHTML(state, now) + place;
+  }
+  return (pointOf(state) ? favoritesHTML(state, now) : "") + placesHTML(state, now);
 }
 
 function placesHTML(state, now) {
@@ -160,7 +199,7 @@ export function resultsHTML(state) {
 
 /** Location prompt above the search field (empty once located). */
 function locHTML(state) {
-  return state.user ? "" : locBlock(state);
+  return state.user || !tripOn(state) ? "" : locBlock(state);   // no trip: nothing nearby to locate for (owner 2026-11-04)
 }
 
 function regionHTML(state, now) {
@@ -189,7 +228,7 @@ export function altHTML(state) {
  * @returns {string}
  */
 export function entryHTML(state, now = nowS()) {
-  if (!isPlanJourney(state)) return "";
+  if (!isPlanJourney(state)) return noTripHTML();
   return tripProgressHTML(state, now, { actionsHTML: '<button type="button" class="v-btn v-btn--secondary v-btn--block pt-pick" data-action="pick:open">Routes to station&hellip;</button>' });
 }
 
@@ -211,40 +250,39 @@ export function renderNearby(state, now = nowS()) {
 }
 
 /**
- * Right side of the sheet title line at Nearby (router def.meta), e.g. "53RD · 4 min"; while a trip is in progress the
- * trip's own line instead (ui/views/tripprogress.js tripMetaText: "Arriving In: 4 min", "Walk 6 min").
+ * Right side of the sheet title line at Current trip (router def.meta) while a trip is in progress: the trip's own line
+ * (ui/views/tripprogress.js tripMetaText: "Arriving In: 4 min", "Walk 6 min"); '' with no trip (owner 2026-11-04: no
+ * nearby bus without a trip; the subtitle says "No current trip selected").
  * @param {object} state
  * @param {number} [now]
  * @returns {string} plain text ('' when unknown)
  */
 export function metaNearby(state, now = nowS()) {
   if (isPlanJourney(state)) return tripMetaText(state, now);   // a trip in progress: "Arriving In: 4 min" / "Walk 6 min" (owner 2026-10-30)
-  const point = state.user || N.anchor;
-  if (!point || !state.staticLoaded || !state.liveLoaded) return "";
-  const hidden = effectiveHidden(state);
-  const s = stopsNear(state, point, { maxM: NEARBY_MAX_M, max: 1, hidden })[0];
-  const a = s && arrivalsFor(state, s.id, { hidden, nowS: now })[0];
-  if (!a) return "";
-  const m = minsUntil(a.t, now);
-  return nameOf(state, a.rid) + " · " + (m < 1 ? "Now" : (isStale(state, now) ? "~" : "") + m + " min");
+  return "";
 }
 
 /**
- * One-line summary for the peek detent, e.g. "53 & Kimbark · 53RD 4 min".
+ * One-line summary for the peek detent: the trip's line, or "No current trip selected" (owner 2026-11-04).
  * @param {object} state
  * @param {number} [now]
  * @returns {string} plain text ('' when unknown)
  */
 export function peekNearby(state, now = nowS()) {
   if (isPlanJourney(state)) return tripMetaText(state, now);
-  const point = state.user || N.anchor;
-  if (!point || !state.staticLoaded) return "";
-  const s = stopsNear(state, point, { maxM: NEARBY_MAX_M, max: 1, hidden: effectiveHidden(state) })[0];
-  if (!s) return "";
-  const a = state.liveLoaded && arrivalsFor(state, s.id, { hidden: effectiveHidden(state), nowS: now })[0];
-  if (!a) return s.name;
-  const m = minsUntil(a.t, now);
-  return `${s.name} · ${nameOf(state, a.rid)} ${m < 1 ? "now" : (isStale(state, now) ? "~" : "") + m + " min"}`;
+  return NO_TRIP_TITLE;   // owner 2026-11-04
+}
+
+/**
+ * The collapsed header's trailing slot at Current trip (docs/DESIGN-SPEC.md 10.6): during a trip, "Arriving In" over the
+ * ETA (tripMetaHTML); with no trip nothing (owner 2026-11-04: the next bus at the nearest stop is no longer shown there).
+ * @param {object} state
+ * @param {number} [now]
+ * @returns {string}
+ */
+export function metaNearbyHTML(state, now = nowS()) {
+  if (isPlanJourney(state)) return tripMetaHTML(state, now);
+  return "";
 }
 
 function curState() { return ctxRef?.store?.get?.() || {}; }
@@ -329,11 +367,15 @@ export function unmountNearby() {
 export const _places = places;
 
 registerView("nearby", {
-  title: () => "Current trip",
+  // a trip in progress, collapsed (spec 10.6, O3): the next step is the title, the trip under it, Arriving In on the
+  // right; expanded, "Current trip" (the next-step card right under it says the same, in the hero size; iOS parity)
+  title: (state, o) => (o && o.detent === "full" ? "" : tripHeader(state)?.title) || "Current trip",
+  subtitle: (state, o) => (o && o.detent === "full" ? "" : tripHeader(state)?.sub || (isPlanJourney(state) ? "" : NO_TRIP_TITLE)) || "",
   detent: "half",
   tab: "nearby",
   render: (state) => renderNearby(state),
   meta: (state) => metaNearby(state),
+  metaHTML: (state, o) => (o && o.detent === "full" && isPlanJourney(state) ? "" : metaNearbyHTML(state)),
   peek: (state) => peekNearby(state),
   mount: (root, ctx) => mountNearby(root, ctx),
   unmount: () => unmountNearby(),
@@ -346,7 +388,7 @@ registerAction("nearby:locate", async (ds, ev, ctx) => {
   try { ok = await ctx.locate(); } catch (e) { ok = false; }
   const u = ctx.store.get().user;
   if (ok && u) { N.anchor = null; try { ctx.map?.flyTo?.(u, 16); } catch (e) { /* map optional */ } }
-  else if (ctx.store.get().locErr?.code === 1) ctx.toast?.("Still blocked, so no popup. Tap \"How to allow location\" for the steps.");
+  else if (ctx.store.get().locErr?.code === 1) { /* the blocked-location card says it (triedText), in view */ }
   else ctx.toast?.("Couldn't get your location. You can still search stations or places.");
 });
 registerAction("nearby:mode", (ds, ev, ctx) => {

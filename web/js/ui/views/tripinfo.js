@@ -6,18 +6,19 @@
  * include walking, and "Leave now / Leave in N min" guidance is derived from the walking estimate.
  * Every derived time here is an estimate and is labeled so.
  */
-import { esc } from "../../core/esc.js";
+import { esc, safeColor } from "../../core/esc.js";
 import { clock } from "../../core/time.js";
 import { walkMin } from "../../core/geo.js";
 import { routeChip } from "../components.js";
+import { svg } from "../icons.js";
 
 /** Ride-time source wording for bus steps. */
 export const SRC = { live: "from live bus prediction", learned: "learned from past rides", schedule: "from schedule", estimate: "distance estimate" };
 /** Walking person icon (decorative). */
-export const WALK_IC = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="2"/><path d="M10 22l2-7-3-3 1-5 4 3 3 1M9 12l-3 2v3"/></svg>';
+export const WALK_IC = svg("walk", 15);
 
-/** @param {string} t @returns {string} small "est."-style tag */
-export const tag = (t) => `<span class="v-est">${esc(t)}</span>`;
+/** @param {string} t @returns {string} the "est." suffix: label2 text, never a filled chip */
+export const tag = (t) => ` <span class="v-est">${esc(t)}</span>`;   // plain text after the number it qualifies (spec 10.10)
 /** @param {number} m minutes @returns {number} whole minutes, at least 1 */
 export const mins = (m) => Math.max(1, Math.round(m || 0));
 /** @param {number} m walking minutes @returns {string} "<1" under half a minute, else whole minutes */
@@ -84,7 +85,10 @@ export function leaveInfo(o, now) {
 }
 
 /**
- * Card lines under an option's chips: first walk + first bus, then leave guidance + walking total.
+ * The option card's last line (docs/DESIGN-SPEC.md 10.15, line 4; the iPhone app's TripInfo.optionLeaveLine): when the
+ * first bus is live "Leave in 10 min, bus 3:11 PM at Ellis Ave & 57th St" with the live dot ("Leave now, ..." under a
+ * minute), else "Bus about 3:11 PM at Ellis Ave & 57th St, est." (a scheduled time; no leave time from a headway guess).
+ * The walks are in the leg strip above it; the card's aria-label says the rest.
  * @param {object} o Option
  * @param {number} now
  * @returns {{html:string, text:string}} html for the card, text for its aria-label
@@ -92,22 +96,23 @@ export function leaveInfo(o, now) {
 export function optionLines(o, now) {
   const times = legsTimes(o, now), fb = o.legs.findIndex((l) => l.type === "bus");
   if (fb < 0) return { html: "", text: "" };
-  const bus = o.legs[fb], first = o.legs[0], board = bus.board?.name || "the stop";
-  const busAt = clock(times[fb].b);
-  const l1 = first.type === "walk"
-    ? `Walk ${walkMins(first.min)} min to ${board} · bus ${busAt}`
-    : `Board at ${board}, no walk · bus ${busAt}`;
-  const wt = walkTotal(o), leave = leaveInfo(o, now);
-  const incl = wt > 0 ? `includes ${walkMins(wt)} min walking` : "no walking";
-  const l2 = (leave ? leave.text + " · " : "") + (leave ? incl : incl.charAt(0).toUpperCase() + incl.slice(1));
-  return {
-    html: `<span class="v-sec j-oline">${esc(l1)}</span><span class="v-sec j-oline${leave?.kind === "now" ? " j-now" : ""}">${esc(l2)}</span>`,
-    text: `${l1}. ${l2}`,
-  };
+  const bus = o.legs[fb], board = bus.board?.name || "the stop", busAt = clock(times[fb].b), leave = leaveInfo(o, now);
+  if (leave) {
+    const text = `${leave.kind === "now" ? "Leave now" : `Leave in ${Math.floor(leave.slack)} min`}, bus ${busAt} at ${board}`;
+    return { text, html: `<span class="v-sec j-oline${leave.kind === "now" ? " j-now" : ""}">${esc(text)}<span class="v-livedot j-live" aria-hidden="true"></span></span>` };
+  }
+  const text = `Bus about ${busAt} at ${board}, est.`;
+  return { text, html: `<span class="v-sec j-oline">${esc(text)}</span>` };
 }
 
+/** One step's source line: the live dot and "Live" (live data), like the rows' source mark. */
+const LIVE_LINE = '<span class="v-sec v-stepsub v-steplive"><span class="dot-live" aria-hidden="true"></span><span class="src-live">Live</span></span>';
+
 /**
- * Step list for an option: the walk to the first stop and to the destination are always shown.
+ * Step list for an option (spec 10.16; the same words as the iPhone app's TripInfo.steps): a vertical timeline, the walk
+ * to the first stop and to the destination always shown. Each step reads in body with the place and time in Semibold;
+ * a live bus time gets the live source line, a derived time "est." as plain text, a walk its source in words ("Sidewalk
+ * route" / "Walking estimate"); at most one middle dot per line.
  * @param {object} o Option
  * @param {number} now
  * @param {object} state store state (routes)
@@ -117,7 +122,7 @@ export function optionLines(o, now) {
 export function stepsHTML(o, now, state, { fromLabel, toLabel } = {}) {
   const times = legsTimes(o, now), legs = o.legs, n = legs.length;
   const dest = toLabel || "destination";
-  const li = (ic, h, cls) => `<li${cls ? ` class="${cls}"` : ""}><span class="v-si" aria-hidden="true">${ic}</span><span class="v-stept">${h}</span></li>`;
+  const li = (node, h, cls, rc) => `<li${cls ? ` class="${cls}"` : ""}${rc ? ` style="--rc:${rc}"` : ""}><span class="v-si" aria-hidden="true">${node}</span><span class="v-stept">${h}</span></li>`;
   const sub = (h) => `<span class="v-sec v-stepsub">${h}</span>`;
   const steps = [];
   if (legs[0]?.type === "bus") {
@@ -128,17 +133,20 @@ export function stepsHTML(o, now, state, { fromLabel, toLabel } = {}) {
       const next = legs[i + 1], prev = legs[i - 1];
       const to = i === n - 1 ? dest : next?.type === "bus" ? next.board?.name : l.to?.name;
       const change = prev?.type === "bus" && next?.type === "bus" ? " to change" : "";
-      let h = `Walk ${esc(walkMins(l.min))} min (${Math.round(l.m || 0)} m) to <b>${esc(to || "the stop")}</b>${change} ${tag(l.source === "router" ? "sidewalk route" : "estimate")}`;
+      let h = `Walk ${esc(walkMins(l.min))} min (${Math.round(l.m || 0)} m) to <b>${esc(to || "the stop")}</b>${change}`;
       if (i === 0 && next?.type === "bus") {
         const lv = leaveInfo(o, now);
-        if (lv) h += sub(`${lv.kind === "now" ? "Leave now" : "Leave by " + esc(clock(lv.by))} to catch the ${esc(clock(times[1].b))} bus ${tag("est.")}`);
+        if (lv) h += sub(`${lv.kind === "now" ? "Leave now" : "Leave by " + esc(clock(lv.by))} to catch the ${esc(clock(times[1].b))} bus,${tag("est.")}`);
       }
+      h += sub(l.source === "router" ? "Sidewalk route" : "Walking estimate");
       steps.push(li(WALK_IC, h, "j-walk"));
       return;
     }
-    const t = times[i], w = Math.round(l.wait || 0), r = mins(l.ride);
-    steps.push(li(routeChip(l.rid, state.routes), `Bus arrives at <b>${esc(l.board?.name || "")}</b> <b class="v-clock">${esc(clock(t.b))}</b> ${tag(l.waitLive ? "live" : "est.")}`
-      + sub(`Wait ~${w < 1 ? "&lt;1" : w} min, then ride ~${r} min (${l.stopsPassed || 1} stop${(l.stopsPassed || 1) > 1 ? "s" : ""}) to ${esc(l.alight?.name || "")}, ${esc(clock(t.a))} &middot; ${esc(SRC[l.source] || "estimate")} ${tag("est.")}`)));
+    const t = times[i], w = Math.round(l.wait || 0), r = mins(l.ride), sp = l.stopsPassed || 1;
+    const color = safeColor(state.routes?.[l.rid]?.color);
+    steps.push(li(routeChip(l.rid, state.routes, { small: true }), `Bus arrives at <b>${esc(l.board?.name || "")}</b> <b class="v-clock">${esc(clock(t.b))}</b>${l.waitLive ? "" : tag("est.")}`
+      + (l.waitLive ? LIVE_LINE : "")
+      + sub(`Wait ~${w < 1 ? "&lt;1" : w} min, then ride ~${r} min (${sp} stop${sp > 1 ? "s" : ""}) to ${esc(l.alight?.name || "")}, ${esc(clock(t.a))} &middot; ${esc(SRC[l.source] || "estimate")},${tag("est.")}`), "j-bus", color));
   });
   if (legs[n - 1]?.type === "bus") {
     const al = legs[n - 1].alight?.name || "the stop";
@@ -146,6 +154,6 @@ export function stepsHTML(o, now, state, { fromLabel, toLabel } = {}) {
   }
   const wt = walkTotal(o);
   steps.push(li('<span class="v-pin v-pin--b"></span>', `Arrive at <b>${esc(dest)}</b> about <b class="v-clock">${esc(clock(o.arrive))}</b>`
-    + sub(`About ${o.totalMin} min in total, ${wt > 0 ? "including " + esc(walkMins(wt)) + " min walking" : "no walking"} ${tag("est.")}`)));
+    + sub(`About ${o.totalMin} min in total, ${wt > 0 ? "including " + esc(walkMins(wt)) + " min walking" : "no walking"},${tag("est.")}`), "j-dest"));
   return '<ol class="v-steps">' + steps.join("") + "</ol>";
 }
