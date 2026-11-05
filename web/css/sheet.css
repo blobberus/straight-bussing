@@ -118,6 +118,7 @@ html[data-text="ax"] .titleline { flex-wrap: wrap; row-gap: 0; }
 html[data-text="ax"] .titleright { flex-basis: 100%; max-width: none; justify-content: flex-start; padding-bottom: var(--s-2); }
 html[data-text="ax"] .titleline:has(.back:not([hidden])) .titleright { padding-left: calc(var(--tap) - 6px + var(--s-3)); }
 html[data-text="ax"] .titleright .v-btn--quiet { margin-left: calc(var(--s-2) * -1); }
+html[data-text="ax"] .titleright .hm--stack { align-items: flex-start; }   /* "Arriving In" / "Walk" over the ETA, both at the leading edge */
 
 /* expanded state stops below the status banner (always visible for safety; ui/pill.js keeps --pill-h = its measured
    height), so the banner never covers the grab bar. The simulated-buses chip alone does NOT change it (it shares Row B

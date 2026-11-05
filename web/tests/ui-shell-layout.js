@@ -330,3 +330,19 @@ test("index.html: DOM order = the glass spec 11 focus and screen-reader order: s
   }
   eq(doc.getElementById("app").contains(doc.getElementById("map")), true, "the map stays inside #app (the desktop phone frame)");
 });
+
+test("layout: at accessibility sizes the collapsed header's Arriving In / Walk stack moves under the title and starts at the leading edge, caption over the ETA", async () => {
+  const t = await frame(393, 852);
+  try {
+    t.d.documentElement.style.fontSize = "34px";   // 200% text
+    t.d.documentElement.dataset.text = "ax";
+    t.d.querySelector(".titleline").insertAdjacentHTML("beforeend", '<span id="titleRight" class="titleright"><span class="hm hm--stack" role="text" aria-label="Walk 2 min">'
+      + '<span id="hmCap" class="hm-cap" aria-hidden="true">Walk</span><span id="hmRow" class="hm-row" aria-hidden="true"><span class="eta">2 min</span></span></span></span>');
+    t.set({ detent: "peek" });
+    const title = t.rect("title"), cap = t.rect("hmCap"), row = t.rect("hmRow");
+    ok(cap.top >= title.bottom - 0.5, "under the title, not squeezing it");
+    near(cap.left, row.left, 1, "the caption starts where the ETA starts");
+    near(cap.left, title.left, 1, "both at the title's leading edge");
+    ok(row.top >= cap.bottom - 0.5, "caption over the ETA");
+  } finally { t.done(); }
+});
