@@ -1,6 +1,6 @@
 // Tests for core/arrivals.js
 import { test, eq, ok } from "./lib.js";
-import { arrivalsFor, staleLevel, runningCount, activeAlerts, alertText, alertRouteIds } from "../js/core/arrivals.js";
+import { arrivalsFor, staleLevel, staleNote, runningCount, activeAlerts, alertText, alertRouteIds } from "../js/core/arrivals.js";
 
 const T = 1_800_000_000;
 const trips = [
@@ -94,4 +94,13 @@ test("alertText", () => {
   eq(alertText(null), "");
   eq(alertText({}), "");
   ok(true);
+});
+
+// 2026-11-05 QA: the in-sheet note said "Live data delayed" while the feed could not be reached at all (the banner said
+// "Can't reach the shuttle feed"). Same words as the iOS Kit LiveText.staleNote (WordingTests).
+test("staleNote names the problem like the banner", () => {
+  eq(staleNote("", "Bus times may be off."), "", "fresh: no note");
+  eq(staleNote("late", "Bus times may be off."), "Live data delayed. Bus times may be off.");
+  eq(staleNote("old", "Bus times may be off."), "Live data delayed. Bus times may be off.");
+  eq(staleNote("err", "Bus times may be off."), "Can't reach the shuttle feed. Bus times may be off.", "an outage is not a delay");
 });

@@ -30,7 +30,7 @@ struct TripTimelineView: View {
                 .padding(.vertical, 8)
             }
             if p.stale == .old || p.stale == .err {
-                Label("Live data delayed. Bus position and times may be off.", systemImage: "exclamationmark.triangle.fill")
+                Label(LiveText.staleNote(p.stale, "Bus position and times may be off.") ?? "", systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote.weight(.semibold)).foregroundStyle(Palette.warn)
                     .accessibilityAddTraits(.updatesFrequently)
             }

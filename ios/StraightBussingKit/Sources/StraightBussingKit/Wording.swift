@@ -216,6 +216,17 @@ public enum LiveText {
         }
     }
 
+    /// The note in a sheet (trip options, a trip in progress, a route page) while live data is not fresh; the status pill
+    /// says the same at the top. "Can't reach the shuttle feed." while the feed fails, "Live data delayed." while it
+    /// answers late (2026-11-05 QA: the note said "delayed" during an outage). Same words as web core/arrivals.js staleNote.
+    public static func staleNote(_ level: StaleLevel, _ rest: String) -> String? {
+        switch level {
+        case .fresh: return nil
+        case .err: return "Can't reach the shuttle feed. " + rest
+        case .old, .late: return "Live data delayed. " + rest
+        }
+    }
+
     /// Live label of arrival rows: "Live" / "Live, delayed" / "Last known" (+ the spoken form).
     public static func liveLabel(_ level: StaleLevel) -> (text: String, spoken: String) {
         switch level {

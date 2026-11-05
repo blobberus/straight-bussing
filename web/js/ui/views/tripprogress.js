@@ -24,6 +24,7 @@ import { routeChip, etaBlock, officialLinks } from "../components.js";
 import { isPlanJourney, tripBarHTML } from "./journey.js";
 import { WALK_IC, tag, walkMins, catchNote } from "./tripinfo.js";
 import { svg } from "../icons.js";
+import { staleNote } from "../../core/arrivals.js";
 
 const CHEV = svg("chevron-right", 13, { cls: "tp-chev", stroke: 2.5 });
 const PIN = '<span class="tp-pin" aria-hidden="true"></span>';
@@ -308,7 +309,7 @@ export function tripProgressHTML(state, now = nowS(), opts = {}) {
   let h = `<section class="tp" aria-label="Trip in progress">`
     + `<div class="tp-head"><span class="v-grow"><span class="tp-title" tabindex="-1">${esc("Trip to " + p.to)}</span><span class="v-sec tp-arrive">${arrive}</span></span>`
     + `<button type="button" class="v-btn v-btn--destructive tp-end" data-action="journey:end">End trip</button></div>`;
-  if (p.stale === "old" || p.stale === "err") h += '<p class="v-stale" role="status">Live data delayed. Bus position and times may be off.</p>';
+  if (p.stale === "old" || p.stale === "err") h += `<p class="v-stale" role="status">${esc(staleNote(p.stale, "Bus position and times may be off."))}</p>`;
   h += nowCard(p, state, now, tripYou(p, state));
   h += '<h3 class="v-h tp-steps-h">Steps</h3><ol class="tp-steps" aria-label="Trip timeline">';
   p.legs.forEach((l, i) => { h += l.type === "walk" ? walkHTML(l, p.legs, i, now) : busHTML(l, i, p, state, now); });

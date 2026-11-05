@@ -20,7 +20,7 @@ import { registerAction } from "../actions.js";
 import { esc, safeColor, textOn } from "../../core/esc.js";
 import { nowS, minsUntil, ago } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
-import { arrivalsFor, staleLevel, runningCount, activeAlerts, alertText, alertRouteIds, liveUnknown } from "../../core/arrivals.js";
+import { arrivalsFor, staleLevel, staleNote, runningCount, activeAlerts, alertText, alertRouteIds, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { serviceHoursAt, isScheduledNow, weekSummary, upcomingChanges, busesByHour, groupHours, hourLabel, dayKey, routeService } from "../../core/schedule.js";
 import { emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
@@ -202,7 +202,7 @@ export function renderRoute(state, now = nowS()) {
   const rid = state.routeId, r = state.routes?.[rid];
   if (!r) return emptyState("Route not found", "This route is not in the current schedule.") + '<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="route:all">See all routes</button>';
   const color = safeColor(r.color), fg = textOn(color), n = runningCount(state, rid);
-  const hidden = effectiveHidden(state).includes(rid), stale = staleLevel(state, now) !== "";
+  const hidden = effectiveHidden(state).includes(rid), level = staleLevel(state, now), stale = level !== "";
   const list = state.routeStops?.[rid] || [], ids = stopOrder(list);
   const loop = list.length > 2 && list[0] === list[list.length - 1];
   let h = '<div class="v-route">' + statusHtml(state, rid, r, n, now);
@@ -247,7 +247,7 @@ export function renderRoute(state, now = nowS()) {
   });
   h += "</ol>";
   if (loop) h += `<p class="v-sec r-loop"><span aria-hidden="true">↻ </span>Loop: continues to ${esc(state.stops?.[ids[0]]?.name || ids[0])}</p>`;
-  if (state.liveLoaded) h += `<p class="v-foot">${stale ? "Live data delayed. Times and bus positions may be off." : "Times are live predictions. Bus positions are approximate."}</p>`;
+  if (state.liveLoaded) h += `<p class="v-foot">${esc(stale ? staleNote(level, "Times and bus positions may be off.") : "Times are live predictions. Bus positions are approximate.")}</p>`;
   return h + (first ? "" : svc) + "</div>";
 }
 

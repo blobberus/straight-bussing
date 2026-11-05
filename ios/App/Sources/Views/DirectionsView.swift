@@ -215,8 +215,8 @@ struct DirectionsView: View {
             }
         } else if let r = model.dir.result {
             TripBar()
-            if model.staleLevel != .fresh {
-                Text("Live data delayed. Bus times may be off.").font(.subheadline.weight(.semibold)).foregroundStyle(Palette.warn)
+            if let note = LiveText.staleNote(model.staleLevel, "Bus times may be off.") {
+                Text(note).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.warn)
             }
             coverNote
             if r.options.isEmpty {

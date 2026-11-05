@@ -130,7 +130,7 @@ struct RouteDetailView: View {
                             .font(.footnote).foregroundStyle(Palette.text2)
                     }
                     if model.liveLoaded {
-                        Text(model.isStale ? "Live data delayed. Times and bus positions may be off." : "Times are live predictions. Bus positions are approximate.")
+                        Text(LiveText.staleNote(model.staleLevel, "Times and bus positions may be off.") ?? "Times are live predictions. Bus positions are approximate.")
                             .font(.footnote).foregroundStyle(Palette.text2)
                     }
                 }

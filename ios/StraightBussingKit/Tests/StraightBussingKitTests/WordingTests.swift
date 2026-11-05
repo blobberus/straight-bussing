@@ -79,6 +79,14 @@ final class TripInfoTests: XCTestCase {
 final class LiveTextTests: XCTestCase {
     let NOW = 1_800_000_000.0
 
+    /// Same words as web core/arrivals.js staleNote (tests/core-arrivals.js): an outage is not a delay (2026-11-05 QA).
+    func testStaleNoteNamesTheProblemLikeThePill() {
+        XCTAssertNil(LiveText.staleNote(.fresh, "Bus times may be off."))
+        XCTAssertEqual(LiveText.staleNote(.late, "Bus times may be off."), "Live data delayed. Bus times may be off.")
+        XCTAssertEqual(LiveText.staleNote(.old, "Bus times may be off."), "Live data delayed. Bus times may be off.")
+        XCTAssertEqual(LiveText.staleNote(.err, "Bus times may be off."), "Can't reach the shuttle feed. Bus times may be off.")
+    }
+
     func testStatusPill() {
         func pill(_ l: StaleLevel, lastOk: Double = 1, feedTs: Double = 0, buses: Int = 3, silent: Bool = false) -> LiveText.Pill? {
             LiveText.pill(level: l, polled: true, lastOk: lastOk, feedTs: feedTs, loaded: true, busCount: buses, silent: silent)

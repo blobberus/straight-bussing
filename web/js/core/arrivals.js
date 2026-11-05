@@ -62,6 +62,20 @@ export function staleLevel({ lastOk, failed, feedTs } = {}, nowS) {
 }
 
 /**
+ * The note shown in a sheet (trip options, a trip in progress, a route page) while live data is not fresh; the status
+ * banner says the same at the top. It names the problem like the banner: "Live data delayed." while the feed answers
+ * late, "Can't reach the shuttle feed." while it fails (2026-11-05 QA: the note said "delayed" during an outage).
+ * Same words as the iOS Kit LiveText.staleNote.
+ * @param {''|'late'|'old'|'err'} level staleLevel
+ * @param {string} rest what may be off, e.g. "Bus times may be off."
+ * @returns {string} '' when fresh
+ */
+export function staleNote(level, rest) {
+  if (!level) return "";
+  return (level === "err" ? "Can't reach the shuttle feed. " : "Live data delayed. ") + rest;
+}
+
+/**
  * Nothing can be said about which shuttles run right now: the live feed is in error (never reached,
  * failing, or no good poll for > 60 s) and there are no last-known vehicles to show. A feed outage is
  * not a service outage, so views must then say the live status is unknown instead of "not running" /

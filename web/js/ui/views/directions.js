@@ -23,7 +23,7 @@ import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { nowS, clock } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
-import { staleLevel, liveUnknown } from "../../core/arrivals.js";
+import { staleLevel, staleNote, liveUnknown } from "../../core/arrivals.js";
 import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { plan, refineWalking, PLANNER } from "../../core/planner.js";
@@ -206,7 +206,7 @@ export function resHTML(state, now = nowS()) {
   }
   if (!state.staticLoaded || !D.result) return cov + skeleton(2);
   const r = D.result, w = r.walkOnly || { m: 0, min: 0 }, level = staleLevel(state, now);
-  let h = tripBarHTML(state) + (level ? '<p class="v-stale" role="status">Live data delayed. Bus times may be off.</p>' : "") + cov;
+  let h = tripBarHTML(state) + (level ? `<p class="v-stale" role="status">${esc(staleNote(level, "Bus times may be off."))}</p>` : "") + cov;
   if (!r.options.length) {
     const running = (state.buses || []).length > 0;
     h += liveUnknown(state, now) ? emptyState("Can't plan shuttle trips right now", "The live shuttle feed can't be reached, so we can't tell which buses are running.", { icon: "wifi-off" })   // feed outage != no service
