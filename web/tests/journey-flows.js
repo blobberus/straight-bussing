@@ -5,7 +5,7 @@ import { runAction } from "../js/ui/actions.js";
 import { optionRids, planJourney, filterJourney, sameRids, tripBarHTML, stationToggleHTML, watchStation, onlySwitchHTML } from "../js/ui/views/journey.js";
 import { D, deps, renderDirections, mountDirections, unmountDirections, swap, DIR_REFRESH_S, liveReplan } from "../js/ui/views/directions.js";
 import { bus } from "../js/core/events.js";
-import { PREF, renderPick, mountPick, unmountPick, setMode, resetPick, chooseStation } from "../js/ui/views/pick.js";
+import { PREF, renderPick, mountPick, unmountPick, setMode, resetPick, chooseStation, chooserHTML } from "../js/ui/views/pick.js";
 
 const USER = { lat: 41.7899, lon: -87.6001 };
 const last = (a) => a[a.length - 1];
@@ -346,4 +346,23 @@ test("journey: watchStation leaves plan journeys alone", async () => {
   ctx.store.set({ routeFilter: null });
   await tick();
   eq(ctx.store.get().journey.kind, "plan");
+});
+
+// 2026-11-05 QA: in the "Routes to station" dialog at 320 pt and accessibility text, "Use current location" was cut to
+// two lines with an ellipsis. A choice is an action: its name wraps in full.
+test("pick: the chooser's action names are never cut, even at 320 pt and accessibility text", async () => {
+  const f = document.createElement("iframe");
+  f.style.cssText = "position:absolute;left:-10000px;top:0;width:272px;height:600px;border:0";
+  document.body.appendChild(f);
+  const d = f.contentDocument;
+  d.open();
+  d.write('<!doctype html><html data-text="ax" style="font-size:34px"><head>' + ["tokens", "base", "components", "views"]
+    .map((n) => `<link rel="stylesheet" href="${new URL("../css/" + n + ".css", location.href).href}">`).join("") + "</head><body>" + chooserHTML() + "</body></html>");
+  d.close();
+  await new Promise((r) => setTimeout(r, 250));
+  try {
+    for (const prim of d.querySelectorAll(".v-choice .v-prim")) {
+      ok(prim.scrollHeight <= prim.clientHeight + 1, `"${prim.textContent}" shows in full (${prim.scrollHeight} > ${prim.clientHeight}?)`);
+    }
+  } finally { f.remove(); }
 });
