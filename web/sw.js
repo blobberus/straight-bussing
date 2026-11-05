@@ -1,6 +1,6 @@
 // Service worker: offline app shell. Network-first so deploys show up immediately.
 // Live feeds and map tiles are cross-origin and never touched (stale bus data is unsafe).
-const CACHE = 'sb-v2-113';
+const CACHE = 'sb-v2-114';
 // PRECACHE:BEGIN (generated list; keep one path per line)
 const PRECACHE = [
   './',
@@ -141,6 +141,15 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// Network first, but never stuck on a network that accepts the request and never answers ("lie-fi": weak cell, a
+// captive portal): after NET_WAIT_MS without an answer the cached copy answers, while the network answer, if it still
+// comes, updates the cache in the background (2026-11-05 QA: a reload hung 60+ s on a white screen, with no
+// 773.702.8181 in sight, though the whole shell was cached). For DEGRADED_MS after such a hang the rest of that page
+// load also takes the cached copies first, so the page, its styles and its modules stay one version.
+const NET_WAIT_MS = 3000;
+const DEGRADED_MS = 30000;
+let degradedUntil = 0;
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -149,25 +158,33 @@ self.addEventListener('fetch', (e) => {
   if (u.pathname.includes('/tests/') || req.headers.has('range')) return;
   if (u.searchParams.has('demo')) return; // demo mode (?demo=1) is never stored, not even its page
   const nav = req.mode === 'navigate';
-  e.respondWith(
-    fetch(req, { cache: 'no-cache' })
-      .then((r) => {
-        if (r.ok && r.status === 200 && r.type === 'basic') {
-          const copy = r.clone();
-          e.waitUntil(caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {}));
-        }
-        return r;
-      })
-      .catch(async () => {
-        // offline: this URL, else the same file without its query (About's "Contact support" opens
-        // support.html?contact=1&app=web&v=..., precached as support.html), else for a page load the app shell
-        const hit = await caches.match(req, { cacheName: CACHE }) || await caches.match(req, { cacheName: CACHE, ignoreSearch: true });
-        if (hit) return hit;
-        if (nav) {
-          const shell = await caches.match('index.html', { cacheName: CACHE }) || await caches.match('./', { cacheName: CACHE });
-          if (shell) return shell;
-        }
-        return new Response('Offline', { status: 503, statusText: 'Offline', headers: { 'Content-Type': 'text/plain' } });
-      }),
-  );
+  // this URL, else the same file without its query (About's "Contact support" opens support.html?contact=1&app=web&v=...,
+  // precached as support.html), else for a page load the app shell
+  const cached = async () => {
+    const hit = await caches.match(req, { cacheName: CACHE }) || await caches.match(req, { cacheName: CACHE, ignoreSearch: true });
+    if (hit || !nav) return hit;
+    return await caches.match('index.html', { cacheName: CACHE }) || await caches.match('./', { cacheName: CACHE });
+  };
+  let stored = null;
+  const net = fetch(req, { cache: 'no-cache' }).then((r) => {
+    if (r.ok && r.status === 200 && r.type === 'basic') {
+      const copy = r.clone();
+      stored = caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+    }
+    return r;
+  });
+  e.waitUntil(net.then(() => stored, () => {}));   // the cache update finishes even when the cached copy answered first
+  e.respondWith((async () => {
+    if (Date.now() < degradedUntil) { const hit = await cached(); if (hit) return hit; }
+    let timer = 0;
+    const late = new Promise((res) => { timer = setTimeout(() => res('late'), NET_WAIT_MS); });
+    const first = await Promise.race([net.catch(() => 'offline'), late]);
+    clearTimeout(timer);
+    if (first !== 'late' && first !== 'offline') return first;
+    if (first === 'late') degradedUntil = Date.now() + DEGRADED_MS;
+    const hit = await cached();
+    if (hit) return hit;
+    if (first === 'late') { try { return await net; } catch (err) { /* offline after all */ } }
+    return new Response('Offline', { status: 503, statusText: 'Offline', headers: { 'Content-Type': 'text/plain' } });
+  })());
 });

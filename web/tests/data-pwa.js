@@ -116,6 +116,55 @@ test('pwa: offline, a page opened with a query string gets that page, not the ap
   eq(await offlineFetch(src, cached, 'data/missing.json', 'cors'), 503, 'nothing cached: offline 503, never the shell');
 });
 
+/** Load sw.js once against a fake cache and a scripted fetch; returns ask(url, mode) -> what the request gets. */
+function swHarness(src, cached, fetchFn) {
+  const base = 'https://x.test/app/', listeners = {}, puts = [];
+  const fakeSelf = { addEventListener: (t, fn) => { listeners[t] = fn; }, location: { origin: 'https://x.test' },
+    skipWaiting: () => {}, clients: { claim: () => {} } };
+  const fakeCaches = {
+    async match(req, o = {}) {
+      const u = new URL(typeof req === 'string' ? req : req.url, base);
+      for (const [k, v] of cached) {
+        const c = new URL(k, base);
+        if (c.pathname === u.pathname && (o.ignoreSearch || c.search === u.search)) return v;
+      }
+      return undefined;
+    },
+    open: async () => ({ put: async (req, r) => { puts.push([new URL(req.url).pathname, r]); } }), keys: async () => [],
+  };
+  new Function('self', 'caches', 'fetch', 'Response', src)(fakeSelf, fakeCaches, fetchFn, Response);
+  const ask = async (url, mode = 'cors') => {
+    let out = null;
+    listeners.fetch({ request: { method: 'GET', url: base + url, mode, headers: new Headers() }, respondWith: (pr) => { out = pr; }, waitUntil: () => {} });
+    const r = await out;
+    return typeof r === 'string' ? r : r && r.tag ? r.tag : r && r.status;
+  };
+  return { ask, puts };
+}
+
+// 2026-11-05 QA (lie-fi: the server accepts the request and never answers): a reload with the service worker active hung
+// 60+ s on a white screen though the whole shell was cached. Network first, but after NET_WAIT_MS the cached copy answers.
+test('pwa: a network that never answers gives way to the cached shell; the rest of that load stays on the cache', async () => {
+  const src = await (await fetch(new URL('sw.js', ROOT), { cache: 'no-store' })).text();
+  const wait = Number((src.match(/NET_WAIT_MS = (\d+)/) || [])[1]);
+  ok(wait >= 1000 && wait <= 5000, 'waits 1 to 5 s for the network: ' + wait);
+  const cached = [['index.html', 'SHELL'], ['./', 'SHELL'], ['css/base.css', 'CSS-CACHED'], ['js/main.js', 'MAIN-CACHED']];
+  let hang = true;
+  const net = (body) => ({ ok: true, status: 200, type: 'basic', tag: body, clone() { return { tag: body }; } });
+  const h = swHarness(src, cached, (req) => (hang ? new Promise(() => {}) : Promise.resolve(net('NET ' + new URL(req.url).pathname))));
+  const t0 = performance.now();
+  eq(await h.ask('', 'navigate'), 'SHELL', 'a hanging page load gets the cached app');
+  ok(performance.now() - t0 >= wait - 50, 'only after waiting for the network first');
+  hang = false;   // the network answers again, but this page load is half done from the cache
+  eq(await h.ask('css/base.css'), 'CSS-CACHED', 'its styles come from the same cached version');
+  eq(await h.ask('js/main.js?v=5'), 'MAIN-CACHED', 'and its modules');
+  eq(await h.ask('data/new.json'), 'NET /app/data/new.json', 'nothing cached: the network answer');
+  ok(h.puts.some(([p]) => p === '/app/css/base.css'), 'the network answers still refresh the cache in the background');
+  const fresh = swHarness(src, cached, (req) => Promise.resolve(net('NET ' + new URL(req.url).pathname)));
+  eq(await fresh.ask('css/base.css'), 'NET /app/css/base.css', 'a network that answers: network first, as before');
+  eq(await fresh.ask('', 'navigate'), 'NET /app/', 'pages too');
+});
+
 test('pwa: manifest is valid with standalone scope and a maskable 512 icon', async () => {
   const r = await fetch(new URL('manifest.webmanifest', ROOT), { cache: 'no-store' });
   const man = await r.json();
