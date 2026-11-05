@@ -164,6 +164,21 @@ function onSystemChange() {
 }
 
 /**
+ * Check the system appearance again (owner 2026-11-05: "The auto appearance of the app should be auto (adjusted to the
+ * systems' light or dark mode)"). A Home Screen app on iOS can come back after the phone switched light / dark (by
+ * hand, or the evening switch) without a "change" event: the CSS follows on its own, but the map and the other
+ * listeners would keep the old look. Runs when the page is shown again; fires only when the darkness really changed.
+ */
+export function recheckSystem() {
+  if (mode === "auto") fire(false);
+}
+
+/** Test seam: use this media query list instead of matchMedia's (null = back to the real one at the next init). */
+export function _useMedia(m) {
+  mq = m;
+}
+
+/**
  * Wire the theme to the store: read store.theme, paint, follow prefers-color-scheme, and react to
  * store.theme changes made elsewhere. Safe to call more than once (rebinds to the new store).
  * @param {{get():Object, set(p:Object):void, subscribe(fn:Function):Function}} st
@@ -176,6 +191,10 @@ export function initTheme(st) {
     mq = matchMedia("(prefers-color-scheme: dark)");
     if (mq.addEventListener) mq.addEventListener("change", onSystemChange);
     else if (mq.addListener) mq.addListener(onSystemChange);
+    if (typeof document !== "undefined" && document.addEventListener) {
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) recheckSystem(); });
+      if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("pageshow", recheckSystem);
+    }
   }
   mode = clean(store ? store.get().theme : mode);
   paint();

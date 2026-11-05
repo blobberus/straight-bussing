@@ -4,7 +4,7 @@ import {
   routeChip, etaBlock, arrivalRow, stopRow, emptyState, skeleton, pill, segmented, estTag, icon, fmtMin, fmtDist, routeName, liveLabel,
 } from "../js/ui/components.js";
 import { createStore } from "../js/core/store.js";
-import { initTheme, setTheme, getTheme, isDark, onChange, mount } from "../js/ui/theme.js";
+import { initTheme, setTheme, getTheme, isDark, onChange, mount, recheckSystem, _useMedia } from "../js/ui/theme.js";
 
 const EVIL = '<img src=x onerror="alert(1)">';
 const routes = {
@@ -138,6 +138,30 @@ test("theme: setTheme paints data-theme, writes store, fires onChange on flips",
   ok(seen.includes("true:dark") && seen.includes("false:light"), JSON.stringify(seen));
   setTheme("auto");
   ok(!("theme" in document.documentElement.dataset));
+});
+
+test("theme: Auto follows a system switch made while the app was away (no change event; owner 2026-11-05)", () => {
+  const store = createStore({ theme: "auto" });
+  initTheme(store);
+  const fake = { matches: false };
+  _useMedia(fake);
+  try {
+    setTheme("auto");
+    ok(!isDark(), "system light: light");
+    const seen = [];
+    const off = onChange((d) => seen.push(d));
+    fake.matches = true;                    // the phone switched to dark in the background: no event came
+    recheckSystem();                        // the page is shown again
+    ok(isDark(), "system dark: dark");
+    eq(seen, [true], "listeners (the map) told once");
+    recheckSystem();
+    eq(seen, [true], "nothing changed: no second call");
+    setTheme("light");
+    fake.matches = false; recheckSystem(); fake.matches = true; recheckSystem();
+    eq(seen, [true, false], "Light chosen: the system no longer matters");
+    eq(document.documentElement.dataset.theme, "light", "Light paints data-theme");
+    off();
+  } finally { setTheme("auto"); _useMedia(null); initTheme(store); }
 });
 
 test("theme: mount renders a radio group and arrow keys change mode", () => {
