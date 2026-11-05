@@ -389,7 +389,9 @@ function wireUI() {
     if (!el.dlg.hidden) return void (closeDlg(), e.preventDefault());
     if (document.querySelector("dialog[open]")) return; // native dialogs close themselves
     const a = document.activeElement;
-    if (a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.value) return; // let the field clear first
+    // a search field with text clears first (its view or the browser does that); a plain text field never clears on
+    // Escape, so there Escape goes on to Back (QA 2026-11-05: in Directions a typed destination kept Escape from leaving)
+    if (a && a.tagName === "INPUT" && a.type === "search" && a.value) return;
     if (back() || sheet.stepDown()) e.preventDefault();
   });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });

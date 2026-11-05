@@ -106,4 +106,21 @@ export function backNavE2E(h) {
     tab("nearby");
     await waitFor(() => state().view === "nearby" || null, "Current trip");
   });
+
+  test("Escape in Directions with a typed destination: the suggestions close, then Escape goes Back (QA 2026-11-05)", async () => {
+    const W = h.W();
+    click($("#searchBar"), "search circle");
+    const to = await waitFor(() => (state().view === "directions" && $('[data-input="dir-to"]')) || null, "Directions");
+    to.focus();
+    to.value = "medi";
+    to.dispatchEvent(new W.Event("input", { bubbles: true }));
+    await waitFor(() => $$('[data-action="dir:sug"]').length || null, "suggestions for the typed text");
+    const esc = () => { const e = new W.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }); W.document.activeElement.dispatchEvent(e); return e; };
+    ok(esc().defaultPrevented, "the first Escape closes the suggestions");
+    await waitFor(() => !$$('[data-action="dir:sug"]').length || null, "suggestions closed");
+    eq(state().view, "directions", "still in Directions after the first Escape");
+    esc();
+    await waitFor(() => state().view === "nearby" || null, "the second Escape goes Back to Current trip");
+    tab("nearby");
+  });
 }
