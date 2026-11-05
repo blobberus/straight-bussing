@@ -176,6 +176,8 @@ export function searchLocal(q, o) {
 
 /** Whether the place index is loaded (searches answer synchronously). */
 export function placesReady() { return !!index; }
+/** The spelling vocabulary is built (preloadPlaces builds it in a later idle slot; a search builds it on demand). */
+export function wordsReady() { return vocab !== null; }
 
 /**
  * Load data/places.json once (never throws; a missing file just means no local results).
@@ -200,9 +202,13 @@ export function loadPlaces(fetchFn) {
  */
 export function preloadPlaces({ fetch: fetchFn, delay = 1200 } = {}) {
   if (index || loading || typeof window === 'undefined') return;
-  const go = () => { loadPlaces(fetchFn).then((okLoad) => { if (okLoad && vocab === null) [vocab, display] = buildWords(data, index); }); };
-  const idle = () => (typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback(go, { timeout: 3000 }) : setTimeout(go, delay));
-  if (document.readyState === 'complete') idle(); else window.addEventListener('load', idle, { once: true });
+  const idle = (fn, timeout) => (typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback(fn, { timeout }) : setTimeout(fn, delay));
+  // the index, then the spelling vocabulary in a later idle slot: two shorter tasks instead of one long one while the
+  // map is still loading (about 110 ms at a 4x slower CPU as one task; 2026-11-05 optimization run). A search before
+  // the second slot builds the vocabulary itself (correct()).
+  const words = () => { if (index && vocab === null) [vocab, display] = buildWords(data, index); };
+  const go = () => { loadPlaces(fetchFn).then((okLoad) => { if (okLoad && vocab === null) idle(words, 10000); }); };
+  if (document.readyState === 'complete') idle(go, 3000); else window.addEventListener('load', () => idle(go, 3000), { once: true });
 }
 
 /**

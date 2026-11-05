@@ -2,7 +2,7 @@
 // and the UChicago destination table over the real data/places.json (data/spell.js, data/places.js, data/geocode.js).
 import { test, eq, ok } from './lib.js';
 import { distance, maxEdits, buildVocab, corrections, known } from '../js/data/spell.js';
-import { setPlaces, searchLocal, findLocal, loadPlaces, preloadPlaces, placesReady } from '../js/data/places.js';
+import { setPlaces, searchLocal, findLocal, loadPlaces, preloadPlaces, placesReady, wordsReady } from '../js/data/places.js';
 import { searchPlaces, clearPlaceCache, mergePlaces, localPlaces } from '../js/data/geocode.js';
 import { res, stubFetch, sleep } from './data-helpers.js';
 
@@ -145,6 +145,8 @@ test('places: preloadPlaces fetches once in idle time after load, so the first s
   ok(placesReady(), 'index built');
   eq(f.calls.length, 1, 'fetched once');
   eq(localPlaces('reg').items[0].label, 'Joseph Regenstein Library', 'answers synchronously');
+  for (let i = 0; i < 100 && !wordsReady(); i++) await sleep(20);
+  ok(wordsReady(), 'the spelling vocabulary follows in its own idle slot');
   setPlaces(NO_PLACES);
 });
 
