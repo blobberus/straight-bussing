@@ -140,6 +140,12 @@ function contrast(fg, bg) {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
+/** A translucent color ("rgba(118, 118, 128, 0.12)", the iOS-style fill of Secondary buttons) laid over an opaque one. */
+function over(top, base) {
+  const t = String(top).match(/[\d.]+/g).map(Number), b = String(base).match(/[\d.]+/g).map(Number), a = t.length > 3 ? t[3] : 1;
+  return `rgb(${[0, 1, 2].map((i) => Math.round(t[i] * a + b[i] * (1 - a))).join(", ")})`;
+}
+
 /** Is this "rgb(...)" color mostly green (the live color's job, DESIGN.md 1b)? */
 const greenish = (c) => { const [r, g, b] = String(c).match(/[\d.]+/g).map(Number); return g > r + 20 && g > b + 20; };
 
@@ -186,7 +192,7 @@ test("settings: Beta feedback comes first, a tinted card with the ask and a real
         const cs = (x) => getComputedStyle(x), cbg = cs(card).backgroundColor, badge = card.querySelector(".fb-badge");
         ok(!/rgba\(0, 0, 0, 0\)|transparent/.test(cbg) && !greenish(cbg) && !greenish(cs(badge).backgroundColor), `${theme}: tinted, not green (${cbg})`);
         for (const [name, x, back] of [["lead", card.querySelector(".st-fblead"), cbg], ["line", card.querySelector(".st-intro"), cbg],
-          ["note", card.querySelector(".st-fbnote"), cbg], ["button", a, cs(a).backgroundColor], ["badge icon", badge, cs(badge).backgroundColor]]) {
+          ["note", card.querySelector(".st-fbnote"), cbg], ["button", a, over(cs(a).backgroundColor, cbg)], ["badge icon", badge, cs(badge).backgroundColor]]) {
           const k = contrast(cs(x).color, back);
           ok(k >= 4.5, `${theme}: ${name} contrast ${k.toFixed(2)} >= 4.5 (${cs(x).color} on ${back})`);
         }

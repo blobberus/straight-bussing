@@ -1,8 +1,9 @@
 // The map's feedback button (owner 2026-11-02; ui/feedback-button.js, feedback.test.html): the rules (shown until the
 // rider gave feedback or silenced it), the ping schedule and what makes a ping wait, reduced motion, the panel in the
-// Settings shell, Send feedback, I already gave feedback, persistence across reloads and tabs, the CSS (under the locate
-// button, colors, hidden at the full detent) and the real app. Since 2026-11-04 it is the only feedback prompt (the
-// welcome popup was removed; feedback-app.js checks the real app shows none).
+// Settings shell, Send feedback, I already gave feedback, persistence across reloads and tabs, the CSS (the glass layout,
+// DESIGN-SPEC-GLASS 4 and 8.5, owner 2026-11-04 Q7: a tinted glass circle under the Settings circle, solid while a chip
+// shows, hidden at the full detent) and the real app (also the blur budget with the button on). Since 2026-11-04 it is
+// the only feedback prompt (the welcome popup was removed; feedback-app.js checks the real app shows none).
 import { test, eq, ok } from "./lib.js";
 import { makeCtx, tick } from "./views-fixtures.js";
 import { createStore } from "../js/core/store.js";
@@ -56,7 +57,7 @@ function fixtureButton() {
   const b = document.createElement("button");
   b.type = "button";
   b.id = "feedbackBtn";
-  b.className = "fab fbfab";
+  b.className = "glass gpress fbfab";
   b.hidden = true;
   b.setAttribute("aria-label", FB_LABEL);
   b.innerHTML = '<span class="fbfab-dot" aria-hidden="true"></span>';
@@ -199,12 +200,12 @@ test("ping waits while a trip is in progress, the sheet is up, a menu or dialog 
   } finally { fb?.stop(); sheet.remove(); b.remove(); restore(); }
 });
 
-/** A minimal app shell like tests/settings-overlay.js: #app, #sheet, the locate button and the feedback button. */
+/** A minimal app shell like tests/settings-overlay.js: #app, #sheet, the Settings circle and the feedback button. */
 function shell() {
   const ctx = makeCtx({ journey: null });
   const app = document.createElement("div");
   app.id = "app";
-  app.innerHTML = '<button id="locateBtn" type="button" style="width:44px;height:44px">L</button>'
+  app.innerHTML = '<button id="settingsBtn" type="button" aria-label="Settings" style="width:44px;height:44px">G</button>'
     + '<section id="sheet" data-detent="half" style="position:fixed;left:0;right:0;bottom:0;height:500px">'
     + '<header id="sheetHead"><h1 id="title" tabindex="-1">Current trip</h1><nav id="tabs"></nav></header><div id="content">sheet</div></section>';
   document.body.appendChild(app);
@@ -228,10 +229,10 @@ test("tap: a panel like the Settings menu (title, Done, scrim); Done and Escape 
     ok(o && isSettingsOpen() && overlayKind() === FB_KIND && o.dataset.kind === FB_KIND, "the Settings overlay's shell, kind feedback");
     eq([o.getAttribute("role"), o.getAttribute("aria-modal")], ["dialog", "true"]);
     eq(o.querySelector(".sto-title").textContent, FB_TITLE, "title");
-    eq(o.querySelector(".sto-done").textContent, "Done", "Done on the right, like Settings");
+    eq(o.querySelector(".sto-done").getAttribute("aria-label"), "Done", "Done on the right, like Settings (a checkmark named Done, glass spec 9.8)");
     ok(o.querySelector(".sto-body .st-feedback a[data-fbp='send']") && o.querySelector(".sto-body [data-fbp='silence']"), "the panel inside");
     eq(t.b.getAttribute("aria-expanded"), "true", "the button says the panel is open");
-    eq(t.app.querySelector("#sheet").dataset.detent, "full", "the sheet goes up under it, like Settings");
+    eq(t.app.querySelector("#sheet").dataset.detent, "half", "the app's sheet stays where it was, like Settings (glass spec 9.8)");
     ok(o.contains(document.activeElement), "focus moved into the panel");
     o.querySelector(".sto-done").click();
     await tick(5);
@@ -269,7 +270,7 @@ test("Send feedback: opens the form (the link is never blocked), the button goes
     ok(t.b.hidden && !fb.shown(), "the button is gone at once");
     await tick(5);
     ok(!isSettingsOpen(), "the panel closed");
-    eq(document.activeElement, document.getElementById("locateBtn"), "focus on the neighbor, the locate button");
+    eq(document.activeElement, document.getElementById("settingsBtn"), "focus on the neighbor, the Settings circle");
     eq(t.ctx.calls.toast, [FB_THANKS], "a thank-you toast");
     // a later visit: the button never comes back
     fb.stop();
@@ -347,64 +348,90 @@ function contrast(fg, bg) {
 }
 const greenish = (c) => { const [r, g, b] = String(c).match(/[\d.]+/g).map(Number); return g > r + 20 && g > b + 20; };
 
-test("css: under the locate button (same size and shape, 8 px gap), the accent tint not green, readable in light and dark, hidden at the full detent, a ping animates only the badge", async () => {
+/** A computed color ("rgb(...)", "rgba(...)" or "color(srgb r g b / a)") as [r, g, b, a] with r, g, b in 0..255. */
+function rgba(c) {
+  const t = String(c), n = t.match(/[\d.]+/g).map(Number);
+  if (/^color\(/.test(t)) return [n[0] * 255, n[1] * 255, n[2] * 255, n.length > 3 ? n[3] : 1];
+  return [n[0], n[1], n[2], n.length > 3 ? n[3] : 1];
+}
+/** A translucent color laid over an opaque backdrop [r, g, b], as "rgb(...)". */
+function over(top, back) {
+  const [r, g, b, a] = rgba(top);
+  return `rgb(${[r, g, b].map((v, i) => Math.round(v * a + back[i] * (1 - a))).join(", ")})`;
+}
+
+test("css: a 44 tinted glass circle under Settings (same size and shape, 8 px gap), the accent tint not green, 3:1 over any backdrop with no blur, solid while a chip shows, hidden at the full detent, a ping animates only the badge", async () => {
   const html = await (await fetch("../index.html", { cache: "no-store" })).text();
-  const grab = (id) => (html.match(new RegExp(`<button id="${id}"[\\s\\S]*?</button>`)) || [])[0];
-  const loc = grab("locateBtn"), fbb = grab("feedbackBtn");
-  ok(loc && fbb, "both buttons in index.html");
+  const topbar = (html.match(/<div id="topbar"[\s\S]*?<\/div>/) || [])[0];
+  const fbb = (html.match(/<button id="feedbackBtn"[\s\S]*?<\/button>/) || [])[0];
+  ok(topbar && fbb && topbar.includes(fbb), "the feedback button sits in the top rows, with Settings");
   ok(/aria-label="Give feedback"/.test(fbb) && /aria-haspopup="dialog"/.test(fbb) && /\shidden>/.test(fbb), "labeled, a popup button, hidden until the script decides");
-  ok(html.indexOf('id="feedbackBtn"') > html.indexOf('id="locateBtn"'), "after the locate button (focus order)");
+  ok(html.indexOf('id="feedbackBtn"') > html.indexOf('id="settingsBtn"') && html.indexOf('id="feedbackBtn"') < html.indexOf('id="ctxbar"'), "after Settings, before the trip chip (focus order, glass spec 11)");
   const f = document.createElement("iframe");
   f.style.cssText = "position:absolute;left:-10000px;top:0;width:393px;height:852px;border:0";
   const css = ["tokens", "base", "sheet"].map((n) => `<link rel="stylesheet" href="../css/${n}.css">`).join("");
   f.srcdoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width">${css}`
     + "<style>*,*::before,*::after{transition:none!important}</style></head><body><div id=\"app\" class=\"app\">"
-    + '<div id="topbar" class="topbar"><div class="searchbar"><button class="searchbar-btn">Search</button></div></div>'
-    + loc + fbb.replace(/\shidden>/, ">")
-    + '<div id="pill" class="statuspill">No shuttles are reporting live locations right now</div>'
+    + '<div id="pill" class="statuspill" hidden>Live data delayed</div>'
+    + topbar.replace(/(<button id="feedbackBtn"[^>]*?)\shidden>/, "$1>")
+    + '<div id="ctxbar" class="ctxbar glass" hidden>Trip</div>'
     + '<section id="sheet" class="sheet" data-detent="peek"><header class="sheet-head"><div class="titleline"><h1 id="title">Current trip</h1></div></header><div class="sheet-content"></div></section>'
     + "</div></body></html>";
   await new Promise((res) => { f.onload = res; document.body.appendChild(f); });
   try {
     const d = f.contentDocument, w = f.contentWindow, $ = (id) => d.getElementById(id), cs = (el) => w.getComputedStyle(el);
-    const L = $("locateBtn").getBoundingClientRect(), B = $("feedbackBtn").getBoundingClientRect();
-    eq([Math.round(B.width), Math.round(B.height)], [Math.round(L.width), Math.round(L.height)], "the locate button's size");
+    const fab = $("feedbackBtn"), G = $("settingsBtn").getBoundingClientRect(), B = fab.getBoundingClientRect();
+    ok(!fab.hidden, "shown in this fixture");
+    eq([Math.round(B.width), Math.round(B.height)], [Math.round(G.width), Math.round(G.height)], "the Settings circle's size");
     ok(B.width >= 44 && B.height >= 44, "44 px target");
-    eq(Math.round(B.right), Math.round(L.right), "right edges aligned");
-    eq(Math.round(B.top - L.bottom), 8, "8 px under the locate button");
-    eq(cs($("feedbackBtn")).borderTopLeftRadius, cs($("locateBtn")).borderTopLeftRadius, "the same shape");
-    const P = $("pill").getBoundingClientRect();
-    ok(P.right <= B.left, "never under the status pill");
+    eq(Math.round(B.right), Math.round(G.right), "right edges aligned (12 from the screen edge)");
+    eq(Math.round(B.top - G.bottom), 8, "8 px under Settings");
+    eq(cs(fab).borderTopLeftRadius, cs($("settingsBtn")).borderTopLeftRadius, "the same circle");
+    ok((cs(fab).backdropFilter || cs(fab).webkitBackdropFilter || "none") !== "none", "glass: the glass filter");
     const dot = d.querySelector(".fbfab-dot"), D = dot.getBoundingClientRect();
     ok(D.width >= 8 && D.left > B.left + B.width / 2 && D.bottom < B.top + B.height / 2, "a badge dot at the top right");
+    // the status banner (Row A) sits above Row B; Settings and the feedback circle move down under it
+    $("pill").hidden = false;
+    const P = $("pill").getBoundingClientRect(), G2 = $("settingsBtn").getBoundingClientRect();
+    ok(P.bottom <= G2.top, "never under the status banner");
+    $("pill").hidden = true;
     for (const theme of ["light", "dark"]) {
       d.documentElement.dataset.theme = theme;
-      const bg = cs($("feedbackBtn")).backgroundColor, probe = d.body.appendChild(d.createElement("div"));
-      probe.style.background = "var(--accent-bg)";
-      eq(bg, cs(probe).backgroundColor, theme + ": the feedback card's tint --accent-bg");
+      const bg = cs(fab).backgroundColor, probe = d.body.appendChild(d.createElement("div"));
+      probe.style.background = "var(--glass-tint-fill)";
+      eq(bg, cs(probe).backgroundColor, theme + ": the tinted glass fill (tintBg at 85%)");
+      probe.style.background = "var(--tint-bg)";
+      const tintBg = cs(probe).backgroundColor;
       probe.remove();
-      ok(!greenish(bg) && !greenish(cs(dot).backgroundColor), theme + ": never the green live color");
-      const icon = contrast(cs($("feedbackBtn")).color, bg), badge = contrast(cs(dot).backgroundColor, bg);
-      ok(icon >= 3, `${theme}: icon ${icon.toFixed(2)} >= 3:1 (graphic)`);
+      ok(rgba(bg)[3] < 1 && rgba(bg)[3] >= 0.8, theme + ": translucent, at least 80% (" + bg + ")");
+      ok(!greenish(over(bg, [255, 255, 255])) && !greenish(cs(dot).backgroundColor), theme + ": never the green live color");
+      // the worst backdrop with no blur at all (glass spec 5.3): black under light glass, white under dark glass
+      const back = theme === "light" ? [0, 0, 0] : [255, 255, 255], comp = over(bg, back);
+      const icon = contrast(cs(fab).color, comp), badge = contrast(cs(dot).backgroundColor, comp);
+      ok(icon >= 3, `${theme}: icon ${icon.toFixed(2)} >= 3:1 over ${comp} (graphic)`);
       ok(badge >= 3, `${theme}: badge ${badge.toFixed(2)} >= 3:1`);
+      // a chip on the map: solid tint, no blur (at most 6 blurred surfaces, glass spec 12.1)
+      $("ctxbar").hidden = false;
+      eq([cs(fab).backgroundColor, cs(fab).backdropFilter || "none"], [tintBg, "none"], theme + ": solid tint while the trip chip shows");
+      $("ctxbar").hidden = true;
     }
     delete d.documentElement.dataset.theme;
     eq(cs(dot).animationName, "none", "still between pings");
-    $("feedbackBtn").classList.add("is-ping");
+    fab.classList.add("is-ping");
     eq([cs(dot).animationName, w.getComputedStyle(dot, "::after").animationName], ["fb-dot", "fb-ring"], "a ping pulses the badge");
-    eq(cs($("feedbackBtn").querySelector("svg")).animationName, "none", "the icon itself does not move");
-    $("feedbackBtn").classList.remove("is-ping");
+    eq(cs(fab.querySelector("svg")).animationName, "none", "the icon itself does not move");
+    fab.classList.remove("is-ping");
     // reduced motion: the stylesheet stops the ping animation
     const rules = [];
     for (const sh of d.styleSheets) { try { for (const r of sh.cssRules) rules.push(r); } catch (e) { /* */ } }
     const rm = rules.filter((r) => r.media && /prefers-reduced-motion:\s*reduce/.test(r.media.mediaText)).flatMap((r) => [...r.cssRules]);
     const stop = rm.find((r) => r.selectorText && r.selectorText.includes(".fbfab.is-ping .fbfab-dot"));
     ok(stop && stop.style.animationName === "none" && stop.style.getPropertyPriority("animation-name") === "important", "reduced motion: no ping animation (" + (stop && stop.cssText) + ")");
-    // the full detent: hidden with the locate button
+    // the full detent: the expanded sheet starts under Row B, so the circle steps aside (Settings stays)
     $("sheet").dataset.detent = "full";
-    eq([cs($("feedbackBtn")).visibility, cs($("locateBtn")).visibility], ["hidden", "hidden"], "hidden at the full detent, like the locate button");
-    $("sheet").dataset.detent = "half";
-    eq(cs($("feedbackBtn")).visibility, "visible", "back at the half detent");
+    eq([cs(fab).visibility, cs($("settingsBtn")).visibility], ["hidden", "visible"], "hidden at the full detent; Settings stays");
+    $("sheet").dataset.detent = "peek";
+    eq(cs(fab).visibility, "visible", "back when the sheet is collapsed");
   } finally { f.remove(); }
 });
 
@@ -429,15 +456,15 @@ async function openLive(style = "width:393px;height:852px;border:0;display:block
   await waitFor(() => w.__fbm && w.__fbm.feedbackButton(), "the feedback button started", 8000);
   return { f, w, d, fab: d.getElementById("feedbackBtn") };
 }
-test("real app: the button under the locate button on the map; the panel opens like Settings; Send feedback removes it, also after a reload", async () => {
+test("real app: the circle under Settings on the map; the panel opens like Settings; Send feedback removes it, also after a reload", async () => {
   const restore = clean();
   let v = null;
   try {
     v = await openLive();
     const { w, d, fab } = v;
     ok(!fab.hidden, "shown on the map");
-    const L = d.getElementById("locateBtn").getBoundingClientRect(), B = fab.getBoundingClientRect();
-    ok(B.top > L.bottom && B.top - L.bottom <= 12 && Math.abs(B.right - L.right) < 1, "right under the locate button");
+    const G = d.getElementById("settingsBtn").getBoundingClientRect(), B = fab.getBoundingClientRect();
+    ok(B.top > G.bottom && B.top - G.bottom <= 12 && Math.abs(B.right - G.right) < 1, "right under the Settings circle");
     eq(d.elementFromPoint(B.left + B.width / 2, B.top + B.height / 2)?.closest("#feedbackBtn"), fab, "nothing covers it");
     eq(fab.getAttribute("aria-label"), "Give feedback");
     fab.click();
@@ -493,5 +520,38 @@ test("real app: I already gave feedback silences it for good, also a week later;
     sessionStorage.setItem(FEEDBACK_BTN_OFF_KEY, "1");
     v = await openLive();
     ok(v.fab.hidden, "sessionStorage " + FEEDBACK_BTN_OFF_KEY + " hides it");
+  } finally { v?.f.remove(); restore(); }
+});
+
+/** Blurred surfaces on screen (glass spec 12.1): visible elements with a backdrop-filter, and their share of the screen. */
+function blurBudget(w, d) {
+  const vw = w.innerWidth, vh = w.innerHeight, found = [];
+  for (const e of d.querySelectorAll("body *")) {
+    const cs = w.getComputedStyle(e), f = cs.backdropFilter || cs.webkitBackdropFilter;
+    if (!f || f === "none" || cs.visibility !== "visible" || parseFloat(cs.opacity) === 0 || !e.getClientRects().length) continue;
+    const r = e.getBoundingClientRect(), x = Math.max(0, Math.min(vw, r.right) - Math.max(0, r.left)), y = Math.max(0, Math.min(vh, r.bottom) - Math.max(0, r.top));
+    if (x * y > 0) found.push({ id: e.id || String(e.className).split(" ")[0], a: x * y });
+  }
+  return { n: found.length, share: found.reduce((s, v) => s + v.a, 0) / (vw * vh), ids: found.map((v) => v.id) };
+}
+test("real app: with the feedback circle on the map at most 6 surfaces blur (22% of the screen); with the trip chip the circle turns solid", async () => {
+  const restore = clean();
+  let v = null;
+  try {
+    v = await openLive();
+    const { w, d, fab } = v;
+    ok(!fab.hidden, "shown");
+    await waitFor(() => d.getElementById("sheet").dataset.rest === "peek" && !d.getElementById("app").classList.contains("is-moving"), "collapsed and settled");
+    let b = blurBudget(w, d);
+    ok(b.ids.includes("feedbackBtn") && b.n <= 6 && b.share <= 0.22, `collapsed: ${b.n} blurred (${b.ids.join(", ")}), ${(b.share * 100).toFixed(1)}%`);
+    const rid = Object.keys(w.__st.get().routes)[0];
+    w.__st.set({ journey: { kind: "plan", rids: [rid], label: "To Test Place", to: "Test Place", t0: Math.floor(Date.now() / 1000), legs: [] } });
+    await waitFor(() => !d.getElementById("ctxbar").hidden, "the trip chip");
+    for (const a of d.getElementById("ctxbar").getAnimations()) a.finish();
+    b = blurBudget(w, d);
+    ok(!b.ids.includes("feedbackBtn") && b.ids.includes("ctxbar") && b.n <= 6 && b.share <= 0.22, `with the trip chip: ${b.n} blurred (${b.ids.join(", ")}), ${(b.share * 100).toFixed(1)}%`);
+    const C = d.getElementById("ctxbar").getBoundingClientRect(), B = fab.getBoundingClientRect();
+    ok(C.right <= B.left || C.bottom <= B.top || C.top >= B.bottom, "the trip chip and the feedback circle never overlap");
+    w.__st.set({ journey: null });
   } finally { v?.f.remove(); restore(); }
 });

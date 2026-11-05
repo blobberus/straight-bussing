@@ -40,8 +40,9 @@ export function locPromptE2E({ test, ok, eq, waitFor, openApp }) {
       eq(st().locState, "unknown", "launch: location never asked (the stub's Permissions API says prompt)");
       eq(log, [], "launch: no prompt at all");
 
-      // 1. the first tap ("Use my location" on Current trip): the location prompt alone
-      const use = await waitFor(() => d.querySelector('#content [data-action="nearby:locate"]'), "Use my location");
+      // 1. the first tap (the locate button; Current trip has no "Use my location" without a trip since 2026-11-04):
+      //    the location prompt alone
+      const use = await waitFor(() => d.getElementById("locateBtn"), "the locate button");
       use.click();
       eq(log, ["location prompt"], "first tap: only the location prompt, no motion prompt");
       await waitFor(() => st().locState === "granted" && st().user, "position");

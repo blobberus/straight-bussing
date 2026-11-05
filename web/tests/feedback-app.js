@@ -1,7 +1,7 @@
 // The REAL app without the beta welcome popup (feedback.test.html; removed 2026-11-04, owner: "Stop the give feedback
 // sign on every login to pop up. Keep the feedback button on the map screen."): a first visit, a reload and a visit a
-// week after the old popup last appeared show no popup, and the map's feedback button still appears under the locate
-// button until the rider gives feedback (same-origin iframes share this page's sessionStorage and localStorage).
+// week after the old popup last appeared show no popup, and the map's feedback button still appears under the Settings
+// circle until the rider gives feedback (same-origin iframes share this page's sessionStorage and localStorage).
 // 1. live mode (e2e-stubs.js: fake feed, no location) in a 393 x 852 phone iframe; 2. ?demo=1 in a 1280 x 800
 // desktop window (phone frame), then a reload; 3. new visits with the old popup's log in storage.
 import { test, eq, ok } from "./lib.js";
@@ -61,7 +61,7 @@ async function openLive(style = "width:393px;height:852px;border:0;display:block
   return { f, w, d };
 }
 
-test("real app (live feed, phone), first visit: no popup; the map's feedback button appears under the locate button", async () => {
+test("real app (live feed, phone), first visit: no popup; the map's feedback button appears under the Settings circle", async () => {
   firstVisit();
   const { f, w, d } = await openLive();
   try {
@@ -69,8 +69,8 @@ test("real app (live feed, phone), first visit: no popup; the map's feedback but
     const fab = await waitFor(() => shownButton(d), "the map's feedback button");
     await sleep(1000);   // well past the next paint, when the old popup used to open
     assertNoPopup(d, "first visit");
-    const L = d.getElementById("locateBtn").getBoundingClientRect(), B = fab.getBoundingClientRect();
-    ok(B.top > L.bottom && B.top - L.bottom <= 12 && Math.abs(B.right - L.right) < 1, "right under the locate button");
+    const G = d.getElementById("settingsBtn").getBoundingClientRect(), B = fab.getBoundingClientRect();
+    ok(B.top > G.bottom && B.top - G.bottom <= 12 && Math.abs(B.right - G.right) < 1, "right under the Settings circle");
     eq(d.elementFromPoint(B.left + B.width / 2, B.top + B.height / 2)?.closest("#feedbackBtn"), fab, "nothing covers it");
     eq(fab.getAttribute("aria-label"), "Give feedback");
     ok(d.activeElement === d.body || !d.activeElement?.closest("dialog"), "focus is not taken by any popup");

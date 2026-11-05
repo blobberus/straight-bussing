@@ -26,13 +26,19 @@ const txt = (el) => (el ? el.textContent.replace(/\s+/g, " ").trim() : "");
 const store = () => W.__demoStore;
 const title = () => txt($("#title"));
 const tab = (id) => $(`#tabs button[data-tab="${id}"]`).click();
-/** The demo pill is visible with its words, and it (not the map) takes a tap at its middle. */
+/** The demo chip (DESIGN-SPEC 10.3: a 32 pt capsule sized to its words) is visible with its words, and it (not the map)
+ * takes a tap at its middle and in a 44 pt band around it. */
 function pillOn(where) {
-  const p = $("#pill"), r = p.getBoundingClientRect();
-  ok(!p.hidden && r.height >= 44 && r.width > 200 && W.getComputedStyle(p).visibility === "visible", where + ": pill visible");
+  const p = $("#pill");
+  for (const a of p.getAnimations()) a.finish();   // the chip materializes (glass spec 7); measure it at rest
+  const r = p.getBoundingClientRect();
+  ok(!p.hidden && r.height >= 32 && r.width > 120 && W.getComputedStyle(p).visibility === "visible", where + ": pill visible");
+  eq(p.dataset.form, "chip", where + ": the small chip form, not a banner");
   eq(txt($("#pillText")), "Simulated buses", where + ": pill words");
   const hit = D.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
   ok(hit && hit.closest('[data-action="demo:info"]'), where + ": the whole pill is the button (" + (hit && hit.className) + ")");
+  const edge = D.elementFromPoint(r.left + r.width / 2, r.top - 4);
+  ok(edge && edge.closest('[data-action="demo:info"]'), where + ": 44 pt hit area above the 32 pt chip");
 }
 const passioRequests = () => W.performance.getEntriesByType("resource").map((e) => e.name).filter((u) => /passio3\.com/.test(u));
 const dialog = () => D.querySelector("dialog.v-confirm[open]");
@@ -56,7 +62,7 @@ async function boot() {
 test("demo: no banner; the status pill says 'Simulated buses' (the one indicator) on Current trip", async () => {
   ok(!$("#demobar") && !$(".demobar"), "no demo banner");
   ok(!D.documentElement.classList.contains("is-demo"), "no layout offset class");
-  ok($("#topbar").getBoundingClientRect().top < 30, "search bar at the top, not pushed down");
+  ok($("#topbar").getBoundingClientRect().top < 30, "Settings (Row B) at the top, not pushed down");
   await waitFor(() => !$("#pill").hidden, "pill shown");
   pillOn("Current trip");
   ok(!/Demo mode/.test(txt($("#topbar")) + txt($("#pill"))), "no banner words in the chrome");
@@ -71,7 +77,8 @@ test("demo: simulated buses everywhere, the live feed is never fetched", async (
   await waitFor(() => $("#map .sb-busicon"), "bus markers on the map");
   const tok = (el, k) => W.getComputedStyle(el).getPropertyValue(k).trim().toLowerCase();
   const dark = $("#map").classList.contains("sb-dark");
-  eq(tok($("#map"), "--sb-accent"), tok(D.documentElement, dark ? "--accent" : "--accent-fill"), "map blue = the UI accent token (" + (dark ? "dark" : "light") + ")");
+  eq(tok($("#map"), "--sb-accent"), tok(D.documentElement, "--tint-fill"), "map blue = tintFill, both themes (DESIGN-SPEC 11.4; " + (dark ? "dark" : "light") + ")");
+  eq(tok($("#map"), "--sb-tint"), tok(D.documentElement, "--tint"), "map rings = the accent tint");
   ok(!txt($("#content")).includes("Demo mode"), "no demo banner or demo service alert on Current trip");
 });
 

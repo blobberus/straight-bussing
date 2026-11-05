@@ -86,15 +86,70 @@ async function boot() {
   await waitFor(() => state().staticLoaded && state().liveLoaded && state().lastOk, "static + live data", 15000);
 }
 
-test("boot: Nearby fills from the live feed, no status pill", async () => {
-  const rows = await waitFor(() => {
-    const r = $$('#content [data-region="nearby-results"] [data-action="stop:open"]');
-    return r.length ? r : null;
-  }, "Arriving soon rows");
-  ok(rows.length >= 3, "expected several arrival rows, got " + rows.length);
+test("boot: Current trip says no trip is selected (no nearby buses, owner 2026-11-04), the live feed loads, no status pill", async () => {
+  const card = await waitFor(() => $("#content .pt-notrip"), "the no-trip card");
+  ok(/No current trip selected/.test(txt(card)), "No current trip selected");
+  ok(state().liveLoaded && state().buses.length >= 3, "the live feed loaded: " + state().buses.length + " buses");
   eq(title(), "Current trip");
   ok($("#pill").hidden, "status pill should be hidden with fresh data: " + txt($("#pill")));
-  ok(txt(content()).includes("Use my location"), "location prompt shown without permission");
+  ok(!txt(content()).includes("Use my location") && !$('#content [data-region="nearby-results"] [data-action="stop:open"]'), "no location prompt and no nearby rows without a trip");
+  eq(W.document.documentElement.dataset.text, "default", "text-size class set in the first frames (ui/frame.js), default browser text");
+  ok(parseFloat(W.document.getElementById("app").style.getPropertyValue("--v-peek")) > 40, "collapsed height measured from the header after boot");
+});
+
+/** Blurred surfaces now (glass spec 12.1, 16): visible elements with a backdrop-filter, and the share of the screen they cover. */
+function blurBudget() {
+  const vw = W.innerWidth, vh = W.innerHeight, found = [];
+  for (const e of D.querySelectorAll("body *")) {
+    const cs = W.getComputedStyle(e), f = cs.backdropFilter || cs.webkitBackdropFilter;
+    if (!f || f === "none" || cs.visibility !== "visible" || parseFloat(cs.opacity) === 0 || !e.getClientRects().length) continue;
+    const r = e.getBoundingClientRect(), w = Math.max(0, Math.min(vw, r.right) - Math.max(0, r.left)), h = Math.max(0, Math.min(vh, r.bottom) - Math.max(0, r.top));
+    if (w * h > 0) found.push({ id: e.id || e.className, a: w * h });
+  }
+  return { n: found.length, share: found.reduce((x, y) => x + y.a, 0) / (vw * vh), names: found.map((x) => String(x.id).split(" ")[0]).join(", ") };
+}
+/** Text on glass (glass spec 5.3): only label or labelGlass2; route badges and controls with their own fill are exempt. */
+function glassTextOffenders() {
+  const root = W.getComputedStyle(D.documentElement), probe = D.createElement("span");
+  D.body.appendChild(probe);
+  const rgb = (v) => { probe.style.color = v; return W.getComputedStyle(probe).color; };
+  const allowed = new Set([rgb(root.getPropertyValue("--label")), rgb(root.getPropertyValue("--label-glass-2"))]);
+  probe.remove();
+  const bad = [], hosts = [...D.querySelectorAll(".glass")];
+  if ($("#sheet").dataset.rest === "peek") hosts.push($("#sheetHead"));
+  for (const host of hosts) {
+    if (W.getComputedStyle(host).visibility !== "visible") continue;
+    for (const e of host.querySelectorAll("*")) {
+      if (e.closest(".chip, .ctx-btn, .pillslot, svg") || ![...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
+      const cs = W.getComputedStyle(e);
+      if (cs.visibility !== "visible" || !e.getClientRects().length || e.closest(".sr, .sr-only")) continue;
+      if (!allowed.has(cs.color)) bad.push(`${e.className || e.tagName}: "${e.textContent.trim().slice(0, 24)}" in ${cs.color}`);
+    }
+  }
+  return bad;
+}
+
+test("glass budget: at rest at most 6 blurred surfaces on at most 22% of the screen; text on glass is label or labelGlass2 only (glass spec 5.3, 12.1)", async () => {
+  tab("nearby");
+  $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true }));
+  // settled = the sheet rests collapsed and #app.is-moving (solid glass while it moves, 12.1 rule 2) is gone
+  await waitFor(() => $("#sheet").dataset.rest === "peek" && !$("#app").classList.contains("is-moving") || null, "collapsed and settled");
+  let b = blurBudget();
+  ok(b.n >= 4 && b.n <= 6 && b.share <= 0.22, `collapsed: ${b.n} blurred (${b.names}), ${(b.share * 100).toFixed(1)}% of the screen`);
+  eq(glassTextOffenders(), [], "collapsed: text on glass");
+  SB.store.set({ journey: { kind: "plan", rids: [T.R], label: "To E2E Place", to: "E2E Place", t0: Math.floor(Date.now() / 1000), legs: [] } });
+  await waitFor(() => !$("#ctxbar").hidden, "the trip chip");
+  for (const a of $("#ctxbar").getAnimations()) a.finish();
+  b = blurBudget();
+  ok(b.n <= 6 && b.share <= 0.22, `with the trip chip: ${b.n} blurred (${b.names}), ${(b.share * 100).toFixed(1)}%`);
+  const chip = W.getComputedStyle($("#ctxbar"));
+  ok(/ctxbar/.test(b.names) && chip.backgroundColor !== "rgba(0, 0, 0, 0)", "the trip chip is a glass capsule (spec 8.3), not bare text on the map: " + chip.backgroundColor);
+  eq(glassTextOffenders(), [], "with the trip chip: text on glass");
+  SB.store.set({ journey: null });
+  $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }));
+  await waitFor(() => $("#sheet").dataset.rest === "full" && !$("#app").classList.contains("is-moving") || null, "expanded and settled");
+  b = blurBudget();
+  ok(b.n <= 4, `expanded: the card's plate and the group stop blurring: ${b.n} (${b.names})`);
 });
 
 test("tabs: Nearby / Routes / My Routes switch title and aria-current; no Alerts tab", async () => {
@@ -108,8 +163,58 @@ test("tabs: Nearby / Routes / My Routes switch title and aria-current; no Alerts
   eq($('#tabs button[data-tab="myroutes"]').getAttribute("aria-current"), "page");
   ok($("#back").hidden, "no Back button on a tab");
   tab("nearby");
-  await waitFor(() => title() === "Current trip" && $('[data-region="nearby-results"] [data-action="stop:open"]'), "Nearby again");
+  await waitFor(() => title() === "Current trip" && $("#content .pt-notrip"), "Current trip again");
   ok($("#back").hidden, "no Back button on a tab");
+});
+
+// Glass spec 8.9 (Q3, default yes; the iPhone app does the same): the tab bar shrinks to a circle while the expanded
+// list scrolls down, and comes back on scrolling up, at the top, on a tap on the circle, on a new page and on collapse.
+test("tab bar minimize: scrolling the expanded list down leaves a circle with the section's glyph; up, a tap on it, a new page or a collapse bring the bar back", async () => {
+  const finish = () => { for (const e of [$("#tabs"), ...$$("#tabs > *")]) for (const a of e.getAnimations({ subtree: true })) a.finish(); };
+  const min = () => $("#app").classList.contains("tabs-min");
+  const scrollTo = async (y) => { content().scrollTop = y; content().dispatchEvent(new W.Event("scroll")); await sleep(30); };
+  tab("routes");
+  await waitFor(() => title() === "Routes" && $$(".v-routerow").length > 3, "Routes view");
+  $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }));
+  await waitFor(() => $("#sheet").dataset.detent === "full" || null, "expanded");
+  ok(content().scrollHeight - content().clientHeight > 120, "a list long enough to scroll");
+  await scrollTo(0);
+  ok(!min(), "at the top: the full bar");
+  await scrollTo(20);
+  ok(!min(), "not before 24 px");
+  await scrollTo(90);
+  ok(min(), "scrolled down: minimized");
+  finish();
+  const tabs = $("#tabs").getBoundingClientRect(), sel = $('#tabs button[aria-current="page"]'), sr = sel.getBoundingClientRect();
+  const k = parseFloat(W.getComputedStyle(D.documentElement).getPropertyValue("--frame-k")) || 1;
+  near(sr.left + sr.width / 2, tabs.left + 28 * k, 1.5, "the selected glyph sits in the circle at the leading end");
+  ok($$('#tabs button[data-tab]:not([aria-current="page"])').every((b) => W.getComputedStyle(b).visibility === "hidden"), "the other sections fade out");
+  ok(/Routes, show all sections/.test(sel.getAttribute("aria-label")), "the circle says what it does: " + sel.getAttribute("aria-label"));
+  const search = $("#searchBar");
+  ok(W.getComputedStyle(search).visibility === "visible" && search.getBoundingClientRect().width >= 56 * k - 1, "the search circle stays");
+  const hit = D.elementFromPoint(tabs.left + tabs.width * 0.75, tabs.top + tabs.height / 2);
+  ok(!hit || !hit.closest("#tabs"), "the empty capsule area takes no taps");
+  await scrollTo(content().scrollTop - 30);
+  ok(!min(), "scrolling back up 16 px: the bar is back");
+  await scrollTo(content().scrollTop + 60);
+  ok(min(), "down again: minimized");
+  click(sel, "the circle");
+  await sleep(30);
+  ok(!min() && title() === "Routes" && $("#sheet").dataset.detent === "full", "a tap on the circle brings the bar back, same section, still expanded");
+  await scrollTo(content().scrollTop + 60);
+  ok(min(), "minimized once more");
+  $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true }));
+  await waitFor(() => !min() || null, "a collapse brings the bar back");
+  $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }));
+  await waitFor(() => $("#sheet").dataset.detent === "full" || null, "expanded again");
+  await scrollTo(content().scrollTop + 120);
+  ok(min(), "minimized");
+  tab("myroutes");   // a script (or assistive tech) tapping another section while minimized still switches
+  await waitFor(() => title() === "My Routes" || null, "My Routes");
+  ok(!min(), "a new page brings the bar back");
+  tab("nearby");
+  await waitFor(() => title() === "Current trip" || null, "Current trip");
+  $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true }));
 });
 
 test("alerts: Nearby banner shows the active alert and opens the Alerts sub view; back returns", async () => {
@@ -159,7 +264,8 @@ const shellHelpers = { test, ok, eq, waitFor, $, txt, click, tab, W: () => W, st
 shellE2E(shellHelpers, "chip");
 
 test("stop view: arrivals, directions buttons, back returns to Nearby", async () => {
-  const row = $('[data-region="nearby-results"] [data-action="stop:open"]');
+  SB.store.set({ favStops: [T.S] });   // a stop row on Current trip (no trip: the favorites, owner 2026-11-04)
+  const row = await waitFor(() => $('[data-region="nearby-results"] [data-action="stop:open"]'), "a favorite stop row");
   const id = row.dataset.id;
   click(row, "arrival row");
   await waitFor(() => state().view === "stop" && title() === stopName(id), "stop view");
@@ -169,6 +275,7 @@ test("stop view: arrivals, directions buttons, back returns to Nearby", async ()
   ok(!$("#back").hidden, "Back visible in a sub view");
   click($("#back"), "back");
   await waitFor(() => state().view === "nearby" && title() === "Current trip", "back to Nearby");
+  SB.store.set({ favStops: [] });
 });
 
 test("nearby search: a result tapped after the field loses focus still opens (no rebuild under the finger)", async () => {
@@ -185,7 +292,7 @@ test("nearby search: a result tapped after the field loses focus still opens (no
   click($("#back"), "back");
   await waitFor(() => state().view === "nearby", "back to Nearby");
   type($('#content [data-input="nearby-q"]'), "", "clear search");
-  await waitFor(() => $('[data-region="nearby-results"] h3'), "Arriving soon again");
+  await waitFor(() => !$('#content [data-region="nearby-results"] [data-action="stop:open"]') || null, "the search results gone again (no nearby list without a trip)");
 });
 
 test("routes: eye toggle hides a route (persisted) and shows it again", async () => {
@@ -200,18 +307,23 @@ test("routes: eye toggle hides a route (persisted) and shows it again", async ()
   await waitFor(() => !state().hiddenRoutes.includes(rid) && !$(`.v-routerow.is-off .v-eye[data-id="${rid}"]`), "route shown");
 });
 
-test("layout: search bar on top opens Directions; bottom navigation; Edit map order first on Routes", async () => {
-  const sb = $("#searchBar"), nav = $("#tabs");
-  ok(sb && sb.dataset.action === "dir:open" && sb.dataset.focus === "to" && /destination/i.test(sb.getAttribute("aria-label")), "search bar");
-  ok(nav.getBoundingClientRect().bottom >= W.innerHeight - 1 && !$("#sheetHead #tabs"), "navigation at the bottom, not in the sheet");
-  ok(sb.getBoundingClientRect().bottom <= $("#sheet").getBoundingClientRect().top, "search bar above the sheet");
+test("layout: the search circle beside the tab bar opens Directions; floating tab bar; Edit map order first on Routes", async () => {
+  // glass spec 3, 8.6, 8.7: the tab bar and the search circle float at the bottom, the collapsed card above them
+  const sb = $("#searchBar"), nav = $("#tabs"), frameK = parseFloat(W.getComputedStyle(D.documentElement).getPropertyValue("--frame-k")) || 1;
+  ok(sb && sb.dataset.action === "dir:open" && sb.dataset.focus === "to" && /destination/i.test(sb.getAttribute("aria-label")), "search circle");
+  const nb = nav.getBoundingClientRect(), sbr = sb.getBoundingClientRect(), app = $("#app").getBoundingClientRect(), bottom = app.height > 100 ? app.bottom : W.innerHeight;
+  ok(!$("#sheetHead #tabs") && nb.bottom <= bottom && nb.bottom >= bottom - 40 * frameK, "tab bar floats at the bottom, not in the sheet");
+  ok(Math.abs(sbr.top - nb.top) < 1 && sbr.left > nb.right && Math.abs(sbr.width - sbr.height) < 1, "search circle at the tab bar's trailing end");
+  ok(sbr.top >= $("#sheet").getBoundingClientRect().top + 30 * frameK, "the collapsed card sits above the bottom row");
   tab("routes");
-  const top = await waitFor(() => $('#content [data-region="routes-top"]'), "routes top region");
-  eq(top.querySelector("button")?.dataset.action, "routes:order-edit", "first control on Routes");
+  await waitFor(() => $('#content [data-region="routes-top"]'), "routes top region");
+  // DESIGN-SPEC 10.6: Edit map order is the header's trailing action, before every list control
+  const edit = await waitFor(() => $('#titleRight [data-action="routes:order-edit"]'), "Edit map order in the sheet header");
+  ok(edit.getBoundingClientRect().height >= 44 * (parseFloat(W.getComputedStyle(D.documentElement).getPropertyValue("--frame-k")) || 1) - 0.5, "44 pt target (in the scaled phone frame): " + edit.getBoundingClientRect().height);
   ok(!$('#content [data-action="pick:open"]') && !$('#content [data-action="dir:open"]'), "no Routes to station / Directions on Routes");
   tab("nearby");
-  await waitFor(() => title() === "Current trip" && $("#content .pt-hint") && !$("#content .pt-notrip"), "Current trip view with the quiet no-trip hint (no card)");
-  eq($$('#content [data-action="dir:open"]').length, 0, "destination search lives in the top bar");
+  await waitFor(() => title() === "Current trip" && $("#content .pt-notrip"), "Current trip with 'No current trip selected' (owner 2026-11-04)");
+  eq($$('#content [data-action="dir:open"]').length, 1, "besides the search circle, one Search for a destination in the no-trip card");
   eq($$('#content [data-action="pick:open"]').length, 1, "one Routes to station entry");
 });
 
@@ -314,39 +426,28 @@ test("sheet: the grab bar is never covered, and a drag from it that leaves the h
 
 test("directions: place + station, stubbed sidewalk walking, option drawn on the map", async () => {
   tab("nearby");
-  // like Google Maps (owner 2026-10-12): the search bar itself turns into the Start / Destination card at the top
-  const bar = $("#topbar .searchbar").getBoundingClientRect();
-  const near = (a, b) => Math.abs(a.left - b.left) < 2 && Math.abs(a.top - b.top) < 2 && Math.abs(a.width - b.width) < 2;
-  const r4 = (r) => [r.left, r.top, r.width, r.height].map(Math.round);
-  click($("#searchBar"), "search bar");
-  const card = await waitFor(() => { const c = $("#dirbar"); return c && !c.hidden && c.querySelector('[data-input="dir-to"]') ? c : null; }, "the card with the fields");
-  const anims = card.getAnimations();
-  if (anims.length) {
-    anims.forEach((an) => { an.pause(); an.currentTime = 0; });
-    const g0 = card.getBoundingClientRect();
-    ok(near(g0, bar) && Math.abs(g0.height - bar.height) < 2, `starts as the bar: ${r4(g0)} vs ${r4(bar)}`);
-    anims.forEach((an) => an.finish());
-  }
-  const c1 = card.getBoundingClientRect();
-  ok(near(c1, bar), `the card sits where the bar was: ${r4(c1)} vs ${r4(bar)}`);
-  eq(W.getComputedStyle($("#topbar .searchbar")).display, "none", "the bar itself is gone");
-  ok(!$("#content .v-dirbox"), "the fields are not in the sheet");
+  // like Apple Maps (glass spec 2.2, 9.2): the search circle opens the expanded sheet with the Start / Destination card at
+  // its top, Destination focused; the bottom row steps aside while the keyboard is up (touch screens)
+  click($("#searchBar"), "search circle");
+  const card = await waitFor(() => { const c = $("#content .v-dirbox"); return c && c.querySelector('[data-input="dir-to"]') ? c : null; }, "the card with the fields in the sheet");
   await waitFor(() => D.activeElement === card.querySelector('[data-input="dir-to"]'), "keyboard on Destination");
-  eq($("#sheet").dataset.detent, "full", "the sheet holds the suggestions");
-  const sheetTopUp = () => { const sh = $("#sheet"), t = W.getComputedStyle(sh).transform; return sh.getBoundingClientRect().top - (t && t !== "none" ? new W.DOMMatrixReadOnly(t).m42 : 0); };
-  ok(sheetTopUp() >= c1.bottom - 1, `the sheet never rises over the card: ${Math.round(sheetTopUp())} vs ${Math.round(c1.bottom)}`);
-  // collapsing puts the keyboard away and leaves the map between the card and the collapsed sheet
+  eq($("#sheet").dataset.detent, "full", "the sheet expands with the fields and the suggestions");
+  ok(card === $("#content .v-dir").firstElementChild, "the card is the first thing in the sheet");
+  eq(W.getComputedStyle(card).position, "sticky", "pinned while the results scroll");
+  ok(!$("#dirbar"), "no card over the map any more");
+  // collapsing puts the keyboard away; the card is part of the sheet, so the collapsed card shows only the header
   $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true }));
   await waitFor(() => $("#sheet").dataset.detent === "peek" || null, "collapsed");
   ok(!/^(INPUT|TEXTAREA)$/.test(D.activeElement?.tagName || ""), "keyboard put away when collapsed");
-  ok(!card.hidden && near(card.getBoundingClientRect(), bar), "the card stays at the top");
-  const from = await waitFor(() => state().view === "directions" && $('#dirbar [data-input="dir-from"]'), "start field");
+  eq(title(), "Directions", "the collapsed card says Directions");
+  const from = await waitFor(() => state().view === "directions" && $('#content [data-input="dir-from"]'), "start field");
+  $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }));
+  await waitFor(() => $("#sheet").dataset.detent === "full" || null, "expanded again");
   from.focus();
-  await waitFor(() => $("#sheet").dataset.detent === "full" || null, "focusing a field expands the sheet");
   type(from, "e2e start", "start field");
   const placeSug = await waitFor(() => $$('#content [data-action="dir:sug"]').find((b) => /E2E Start Place/.test(txt(b))), "place suggestion");
   click(placeSug, "place suggestion");
-  const to = $('#dirbar [data-input="dir-to"]');
+  const to = $('#content [data-input="dir-to"]');
   to.focus();
   type(to, stopName(T.Dst), "destination field");
   const stopSug = await waitFor(() => $$('#content [data-action="dir:sug"]').find((b) => txt(b).startsWith(stopName(T.Dst))), "stop suggestion");
@@ -360,7 +461,7 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
   await waitFor(() => $("#content .v-opt.is-on .v-steps"), "steps of the selected option");
   const steps = txt($("#content .v-opt.is-on .v-steps"));
   ok(/Bus arrives at .+ \d{1,2}:\d{2}/.test(steps), "bus step with clock: " + steps);
-  ok(/sidewalk route/.test(steps), "walking leg labeled sidewalk route: " + steps);
+  ok(/sidewalk route/i.test(steps), "walking leg says Sidewalk route: " + steps);
   ok(txt(content()).includes("Bus times are estimates from schedules and live predictions."), "estimate note");
   await waitFor(() => $$("#map path.sb-walk").length > 0 && $$("#map .sb-plan-bus").length > 0, "plan drawn on the map (walk + bus legs)");
   eq($$("#map .sb-plan-casing, #map .sb-walk-casing, #map .sb-casing").length, 0, "no outlines on the plan or the lines (owner 2026-11-04)");
@@ -383,12 +484,10 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
   click(await waitFor(() => $('#content .v-opt.is-on [data-action="dir:start"]'), "Start on the selected option"), "Start");
   const tt = await waitFor(() => state().view === "nearby" && $("#content .tp-title"), "Current trip with the trip in progress");
   eq(state().journey && state().journey.kind, "plan", "trip started");
-  eq(title(), "Current trip", "sheet title");
+  eq(title(), "Current trip", "sheet title, expanded (the next-step card says the step; collapsed: trip-arriving.js)");
   eq($('#tabs button[data-tab="nearby"]').getAttribute("aria-current"), "page", "Current trip tab selected");
   eq($("#sheet").dataset.detent, "full", "expanded: the trip progress");
-  ok($("#dirbar").hidden && W.getComputedStyle($("#topbar .searchbar")).display !== "none", "leaving Directions: the card turns back into the bar");
-  for (const an of $("#topbar .searchbar").getAnimations()) an.finish();
-  ok(near($("#topbar .searchbar").getBoundingClientRect(), bar), "the bar is back in the same place");
+  ok(!$("#content .v-dirbox"), "leaving Directions: the card goes with its view");
   ok($("#content [data-region='nearby-trip'] .tp-title"), "the trip in progress leads, above the next bus");
   await waitFor(() => D.activeElement === tt, "focus on the trip title");
   ok($$("#map .sb-plan-bus").length > 0, "the trip stays on the map");
@@ -402,6 +501,20 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
   await waitFor(() => busIcons().length === tripBuses || null, "only the trip's buses drawn");
   eq(busIcons().length, fullBefore, "the same buses the preview kept at full strength");
   eq(fadedIcons().length, 0, "and none faded");
+  // owner 2026-11-04: "When the sliding menu is lifted the current trip progress still disappears. Fix this so that the
+  // current trip progress still shows." With a real trip in progress and the sheet expanded, the trip chip stays shown
+  // and tappable above the sheet, on Current trip and on the other tabs (the Settings circle's rule)
+  for (const tb of ["nearby", "routes", "myroutes", "nearby"]) {
+    if (state().view !== tb) tab(tb);
+    if ($("#sheet").dataset.detent !== "full") $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }));
+    await waitFor(() => $("#sheet").dataset.detent === "full" && $("#tabs button[aria-current=\"page\"]")?.dataset.tab === tb && !$("#ctxbar").hidden || null, "expanded " + tb + " with the trip chip");
+    for (const a of $("#ctxbar").getAnimations()) a.finish();
+    const chip = $("#ctxbar"), c = chip.getBoundingClientRect(), sh = $("#sheet").getBoundingClientRect();
+    eq(W.getComputedStyle(chip).visibility, "visible", tb + ": the trip chip shows over the expanded sheet");
+    ok(/Trip to /.test(txt(chip)) && c.bottom <= sh.top - 4, `${tb}: the trip's name, above the sheet (chip ${Math.round(c.bottom)} / sheet ${Math.round(sh.top)})`);
+    const btn = chip.querySelector('[data-action="journey:end"]'), b = btn.getBoundingClientRect(), hit = D.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+    ok(hit && hit.closest('[data-action="journey:end"]') === btn, `${tb}: its Show all takes the tap (${hit && (hit.id || hit.className)})`);
+  }
   click($('#content [data-action="journey:end"]'), "End trip");
   await waitFor(() => !state().journey && !$("#content .tp-title"), "trip ended");
   await waitFor(() => $$("#map .sb-plan-bus").length === 0, "plan cleared from the map");
@@ -438,32 +551,77 @@ test("status pill: failing feed shows the error pill with Retry; recovery hides 
   await waitFor(() => $("#pill").hidden && !state().failed, "pill hidden after recovery");
 });
 
-// Owner 2026-11-03: spamming Retry during a trip must never end it. Retry is at the pill's left end (the context bar's
-// label moves up under it when the pill hides, not its right-hand "Show all"), and context-bar taps are ignored for a
-// moment after a Retry tap.
-test("status pill: Retry sits on the left; a fast second tap after recovery never ends the trip", async () => {
-  SB.store.set({ journey: { rids: [T.R], label: "E2E retry trip", kind: "plan" } });
-  await waitFor(() => !$("#ctxbar").hidden && txt($("#ctxbar")).includes("E2E retry trip"), "journey bar");
+// Owner 2026-11-03: "When the connection/bus location is not updated and the error shows up, move the retry button to the left
+// side of the notification so if the user spams it while on a route, it doesn't shift and accidentally cancel their current trip."
+test("status banner: Retry tapped again and again during a trip, also as the feed comes back, never moves and never ends the trip", async () => {
+  const rid = T.R, r = state().routes[rid];
+  SB.store.set({ journey: { kind: "plan", rids: [rid], label: "To E2E Place", to: "E2E Place", t0: Math.floor(Date.now() / 1000), legs: [] } });
+  await waitFor(() => !$("#ctxbar").hidden, "the trip chip");
   T.feedFail = true;
   W.dispatchEvent(new W.Event("online"));
-  await waitFor(() => !$("#pill").hidden && $("#pill").classList.contains("err") && !$("#pillRetry").hidden, "error pill with Retry");
-  const pill = $("#pill").getBoundingClientRect(), retry = $("#pillRetry").getBoundingClientRect();
-  const text = $("#pillText").getBoundingClientRect(), show = $('#ctxbar [data-action="journey:end"]').getBoundingClientRect();
-  ok(retry.left - pill.left <= 12 && retry.right <= text.left, `Retry is the leftmost control (pill ${pill.left}, retry ${retry.left}..${retry.right}, text ${text.left})`);
-  ok(retry.right < show.left, `Retry is clear of the bar's Show all (retry right ${retry.right}, Show all left ${show.left})`);
-  const x = retry.left + retry.width / 2, y = retry.top + retry.height / 2;
-  T.feedFail = false;
-  click($("#pillRetry"), "Retry");
-  await waitFor(() => $("#pill").hidden && !state().failed, "pill hidden after recovery");
-  const under = D.elementFromPoint(x, y);
-  ok(!under || !under.closest('[data-action="journey:end"]'), "where Retry was there is no trip-ending control: " + (under && under.outerHTML.slice(0, 80)));
-  if (under) click(under, "the same spot again");
-  click($('#ctxbar [data-action="journey:end"]'), "Show all, within a second of Retry");
-  await new Promise((r) => setTimeout(r, 150));
-  eq(state().journey && state().journey.label, "E2E retry trip", "the trip survives the double tap");
-  await new Promise((r) => setTimeout(r, 1000));
-  click($('#ctxbar [data-action="journey:end"]'), "Show all, later");
-  await waitFor(() => state().journey === null && $("#ctxbar").hidden, "Show all works again after the guard");
+  try {
+    await waitFor(() => !$("#pill").hidden && $("#pill").classList.contains("err") && !$("#pillRetry").hidden, "error banner with Retry");
+    const btn = $("#pillRetry"), pill = $("#pill"), at = () => { const b = btn.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map((v) => Math.round(v * 10) / 10).join(","); };
+    const first = at(), txtR = pill.querySelector(".pillmore").getBoundingClientRect(), b0 = btn.getBoundingClientRect();
+    ok(b0.right <= txtR.left + 1 && b0.left - pill.getBoundingClientRect().left < 16, "Retry on the leading edge, before the text");
+    const endTrip = [...D.querySelectorAll('[data-action="journey:end"]')].filter((e) => e.getClientRects().length);
+    for (const e of endTrip) { const er = e.getBoundingClientRect(); ok(er.left >= b0.right || er.top >= b0.bottom + 8, "no trip-ending control under the Retry spot: " + e.textContent); }
+    for (let i = 0; i < 8; i++) {
+      if (i === 4) T.feedFail = false;   // the feed comes back in the middle of the taps
+      const b = btn.getBoundingClientRect(), x = b.left + b.width / 2, y = b.top + b.height / 2;
+      const hit = D.elementFromPoint(x, y);
+      ok(hit && hit.closest("#pillRetry"), `tap ${i + 1} lands on Retry (${hit && (hit.id || hit.className)})`);
+      hit.click();
+      await sleep(i === 4 ? 400 : 60);
+      eq(at(), first, `Retry did not move after tap ${i + 1}`);
+      eq(state().journey && state().journey.kind, "plan", `the trip is still running after tap ${i + 1}`);
+    }
+    ok(/Live data is back/.test(txt($("#pillText"))) && $("#pillRetry").getAttribute("aria-disabled") === "true", "held after recovery: \"Live data is back.\", taps absorbed (DESIGN-SPEC 10.3)");
+  } finally {
+    T.feedFail = false;
+    await waitFor(() => $("#pill").hidden && !state().failed, "banner gone once the hold is over and the feed is back", 8000);
+    SB.store.set({ journey: null });
+  }
+  ok(r, "route " + rid);
+});
+
+// Owner 2026-11-04: "Reduce the size of the reconnecting notification." The compact banner opens its details (the full
+// sentence, Call 773.702.8181) under its one line; tapping the line again and again during a trip never ends the trip
+// (the line never moves, so no tap lands on the trip chip's Show all) and never moves Retry.
+test("status banner: compact, one line; its details open and close under the line; fast taps on it during a trip never end the trip", async () => {
+  const rid = T.R;
+  SB.store.set({ journey: { kind: "plan", rids: [rid], label: "To E2E Place", to: "E2E Place", t0: Math.floor(Date.now() / 1000), legs: [] } });
+  await waitFor(() => !$("#ctxbar").hidden, "the trip chip");
+  T.feedFail = true;
+  W.dispatchEvent(new W.Event("online"));
+  try {
+    await waitFor(() => !$("#pill").hidden && $("#pill").classList.contains("err") && !$("#pillRetry").hidden, "error banner with Retry");
+    const pill = $("#pill"), more = pill.querySelector(".pillmore"), k = parseFloat(W.getComputedStyle(D.documentElement).getPropertyValue("--frame-k")) || 1;
+    ok(pill.getBoundingClientRect().height <= 46 * k, "one 44 pt line: " + pill.getBoundingClientRect().height);
+    ok(/rely|off/.test(txt(more)) && /Can't reach the shuttle feed/.test(txt($("#pillText"))), "the line still warns; screen readers get the full sentence");
+    const retry0 = $("#pillRetry").getBoundingClientRect(), m0 = more.getBoundingClientRect();
+    for (let i = 0; i < 6; i++) {
+      const b = more.getBoundingClientRect(), x = b.right - 30 * k, y = b.top + b.height / 2;   // the trailing end, over the trip chip's column
+      const hit = D.elementFromPoint(x, y);
+      ok(hit && hit.closest(".pillmore"), `tap ${i + 1} lands on the banner's line (${hit && (hit.id || hit.className)})`);
+      hit.click();
+      await sleep(40);
+      eq(state().journey && state().journey.kind, "plan", `the trip is still running after tap ${i + 1}`);
+      const r = $("#pillRetry").getBoundingClientRect(), m = more.getBoundingClientRect();
+      eq([Math.round(r.left), Math.round(r.top), Math.round(m.top)], [Math.round(retry0.left), Math.round(retry0.top), Math.round(m0.top)], `Retry and the line stay put after tap ${i + 1}`);
+    }
+    eq(more.getAttribute("aria-expanded"), "false", "an even number of taps: closed again");
+    click(more, "Details");
+    const call = pill.querySelector(".pillcall");
+    ok(!call.hidden && call.getAttribute("href") === "tel:+17737028181" && /773\.702\.8181/.test(txt(call)), "open: Call 773.702.8181");
+    ok(pill.getBoundingClientRect().height > 80 * k && Math.round(more.getBoundingClientRect().top) === Math.round(m0.top), "open: the banner grows downward, the line stays (Row B follows --pill-h: tests/ui-shell-layout.js)");
+    click(more, "Details");
+  } finally {
+    T.feedFail = false;
+    W.dispatchEvent(new W.Event("online"));   // live.js polls at once when back online
+    await waitFor(() => $("#pill").hidden && !state().failed, "banner gone once the feed is back", 15000);
+    SB.store.set({ journey: null });
+  }
 });
 
 // Rider safety (2026-10-10): a fresh feed with no vehicles while a route is scheduled is not "no shuttles running".
@@ -500,37 +658,51 @@ test("status pill: an empty feed while a route is scheduled says no bus reports 
   await waitFor(() => $("#pill").hidden && state().buses.length, "live buses back, pill hidden");
 });
 
-test("settings gear: top-right, labeled, 44px target, clear of the locate button", async () => {
-  const g = $("#settingsBtn"), loc = $("#locateBtn");
+/** Collapse the sheet (the lower-right group rides on the collapsed card and hides when it is expanded). */
+async function collapseSheet() {
+  $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true }));
+  await waitFor(() => $("#sheet").dataset.detent === "peek" || null, "sheet collapsed");
+}
+
+test("settings gear: a glass circle top right (Row B), labeled, 44px target, clear of the lower-right group", async () => {
+  await collapseSheet();
+  $("#sheet").style.transition = "none";   // headless test frames do not run CSS transitions: read the settled card
+  const g = $("#settingsBtn"), loc = $("#locateBtn"), k = parseFloat(W.getComputedStyle(D.documentElement).getPropertyValue("--frame-k")) || 1;
   ok(g && g.getAttribute("aria-label") === "Settings" && g.dataset.action === "settings:open", "gear button");
-  const r = g.getBoundingClientRect(), l = loc.getBoundingClientRect();
-  ok(r.width >= 44 && r.height >= 44, "44px target: " + r.width + "x" + r.height);
-  ok(r.bottom <= l.top, "gear sits above the locate button");
-  ok(W.innerWidth - r.right <= 16, "right edge");
+  const r = g.getBoundingClientRect(), l = loc.getBoundingClientRect(), app = $("#app").getBoundingClientRect(), right = app.width > 100 ? app.right : W.innerWidth;
+  ok(r.width >= 44 * k - 0.5 && r.height >= 44 * k - 0.5, "44px target: " + r.width + "x" + r.height);
+  ok(r.bottom <= l.top, "Settings at the top, Locate low on the right (glass spec 4)");
+  ok(right - r.right <= 16 * k, "right edge");
+  $("#sheet").style.removeProperty("transition");
   click(g, "gear");
   const o = await waitFor(() => { const x = $("#settingsOverlay"); return x && !x.hidden && x.dataset.state === "open" ? x : null; }, "Settings overlay opened from the gear");
   eq([o.getAttribute("role"), o.getAttribute("aria-modal")], ["dialog", "true"], "modal dialog");
   ok(o.contains(D.activeElement), "focus moved into Settings");
-  // layout boxes, not transforms: headless test frames do not run CSS transitions, so the sheet may sit mid-slide.
-  // The overlay's top edge must be where the sheet's top settles at the full detent (rect top minus its translateY).
-  const ot = () => parseFloat(W.getComputedStyle(o).top);
-  const sheetTopFull = () => { const sh = $("#sheet"), t = W.getComputedStyle(sh).transform; return sh.getBoundingClientRect().top - (t && t !== "none" ? new W.DOMMatrixReadOnly(t).m42 : 0); };
-  await waitFor(() => $("#sheet").dataset.detent === "full" && Math.abs(ot() - sheetTopFull()) <= 1 || null, "overlay placed over the full sheet");
-  ok(ot() <= $("#title").getBoundingClientRect().top - (W.getComputedStyle($("#sheet")).transform !== "none" ? new W.DOMMatrixReadOnly(W.getComputedStyle($("#sheet")).transform).m42 : 0), "overlay covers the sheet title");
-  ok($("#sheetHead").inert && $("#tabs").inert && !$(".sto-scrim").hidden, "covered header and navigation inert, background dimmed");
-  eq(W.getComputedStyle(o).bottom, "0px", "overlay reaches the screen bottom, covering the bottom navigation");
+  // glass spec 9.8: an iOS sheet of its own from 10 below the safe area to the bottom, over a scrim; the app's sheet keeps
+  // its state; it zooms out of the gear (transform-origin at the gear's center)
+  const safeT = parseFloat(W.getComputedStyle(D.documentElement).getPropertyValue("--safe-t")) || 0;
+  near(parseFloat(W.getComputedStyle(o).top), safeT + 10, 1, "top edge 10 below the safe area");
+  eq(W.getComputedStyle(o).bottom, "0px", "reaches the screen bottom, covering the bottom row");
+  eq($("#sheet").dataset.detent, "peek", "the app's own sheet is left as it was");
+  ok(o.style.transformOrigin && o.style.transformOrigin !== "50% 50%", "zooms out of the gear: " + o.style.transformOrigin);
+  ok($("#sheetHead").inert && $("#tabs").inert && $("#bottomrow").inert && $("#mapctl").inert && !$(".sto-scrim").hidden, "the app behind inert, dimmed");
   const done = o.querySelector(".sto-done"), dr = done.getBoundingClientRect(), orr = o.getBoundingClientRect();
-  ok(/Done/.test(txt(done)) && dr.right > orr.left + orr.width * 0.7 && dr.top < orr.top + 60, "Done button in the top-right corner");
+  eq(done.getAttribute("aria-label"), "Done", "Done is a checkmark named Done (iOS 26)");
+  ok(done.querySelector("svg") && Math.abs(dr.width - dr.height) < 1 && dr.right > orr.left + orr.width * 0.7 && dr.top < orr.top + 70, "a round button in the top-right corner");
   click(done, "Done");
   await waitFor(() => o.dataset.state === "closed", "Done closes Settings");
 });
 
-test("lines by time: the clock next to the gear opens the menu; Set time shows only those lines; deselecting one drops the name", async () => {
-  const c = $("#timeBtn"), g = $("#settingsBtn");
+test("lines by time: the clock over Locate in the lower-right group opens the menu; Set time shows only those lines; deselecting one drops the name", async () => {
+  await collapseSheet();
+  $("#sheet").style.transition = "none";
+  const c = $("#timeBtn"), l = $("#locateBtn"), k = parseFloat(W.getComputedStyle(D.documentElement).getPropertyValue("--frame-k")) || 1;
   ok(c && c.getAttribute("aria-label") === "Lines by Time" && c.dataset.action === "time:open", "clock button");
-  const r = c.getBoundingClientRect(), gr = g.getBoundingClientRect();
-  ok(r.width >= 44 && r.height >= 44, "44px target: " + r.width + "x" + r.height);
-  ok(Math.abs(r.top - gr.top) < 2 && r.right <= gr.left + 1 && gr.left - r.right < 12, "right next to the gear, same row");
+  const r = c.getBoundingClientRect(), lr = l.getBoundingClientRect();
+  ok(r.width >= 44 * k - 0.5 && r.height >= 44 * k - 0.5, "44px target: " + r.width + "x" + r.height);
+  ok(c.closest("#mapctl") && Math.abs(r.left - lr.left) < 1 && r.bottom <= lr.top + 1, "the top slot of the lower-right group, Locate under it (Map Modes' place in Apple Maps)");
+  ok(r.bottom <= $("#sheet").getBoundingClientRect().top, "riding above the collapsed card");
+  $("#sheet").style.removeProperty("transition");
   click(c, "clock");
   const o = await waitFor(() => { const x = $("#settingsOverlay"); return x && !x.hidden && x.dataset.state === "open" && x.dataset.kind === "time" ? x : null; }, "Lines by Time open");
   eq(txt($("#stoTitle")), "Lines by Time");
@@ -565,8 +737,15 @@ test("tap outside the sheet: empty map collapses it to peek; stops and buses sti
   await waitFor(() => title() === "Current trip", "Current trip");
   const sh = $("#sheet");
   const det = () => sh.dataset.detent;
-  // drive the Leaflet map the way a real tap does: a click on the map pane, not on a layer
-  const tapMap = () => { const mp = $("#map .leaflet-map-pane") || $("#map"); mp.dispatchEvent(new W.MouseEvent("click", { bubbles: true, cancelable: true, clientX: 200, clientY: 200 })); };
+  // drive the Leaflet map the way a real tap does: a click on the map pane, not on a layer, at a spot 40 px clear of every
+  // route line (a tap on a line opens that route, owner 2026-10-27; where the lines fall depends on the camera)
+  const emptySpot = () => {
+    const lm0 = SB.map, segs = Object.values(state().shapes || {}).flat().map((ln) => ln.map((q) => lm0.latLngToContainerPoint([q[0], q[1]])));
+    const d = (x, y, a, b) => { const vx = b.x - a.x, vy = b.y - a.y, L = vx * vx + vy * vy || 1, k = Math.max(0, Math.min(1, ((x - a.x) * vx + (y - a.y) * vy) / L)); return Math.hypot(x - a.x - k * vx, y - a.y - k * vy); };
+    for (let y = 140; y < 520; y += 30) for (let x = 40; x < 360; x += 30) if (segs.every((pts) => pts.every((q, i) => i === 0 || d(x, y, pts[i - 1], q) > 40))) return [x, y];
+    return [200, 200];
+  };
+  const tapMap = () => { const [x, y] = emptySpot(), mp = $("#map .leaflet-map-pane") || $("#map"); mp.dispatchEvent(new W.MouseEvent("click", { bubbles: true, cancelable: true, clientX: x, clientY: y })); };
   click($("#grab"), "grab");                                  // open it up first if it was low
   await sleep(50);
   if (det() === "peek") { $("#grab").dispatchEvent(new W.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })); await sleep(50); }
