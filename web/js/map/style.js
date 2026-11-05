@@ -7,6 +7,11 @@
  * Layer ids patched by patchStyle (OpenMapTiles schema; ids from positron and dark as of 2026-10):
  *   recolored:  background, water, park (positron), landuse_park (dark), landuse_residential,
  *               landcover_wood, building (+ outline, opacity ramp), waterway
+ *   added fills (just below `water`, so lagoons inside a park stay blue; owner 2026-11-04: "the current map should make
+ *               green spaces like parks actually green"): sb_green (landcover class grass: parks, recreation grounds,
+ *               lawns, gardens, golf courses, grassland; neither OpenFreeMap style draws them), sb_pitch (landuse
+ *               pitch / playground), sb_cemetery (landuse cemetery), sb_campus (landuse university / college / school,
+ *               a faint warm tint like Apple Maps' campuses)
  *   roads:      highway_path, highway_minor (wider, round caps), highway_major_casing,
  *               highway_major_inner, highway_motorway_casing, highway_motorway_inner
  *   hidden:     highway-shield-non-us, highway-shield-us-interstate, road_shield_us,
@@ -22,7 +27,7 @@
  *               busy buildings from 14.5: college/school/library/hospital/museum/... names
  *               only, no icons; every other POI stays hidden; a name the landmarks below already show is skipped),
  *               sb_name_path (z>=16), sb_name_minor (z>=14), sb_name_major (z>=12.5): street names,
- *               no uppercase, 2 px halo in the land color, majors bold. Added symbol layers sit in that
+ *               no uppercase, 1.5 px halo in the land color, majors bold (DESIGN-SPEC 11.2). Added symbol layers sit in that
  *               order where the first original street-name layer was, so street names (on top) win label
  *               collisions over campus names, which win over house numbers. The curated building and place
  *               names (web/data/landmarks.json) are NOT basemap text: map/landmarks.js draws them above the route
@@ -45,17 +50,45 @@ export const ATTRIBUTION = link('https://openfreemap.org', 'OpenFreeMap') + DOT 
 export const RASTER_ATTRIBUTION = link('https://www.openstreetmap.org/copyright', 'OpenStreetMap');
 const COPY = /(&copy;|\u00a9)\s*/g;
 
-/** Basemap palettes. Street text vs road fill: light 12.9:1, dark 9.6:1. */
+/**
+ * Basemap palettes, closer to Apple Maps (owner 2026-11-04: "Change the background map to resemble something closer to
+ * apple maps"; DESIGN-SPEC-GLASS 18.1). Light: a warm off-white land, parks a fresh mid green (woods a step deeper),
+ * water a clear blue, white streets with soft gray casing (main streets too, a step wider and a darker edge), only
+ * motorways in Apple's yellow-orange (owner 2026-11-04: "Do not make the main streets yellow. The highways being yellow
+ * is ok. This coloring of roads can confuse the user to think it is a bus line."), light warm gray buildings, labels
+ * in a quiet gray hierarchy. Dark: a neutral dark gray land, deep muted greens that still read as green, a clear dark
+ * blue, neutral gray streets with muted amber motorways. tests/map-style.js checks that no road but a motorway has a
+ * yellow or orange hue. Street text vs its land-colored halo: light 7.3:1 (minor) / 12.6:1 (major), dark 9.6:1 / 12.8:1;
+ * minor text on a road fill >= 6.6:1. Route lines have no casing since 2026-11-04 (owner: "Remove the outlines on each
+ * line"), so a few route colors sit under 3:1 on the land (53RD yellow on the light map, RE navy on the dark one).
+ */
 export const PALETTE = {
-  light: { bg: '#eeefeb', park: '#d8e7d0', wood: '#dfe9d8', resid: '#eaeae5', water: '#aecde3', waterText: '#3f6a8c',
-    bldg: '#e1e0da', bldgLine: '#c6c4bc', path: '#d3cfc2', minor: '#ffffff', minorCase: '#cdd0ca', major: '#ffffff',
-    majorCase: '#adb1aa', motorway: '#fbe3a6', motorwayCase: '#d8b878', text: '#26272c', textMinor: '#3e3f46',
-    halo: '#ffffff', hn: '#62656d', poi: '#2c4a66', place: '#696b72' },
-  dark: { bg: '#18181b', park: '#1b2620', wood: '#1a221d', resid: '#1a1a1d', water: '#0f2232', waterText: '#86a9c6',
-    bldg: '#25252a', bldgLine: '#37373f', path: '#404048', minor: '#37373e', minorCase: '#0b0b0d', major: '#4b4b54',
-    majorCase: '#0b0b0d', motorway: '#5d5547', motorwayCase: '#0b0b0d', text: '#efeff4', textMinor: '#d6d6de',
-    halo: '#18181b', hn: '#adadb8', poi: '#bcd0e2', place: '#a0a0aa' },
+  light: { bg: '#f5f3ee', park: '#c2e5ae', wood: '#aed79b', pitch: '#b5dda0', cemetery: '#d4e6c8', campus: '#efe9dc',
+    resid: '#f2f0ea', water: '#a3d0f2', waterText: '#2b6596',
+    bldg: '#e8e4dc', bldgLine: '#d6d0c5', path: '#d9d5cc', minor: '#ffffff', minorCase: '#d9d5cc', major: '#ffffff',
+    majorCase: '#c9c4ba', motorway: '#f8c967', motorwayCase: '#d9a23a', text: '#2c2c2e', textMinor: '#4f4f54',
+    halo: '#f5f3ee', hn: '#6a6a70', poi: '#545458', place: '#646469' },
+  dark: { bg: '#202124', park: '#1f3c28', wood: '#1b3523', pitch: '#234430', cemetery: '#25332a', campus: '#28272b',
+    resid: '#222326', water: '#1b3a5a', waterText: '#8fb8dc',
+    bldg: '#2b2c30', bldgLine: '#36373c', path: '#3d3e43', minor: '#3a3b40', minorCase: '#141416', major: '#4d4e55',
+    majorCase: '#141416', motorway: '#6a5a36', motorwayCase: '#141416', text: '#e5e5ea', textMinor: '#c7c7cc',
+    halo: '#202124', hn: '#a1a1a6', poi: '#b6b9c0', place: '#a8a8ad' },
 };
+
+/** The green and campus fills patchStyle adds just below `water` (bottom to top). */
+function addedFills(P) {
+  const fill = (id, sourceLayer, classes, color, opacity) => ({
+    id, type: 'fill', source: 'openmaptiles', 'source-layer': sourceLayer,
+    filter: ['all', ['match', ['geometry-type'], ['MultiPolygon', 'Polygon'], true, false], ['match', ['get', 'class'], classes, true, false]],
+    paint: { 'fill-color': color, 'fill-opacity': opacity, 'fill-antialias': true },
+  });
+  return [
+    fill('sb_campus', 'landuse', ['university', 'college', 'school'], P.campus, 1),
+    fill('sb_cemetery', 'landuse', ['cemetery'], P.cemetery, 1),
+    fill('sb_green', 'landcover', ['grass'], P.park, zoomed([10, 0.6, 13, 1])),
+    fill('sb_pitch', 'landuse', ['pitch', 'playground'], P.pitch, 1),
+  ];
+}
 
 const NAME = ['coalesce', ['get', 'name_en'], ['get', 'name']];
 const LINES = ['match', ['geometry-type'], ['LineString', 'MultiLineString'], true, false];
@@ -81,7 +114,7 @@ function nameLayer(id, P, { filter, minzoom, sizes, bold, color }) {
     layout: { 'symbol-placement': 'line', 'text-field': NAME, 'text-font': [bold ? 'Noto Sans Bold' : 'Noto Sans Regular'],
       'text-size': zoomed(sizes), 'text-letter-spacing': 0.02, 'symbol-spacing': 280, 'text-padding': 3,
       'text-max-angle': 30, 'text-rotation-alignment': 'map', 'text-pitch-alignment': 'viewport' },
-    paint: { 'text-color': color, 'text-halo-color': P.halo, 'text-halo-width': 2, 'text-halo-blur': 0.25 },
+    paint: { 'text-color': color, 'text-halo-color': P.halo, 'text-halo-width': 1.5, 'text-halo-blur': 0.25 },   // spec 11.2: 1.5 px halo
   };
 }
 
@@ -96,7 +129,7 @@ function addedSymbols(P, landmarks) {
       filter: campusFilter(landmarks),
       layout: { 'text-field': NAME, 'text-font': ['Noto Sans Bold'], 'text-size': zoomed([15, 11, 17, 12.5, 19, 14]),
         'text-max-width': 7, 'text-padding': 4, 'text-optional': true, 'symbol-sort-key': ['coalesce', ['get', 'rank'], 99] },
-      paint: { 'text-color': P.poi, 'text-halo-color': P.halo, 'text-halo-width': 1.8, 'text-halo-blur': 0.25 } },
+      paint: { 'text-color': P.poi, 'text-halo-color': P.halo, 'text-halo-width': 1.5, 'text-halo-blur': 0.25 } },
     nameLayer('sb_name_path', P, { minzoom: 16, filter: ['==', ['get', 'class'], 'path'], sizes: [16, 10.5, 18, 12.5, 20, 14], color: P.textMinor }),
     nameLayer('sb_name_minor', P, { minzoom: 14, filter: ['all', LINES, ['match', ['get', 'class'], ['minor', 'service', 'track'], true, false]],
       sizes: [14, 10.5, 16, 12.5, 18, 14.5, 20, 16], color: P.textMinor }),
@@ -117,10 +150,11 @@ export function patchStyle(styleJson, isDark, landmarks = []) {
   const s = JSON.parse(JSON.stringify(styleJson || { version: 8, sources: {}, layers: [] }));
   const P = isDark ? PALETTE.dark : PALETTE.light;
   const out = [];
-  let namesAt = -1;
+  let namesAt = -1, fillsIn = false;
   for (const l of s.layers || []) {
     const id = l.id;
     if (STREET_NAME_IDS.test(id)) { if (namesAt < 0) namesAt = out.length; continue; }
+    if (id === 'water' && !fillsIn) { out.push(...addedFills(P)); fillsIn = true; }   // parks below water: lagoons stay blue
     if (id === 'background') paint(l, { 'background-color': P.bg });
     else if (id === 'water') paint(l, { 'fill-color': P.water });
     else if (id === 'waterway') paint(l, { 'line-color': P.water });
@@ -145,8 +179,8 @@ export function patchStyle(styleJson, isDark, landmarks = []) {
       layout(l, { 'line-cap': 'round', 'line-join': 'round' });
     } else if (id === 'highway_major_inner') {
       paint(l, { 'line-color': P.major, 'line-width': ['interpolate', ['exponential', 1.3], ['zoom'], 10, 2, 16, 7.4, 20, 23] });
-    } else if (id === 'highway_motorway_casing') paint(l, { 'line-color': P.motorwayCase });
-    else if (id === 'highway_motorway_inner') paint(l, { 'line-color': P.motorway });
+    } else if (id === 'highway_motorway_casing' || id === 'highway_motorway_bridge_casing') paint(l, { 'line-color': P.motorwayCase });
+    else if (id === 'highway_motorway_inner' || id === 'highway_motorway_bridge_inner') paint(l, { 'line-color': P.motorway });
     else if (/^(highway-shield|road_shield|road_oneway)/.test(id)) layout(l, { visibility: 'none' });
     else if (/^(label_|place_)/.test(id) && l.type === 'symbol') {
       paint(l, { 'text-color': P.place, 'text-halo-color': P.halo, 'text-halo-width': 1.4, 'text-halo-blur': 0.3 });
@@ -156,6 +190,10 @@ export function patchStyle(styleJson, isDark, landmarks = []) {
     out.push(l);
   }
   out.splice(namesAt < 0 ? out.length : namesAt, 0, ...addedSymbols(P, landmarks));
+  if (!fillsIn) {   // a style without a water layer: the fills go right above the background
+    const at = out.findIndex((l) => l.type === 'background');
+    out.splice(at + 1, 0, ...addedFills(P));
+  }
   s.layers = out;
   // source credits carry "&copy;" too; nothing shows them today (the GL map has no attribution
   // control), but keep them sign-free so no copyright sign can surface
