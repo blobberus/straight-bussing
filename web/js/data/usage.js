@@ -24,7 +24,8 @@
  *        Settings can replace it with a new one at any time.
  *   sid  a random number for this visit.
  * Never sent: coordinates, IP address (the receiver cannot see it), user agent, screen, referrer, searches, taps.
- * Never sent at all: demo mode, automated browsers, pages not served over https. The iPhone app has no part in this
+ * Never sent at all: demo mode, automated browsers, pages not served over https, the experimental test site
+ * (/straight-bussing-experimental/; the live site /straight-bussing/ counts as before). The iPhone app has no part in this
  * (its App Privacy label stays Data Not Collected).
  * A visit ends after 30 min in the background (NEW_SESSION_S): coming back later is a new visit. A page that loads in
  * the background (a restored or pre-opened tab) starts its visit the first time it is actually shown, never before.
@@ -65,7 +66,7 @@ const HEX32 = /^[0-9a-f]{32}$/;
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /** Live configuration (tests replace parts of it with _configureUsage). */
-const cfg = { url: USAGE_URL, send: null, now: () => Date.now() / 1000, force: false };
+const cfg = { url: USAGE_URL, send: null, now: () => Date.now() / 1000, force: false, loc: null, nav: null };
 
 /** @returns {boolean} true when a receiver is set (the feature exists at all) */
 export function usageConfigured() {
@@ -181,7 +182,7 @@ function saveVisit(st, v, lastActive) {
 /** The installed home-screen app, or a browser tab. */
 function appKind() {
   try {
-    if (window.matchMedia?.("(display-mode: standalone)")?.matches || navigator.standalone === true) return "home-screen";
+    if (window.matchMedia?.("(display-mode: standalone)")?.matches || (cfg.nav || navigator).standalone === true) return "home-screen";
   } catch (e) { /* */ }
   return "browser";
 }
@@ -222,8 +223,12 @@ function allowedHere() {
   if (cfg.force) return true;
   if (DEMO) return false;
   try {
-    if (navigator.webdriver) return false;
-    if (location.protocol !== "https:") return false;
+    const nav = cfg.nav || navigator, loc = cfg.loc || location;   // tests may stand in for both (_configureUsage)
+    if (nav.webdriver) return false;
+    if (loc.protocol !== "https:") return false;
+    // the experimental test site (blobberus.github.io/straight-bussing-experimental/) never counts: its visits would mix
+    // into the live app's statistics in the owner's Sheet (owner 2026-11-03 enabled the test site)
+    if (/^\/straight-bussing-experimental(\/|$)/.test(loc.pathname)) return false;
   } catch (e) { return false; }
   return true;
 }
@@ -341,8 +346,9 @@ export function startUsage(store, o = {}) {
 }
 
 /**
- * Test seam: replace the receiver, the sender, the clock, or skip the "real site" checks.
- * @param {{url?:string, send?:Function|null, now?:Function, force?:boolean}} o
+ * Test seam: replace the receiver, the sender, the clock, or skip the "real site" checks; loc / nav stand in for
+ * location ({protocol, pathname}) and navigator ({webdriver, standalone}) in those checks (null = the real ones).
+ * @param {{url?:string, send?:Function|null, now?:Function, force?:boolean, loc?:object|null, nav?:object|null}} o
  * @returns {void}
  */
 export function _configureUsage(o) {
@@ -350,4 +356,6 @@ export function _configureUsage(o) {
   if ("send" in o) cfg.send = o.send;
   if ("now" in o) cfg.now = o.now;
   if ("force" in o) cfg.force = !!o.force;
+  if ("loc" in o) cfg.loc = o.loc;
+  if ("nav" in o) cfg.nav = o.nav;
 }

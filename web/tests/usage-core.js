@@ -5,6 +5,7 @@ import { useMemoryOverlay } from "../js/core/storage.js";
 import { USAGE_URL, AWAY, MAX_SESSION_S, NEW_SESSION_S, chicagoParts, placeName, nearestPlace, cleanUsage, privacySignal,
   buildRow, startUsage, anonId, resetId, usageConfigured, lastSend, _configureUsage } from "../js/data/usage.js";
 import { bus } from "../js/core/events.js";
+import { APP_VERSION } from "../js/ui/views/about.js";
 
 const URL_ = "https://script.google.com/macros/s/TEST/exec";
 const STOPS = {
@@ -241,4 +242,55 @@ test("usage: two-minute rule: another tab of the same browser within 2 min conti
     p3 = fakePage(); u3 = startUsage(store(), { doc: p3.doc, win: p3.win, tab: memTab() });
     eq(sent.filter((r) => r.e === "start").length, 2, "2 minutes later a new tab is a new visit");
   } finally { u1?.stop(); u2?.stop(); u3?.stop(); _configureUsage({ url: USAGE_URL, force: false, send: null, now: () => Date.now() / 1000 }); useMemoryOverlay(false); }
+});
+
+/** startUsage with the real-site checks ON (no force), location / navigator stood in for; returns the sent rows. */
+function realSite(loc, nav = { webdriver: false }) {
+  useMemoryOverlay(true);
+  const sent = [], page = fakePage();
+  _configureUsage({ url: URL_, force: false, loc, nav, now: () => 1_793_106_000, send: (u, body, o) => sent.push({ u, row: JSON.parse(body), keep: !!o?.keep }) });
+  try {
+    const store = createStore({ usage: cleanUsage(null, {}), user: null, stops: STOPS });
+    const u = startUsage(store, { ver: APP_VERSION, doc: page.doc, win: page.win, tab: memTab() });
+    if (u) { page.hide(); u.stop(); }
+    return { started: !!u, sent };
+  } finally {
+    _configureUsage({ url: USAGE_URL, force: false, send: null, loc: null, nav: null, now: () => Date.now() / 1000 });
+    useMemoryOverlay(false);
+  }
+}
+
+test("usage (glass transfer 2026-11-05): the live site counts; the experimental test site, http and automated browsers never do", () => {
+  const live = realSite({ protocol: "https:", pathname: "/straight-bussing/" });
+  ok(live.started, "https://blobberus.github.io/straight-bussing/ counts");
+  eq(live.sent.map((x) => x.row.e), ["start"], "one start row (the 0 s visit sends no length)");
+  ok(realSite({ protocol: "https:", pathname: "/straight-bussing/index.html" }).started, "the live site's index.html counts");
+  ok(realSite({ protocol: "https:", pathname: "/" }).started, "any other https page of the site counts as before");
+  for (const p of ["/straight-bussing-experimental/", "/straight-bussing-experimental", "/straight-bussing-experimental/index.html"]) {
+    const r = realSite({ protocol: "https:", pathname: p });
+    ok(!r.started && !r.sent.length, "the experimental test site never counts: " + p);
+  }
+  ok(realSite({ protocol: "https:", pathname: "/straight-bussing-experimentalX/" }).started, "only that exact folder is excluded");
+  const http = realSite({ protocol: "http:", pathname: "/straight-bussing/" });
+  ok(!http.started && !http.sent.length, "http (tests, a local server) never counts");
+  const bot = realSite({ protocol: "https:", pathname: "/straight-bussing/" }, { webdriver: true });
+  ok(!bot.started && !bot.sent.length, "an automated browser never counts");
+});
+
+test("usage (glass transfer 2026-11-05): every row carries exactly the fields the receiver accepts (tools/usage/Code.gs toRow)", () => {
+  const b = realSite({ protocol: "https:", pathname: "/straight-bussing/" }, { webdriver: false, standalone: false }).sent[0].row;
+  eq(Object.keys(b), ["v", "e", "id", "sid", "day", "dow", "time", "app", "ver", "nu"], "start row fields, in order");
+  eq([b.v, b.e, b.day, b.dow, b.time, b.app, b.ver, b.nu], [1, "start", "2026-10-27", 2, "08:00", "browser", APP_VERSION, 1],
+    "a first visit in a browser tab, the app version from About");
+  ok(/^[0-9a-f]{32}$/.test(b.id) && /^[0-9a-f]{32}$/.test(b.sid) && b.id !== b.sid, "random browser and visit numbers");
+  ok(/^\d+\.\d+\.\d+$/.test(APP_VERSION), "the version is a plain number the receiver keeps: " + APP_VERSION);
+  const h = realSite({ protocol: "https:", pathname: "/straight-bussing/" }, { webdriver: false, standalone: true }).sent[0].row;
+  eq(h.app, "home-screen", "opened from the home screen (iPhone Safari's navigator.standalone)");
+  const r = rig({ user: NEAR_B, usage: { dur: true, zone: true } });
+  try {
+    r.adv(42); r.page.hide();
+    eq(Object.keys(r.rows("end")[0]), ["v", "e", "id", "sid", "dur"], "length row fields");
+    eq(Object.keys(r.rows("place")[0]), ["v", "e", "id", "sid", "zone"], "place row fields");
+    eq(r.rows("place")[0].zone, "Reynolds Club", "a stop name, never coordinates");
+  } finally { r.done(); }
 });
