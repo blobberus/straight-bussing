@@ -1,6 +1,6 @@
 // State-machine tests: pick flow (3 modes) and directions (fields, plan, refine, live updates).
 import { test, eq, ok } from "./lib.js";
-import { NOW, makeCtx, tick, root, type } from "./views-fixtures.js";
+import { NOW, makeCtx, tick, root, type, onTrip } from "./views-fixtures.js";
 import { runAction } from "../js/ui/actions.js";
 import { P, placeDeps, renderPick, mountPick, unmountPick, setMode, resetPick, openPickDialog } from "../js/ui/views/pick.js";
 import { D, deps, renderDirections, mountDirections, unmountDirections, NOTE, computeSugs, setEndpoint } from "../js/ui/views/directions.js";
@@ -108,9 +108,9 @@ test("pick: type an address -> places -> stops near the place", async () => {
   unmountPick(); el.remove(); resetPick(); placeDeps.local = realLocal;
 });
 
-test("nearby: mounted view updates itself on live data without touching the search field", async () => {
+test("nearby (during a trip): mounted view updates itself on live data without touching the search field", async () => {
   N.q = ""; N.mode = "station"; N.anchor = null;
-  const ctx = makeCtx({ trips: [], buses: [] });
+  const ctx = makeCtx({ trips: [], buses: [], journey: onTrip().journey });
   const el = mountWith(ctx, (s) => renderNearby(s, NOW), mountNearby);
   ok(el.textContent.includes("No shuttles running right now"));
   const full = makeCtx().store.get();
@@ -167,7 +167,7 @@ test("directions: My location default, station suggestions, plan + sidewalk refi
   ok(res.querySelector(".v-opt .j-crit"), "a card says what it minimizes");
   const txt = res.textContent;
   ok(txt.includes("Bus arrives at Main & 1st"), "bus step");
-  ok(txt.includes("sidewalk route"), "refined walk tag");
+  ok(/sidewalk route/i.test(txt), "refined walk, said as plain detail text (DESIGN-SPEC 10.10)");
   ok(txt.includes("Arrive"), "arrive clock");
   ok(txt.includes(NOTE), "exact note");
   ok(txt.includes("from live bus prediction"), "source");
@@ -206,9 +206,9 @@ test("directions: no service shows walk-only fallback and official contact", asy
   const el = mountWith(ctx, renderDirections, mountDirections);
   await tick(10);
   const txt = el.textContent;
-  ok(txt.includes("No practical shuttle route right now") && txt.includes("Walk the whole way"), txt);
+  ok(txt.includes("No practical shuttle route right now") && txt.includes("min walk"), txt);
   ok(txt.includes("No shuttles are running") && txt.includes("773.702.8181"));
-  ok(txt.includes("sidewalk route"), "walk-only refined via walkRoute");
+  ok(txt.includes("on sidewalks"), "walk-only refined via walkRoute (the iPhone app's words)");
   const last = ctx.calls.drawPlan[ctx.calls.drawPlan.length - 1];
   ok(last && last.legs.length === 1 && last.legs[0].type === "walk", "walk-only drawn");
   unmountDirections(); el.remove();
@@ -227,7 +227,8 @@ test("directions: a very close destination puts Walk first (owner 2026-10-30), s
   const cards = [...el.querySelectorAll(".v-opt")];
   eq(cards.length, 3, "walk + both bus options");
   ok(cards[0].classList.contains("v-opt--walk") && cards[0].classList.contains("is-on"), "walk first and selected");
-  ok(cards[0].textContent.includes("Close enough to walk") && cards[0].textContent.includes("Walk the whole way") && cards[0].textContent.includes("420 m"), cards[0].textContent);
+  ok(cards[0].textContent.includes("Close enough to walk") && cards[0].textContent.includes("min walk") && cards[0].textContent.includes("420 m on sidewalks"), cards[0].textContent);
+  ok(/walk the whole way/.test(cards[0].querySelector(".v-optmain").getAttribute("aria-label")), "said in full to screen readers");
   ok(cards[0].querySelector(".v-otot").textContent.startsWith("5"), "its walking time");
   ok(!el.textContent.includes("Walking the whole way:"), "no duplicate walking footnote");
   ok(!/[–—]/.test(el.textContent), "no dash characters");

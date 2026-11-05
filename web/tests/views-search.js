@@ -158,6 +158,24 @@ test("directions: place suggestions on the keystroke itself, note above the list
   Object.assign(D, { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null });
 });
 
+test("directions: no station and no place for the typed text shows the empty state once every search answered (spec J2)", async () => {
+  Object.assign(D, { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null });
+  stubDeps({ assumed: null, items: [], remote: [] });
+  const ctx = makeCtx();
+  const el = mountWith(ctx, renderDirections, mountDirections);
+  const to = el.querySelector('[data-input="dir-to"]');
+  to.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+  type(to, "zzqxv");
+  const sug = el.querySelector('[data-region="dir-sug"]');
+  ok(sug.textContent.includes("Searching places") && !sug.textContent.includes("No places found"), "still searching: no verdict yet");
+  await tick(PHOTON_MS + 60);
+  const card = sug.querySelector(".v-card .empty");
+  ok(card && card.textContent.includes("No places found") && card.textContent.includes("Check the spelling or try a nearby landmark."), "empty state in a card: " + sug.textContent);
+  ok(sug.textContent.includes("photon.komoot.io"), "the privacy note stays");
+  unmountDirections(); el.remove(); restore();
+  Object.assign(D, { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null });
+});
+
 test("directions: a one-letter correction shows results without a note", async () => {
   Object.assign(D, { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null });
   stubDeps({ assumed: { from: "regenstien", to: "Regenstein", big: false } });

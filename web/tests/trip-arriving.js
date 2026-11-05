@@ -4,6 +4,7 @@ import { test, eq, ok } from "./lib.js";
 import { tripMetaText, tripProgressHTML, etaText, resetTripMotion } from "../js/ui/views/tripprogress.js";
 import { walkTrip } from "../js/core/tripprogress.js";
 import { metaNearby, peekNearby } from "../js/ui/views/nearby.js";
+import { getView } from "../js/ui/router.js";
 import { planJourney, tripBarHTML } from "../js/ui/views/journey.js";
 import { NOW, stops, baseState, bus, trip, journeyR, scenes } from "./trip-fixtures.js";
 
@@ -74,4 +75,16 @@ test("walk trip: Current trip card, trip bar and journey for Directions' walk op
   const j = planJourney(opt, "Corner Cafe");
   ok(j && j.kind === "plan" && j.rids.length === 0 && j.legs.length === 1 && j.legs[0].type === "walk" && j.legs[0].toName === "Corner Cafe" && j.dest, JSON.stringify(j));
   eq(planJourney({ key: "x", legs: [{ type: "walk", min: 3 }] }), null, "other walk-only shapes still start nothing");
+});
+
+test("trip header (DESIGN-SPEC 10.6, O3): collapsed = the next step over the trip with Arriving In; expanded = Current trip", () => {
+  const def = getView("nearby"), s = scene("waiting"), peek = { detent: "peek" }, full = { detent: "full" };
+  const card = new DOMParser().parseFromString(tripProgressHTML(s, NOW), "text/html").querySelector(".tp-nowprim").textContent;
+  eq(def.title(s, peek), card, "collapsed: the next-step card's words (iOS BottomSheet)");
+  eq(def.subtitle(s, peek), "Trip to " + s.journey.to);
+  ok(/Arriving In/.test(def.metaHTML(s, peek)) && /aria-label="Arriving In [^"]+"/.test(def.metaHTML(s, peek)), "Arriving In over the minutes, one spoken label");
+  eq([def.title(s, full), def.subtitle(s, full), def.metaHTML(s, full)], ["Current trip", "", ""], "expanded: no second copy of the step");
+  const none = baseState();
+  eq([def.title(none, peek), def.subtitle(none, peek)], ["Current trip", "No current trip selected"], "no trip, collapsed: Current trip over No current trip selected (owner 2026-11-04)");
+  eq([def.title(none, full), def.subtitle(none, full), def.metaHTML(none, peek)], ["Current trip", "", ""], "expanded: the card says it; never the next bus in the header");
 });

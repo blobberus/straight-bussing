@@ -44,6 +44,14 @@ export function fixture(over = {}) {
   };
 }
 
+/**
+ * A trip in progress (over every fixture route unless `rids` says otherwise): since 2026-11-04 (owner: "if a current trip
+ * is not selected, don't display nearby routes") Current trip lists nearby buses only during a trip.
+ */
+export function onTrip(over = {}, rids = ["R1", "R2", "R3"]) {
+  return fixture({ journey: { kind: "plan", rids, label: "To Test Place", to: "Test Place", t0: NOW, legs: [] }, ...over });
+}
+
 /** Stub ctx: real store, recording map, navigate that writes store.view. */
 export function makeCtx(over = {}, opts = {}) {
   const store = createStore(fixture(over));

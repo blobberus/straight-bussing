@@ -1,7 +1,10 @@
 /*
- * Current trip in the real app at phone sizes (owner decisions 2026-10-11 and 12, Ship checklist 3: the
- * next bus in one glance, no taps). e2e.js registers these with its helpers; each test opens its own app iframe
- * (393 x 852, the frame size; 320 x 640) with the e2e stubs, so the shared session is untouched.
+ * Current trip in the real app at phone sizes. With no trip (owner 2026-11-04: "if a current trip is not selected,
+ * don't display nearby routes, rather, just show that no current trip is selected. Keep the favorites and search
+ * station bar. Also keep the alerts."): the alert row, "No current trip selected" and the search, no nearby buses.
+ * During a trip the next-bus block (owner decisions 2026-10-11) still follows the trip and must hold at 320 px.
+ * e2e.js registers these with its helpers; each test opens its own app iframe (393 x 852, the frame size; 320 x 640)
+ * with the e2e stubs, so the shared session is untouched.
  */
 
 /** Three trips per route 15 min apart: every stop on a route then has 3 arrivals (the most the block lists). */
@@ -23,7 +26,7 @@ function tripleTrips(T) {
  * @param {{test:Function, ok:Function, eq:Function, waitFor:Function, openApp:(style:string)=>Promise<HTMLIFrameElement>}} h
  */
 export function currentTripE2E({ test, ok, eq, waitFor, openApp }) {
-  async function phone(style) {
+  async function phone(style, { trip = false } = {}) {
     const f = await openApp(style);
     const w = f.contentWindow, d = w.document;
     await waitFor(() => w.__sb && w.__e2e && w.__sb.store.get().staticLoaded && w.__sb.store.get().liveLoaded, "phone-sized app", 15000);
@@ -33,47 +36,52 @@ export function currentTripE2E({ test, ok, eq, waitFor, openApp }) {
     await waitFor(() => w.__sb.store.get().trips.length >= 3 * w.__e2e.routes.length, "three trips per route");
     const stop = w.__e2e.stops[w.__e2e.routes[0].stops[2]];
     w.__sb.store.set({ user: { lat: stop.lat, lon: stop.lon }, locState: "granted" });
-    const hero = await waitFor(() => { const x = d.querySelector("#content .pt-next"); return x && x.querySelectorAll(".row.arr").length === 3 ? x : null; }, "the next-bus block with 3 arrivals");
+    let hero = null;
+    if (trip) {   // nearby buses only during a trip (owner 2026-11-04)
+      const rids = Object.keys(w.__sb.store.get().routes);
+      w.__sb.store.set({ journey: { kind: "plan", rids, label: "To E2E Place", to: "E2E Place", t0: Math.floor(Date.now() / 1000), legs: [] } });
+      hero = await waitFor(() => { const x = d.querySelector("#content .pt-next"); return x && x.querySelectorAll(".row.arr").length === 3 ? x : null; }, "the next-bus block with 3 arrivals");
+    }
     d.getElementById("sheet").style.transition = "none";   // read settled states
     return { f, w, d, hero };
   }
   const box = (el) => el.getBoundingClientRect();
 
-  test("current trip, 393 x 852: collapsed it names the next bus; expanded, the alert row and the next bus show without scrolling", async () => {
-    const { f, w, d, hero } = await phone("width:393px;height:852px");
+  test("current trip, 393 x 852, no trip: collapsed it says No current trip selected; expanded, the alert row, the no-trip card and the search show without scrolling; nothing nearby", async () => {
+    const { f, w, d } = await phone("width:393px;height:852px");
     try {
       eq(d.getElementById("sheet").dataset.detent, "peek", "starts collapsed (map first, owner 2026-10-12)");
-      ok(/\d+ min|Now/.test(d.getElementById("titleRight").textContent), "the collapsed header shows the next bus: " + d.getElementById("titleRight").textContent);
+      await waitFor(() => d.getElementById("subtitle").textContent === "No current trip selected" || null, "collapsed: No current trip selected");
+      eq(d.getElementById("titleRight").textContent.trim(), "", "no next bus in the collapsed header (owner 2026-11-04)");
       d.querySelector('#tabs button[data-tab="nearby"]').click();
       await waitFor(() => d.getElementById("sheet").dataset.detent === "full" || null, "expanded");
       eq(d.getElementById("content").scrollTop, 0, "not scrolled");
       const head = box(d.getElementById("sheetHead")), nav = box(d.getElementById("tabs")), sheet = box(d.getElementById("sheet"));
-      const visTop = Math.max(head.bottom, sheet.top), r = box(hero);
-      ok(r.top >= visTop - 1 && r.bottom <= nav.top + 1, `next bus fully visible: ${Math.round(r.top)}-${Math.round(r.bottom)} in ${Math.round(visTop)}-${Math.round(nav.top)}`);
+      const visTop = Math.max(head.bottom, sheet.top);
+      const card = d.querySelector("#content .pt-notrip"), r = box(card);
+      ok(/No current trip selected/.test(card.textContent) && /Search for a destination/.test(card.textContent), "the no-trip card says it and how to start");
+      ok(r.top >= visTop - 1 && r.bottom <= nav.top + 1, `no-trip card fully visible: ${Math.round(r.top)}-${Math.round(r.bottom)} in ${Math.round(visTop)}-${Math.round(nav.top)}`);
       const al = d.querySelector('#content [data-region="nearby-alert"] .v-alertbanner');
       ok(al, "the feed's alert shows as a row");
       const a = box(al), line = al.querySelector(".v-alertline");
-      ok(a.bottom <= r.top + 1 && a.top >= visTop - 1, "alert row directly above the next bus, visible");
+      ok(a.bottom <= r.top + 1 && a.top >= visTop - 1, "alert row directly above the no-trip card, visible");
       ok(a.height <= 48 && line.scrollHeight <= parseFloat(w.getComputedStyle(line).lineHeight) * 1.5, "one line: " + Math.round(a.height) + " px");
-      ok(!d.querySelector("#content .pt-notrip"), "no 'No trip in progress' card");
-      const name = hero.querySelector(".pt-nexthead .v-prim");
-      eq(name.textContent, w.__sb.store.get().stops[w.__e2e.routes[0].stops[2]].name, "the nearest stop's name, whole");
-      for (const row of hero.querySelectorAll(".row.arr")) ok(box(row).height >= 44, "44 px rows");
-      // no location: "Use my location" leads (right under the alert row), "Search stations" next
-      w.__sb.store.set({ user: null, locState: "unknown" });
-      const btn = await waitFor(() => d.querySelector('#content [data-region="nearby-loc"] [data-action="nearby:locate"]'), "Use my location");
-      const b = box(btn), s = box(d.querySelector('#content [data-input="nearby-q"]'));
-      ok(b.top - box(al).bottom < 20 && b.bottom <= nav.top, "Use my location right under the alert row");
-      ok(s.top >= b.bottom && s.top - b.bottom < 24, "Search stations next");
+      const s = box(d.querySelector('#content [data-input="nearby-q"]'));
+      ok(s.top >= r.bottom && s.bottom <= nav.top + 1, "Search stations under the card, visible");
+      ok(!d.querySelector("#content .pt-next") && !d.querySelector('#content [data-action="nearby:locate"]') && !/Arriving soon|Also nearby/.test(d.getElementById("content").textContent), "no nearby buses, no location prompt, also with a location");
+      const go = card.querySelector('[data-action="dir:open"]');
+      ok(go && box(go).height >= 44, "Search for a destination, 44 px");
       eq(d.querySelectorAll("#content .v-btn--primary").length, 1, "one primary action");
+      go.click();
+      await waitFor(() => w.__sb.store.get().view === "directions" || null, "it opens Directions");
       eq(w.__e2e.errors, [], "no console errors");
     } finally {
       f.remove();
     }
   });
 
-  test("current trip, 320 px wide: the next-bus block holds (no sideways overflow, the name is never cut)", async () => {
-    const { f, w, d, hero } = await phone("width:320px;height:640px");
+  test("current trip, 320 px wide, during a trip: the next-bus block holds (no sideways overflow, the name is never cut)", async () => {
+    const { f, w, d, hero } = await phone("width:320px;height:640px", { trip: true });
     try {
       const c = d.getElementById("content");
       ok(c.scrollWidth <= c.clientWidth + 1, `no sideways scroll: ${c.scrollWidth} > ${c.clientWidth}`);

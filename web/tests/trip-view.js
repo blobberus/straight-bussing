@@ -90,7 +90,10 @@ test("trip view: stale feed banner, stale chip and its age; missed bus note", ()
   ok(st.includes("tp-veh is-stale") && st.includes("location from 2 min ago"));
   ok(/>~\d+ min</.test(st), "ETAs get ~ while delayed");
   const mi = html("missed");
-  ok(mi.includes("Your planned bus has left. Showing the next one.") && mi.includes("Bus 102 is 3 stops away"));
+  // DESIGN-SPEC 13.8 (O8): a warning banner at the top of the next-step card, "You missed the 3:11 PM bus. Following the next one, 3:21 PM, est."
+  // DESIGN-SPEC 13.8: a warning banner at the top of the next-step card, with the words the iPhone app shares (Kit)
+  const MISSED = /class="tp-missed" role="status">.*?Your planned bus has left\. Showing the next one\./;
+  ok(MISSED.test(mi) && mi.includes("Bus 102 is 3 stops away"), mi.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 300));
   // no next bus: never promise one; on the walk to the stop the note shows too (iOS TripText.missedNote, 2026-10-11)
   const none = scene("missed");
   none.buses = none.buses.slice(0, 1); none.trips = none.trips.slice(0, 1);
@@ -100,7 +103,7 @@ test("trip view: stale feed banner, stale chip and its age; missed bus note", ()
   const walking = { ...scene("missed"), user: { lat: stops.A4.lat + 0.0008, lon: stops.A4.lon } };
   resetTripMotion();
   const wh = tripProgressHTML(walking, NOW);
-  ok(wh.includes("Walk 1 min to Ratner Center") && wh.includes("Your planned bus has left. Showing the next one."), "walking to the stop: " + wh.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 300));
+  ok(wh.includes("Walk 1 min to Ratner Center") && MISSED.test(wh), "walking to the stop: " + wh.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 300));
 });
 
 test("trip view: transfer shows both legs, the change walk and escapes stop names", () => {
@@ -135,8 +138,10 @@ test("trip view layout: chip sits between the right stops; equal rows; 44px targ
     ok(Math.abs((y - a) / (b - a) - 0.6) < 0.08, "60% of the way, by distance");
     const veh = el.querySelector(".tp-veh").getBoundingClientRect(), dot = rows[0].getBoundingClientRect();
     ok(Math.abs(veh.left + veh.width / 2 - (dot.left + 16)) < 1.5, "chip centered on the line");
-    for (const btn of el.querySelectorAll("button")) ok(btn.getBoundingClientRect().height >= 44, "44px: " + btn.textContent.trim().slice(0, 30));
-    ok(getComputedStyle(el.querySelector(".tp-stop.is-board"), "::after").width === "20px", "big dot at the boarding stop");
+    // 44 px targets: the box, or a smaller visual (End trip: a 36 pt capsule, DESIGN-SPEC 10.17) with a ::after hit area around it
+    const hit = (btn) => { const h = btn.getBoundingClientRect().height, a = getComputedStyle(btn, "::after"); return h + (a.position === "absolute" ? -2 * (parseFloat(a.top) || 0) : 0); };
+    for (const btn of el.querySelectorAll("button")) ok(hit(btn) >= 44, "44px: " + btn.textContent.trim().slice(0, 30) + " " + hit(btn));
+    ok(getComputedStyle(el.querySelector(".tp-stop.is-board"), "::after").width === "14px", "the larger 14 pt dot at the boarding stop (DESIGN-SPEC 10.16)");
   } finally { el.remove(); }
 });
 
@@ -190,7 +195,7 @@ test("trip view: minutes to every upcoming station, right of its name (live, els
   for (const id of ["walk", "waiting", "onbus", "schedule", "stale"]) {
     const r = rows(html(id));
     ok(r.length >= 2, id + ": stop rows");
-    for (const x of r) ok(x.passed ? x.eta === "Passed" : /^(Now|~?\d+ min(est\.)?)$/.test(x.eta), `${id}: ${x.name} shows minutes (${JSON.stringify(x.eta)})`);
+    for (const x of r) ok(x.passed ? x.eta === "Passed" : /^(Now|~?\d+ min( ?est\.)?)$/.test(x.eta), `${id}: ${x.name} shows minutes (${JSON.stringify(x.eta)})`);
   }
   const live = rows(html("walk"));
   ok(live.filter((x) => !x.passed).every((x) => !x.eta.includes("est.")), "live times carry no est. tag");

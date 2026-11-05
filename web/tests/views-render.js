@@ -1,9 +1,9 @@
 // Render tests for nearby / stop / routes / route / alerts / about with fixture state.
 import { test, eq, ok } from "./lib.js";
-import { NOW, fixture, makeCtx, tick, root } from "./views-fixtures.js";
+import { NOW, fixture, onTrip, makeCtx, tick, root } from "./views-fixtures.js";
 import { getView } from "../js/ui/router.js";
 import { runAction } from "../js/ui/actions.js";
-import { renderNearby, resultsHTML, metaNearby, N, guidedRow, pickArrivals } from "../js/ui/views/nearby.js";
+import { renderNearby, resultsHTML, metaNearby, N, guidedRow, pickArrivals, NO_TRIP_TITLE, NO_TRIP_HINT } from "../js/ui/views/nearby.js";
 import { catchNote, stopWalkMin } from "../js/ui/views/tripinfo.js";
 import { rootOf } from "../js/ui/router.js";
 import { renderStop, openStop } from "../js/ui/views/stop.js";
@@ -24,22 +24,23 @@ test("every view and action is registered", () => {
   ok(typeof getView("pick").mount === "function" && typeof getView("directions").mount === "function" && typeof getView("nearby").mount === "function", "input views mount");
 });
 
-test("current trip: title, no-trip hint or the trip in progress, one Routes to station entry, no Directions entry", () => {
+test("current trip: title, 'No current trip selected' or the trip in progress, one Routes to station entry, one way to search", () => {
   resetNearby();
   eq(getView("nearby").title(fixture()), "Current trip");
   eq(getView("nearby").tab, "nearby");
   for (const st of [fixture(), fixture({ user: USER, locState: "granted" }), fixture({ locState: "denied" })]) {
     const h = renderNearby(st, NOW);
-    eq((h.match(/data-action="dir:open"/g) || []).length, 0, "destination search is the top search bar, not in the sheet");
+    eq((h.match(/data-action="dir:open"/g) || []).length, 1, "one Search for a destination, in the no-trip card");
     eq((h.match(/data-action="pick:open"/g) || []).length, 1, "one Routes to station entry");
-    ok(h.includes("No trip in progress") && h.includes("Search for a destination above"), "no-trip hint");
+    ok(h.includes(NO_TRIP_TITLE) && h.includes(NO_TRIP_HINT), "no-trip card (owner 2026-11-04)");
     ok(h.indexOf('data-region="nearby-trip"') < h.indexOf('data-input="nearby-q"'), "trip region above the station search");
+    ok(!/pt-next|Arriving soon|Also nearby|nearby:locate|Location is blocked/.test(h), "no nearby buses, no location prompt without a trip");
   }
   const rid = Object.keys(fixture().routes)[0];
   const trip = renderNearby(fixture({ journey: { rids: [rid], label: "To Hospital", kind: "plan" } }), NOW);
   ok(trip.includes("j-trip") && trip.includes("Trip to Hospital"), "trip in progress card");
   ok(trip.includes('data-action="journey:end"') && trip.includes('data-action="nav" data-view="directions"'), "End trip + Trip steps");
-  ok(!trip.includes("No trip in progress"));
+  ok(!trip.includes(NO_TRIP_TITLE));
   resetNearby();
 });
 
@@ -77,10 +78,10 @@ test("plan trip: arrivals you cannot walk to in time are marked (text + class + 
   eq(pickArrivals(all, 1, 0.1, NOW).length, 1);
   // located ~400 m from Main & 1st: the 2-min R1 cannot be reached on foot
   const far = { lat: 41.7864, lon: -87.6001 };
-  const h = renderNearby(fixture({ user: far, locState: "granted" }), NOW);
+  const h = renderNearby(onTrip({ user: far, locState: "granted" }), NOW);
   ok(h.includes("pt-miss") && h.includes("Leaves before you can walk there"), "far user sees miss");
   ok(h.includes("walking estimate"), "guidance labeled as an estimate");
-  const near = renderNearby(fixture({ user: USER, locState: "granted" }), NOW);
+  const near = renderNearby(onTrip({ user: USER, locState: "granted" }), NOW);
   const hero = near.split("Also nearby")[0];
   ok(hero.includes("Leave in 1 min, est.") && !hero.includes("pt-miss"), "near user can catch the 2-min bus");
   // a typed place is not where you are: no leave guidance
@@ -94,27 +95,27 @@ test("nearby: skeleton before static data", () => {
   ok(renderNearby(fixture({ staticLoaded: false }), NOW).includes("skel"));
 });
 
-test("nearby: with location shows nearest stop card, arrivals and Also nearby", () => {
+test("nearby (during a trip): with location shows nearest stop card, arrivals and Also nearby", () => {
   resetNearby();
-  const h = renderNearby(fixture({ user: USER, locState: "granted" }), NOW);
+  const h = renderNearby(onTrip({ user: USER, locState: "granted" }), NOW);
   ok(h.includes("Main &amp; 1st"), "nearest stop name escaped");
   ok(h.indexOf("Main &amp; 1st") < h.indexOf("Also nearby"), "hero first");
   ok(h.includes("Red Line"), "arrival route");
   ok(!h.includes("Use my location"), "no location CTA when located");
   ok(!h.includes("Orphan"), "stop without routes is skipped");
   ok(noRaw(h), "escaped");
-  eq(metaNearby(fixture({ user: USER }), NOW), "R1 · 2 min");
+  eq(metaNearby(fixture({ user: USER }), NOW), "", "no trip: no next bus in the header (owner 2026-11-04)");
 });
 
-test("nearby: hidden routes are not shown", () => {
+test("nearby (during a trip): routes off the trip are not shown", () => {
   resetNearby();
-  const h = renderNearby(fixture({ user: USER, hiddenRoutes: ["R1"] }), NOW);
+  const h = renderNearby(onTrip({ user: USER }, ["R2", "R3"]), NOW);
   ok(!h.includes("Red Line"), "hidden route arrivals removed");
 });
 
-test("nearby: no location -> Use my location, search, address option, Arriving soon", () => {
+test("nearby (during a trip): no location -> Use my location, search, address option, Arriving soon", () => {
   resetNearby();
-  const h = renderNearby(fixture(), NOW);
+  const h = renderNearby(onTrip(), NOW);
   ok(h.includes("Use my location"));
   ok(h.includes('data-input="nearby-q"'), "station search");
   ok(h.includes("Type an address or place"));
@@ -122,25 +123,25 @@ test("nearby: no location -> Use my location, search, address option, Arriving s
   ok(h.indexOf("Hospital") < h.indexOf("Main &amp; 1st"), "sorted by soonest");
 });
 
-test("nearby: denied location is first-class and still usable", () => {
+test("nearby (during a trip): denied location is first-class and still usable", () => {
   resetNearby();
-  const h = renderNearby(fixture({ locState: "denied" }), NOW);
+  const h = renderNearby(onTrip({ locState: "denied" }), NOW);
   ok(h.includes("Location is blocked for this site") && h.includes('data-action="settings:open" data-section="loc"'), "says it is blocked and opens the exact steps in Settings");
   ok(h.includes("Arriving soon") && h.includes('data-input="nearby-q"'), "still usable");
   ok(!h.includes("Use my location<"), "primary CTA swapped for retry");
   ok(h.includes("Try location again"));
 });
 
-test("nearby: no service state links official service", () => {
+test("nearby (during a trip): no service state links official service", () => {
   resetNearby();
-  const h = renderNearby(fixture({ trips: [], buses: [] }), NOW);
+  const h = renderNearby(onTrip({ trips: [], buses: [] }), NOW);
   ok(h.includes("No shuttles running right now"));
   ok(h.includes("773.702.8181"));
 });
 
-test("nearby: stale feed marks ETAs with ~", () => {
+test("nearby (during a trip): stale feed marks ETAs with ~", () => {
   resetNearby();
-  const h = renderNearby(fixture({ user: USER, lastOk: NOW - 200, feedTs: NOW - 200 }), NOW);
+  const h = renderNearby(onTrip({ user: USER, lastOk: NOW - 200, feedTs: NOW - 200 }), NOW);
   ok(h.includes("~"), "tilde on stale");
 });
 
