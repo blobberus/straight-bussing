@@ -19,13 +19,13 @@ import { createMap } from "./map/map.js";
 import { loadStatic } from "./data/static.js";
 import { startLive } from "./data/live.js";
 import { createSheet } from "./ui/sheet.js";
-import { initRouter, navigate, back, getView, activeTab, canGoBack, TABS } from "./ui/router.js";
+import { initRouter, navigate, back, getView, activeTab, canGoBack, TABS, depth } from "./ui/router.js";
 import { registerAction, bindActions, setHTMLKeepFocus } from "./ui/actions.js";
 import { initTheme, isDark, onChange as onThemeChange } from "./ui/theme.js";
 import { emptyState } from "./ui/components.js";
 import { createPill } from "./ui/pill.js";
 import { registerContextActions, mountContextBar } from "./ui/contextbar.js";
-import { initFrame } from "./ui/frame.js";
+import { initFrame, initTextSize, initGlassLite } from "./ui/frame.js";
 import { isSettingsOpen, closeSettingsOverlay } from "./ui/settings-overlay.js";
 import { startTripMap } from "./ui/tripmap.js";
 import { createCompass, mayAskCompass } from "./ui/compass.js";
@@ -43,14 +43,13 @@ const BUS_KEYS = ["buses", "feedTs", "routes", "busId", ...VIS_KEYS];
 
 const $ = (id) => document.getElementById(id);
 const el = {
-  sheet: $("sheet"), head: $("sheetHead"), grab: $("grab"), content: $("content"), title: $("title"),
+  sheet: $("sheet"), head: $("sheetHead"), grab: $("grab"), content: $("content"), title: $("title"), sub: $("subtitle"),
   right: $("titleRight"), back: $("back"), tabs: $("tabs"), ctxbar: $("ctxbar"), gear: $("settingsBtn"), topbar: $("topbar"), app: $("app"),
   pill: $("pill"), pillText: $("pillText"), pillRetry: $("pillRetry"), dlg: $("dlg"), toast: $("toast"), locate: $("locateBtn"),
+  bottomrow: $("bottomrow"), mapctl: $("mapctl"),
 };
 const bootS = nowS();
 let map = null, sheet = null, live = null, ctx = null, notifier = null, tripMap = null;
-const RETRY_GUARD_MS = 1000;   // context-bar taps ignored this long after a Retry tap (see bindActions below)
-let retryAt = 0;
 const pill = createPill({ pill: el.pill, text: el.pillText, retry: el.pillRetry, app: el.app }, { bootS, demo: DEMO });
 
 /* ---------------- toast + global errors ---------------- */
@@ -61,7 +60,7 @@ function toast(text) {
   el.toast.textContent = String(text);
   el.toast.classList.remove("hide");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.toast.classList.add("hide"), 4500);
+  toastTimer = setTimeout(() => el.toast.classList.add("hide"), 3000);   // spec 10.19: 3 s (no web toast carries an action)
 }
 let lastErrToast = 0;
 function reportError(err) {
@@ -218,17 +217,34 @@ async function onLocateFab() {
 function safe(fn, fallback) {
   try { return fn() ?? fallback; } catch (e) { console.error(e); return fallback; }
 }
+let rightHTML = null;
 function renderHeader(s, id, def) {
-  const title = def ? String(safe(() => def.title(s), "")) : "Current trip";
+  const o = { detent: sheet && sheet.getDetent ? sheet.getDetent() : "peek" };   // the header may differ collapsed / expanded
+  const title = def ? String(safe(() => def.title(s, o), "")) : "Current trip";
   if (el.title.textContent !== title) el.title.textContent = title;
+  // a second line under the title (a trip in progress: the current step is the title, the trip under it; spec 10.6, O3)
+  const sub = def && def.subtitle ? String(safe(() => def.subtitle(s, o), "")) : "";
+  if (el.sub && el.sub.textContent !== sub) el.sub.textContent = sub;
+  el.title.classList.toggle("is-step", !!sub);
   if (el.app && el.app.dataset.view !== id) el.app.dataset.view = id || "";   // css: hide the search bar in Directions
   el.title.classList.toggle("sm", !TABS.includes(id));
   if (el.back.hidden !== !canGoBack()) el.back.hidden = !canGoBack();   // render() runs on every store change: write only changes
-  const metaFn = def && (def.meta || def.peek);
-  const right = metaFn ? String(safe(() => metaFn(s), "")) : "";
-  if (el.right.textContent !== right) el.right.textContent = right;
+  // trailing slot: one summary or one action (spec 10.6). metaHTML = trusted markup built with esc() (badge + ETA + live
+  // dot, Arriving In, an action button); else the plain-text meta
+  if (def && def.metaHTML) {
+    const h = String(safe(() => def.metaHTML(s, o), ""));
+    if (h !== rightHTML) { rightHTML = h; el.right.innerHTML = h; }
+  } else {
+    rightHTML = null;
+    const metaFn = def && (def.meta || def.peek);
+    const right = metaFn ? String(safe(() => metaFn(s), "")) : "";
+    if (el.right.textContent !== right || el.right.children.length) el.right.textContent = right;
+  }
   const tab = activeTab(s);
-  for (const b of el.tabs.querySelectorAll("button[data-tab]")) {
+  const tabBtns = [...el.tabs.querySelectorAll("button[data-tab]")], ti = tabBtns.findIndex((b) => b.dataset.tab === tab);
+  // the selection capsule (glass spec 8.6) slides to the selected item: transform only (css/base.css .tab-pill)
+  if (ti >= 0 && el.tabs.style.getPropertyValue("--tab-i") !== String(ti)) el.tabs.style.setProperty("--tab-i", String(ti));
+  for (const b of tabBtns) {
     const on = b.dataset.tab === tab;
     if (on === (b.getAttribute("aria-current") === "page") && on === b.classList.contains("on")) continue;
     if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
@@ -250,8 +266,26 @@ function renderView(def, s) {
     return emptyState("Couldn't show this screen", "Try going back. Live times may still be available on other tabs.", { official: true, kind: "error" });
   }
 }
+/**
+ * The content's transition on a view switch (DESIGN-SPEC 9, mStandard): a push slides the new view in 16 pt from the
+ * trailing edge with a fade, Back reverses it, a section switch crossfades; reduced motion = a 150 ms crossfade. Transform
+ * and opacity only, on the content scroller, never during a drag.
+ */
+let lastDepth = 0;
+function animateSwitch(prevDef) {
+  const d = depth(), dir = !prevDef ? "" : d > lastDepth ? "push" : d < lastDepth ? "pop" : "swap";
+  lastDepth = d;
+  if (!dir || typeof el.content.animate !== "function" || el.sheet.classList.contains("dragging")) return;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const x = reduce || dir === "swap" ? 0 : dir === "push" ? 16 : -16;
+  try {
+    el.content.animate([{ opacity: 0, transform: `translateX(${x}px)` }, { opacity: 1, transform: "none" }],
+      { duration: reduce || dir === "swap" ? 150 : 250, easing: "cubic-bezier(.2, 0, 0, 1)" });
+  } catch (e) { /* animation optional */ }
+}
 function switchView(id, def, key, s) {
   const prev = cur.def;
+  animateSwitch(prev);
   const focusWasInside = el.content.contains(document.activeElement) || document.activeElement === document.body;
   if (prev && typeof prev.unmount === "function") safe(() => prev.unmount(), null);
   cur = { def, id, key, html: null };
@@ -260,6 +294,7 @@ function switchView(id, def, key, s) {
   el.content.innerHTML = html;
   cur.html = html;
   el.content.scrollTop = 0;
+  setTabsMin(false);   // a new page starts at its top: the tab bar comes back (glass spec 8.9)
   if (typeof def.mount === "function") {
     try { def.mount(el.content, ctx); } catch (e) {
       console.error("mount " + id, e);
@@ -275,6 +310,19 @@ function scheduleRender() {
   renderQueued = true;
   queueMicrotask(() => { renderQueued = false; render(); });
 }
+/** Re-render only the sheet header (a view's own state changed, e.g. Directions picked another option). */
+function refreshHeader() {
+  const s = store.get();
+  let id = s.view, def = getView(id);
+  if (!def && getView("nearby")) def = getView((id = "nearby"));
+  renderHeader(s, id, def);
+}
+/** The locate button shows the filled glyph while it means "following you" (spec 10.4): during a trip while the camera
+ * follows you, otherwise once your location is known (iOS LocateButton). */
+function renderLocate(s) {
+  const on = tripMap?.active?.() ? !!tripMap.following?.() : !!s.user;
+  if (el.locate && el.locate.classList.contains("is-on") !== on) el.locate.classList.toggle("is-on", on);
+}
 /** Render header, pill and content for the current state. Cheap; safe to call often. */
 function render() {
   const s = store.get();
@@ -283,6 +331,7 @@ function render() {
   if (!def && getView("nearby")) def = getView((id = "nearby"));
   renderHeader(s, id, def);
   pill.render(s, now);
+  renderLocate(s);
   if (!def) return;
   const key = id + "|" + (s.stopId || "") + "|" + (s.routeId || "");
   if (def !== cur.def || (def.mount && key !== cur.key)) return switchView(id, def, key, s);
@@ -318,16 +367,21 @@ window.addEventListener("popstate", () => {
 /* ---------------- input wiring ---------------- */
 function wireUI() {
   el.back.addEventListener("click", () => back());
-  el.tabs.addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) navigate(b.dataset.tab); });
+  el.tabs.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tab]");
+    if (!b) return;
+    if (el.app.classList.contains("tabs-min")) {   // minimized: the circle brings the capsule back (glass spec 8.9)
+      setTabsMin(false);
+      if (b.getAttribute("aria-current") === "page") return;
+    }
+    navigate(b.dataset.tab);
+  });
+  // a keyboard user who tabs into the bar gets every section back
+  el.tabs.addEventListener("focusin", (e) => { try { if (e.target.matches(":focus-visible")) setTabsMin(false); } catch (err) { /* old browser */ } });
+  el.content.addEventListener("scroll", onContentScroll, { passive: true });
   el.locate.addEventListener("click", onLocateFab);
   document.addEventListener("click", askCompassOnTap, true);   // capture: before any handler, synchronously in the tap
-  // a tap on the context bar right after Retry is the same finger tapping again as the pill vanished (the bar moves up
-  // into its place): ignore it, so a fast double tap on Retry never ends the trip (owner 2026-11-03; Retry is also at the
-  // pill's left end, over the bar's label). Capture phase: it runs before the bar's own action handler.
-  el.ctxbar.addEventListener("click", (e) => {
-    if (Date.now() - retryAt < RETRY_GUARD_MS) { e.preventDefault(); e.stopPropagation(); }
-  }, true);
-  for (const root of [el.content, el.pill, el.dlg, el.ctxbar, el.topbar || el.gear]) bindActions(root, () => ctx);
+  for (const root of [el.content, el.pill, el.dlg, el.ctxbar, el.topbar || el.gear, el.right, el.bottomrow, el.mapctl]) if (root) bindActions(root, () => ctx);
   el.dlg.addEventListener("click", (e) => { if (e.target === el.dlg) closeDlg(); });
   el.content.addEventListener("focusout", () => setTimeout(() => { if (dirty && !inputFocused()) render(); }, 0));
   document.addEventListener("keydown", (e) => {
@@ -339,6 +393,34 @@ function wireUI() {
     if (back() || sheet.stepDown()) e.preventDefault();
   });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
+}
+/* ---------------- tab bar minimize (glass spec 8.9, Q3; the iPhone app's SheetScroll, same numbers) ----------------
+   While the expanded sheet's content scrolls down past 24 px, the tab capsule shrinks to a 56 glass circle with the
+   selected section's glyph at the leading side; scrolling back up 16 px, reaching the top, a tap on the circle, a new
+   page or tab, a collapse, or keyboard focus on the bar brings it back. The offset is clamped to the content's end, so
+   the bounce at the bottom is not a turn. css/base.css #app.tabs-min draws it (transform and opacity only). */
+let minTurn = 0;
+function onContentScroll() {
+  const c = el.content, end = Math.max(0, c.scrollHeight - c.clientHeight), y = Math.min(Math.max(0, c.scrollTop), end);
+  const on = el.app.classList.contains("tabs-min");
+  if (y <= 24 || !sheet || sheet.isPanel() || sheet.getDetent() !== "full") { minTurn = y; if (on) setTabsMin(false); return; }
+  if (on) {
+    minTurn = Math.max(minTurn, y);
+    if (y < minTurn - 16) { setTabsMin(false); minTurn = y; }
+  } else {
+    minTurn = Math.min(minTurn, y);
+    if (y > minTurn + 16) { setTabsMin(true); minTurn = y; }
+  }
+}
+/** The tab bar's minimized circle on or off; the names stay in the accessible names either way. */
+function setTabsMin(on) {
+  if (!el.app || el.app.classList.contains("tabs-min") === !!on) return;
+  el.app.classList.toggle("tabs-min", !!on);
+  for (const b of el.tabs.querySelectorAll("button[data-tab]")) {
+    const sel = b.getAttribute("aria-current") === "page";
+    if (on && sel) b.setAttribute("aria-label", (b.querySelector(".bn-label")?.textContent || "") + ", show all sections");
+    else b.removeAttribute("aria-label");
+  }
 }
 function closeDlg() {
   el.dlg.hidden = true;
@@ -353,7 +435,7 @@ function registerCoreActions() {
   registerAction("nav", (ds) => navigate(ds.view, { stopId: ds.stopId, routeId: ds.routeId, detent: ds.detent }), fb);
   registerAction("back", () => back(), fb);
   registerAction("locate", () => locate(), fb);
-  registerAction("retry", () => { retryAt = Date.now(); return live ? live.pollNow() : undefined; }, fb);
+  registerAction("retry", () => (live ? live.pollNow() : undefined), fb);
   registerAction("detent", (ds) => sheet.setDetent(ds.id), fb);
 }
 /* Open a stop / route (the sheet goes to the view's detent). Only choosing a route frames the map: stop and
@@ -372,6 +454,8 @@ function openRoute(rid, fit = true) {
 async function boot() {
   initTheme(store);
   initFrame();
+  initTextSize();
+  initGlassLite({ targets: [document.getElementById("map"), el.head] });   // glass spec 12.4: solid glass on a slow device
   try {
     if (!window.L) throw new Error("Leaflet not loaded");
     map = createMap("map");
@@ -382,13 +466,17 @@ async function boot() {
     setTimeout(() => toast("Couldn't load the map. Lists and times still work."), 0);
   }
   mapCall("setTheme", isDark());
-  // the map is visible above the sheet AND the bottom navigation bar under it (phone layouts only)
-  bus.on("sheet:inset", (p) => mapCall("setBottomInset", ((p && p.px) || 0) + (p && p.px && !sheet?.isPanel?.() ? el.tabs.offsetHeight || 0 : 0)));
+  // the map is visible above the collapsed card (its px already counts the floating bottom row, glass spec 3); while it
+  // is collapsed, fits and the follow camera also keep clear of the lower-right group riding on it (44 x 88 + 8)
+  bus.on("sheet:inset", (p) => mapCall("setBottomInset", (p && p.px) || 0, p && p.px && p.detent === "peek" && el.mapctl ? el.mapctl.offsetHeight + 8 : 0));
   bus.on("toast", (p) => toast(p && p.text));
+  bus.on("sheet:header", () => refreshHeader());
   bus.on("settings:toggle", () => syncHistory());   // Settings overlay opened / closed (ui/settings-overlay.js)
   sheet = createSheet({ sheetEl: el.sheet, contentEl: el.content, headEl: el.head, grabEl: el.grab });
   // collapsing the sheet puts the keyboard away (owner 2026-10-12): blur a focused field in the app
   sheet.onChange((d) => {
+    refreshHeader();
+    if (d !== "full") setTabsMin(false);   // a collapsed sheet has no scrolled list: the tab bar comes back
     const a = document.activeElement;
     if (d === "peek" && a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && el.app?.contains?.(a)) a.blur();
   });
@@ -436,8 +524,8 @@ async function boot() {
   render();
   syncMap(store.get(), null);
   tripMap = startTripMap(store, map);   // you in the started trip + follow camera (same evaluation as the card and alerts)
-  // the feedback button under the locate button, until the rider gives feedback or silences it (owner 2026-11-02); the
-  // only feedback prompt since the beta welcome popup was removed (owner 2026-11-04)
+  // the feedback circle under Settings, until the rider gives feedback or silences it (owner 2026-11-02; glass spec Q7,
+  // owner 2026-11-04); the only feedback prompt since the beta welcome popup was removed (owner 2026-11-04)
   import("./ui/feedback-button.js").then((m) => m.startFeedbackButton({ store, ctx })).catch((e) => console.warn("feedback button", e));
   // anonymous usage statistics (owner 2026-10-27; data/usage.js): nothing at all until a receiver is set, never in demo mode
   if (!DEMO) import("./data/usage.js").then((m) => m.usageConfigured() && import("./ui/views/about.js").then((a) => m.startUsage(store, { ver: a.APP_VERSION })))

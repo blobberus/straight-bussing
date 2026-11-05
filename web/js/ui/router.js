@@ -218,6 +218,14 @@ export function _resetRouter() {
 }
 
 /**
+ * How many entries the back stack holds (main.js: a deeper stack after a view switch = a push, shallower = Back).
+ * @returns {number}
+ */
+export function depth() {
+  return stack.length;
+}
+
+/**
  * Test/debug helper: a copy of the back stack.
  * @returns {Array<{view:string, stopId:?string, routeId:?string, detent:?string}>}
  */
