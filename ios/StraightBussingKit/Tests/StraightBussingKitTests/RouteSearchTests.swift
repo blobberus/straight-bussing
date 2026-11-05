@@ -9,6 +9,8 @@ final class RouteSearchTests: XCTestCase {
         let routes: [RouteSearch.Item]
         let words: [(s: String, typing: Bool, words: [String], canon: [String])]
         let cases: [(q: String, hits: [(id: String, score: Double, stop: String?)])]
+        /// rankByActive cases: query, ids operating now (nil = live status unknown), the expected id order.
+        let active: [(q: String, active: Set<String>?, ids: [String])]
     }
 
     static let golden: Golden = {
@@ -27,7 +29,10 @@ final class RouteSearchTests: XCTestCase {
                 (id: h[0] as? String ?? "", score: (h[1] as? NSNumber)?.doubleValue ?? .nan, stop: h[2] as? String)
             })
         }
-        return Golden(routes: routes, words: words, cases: cases)
+        let active = (root["active"] as? [[String: Any]] ?? []).map { c in
+            (q: c["q"] as? String ?? "", active: (c["active"] as? [String]).map { Set($0) }, ids: c["hits"] as? [String] ?? [])
+        }
+        return Golden(routes: routes, words: words, cases: cases, active: active)
     }()
 
     var index: RouteSearch.Index { RouteSearch.Index(items: Self.golden.routes) }
@@ -126,5 +131,47 @@ final class RouteSearchTests: XCTestCase {
         XCTAssertEqual(RouteSearch.split(["A"], hits: [RouteSearch.Hit(id: "Z", score: 1)]).top, [], "a hit outside the list is ignored")
         XCTAssertEqual([0, 1, 2].map(RouteSearch.matchText), ["No routes match", "1 route matches", "2 routes match"])
         XCTAssertEqual(RouteSearch.search(RouteSearch.Index(items: []), "53"), [])
+    }
+
+    // MARK: owner 2026-11-05: inactive routes stay findable; active ones first unless the query names a route
+
+    func ids(_ names: String...) -> Set<String> {
+        Set(names.map { n in Self.golden.routes.first { $0.long == n || $0.short == n }!.id })
+    }
+
+    func ranked(_ q: String, _ active: Set<String>?) -> [String] {
+        let byId = Dictionary(uniqueKeysWithValues: Self.golden.routes.map { ($0.id, $0.long.isEmpty ? $0.short : $0.long) })
+        return RouteSearch.rankByActive(RouteSearch.search(index, q), active: active).map { byId[$0.id] ?? $0.id }
+    }
+
+    func testEveryRouteFindableRunningOrNot() {
+        let idx = index
+        for r in Self.golden.routes {
+            XCTAssertEqual(RouteSearch.search(idx, r.long).first?.id, r.id, "long name \(r.long)")
+            if !r.short.isEmpty { XCTAssertTrue(RouteSearch.search(idx, r.short).contains { $0.id == r.id }, "short name \(r.short)") }
+            XCTAssertEqual(RouteSearch.rankByActive(RouteSearch.search(idx, r.long), active: []).first?.id, r.id, "\(r.long) first with nothing running")
+        }
+    }
+
+    func testActiveFirstUnlessNamed() {
+        XCTAssertEqual(Array(ranked("metra", ids("Friend Center/Metra")).prefix(2)), ["Friend Center/Metra", "Midway Metra"])
+        XCTAssertEqual(ranked("53rd", []).first, "53rd Street Express", "named: first even when it does not run")
+        XCTAssertEqual(Array(ranked("53rd", ids("Central", "North")).prefix(3)), ["53rd Street Express", "Central", "North"])
+        XCTAssertEqual(Array(ranked("drexel", ids("Apostolic/Drexel")).prefix(2)), ["Drexel", "Apostolic/Drexel"])
+        XCTAssertEqual(Array(ranked("drex", ids("Apostolic/Drexel")).prefix(2)), ["Drexel", "Apostolic/Drexel"])
+        XCTAssertEqual(Array(ranked("drexl", ids("Apostolic/Drexel")).prefix(2)), ["Apostolic/Drexel", "Drexel"], "a typo does not name a route")
+        let hits = RouteSearch.search(index, "metra")
+        XCTAssertEqual(RouteSearch.rankByActive(hits, active: nil), hits, "live status unknown: unchanged")
+        XCTAssertEqual(RouteSearch.namedMin, 88.5)
+    }
+
+    /// Every golden active-first case: the same order as the JavaScript.
+    func testGoldenActiveCasesMatchTheWeb() {
+        XCTAssertGreaterThan(Self.golden.active.count, 10)
+        let idx = index
+        for c in Self.golden.active {
+            XCTAssertEqual(RouteSearch.rankByActive(RouteSearch.search(idx, c.q), active: c.active).map(\.id), c.ids,
+                           "\"\(c.q)\" with \(c.active.map { $0.sorted() } ?? [])")
+        }
     }
 }

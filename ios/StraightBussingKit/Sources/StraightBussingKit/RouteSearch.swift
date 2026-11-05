@@ -40,6 +40,8 @@ public enum RouteSearch {
                                       "fifty": 50, "fiftieth": 50, "sixty": 60, "sixtieth": 60, "seventy": 70, "seventieth": 70,
                                       "eighty": 80, "eightieth": 80, "ninety": 90, "ninetieth": 90]
     static let unmatchedWeight = 0.5
+    /// Lowest score of a match that names the route (exact name 100, the start of a name 90 down to 88.5).
+    public static let namedMin = Tier.prefix - unmatchedWeight * 3
 
     /// A match: route id, score, and the stop whose name matched (stop tiers only).
     public struct Hit: Hashable, Sendable {
@@ -231,6 +233,19 @@ public enum RouteSearch {
         }
         hits.sort { $0.hit.score != $1.hit.score ? $0.hit.score > $1.hit.score : $0.order < $1.order }
         return hits.map(\.hit)
+    }
+
+    /// Order matches for the Routes list (owner 2026-11-05: "the top results, unless the name is clearly specified,
+    /// should priortize active routes"; web rankByActive): the routes the query names (score >= `namedMin`) stay on top
+    /// whether or not they run, then the matches operating now, then the rest, each in score order. `active` = the
+    /// Show running rule (`AppModel.operatingRoutes`); nil = live status unknown: the order is unchanged.
+    public static func rankByActive(_ hits: [Hit], active: Set<String>?) -> [Hit] {
+        guard let active else { return hits }
+        var named: [Hit] = [], run: [Hit] = [], rest: [Hit] = []
+        for h in hits {
+            if h.score >= namedMin { named.append(h) } else if active.contains(h.id) { run.append(h) } else { rest.append(h) }
+        }
+        return named + run + rest
     }
 
     /// Split a list (display order) into the matches, best first, and the rest in their usual order. Never changes
