@@ -57,7 +57,7 @@ export function bearing(a,b): degrees
 export function load(key, fallback), save(key, value)   // JSON, try/catch, prefix 'sb:'
 export function useMemoryOverlay(on), memoryOverlay()   // demo mode (?demo=1): reads see saved prefs, writes/removes stay in memory for the page (nothing stored)
 // core/events.js
-export const bus = { on(name, fn)->off, emit(name, payload) }   // events: 'sheet:inset' {px}, 'toast' {text}
+export const bus = { on(name, fn)->off, emit(name, payload) }   // events: 'sheet:inset' {px, detent}, 'toast' {text}
 // core/store.js
 export function createStore(initial): { get(), set(patch), subscribe(fn)->off }   // shallow merge; subscribers called once per microtask with (state, changedKeys:Set)
 ```
@@ -163,14 +163,14 @@ export function createMap(elId): MapApi
 // MapApi (all methods idempotent, cheap to call every poll):
 setTheme(isDark)                 // swaps OpenFreeMap style via map/style.js (positron/dark patched for legible street names + house numbers; OSM raster fallback if maplibre missing)
 setBottomInset(px)               // visible-map padding from the sheet; fits/flies respect it
-drawNetwork({routes, shapes, routeStops, stopRoutes, stops, hidden:[], focus:[]|null, dark})  // colored route lines, no outline (2026-11-04), thinner zoomed out (lineWeight), dim non-focused to .25; stops at zoom>=14 with 44px tap halo
-drawBuses(buses, {routes, shapes, hidden, focus, nowS})   // rounded-square badge in route color, heading triangle, pulse ring, stale (>60 s) dimmed, faded with its faded route (busFaded, 2026-11-04); on its route line and moved along it (map/track.js, below); recreate marker only if route changes
+drawNetwork({routes, shapes, routeStops, stopRoutes, stops, hidden:[], focus:[]|null, dark})  // colored route lines, no outline, LINE_WIDTHS (z13 2 .. z18 6 px, focused + FOCUS_EXTRA 2; 2026-11-04 / glass), network 0.9, focused 1, others .2; stops at zoom>=14 (stopStyle) with 44px tap halo
+drawBuses(buses, {routes, shapes, hidden, focus, nowS})   // rounded rectangle in route color (26 tall, short name never truncated, bus number inside after a divider), heading notch (notchRadius), no pulse (glass), stale (>60 s) dimmed, faded with its faded route (busFaded, 2026-11-04); on its route line and moved along it (map/track.js, below); recreate marker only if route changes
 setSelectedStop(stop|null)       // {id,lat,lon}
 setUser(pos|null)                // blue dot
 setHeading(deg|null, spread?)    // heading cone on the dot (2026-10-14): accent wedge, deg clockwise from north, spread = width (default 60, 20..160);
                                  // fed by ui/compass.js straight from main.js (never the store), DOM written only on a change; null hides it
 highlightStops(items|null, {onPick})   // items [{id,lat,lon}] ring highlights; null clears
-drawFavorites(stops|null)        // [{id,name?,lat,lon}] gold star badges (map/favorites.js), pane z422 (above stops, below highlights/selection/buses), all zooms (smaller <z14), taps -> onStopTap; selected favorite gets a wider unfilled ring; faded while a plan is drawn
+drawFavorites(stops|null)        // [{id,name?,lat,lon}] yellow star badges (map/favorites.js; owner 2026-11-05: --fav-mark #FFCC00 / #FFD60A, dark --fav-ink star, --fav-edge on light), pane z422 (above stops, below highlights/selection/buses), all zooms (smaller <z14), taps -> onStopTap; selected favorite gets a wider unfilled ring; faded while a plan is drawn
 drawPlan(option|null, {routes, shapes, routeStops})  // bus legs follow road shapes (geometry.alongShape); walk legs dashed along leg.coords else straight; start/end pins; no outlines; the buses of routes it does not ride fade
 fitTo(points|bounds, {maxZoom})  flyTo({lat,lon}, zoom)
 onStopTap(fn) onBusTap(fn) onUserMove(fn)
@@ -361,6 +361,11 @@ its own list: Apple Maps for the map and walks instead of the web map stack).
 - Tests: `tests/core-timeactive.js` (core.test.html), `tests/timepick.test.html`, e2e "lines by time".
 
 ### Beta feedback (2026-10-13, owner)
+Web since 2026-11-05 (glass transfer): the map feedback button is a 44 tinted glass circle 8 under the Settings circle
+(`#feedbackBtn` inside `#topbar`; solid tint while a chip shows, hidden at the full detent, focus goes to Settings when
+it disappears) and its panel is the Settings sheet's shell; behavior, words, memory and ping rules are unchanged (see
+"Glass redesign: shell contracts" and docs/redesign/NOTES-glass-web.md). The look described below (under the locate
+button) is the iPhone app's and the pre-glass web's.
 `ui/feedback.js`: `FEEDBACK_URL` (the only place the Google Form address appears), `feedbackLinkHTML()` (a real `<a target="_blank" rel="noopener">`, never window.open after an await), the words the feedback prompts share, and the given-feedback memory (below). Settings starts with "Beta feedback" (`views/settings.js feedbackHTML`). The map's feedback button (below) is the only prompt; nothing in ui/feedback.js runs at boot.
 - Welcome popup: REMOVED 2026-11-04 (owner: "Stop the give feedback sign on every login to pop up. Keep the feedback
   button on the map screen."). It was a native `<dialog>` ("Welcome to the beta version of Straight Bussing!", Cancel /
@@ -584,7 +589,10 @@ Hidden routes still prevent the "no shuttles" claim but are not named ("Some hid
   moves up into its place, so a Retry at the right end put "Show all" under the finger for a second tap. Now a tap at Retry's old
   spot lands on the chip's label, and main.js also ignores context-chip taps for `RETRY_GUARD_MS` (1 s) after a Retry tap
   (capture-phase guard). iOS: the same (`StatusPill` Retry leading, `AppModel.contextBarGuarded`). Test: e2e.js "Retry sits on
-  the left".
+  the left". **Web since 2026-11-05 (glass transfer):** the compact banner keeps Retry in a fixed 84 x 44 slot at its leading
+  edge and holds still for `RETRY_HOLD_MS` (2.5 s) after the last tap ("Live data is back." with Retry absorbing taps), so
+  the trip chip never slides under the finger; that replaces the 1 s context-bar guard on the web ("Glass redesign: shell
+  contracts", e2e "Retry tapped again and again during a trip").
 - **Status pill** (`ui/pill.js`, out of main.js): `pillState(s, now, {bootS, graceS})` -> `{kind, icon, msg, retry, alert}` with icon
   `feed` (error) / `delay` (late, old) / `silent` (scheduled, no live locations) / `idle` (no shuttles); `createPill(els)`
   renders it into `#pill` (`#pillIcon` slot, aria-hidden) and keeps `--pill-h`. Words unchanged.
@@ -741,8 +749,8 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
 - **Line taps.** Route lines stay non-interactive Leaflet layers (stop halos, buses, favorites and controls keep winning
   their own taps). `map.js`'s map click asks the network layer `lineAt(containerPoint)`: every drawn route polyline is
   projected to container pixels (only those whose bounds come near the tap) and `map/geometry.js lineAt` returns the
-  TOPMOST line within `LINE_TAP_PX` (14 px) plus half its width (`lineTapWidth`: the full weight plus the 3 px edge the
-  lines had before 2026-11-04, so thinner lines keep the same reach), in the network's own draw order
+  TOPMOST line within `LINE_TAP_PX` (14 px) plus half its width (`lineTapWidth`: the widest line as drawn before 2026-11-04,
+  TAP_WIDTHS + its 3 px edge + FOCUS_EXTRA, so the thinner lines keep the same reach), in the network's own draw order
   (`stackOrder`: routeOrder, focused routes above dimmed ones), even where a lower line passes closer. Hidden routes are
   not drawn, so never tapped. A hit fires `MapApi.onLineTap(rid)` instead of `onMapTap`; with no listener, or while a
   trip plan is drawn (the network is a dim backdrop then), the tap stays an empty-map tap.
@@ -905,8 +913,22 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   running shows both, the hidden line on its own line (one middle dot per line). iOS `RouteRow(idle:)` the same
   (`.grayscale(1)`, `Schedule.restingText`). Golden file `active` cases (19: "metra" with one Metra line running,
   "53rd" named but not running, "drexel" / "drex" / "drexl", unknown status) replayed by both tests. sw `sb-v2-89`.
+- Results first (2026-11-05, owner: "Routes that come up in searching for my routes should appear right under the
+  search bar above the phone numbers and other information."): with text in the field `listHTML` starts with "N routes
+  match" + the matches (or the "No routes match" card + Clear search); the station filter chip, the feed notice (No
+  live locations / No shuttles running / Live bus status unavailable), "From the shuttle operator", the "Other routes"
+  divider, the bulk capsules, the groups and the calls / official page follow. Nothing is removed (rider safety: the
+  alerts and both numbers stay on the page, below the matches). With a station filter the heading names it ("1 route
+  matches at Main") and an empty result says "Only routes to Main are searched. Clear the station filter to search
+  every route." Empty field: the old order. iOS `RoutesView` the same (`matchSection(station:)` right after
+  `searchSection`). Tests: tests/routes-search.js (the two "matches ... lead" cases).
+- Glass web (2026-11-05): Edit map order is the sheet header's action (`routesMetaHTML`), so the search region sits
+  between the custom-route bar and the body; the "No routes match" state is an empty-state card; the clear button is
+  `circle-x-fill` (css `.rt-search`, `.rt-qx`, `.rt-qdiv`, `.rt-qnone`, `.rt-why`).
 
 ### Context bar stays when the sheet is expanded (2026-11-04, owner: "When the menu is expanded, the current trip showing at the top of the screen should still show (same way as the settings button)")
+Web since 2026-11-05: the glass trip chip does this ("Glass redesign: shell contracts", "Trip chip at the full detent");
+the paragraph below is the pre-glass web and the iPhone app.
 The map context bar (#ctxbar: "Only showing routes for: <trip>" + Show all, "My route: <name>" + Clear, "Lines active
 at <time>" + Clear) no longer hides at the full detent. Like the status pill it keeps its place under the search bar and
 the full detent stops 8 px below it: sheet.css shortens `--v-full` by `--ctx-h` (ui/contextbar.js keeps it = the bar's
@@ -938,6 +960,10 @@ is part of `chromeH`, so the expanded sheet stops below it the same way.
 - **Thinner zoomed out.** `layers.js lineWeight(z, focused)`: 30% thinner up to zoom 15 (3.5 px at the campus view, was
   5; 2.8 at z13), 15% at z16, unchanged from z17 (6 / 6.5 px); a focused route keeps the full weight so it reads above the
   rest and its chevrons fit. `lineTapWidth(z)` keeps the line tap reach as it was.
+  **Web since 2026-11-05 (glass transfer): thinner at every zoom**, the experimental build's widths (owner there:
+  "Remove the outlines for the lines but make the lines themselves thinner"): `LINE_WIDTHS` z13 2, z14 2.25, z15 3, z16 4,
+  z17 5, z18 6 px, a focused line + `FOCUS_EXTRA` 2 at full opacity (the rest of the network 0.9, dimmed 0.2),
+  `lineWeight(z)` has no focus argument any more. The iPhone app keeps the 30%-zoomed-out rule below.
 - iOS: Kit `RouteVisibility.tripRoutes / mapHidden / busFaded` (VisibilityCustomTests), `RouteLineWidth.scale(zoom:)`
   (0.7 to 1 in 0.05 steps); AppModel `mapPlanRids`, `buildLayers` (focused routes drawn even when hidden, every line
   dimmed while a plan is drawn, as the web), MapScreen (faded `BusMarker` without a button, faded buses first, non-focused
@@ -945,3 +971,133 @@ is part of `chromeH`, so the expanded sheet stops below it the same way.
 - Tests: core-custom.js (trip-only lines, walk, busFaded), map-layers.js (no outline, weights, faded buses, taps, plan,
   stale + faded, the bus you ride), map-direction.js, map-trip.js, e2e.js (the Directions preview fades the other buses;
   a started trip draws only its lines and buses; all come back after End trip). sw `sb-v2-88`.
+
+## Redesign: layout and shell contracts (2026-11-03, docs/DESIGN-SPEC.md; owner brief "Straight Bussing New Version.txt")
+The navigation structure is unchanged (search bar with clock and gear, three sections in the bottom bar, sheet with two
+resting states, back stack, Settings and Lines by Time overlays); what changed in the shell and the contracts views use:
+- **Tokens** (`css/tokens.css`): the spec's token table under its CSS names; the old names stay as aliases. Root = body
+  size (`html { font-size: 106.25% }`, `-apple-system-body` on iPhone Safari); every type role is `calc(1rem * n / 17)`.
+  `js/ui/frame.js initTextSize` sets `html[data-text]` = `default` (< 20 px root), `large` (20 to 27), `ax` (28+);
+  stylesheets stack rows, buttons, option lines and the sheet header's trailing slot at `ax`.
+- **Icons**: `js/ui/icons.js` is the one set (`svg(name, size, {cls, stroke})`, `pair(name)` for outline / filled);
+  `index.html` inlines the same SVGs for the static chrome; `components.js icon()` maps the old names onto it.
+- **Sheet** (`css/sheet.css`, `js/ui/sheet.js`): opaque `bgSheet`, no backdrop blur; `--v-peek` is set on `#app` from the
+  measured header height (first measurement without a slide), so the collapsed sheet grows with text; `.is-scrolled`
+  shows the header hairline. Header markup: `.titletext` holds `#title` and `#subtitle`; `#titleRight` is the
+  trailing slot.
+- **View header contract** (main.js `renderHeader`): `def.title(state, o)`, `def.subtitle(state, o)` and
+  `def.metaHTML(state, o)` (trusted markup built with esc(); else the plain-text `def.meta`), with `o = {detent}`; the
+  header re-renders on every store change, on a sheet state change and on the bus event `sheet:header` (a view's own
+  state changed, e.g. Directions selected another option). Header actions (`[data-action]` in `#titleRight`) are bound
+  like the content's. Users: nearby (badge + ETA + live dot; during a trip the next step over "Trip to X" with Arriving
+  In when collapsed, "Current trip" when expanded), stop (next arrival), route (`routeStatusText`), directions (selected
+  total), routes (`routesMetaHTML`: Edit map order), myroutes (`myRoutesMetaHTML`: New).
+- **Status** (`js/ui/pill.js`): `#pill[data-form]` = `chip` (simulated buses: 32 pt capsule, whole chip is the button)
+  or `banner` (every feed state: full width, opaque warn / danger background, first sentence Semibold via
+  `setPillText`). `--pill-h` and the expanded state below the banner work as before; the locate button moves under a
+  banner. The banner's action (Retry or See alert, never both) is the FIRST child, a fixed 84 x 44 `.pillslot` on the
+  leading edge (owner 2026-11-03, spec 10.3): after a Retry tap `pill.js` keeps the banner's height and content until
+  `RETRY_HOLD_MS` (2.5 s) after the last tap; if the feed answers meanwhile it says `BACK_MSG` ("Live data is back.")
+  with a check and Retry absorbs taps (`aria-disabled`), so the trip chip (whose Show all ends the trip) never slides
+  under a tapping finger. Repeated taps join the running poll (`data/live.js pollNow`). Tests: `ui-shell-pill.js`
+  (slot order, the hold) and the e2e "Retry tapped again and again during a trip".
+- **Trip chip** (`js/ui/contextbar.js`): badges (up to 3, then "+N"), "Trip to X" / "Routes to X" / the Lines by Time
+  name / the custom route's name, Show all / Clear; only the label truncates; no marquee.
+- **Toast** (`css/base.css`): 12 above the collapsed sheet, 12 above the bottom bar when expanded, hidden while an
+  overlay (Settings, Lines by Time) is open.
+- **Map** (`js/map/layers.js`): `lineWeight` by the spec table (thinner since 2026-11-04: `LINE_WIDTHS`), `FOCUS_EXTRA` 2,
+  no casing (the 2026-11-03 `CASING_EXTRA` / `casingClass` flip was removed on 2026-11-04), `stopStyle(z)`, `routeLabel` = the badge's chipText (never
+  truncated), `notchRadius(w, h, deg)`; dimmed lines are drawn without casing. `js/map/landmarks.js` takes an `avoid()`
+  callback (the location dot). `css/map.css` reads `--sb-accent` (tintFill) and `--sb-tint` (tint).
+- Performance rules kept: the sheet's `--drag` stays non-inherited, `will-change` only while dragging, content insets
+  change after a settle, bus markers update in place on requestAnimationFrame; at most four blurred elements.
+Deviations from the spec: `docs/redesign/NOTES-web.md`; screens: `docs/redesign/after/web/`. sw `sb-v2-85`.
+
+## Glass redesign: shell contracts (2026-11-04, docs/DESIGN-SPEC-GLASS.md, a delta on DESIGN-SPEC.md)
+Apple Maps' iOS 26 layout in Liquid Glass; functions, words and states unchanged. What moved and the contracts views
+and tests rely on:
+- **Glass** (`css/tokens.css` glass tokens, `.glass` in `css/base.css`): only the control layer over the map (tab bar,
+  search circle, Settings circle, lower-right group, simulated-buses chip, trip chip, the collapsed card's plate, the
+  feedback circle as the one tinted glass).
+  `#app.is-moving` (ui/sheet.js, while the sheet drags and settles) and `.glass--moves` make moving glass solid;
+  `html.glass-lite` (ui/frame.js `initGlassLite`, a slow device) and Increase Contrast / Reduce Transparency make all
+  glass solid. Budget: at most 6 blurred surfaces on at most 22% of the screen at rest (e2e "glass budget").
+- **Top rows** (fixed, `css/base.css`): `#pill` = Row A (banner form, topmost, Retry / See alert slot leading, 2.5 s
+  hold) or Row B leading (chip form); `#topbar` = the Settings circle (Row B trailing); `#ctxbar` beside Settings or
+  under the chip. `--banner-h` (from `--pill-h`), `--row-b-top`, `--ctx-top` on `#app`.
+- **Bottom row** `#bottomrow`: `<nav id="tabs" class="tabcap">` (the three sections, `.tab-pill` moved by `--tab-i`,
+  written by main.js) and `#searchBar` (the search circle, `dir:open` + `data-focus="to"`). `--nav-h` = the space it
+  takes from the bottom (`--bottom-inset` + 56). Hidden while a sheet text field has focus on touch screens and under
+  Settings / Lines by Time.
+- **Sheet** (`css/sheet.css`, `js/ui/sheet.js`): bottom at the screen's bottom, `--v-max` tall; collapsed visible
+  height `--v-peek-vis` (card + 8 + the bottom row; the peek probe measures it), expanded `--v-full`. `.sheet-bg`
+  holds `.sheet-glass` (the card's plate, header height, inset 12) and `.sheet-solid` (the opaque sheet); while
+  dragging, `paintP()` writes opacity / transform on `.sheet-solid`, `#content` and `#mapctl` from the progress p
+  (opaque by p .35, the group gone by p .30); at rest css drives them from `data-detent`. `--card-k` (card width /
+  sheet width) on `#app`. The sheet element takes no taps while collapsed except its header and `#mapctl`.
+- **Lower-right group** `#mapctl` (inside `#sheet`, `bottom: calc(100% + 8px)`): `#timeBtn` over `#locateBtn`; rides
+  with the sheet's transform, hidden when expanded. The map's bottom inset adds its height while collapsed
+  (`MapApi.setBottomInset(px, controls)`), the credit does not.
+- **Directions**: the Start / Destination card is the first child of the view, sticky; `#dirbar`, the search bar morph
+  and `barRects` / `useBar` are gone.
+- **Settings / Lines by Time** (`ui/settings-overlay.js`): a sheet of its own (top = safe + 10, bottom 0), zooming out
+  of its opener (`zoomOrigin`), swipe down on the header closes (`SWIPE_CLOSE_PX`), Done = checkmark named "Done",
+  Cancel = cross named "Cancel"; it no longer moves the app's sheet; the app behind is inert.
+- **Confirm dialogs** grow out of their button (`ui/confirm.js zoomFrom`). Buttons and segmented controls are capsules.
+- **Compact status banner** (owner 2026-11-04: "Reduce the size of the reconnecting notification."; `ui/pill.js`,
+  `css/base.css`): one 44 pt line in the footnote role, a CSS grid of [action slot 84 x 44] [icon] [`.pillmore`]. The
+  slot keeps the owner's Retry rule (leading, fixed, 2.5 s hold). `pillState().short` is the line ("Live data lost. Times
+  may be off.", "No live data. Don't rely on times.", "Last update 1:23 PM. Times approximate."; it always says the times
+  can't be relied on), `msg` the full sentence in `#pillText` (always in the live region for screen readers, visually
+  hidden until open). `.pillmore` (name "Details", `aria-expanded`, `aria-controls="pillText"`) opens the sentence and
+  `.pillcall` "Call 773.702.8181" (`tel:`) under the line; the line never moves, the banner only grows downward (Row B
+  follows `--pill-h`), so fast taps on it never land on the trip chip. Open stays open across state changes; a banner
+  that comes back starts closed. The demo chip has no Details.
+- **Feedback circle** `#feedbackBtn` inside `#topbar` under Settings (see "Beta feedback" above).
+- **Trip chip at the full detent** (owner 2026-11-04: "When the menu is expanded, the current trip showing at the top of
+  the screen should still show (same way as the settings button)"): `#ctxbar` no longer hides when expanded; beside
+  Settings it needs no room; in Row C (with the simulated-buses chip) `--v-full` shrinks by 36 + 8 so the expanded
+  sheet starts 8 below it (sheet.css). Peek never moves for it.
+- **Current trip with no trip** (owner 2026-11-04: "if a current trip is not selected, don't display nearby routes, rather,
+  just show that no current trip is selected. Keep the favorites and search station bar. Also keep the alerts."; spec 18
+  D6): `views/nearby.js` renders the alert row, `noTripHTML()` ("No current trip selected", `NO_TRIP_HINT`, a
+  Search for a destination button = `dir:open`), the station search with its links, and the favorites; `nextHTML`,
+  `locHTML` and the Arriving soon / Also nearby lists run only during a trip (or for a typed place, the search's own
+  result); `metaNearby` / `metaNearbyHTML` are empty and the collapsed subtitle is `NO_TRIP_TITLE`. Tests run the nearby
+  list with a trip (`views-fixtures.js onTrip`).
+- **Basemap roads** (owner 2026-11-04: "Do not make the main streets yellow. The highways being yellow is ok."): only
+  motorways (and motorway bridges) are yellow-orange; main streets white / gray (`map/style.js PALETTE`); a test checks
+  no other road layer has a yellow or orange hue.
+Deviations from the glass spec: `docs/redesign/NOTES-glass-web.md`; screens: `docs/redesign/glass/web/`. sw `sb-v2-93`.
+
+## Glass interface on the live site (2026-11-05, owner: "Transfer the interface of the experimental build to the current main build of straight bussing. Check for bugs and data collcetion for logins that may be messed up during the change.")
+The website's interface came over from the experimental repository (github.com/blobberus/straight-bussing-experimental,
+main at 682facd; fetched by URL, copied by path, never merged and nothing pushed there). The two sections above
+("Redesign: layout and shell contracts", "Glass redesign: shell contracts") are its contracts; docs/DESIGN-SPEC.md,
+docs/DESIGN-SPEC-GLASS.md, docs/APPLE-MAPS-STUDY.md, docs/REDESIGN-AUDIT.md and docs/redesign/NOTES-*.md came with it
+(screenshots stay in the experimental repository). sw `sb-v2-98` (one above both repos: live sb-v2-89, experimental
+sb-v2-97).
+- **Came over:** every file in `web/` except the ones below: css, index.html, js (main.js, ui/, map/, `core/esc.js`
+  `contrast()`, the new `ui/icons.js`), sw.js, tests. Files with Windows line endings on the experimental side (main.js,
+  sw.js, usage.js) were stored with Unix ones.
+- **Kept from live:** `web/icons/*` and `tools/make_icons.py` (the experimental icons have a yellow ring that marks the
+  test site), `web/data/**` (the daily GTFS refresh), the workflows, README and project notes. `core/` and `data/` were
+  already the same in both repos (the experimental build had ported every live change of 2026-11-02 to 11-05: feedback
+  button, popup removal, Retry first, off-route buses, route search and active-first ranking, heading cone on the first
+  tap, trip chip when expanded, faded buses, trip-only lines, no outlines).
+- **Differences decided:** line widths = experimental (thinner at every zoom; live had thinned only zoomed out);
+  Retry = experimental's 2.5 s banner hold instead of live's 1 s context-bar guard (the same rule, stronger); Current
+  trip with no trip = experimental's "No current trip selected" without nearby buses (the owner's choice there, spec 18
+  D6; a departure from ship checklist item 3, to confirm for the live site); the context bar's marquee is gone (the trip
+  chip truncates its label, spec 10.5).
+- **Usage statistics** (data/usage.js): unchanged rows. The experimental site's path guard came along: it only stops
+  counting on /straight-bussing-experimental/ (so a future copy there never mixes test visits into the owner's Sheet);
+  /straight-bussing/ counts exactly as before. A test seam `_configureUsage({loc, nav})` stands in for location and
+  navigator. Checked: tests/usage-core.js (the live path counts; the experimental path, http and automated browsers
+  never; the exact row fields the receiver accepts; home screen vs browser; the version), tests/usage-app.js (the real
+  glass app sends nothing in the test suite; Settings > Usage statistics with both labeled 44 px switches that save the
+  choice), and a real run of the live path in headless Edge with the receiver stubbed (start, reload, two-minute rule,
+  home screen, length off, nearest stop, demo, automated browser, experimental path): every row the same as before the
+  transfer, field by field.
+- **iPhone app:** keeps its interface; only the two owner changes of 2026-11-05 (yellow favorite stars; route search
+  results right under the field) were made there too.

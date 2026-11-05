@@ -1,5 +1,13 @@
 # Straight Bussing: UI Design Spec
 
+> **Website since 2026-11-05 (owner: "Transfer the interface of the experimental build to the current main build of
+> straight bussing"): the visual source of truth for `web/` is [`docs/DESIGN-SPEC.md`](DESIGN-SPEC.md) (the redesign:
+> type roles, tokens, components, map, states) with its delta [`docs/DESIGN-SPEC-GLASS.md`](DESIGN-SPEC-GLASS.md) (Apple
+> Maps' layout in Liquid Glass; section 18 = the owner's later decisions).** The web part of this file is the section
+> "Website: glass interface" at the end. Everything above it stays in force for the **live iPhone app**, which keeps its
+> earlier interface (`ios/Shared/Palette.swift` follows "1b. System rules"), and the copy rules ("1b", Copy) apply to
+> both platforms. Where the web code and the older sections disagree, the spec wins for the website.
+
 > v2 note: file names below (`style.css`, `app.js`, `theme.js`, `mapstyle.js`) are the v1 files this spec was written against (tag `v1-final`). In v2 the same rules live in `web/css/*.css`, `web/js/ui/theme.js` and `web/js/map/style.js`; see `docs/ARCHITECTURE.md`.
 
 ## Taste notes (research summary)
@@ -186,3 +194,69 @@ tiles.addTo(map);
 Theme.onChange((isDark) => MapStyle.update(tiles, isDark));
 ```
 `Theme.onChange` fires for system changes while in Auto and for manual Light/Dark. Settings UI: `Theme.mount(someElement)` renders a `.themeseg` control (styled in style.css). `Theme.get()` returns "auto" | "light" | "dark". Also add theme.js and mapstyle.js to SHELL in sw.js and bump the cache version.
+
+## Website: glass interface (2026-11-05, from the experimental build)
+
+The website's look follows DESIGN-SPEC.md + DESIGN-SPEC-GLASS.md (above). How the web implements them and where it
+deviates: [`docs/redesign/NOTES-web.md`](redesign/NOTES-web.md) (the first redesign) and
+[`docs/redesign/NOTES-glass-web.md`](redesign/NOTES-glass-web.md) (the glass one); the screenshots are in the
+experimental repository (https://github.com/blobberus/straight-bussing-experimental/tree/main/docs/redesign/glass/web).
+The audit that led to the redesign: [`docs/REDESIGN-AUDIT.md`](REDESIGN-AUDIT.md). Copy rules: "1b" above (Copy).
+Map lines on the web (owner 2026-11-04 on the experimental build, now live): no outlines, thinner at every zoom
+(z13 2 px to z18 6 px, a focused line 2 px wider); favorite stars yellow (#FFCC00 / #FFD60A with a dark star, owner
+2026-11-05). The iPhone app's lines (30% thinner zoomed out only) and its stars (yellow too, 2026-11-05) are in
+`ios/README.md`.
+
+### Layers (z-index tokens in `css/tokens.css`, unchanged by the redesign)
+
+| Token | z | Layer |
+|---|---|---|
+| `--z-map` | 0 | map (Leaflet panes stack inside it) |
+| `--z-sheet` | 1000 | bottom sheet |
+| `--z-nav` | 1010 | bottom bar |
+| `--z-chip` | 1090 | trip / filter chip |
+| `--z-float` | 1100 | status banner / chip, locate button |
+| `--z-search` | 1105 | floating search bar |
+| `--z-overlay-scrim` / `--z-overlay` | 1140 / 1150 | Settings and Lines by Time scrim / card |
+| `--z-dialog` | 1200 | `#dlg` scrim + card |
+| `--z-toast` | 1300 | toast |
+| `--z-frame` | 5000 | desktop phone frame decorations (never take taps) |
+
+A component may use 1 / 2 locally.
+
+### Where the spec lives in the web code
+
+| Spec | Web |
+|---|---|
+| 14 Token table (colors light / dark, type roles, spacing, radii, icon sizes, elevation, motion) | `css/tokens.css`, CSS names as in the table; old names kept as aliases at the bottom |
+| 2.2 Root size and text scaling | `css/base.css` (`html { font-size: 106.25% }`, `-apple-system-body` on iPhone Safari), `js/ui/frame.js` `initTextSize` (`html[data-text]` = default / large / ax) |
+| 5 Icons | `js/ui/icons.js` (Lucide, 2 px stroke, drawn walk and antenna-off); `components.js icon()` maps old names |
+| 7 Materials | `css/base.css`: translucency only on the search bar, Directions card, locate button, demo chip, trip chip |
+| 10.1 to 10.7 Chrome, sheet, bottom bar | `css/base.css`, `css/sheet.css`, `js/ui/sheet.js` (measured collapsed height), `js/ui/pill.js` (banner vs chip), `js/ui/contextbar.js` (trip chip), `js/main.js` (header subtitle and trailing slot) |
+| 10.8 to 10.13, 10.18 to 10.21 Rows, cards, badges, ETA, buttons, controls, alert row, toast, empty states | `css/components.css`, `js/ui/components.js` |
+| 10.14 to 10.17 Place details, option cards, step list, trip in progress | `css/views.css`, `css/journey.css`, `css/trip.css`; `views/stop.js`, `views/directions.js`, `views/tripinfo.js`, `views/tripprogress.js` |
+| 11 Map | `js/map/style.js` (basemap palettes), `js/map/layers.js` (line widths, no casing since 2026-11-04, stops, bus markers), `css/map.css` (markers, labels), `js/map/landmarks.js` |
+| 13 Required states | the views; `tests/` cover the copy and the order |
+
+Checks that keep it honest: `tests/ui-shell-contrast.js` (every token pair of spec 4.2 in both themes, buttons, tags),
+the one-primary-button tests, the 44 pt target tests, and a grep for literal colors outside `tokens.css` (map.css keeps
+literal fallbacks only inside `var()` for its own test page).
+
+### Map style patch (`web/js/map/style.js`)
+
+Fetches the OpenFreeMap style (`positron` or `dark`), deep-clones it and patches by layer id (cached per theme; an
+empty background-only style in the land color shows until it loads):
+- `background`, `water`, `park` / `landuse_park`, `landcover_wood`, `building`: the Apple Maps-like palettes of
+  DESIGN-SPEC-GLASS 18.1 (owner 2026-11-04; they replace spec 11.2's desaturated ones: warm land #F5F3EE / dark #202124,
+  green parks, clear blue water), plus added green fills for city parks, sports fields, cemeteries and a faint campus
+  tint; only motorways are yellow-orange (18 D4).
+- `highway_minor`: wider, round caps, white on light / #33343A on dark; NEW `sb_minor_casing` beneath it.
+- `highway_major_casing`, `highway_major_inner`, `highway_path`: recolored and widened; roads on dark stay neutral gray.
+- `highway-name-*` (positron) / `highway_name_other` (dark) are replaced by `sb_name_path` (z16), `sb_name_minor` (z14),
+  `sb_name_major` (z12.5): no uppercase, majors Noto Sans Bold, #4A4C53 / #2E3036 on light, #C9CAD2 / #E2E3EA on dark,
+  a 1.5 px halo in the land color (over 7:1 against it, tested).
+- `highway-shield-*`, `road_shield_us`, `road_oneway*`: hidden.
+- NEW `sb_housenumber` (z17) and `sb_poi_campus` (z17, college / school / hospital / library / stadium / museum / theatre,
+  text only, in the landmark gray, skipping names the curated landmark labels already show).
+- Raster fallback (no MapLibre / WebGL): OSM tiles, CSS-inverted in dark.
+Zooms in the style are MapLibre zooms, one less than the Leaflet zoom the app uses.
