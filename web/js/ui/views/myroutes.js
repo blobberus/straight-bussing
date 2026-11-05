@@ -19,12 +19,12 @@ import { esc } from "../../core/esc.js";
 import { nowS } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
 import { ALERTS_UNKNOWN_SHORT } from "./alerts.js";
-import { arrivalsFor, staleLevel, runningCount, activeAlerts, liveUnknown, alertsUnknown } from "../../core/arrivals.js";
+import { arrivalsFor, staleLevel, runningCount, runningText, activeAlerts, liveUnknown, alertsUnknown } from "../../core/arrivals.js";
 import { scheduledNoLive, noLiveStatus } from "../../core/operating.js";
 import { hoursOn, nextStartToday, clock12 } from "../../core/schedule.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { createCustom, applyCustom, clearCustom, updateCustom, deleteCustom, toggleHighlight } from "../../core/custom.js";
-import { routeChip, etaBlock, icon, emptyState, skeleton } from "../components.js";
+import { routeChip, etaBlock, icon, emptyState, skeleton, liveDotHTML } from "../components.js";
 import { confirmDialog } from "../confirm.js";
 import { attachSwipe } from "./myroutes-swipe.js";
 import { createPatcher } from "./myroutes-patch.js";
@@ -185,13 +185,13 @@ export function restingText(state, rid, now) {
  * @param {string} rid
  * @param {number} now
  * @param {Set<string>} hidden effectiveHidden(state)
- * @returns {{text:string, live:boolean}}
+ * @returns {{text:string, live:boolean, level:string}} level: staleLevel (the mark before a count, liveDotHTML)
  */
 export function savedRouteStatus(state, rid, now, hidden) {
-  const n = runningCount(state, rid);
-  const run = n ? `${n} bus${n === 1 ? "" : "es"} running` : liveUnknown(state, now) ? "Live status unavailable" : noLiveStatus(state, rid, now) || restingText(state, rid, now);
+  const n = runningCount(state, rid), level = staleLevel(state, now);
+  const run = n ? runningText(n, level) : liveUnknown(state, now) ? "Live status unavailable" : noLiveStatus(state, rid, now) || restingText(state, rid, now);
   const off = hidden.has(String(rid)) ? (state.journey ? " \u00b7 Not on this trip" : " \u00b7 Hidden on map") : "";
-  return { text: run + off, live: n > 0 };
+  return { text: run + off, live: n > 0, level };
 }
 
 /**
@@ -218,7 +218,7 @@ export function renderCustom(state, id, now = nowS()) {
     const hl = (c.highlight || []).includes(rid), st = savedRouteStatus(state, rid, now, hiddenSet);
     const nx = hiddenSet.has(String(rid)) ? null : nearestNext(state, rid, now);   // a hidden route shows no arrival time
     const next = nx ? ` · ${stale ? "~" : ""}${Math.max(0, Math.floor((nx.t - now) / 60))} min at ${nx.stop}` : "";
-    h += `<div class="mr-rrow"><button type="button" class="v-row mr-rmain" data-action="route:open" data-id="${esc(rid)}">${routeChip(rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(longName(rid, state.routes))}</span><span class="v-sec">${st.live ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(st.text + next)}</span></span></button>`
+    h += `<div class="mr-rrow"><button type="button" class="v-row mr-rmain" data-action="route:open" data-id="${esc(rid)}">${routeChip(rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(longName(rid, state.routes))}</span><span class="v-sec">${st.live ? liveDotHTML(st.level) : ""}${esc(st.text + next)}</span></span></button>`
       + `<button type="button" class="mr-hl${hl ? " is-on" : ""}" data-action="mr:hl" data-id="${esc(c.id)}" data-rid="${esc(rid)}" aria-pressed="${hl}" aria-label="Highlight ${esc(longName(rid, state.routes))}"><span class="mr-hltick" aria-hidden="true">${CHECK}</span>Highlight</button></div>`;
   }
   if (!rids.length) h += '<p class="v-sec mr-pad">None of these routes are in the current schedule. Edit to choose others.</p>';

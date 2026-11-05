@@ -1,6 +1,6 @@
 // Tests for core/arrivals.js
 import { test, eq, ok } from "./lib.js";
-import { arrivalsFor, staleLevel, staleNote, runningCount, activeAlerts, alertText, alertRouteIds } from "../js/core/arrivals.js";
+import { arrivalsFor, staleLevel, staleNote, runningText, runningCount, activeAlerts, alertText, alertRouteIds } from "../js/core/arrivals.js";
 
 const T = 1_800_000_000;
 const trips = [
@@ -103,4 +103,14 @@ test("staleNote names the problem like the banner", () => {
   eq(staleNote("late", "Bus times may be off."), "Live data delayed. Bus times may be off.");
   eq(staleNote("old", "Bus times may be off."), "Live data delayed. Bus times may be off.");
   eq(staleNote("err", "Bus times may be off."), "Can't reach the shuttle feed. Bus times may be off.", "an outage is not a delay");
+});
+
+// 2026-11-05 QA: through an outage the Routes list kept "2 buses running" with the green live dot. The count is the last
+// known one then, said like the arrival rows say it. Same words as the iOS Kit LiveText.runningText (WordingTests).
+test("runningText: a last known count says so", () => {
+  eq(runningText(0, ""), "", "no bus: nothing (the views say why)");
+  eq(runningText(1, ""), "1 bus running");
+  eq(runningText(2, "late"), "2 buses running", "late data: still the live count (the amber dot says delayed)");
+  eq(runningText(2, "old"), "Last known: 2 buses running");
+  eq(runningText(3, "err"), "Last known: 3 buses running");
 });

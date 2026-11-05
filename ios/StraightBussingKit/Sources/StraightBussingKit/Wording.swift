@@ -216,6 +216,15 @@ public enum LiveText {
         }
     }
 
+    /// "2 buses running", said like the arrival rows say their times: while the feed fails or its data is out of date the
+    /// count is the last known one, "Last known: 2 buses running" (2026-11-05 QA). "" for no bus. Same words as web
+    /// core/arrivals.js runningText.
+    public static func runningText(_ n: Int, _ level: StaleLevel) -> String {
+        guard n > 0 else { return "" }
+        let s = "\(n) bus\(n == 1 ? "" : "es") running"
+        return level == .old || level == .err ? "Last known: " + s : s
+    }
+
     /// The note in a sheet (trip options, a trip in progress, a route page) while live data is not fresh; the status pill
     /// says the same at the top. "Can't reach the shuttle feed." while the feed fails, "Live data delayed." while it
     /// answers late (2026-11-05 QA: the note said "delayed" during an outage). Same words as web core/arrivals.js staleNote.

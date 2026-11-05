@@ -17,14 +17,14 @@
 import { registerView } from "../router.js";
 import { registerAction, setHTMLKeepFocus } from "../actions.js";
 import { esc } from "../../core/esc.js";
-import { runningCount, liveUnknown } from "../../core/arrivals.js";
+import { runningCount, liveUnknown, runningText, staleLevel } from "../../core/arrivals.js";
 import { scheduledNoLive, noLiveStatus, silentService, silentText } from "../../core/operating.js";
 import { nowS } from "../../core/time.js";
 import { hoursOn } from "../../core/schedule.js";
 import { effectiveHidden, activeCustomRoute, drawOrder } from "../../core/visibility.js";
 import { saveVisibleAsCustom, updateCustom, matchesCurrent, visibleRids, moveInOrder, moveToIndex, showAll, hideAll, showRunning, cleanName } from "../../core/custom.js";
 import { routeIndexFor, searchRoutes, splitByHits, matchText, rankByActive } from "../../core/routesearch.js";
-import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
+import { routeChip, emptyState, skeleton, OFFICIAL_PHONE, liveDotHTML } from "../components.js";
 import { OFFICIAL_HTML } from "./pick.js";
 import { operatorAlertsHTML, callsHTML, operatorPhone } from "./alerts.js";
 import { stationToggleHTML } from "./journey.js";
@@ -142,12 +142,13 @@ function row(state, id, hidden, now, stop = null, idle = false) {
   const r = state.routes[id] || {}, n = runningCount(state, id), name = nameOf(state, id);
   const tripOff = hidden && !!state.journey && !(state.hiddenRoutes || []).includes(id);   // hidden only by the journey
   // whether the route runs, also for a hidden one (owner 2026-10-17: a grayed line must still say if it is running)
-  const live = n ? `${n} bus${n > 1 ? "es" : ""} running` : liveUnknown(state, now) ? "Live status unknown" : idle ? notRunningText(state, id, now) : noLiveStatus(state, id, now) || idleText(state, id, now);
+  const lvl = staleLevel(state, now);
+  const live = n ? runningText(n, lvl) : liveUnknown(state, now) ? "Live status unknown" : idle ? notRunningText(state, id, now) : noLiveStatus(state, id, now) || idleText(state, id, now);
   const why = tripOff ? "Not part of this trip" : hidden ? "Hidden from map and times" : "";
   // a search result that does not run (idle) keeps one middle dot per line: why it is grayed goes on its own line
   const status = why && !idle ? `${live} · ${why}` : live, more = why && idle ? `<span class="v-sec">${why}</span>` : "";
   const eye = tripOff ? "" : `<button type="button" class="v-eye" data-action="routes:toggle" data-id="${esc(id)}" aria-pressed="${hidden ? "false" : "true"}" aria-label="${hidden ? "Show" : "Hide"} route ${esc(r.short || "")} ${esc(name)}">${hidden ? EYEOFF : EYE}</button>`;
-  return `<div class="v-routerow${hidden ? " is-off" : ""}${idle ? " is-idle" : ""}"><button type="button" class="v-row v-rowmain" data-action="route:open" data-id="${esc(id)}">${routeChip(id, state.routes)}<span class="v-grow"><span class="v-prim">${esc(name)}</span><span class="v-sec">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${esc(status)}</span>${more}${stop ? `<span class="v-sec rt-why">Stops at ${esc(stop)}</span>` : ""}</span></button>${eye}</div>`;
+  return `<div class="v-routerow${hidden ? " is-off" : ""}${idle ? " is-idle" : ""}"><button type="button" class="v-row v-rowmain" data-action="route:open" data-id="${esc(id)}">${routeChip(id, state.routes)}<span class="v-grow"><span class="v-prim">${esc(name)}</span><span class="v-sec">${n ? liveDotHTML(lvl) : ""}${esc(status)}</span>${more}${stop ? `<span class="v-sec rt-why">Stops at ${esc(stop)}</span>` : ""}</span></button>${eye}</div>`;
 }
 
 /**

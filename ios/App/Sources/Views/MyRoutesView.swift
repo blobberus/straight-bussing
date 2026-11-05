@@ -283,7 +283,7 @@ struct CustomRouteLine: View {
     var body: some View {
         let n = model.running(rid)
         let hidden = model.hidden.contains(rid)
-        let run = n > 0 ? "\(n) bus\(n == 1 ? "" : "es") running" : model.liveOutage ? "Live status unavailable"
+        let run = n > 0 ? LiveText.runningText(n, model.staleLevel) : model.liveOutage ? "Live status unavailable"
             : Operating.noLiveStatus(rid, buses: model.buses, service: model.staticData.service, now: model.now)
                 ?? Schedule.restingText(model.staticData.service, rid, model.now)
         let off = hidden ? (model.routeState.journey != nil ? " \u{00B7} Not on this trip" : " \u{00B7} Hidden on map") : ""
@@ -295,7 +295,7 @@ struct CustomRouteLine: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(model.longName(rid)).foregroundStyle(Palette.text)
                         HStack(spacing: 4) {
-                            if n > 0 { LiveDot() }
+                            if n > 0 { LiveDot(level: model.staleLevel) }
                             Text(run + off + next).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
                         }
                     }

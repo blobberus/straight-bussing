@@ -150,6 +150,17 @@ export function liveLabel(level) {
 }
 
 /**
+ * The mark before a route's bus count (decorative; the words say the same): the green live dot only while the feed is
+ * fresh, the amber dot while it is late, the hollow ring for a last known count (DESIGN-SPEC 10.10; iOS LiveDot(level:)).
+ * @param {''|'late'|'old'|'err'} level staleLevel
+ * @returns {string}
+ */
+export function liveDotHTML(level) {
+  if (!level) return '<span class="v-livedot" aria-hidden="true"></span>';
+  return level === "late" ? '<span class="dot-live late" aria-hidden="true"></span>' : '<span class="dot-off" aria-hidden="true"></span>';
+}
+
+/**
  * One arrival row: route chip, route name, live label (+ bus label), ETA.
  * Screen readers get a single sentence, e.g. "Route 6, Campus North, arrives in 4 minutes, live".
  * @param {{rid:string, t:number, bus?:string, tripId?:string}} a  from core/arrivals.arrivalsFor

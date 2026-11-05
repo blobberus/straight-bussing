@@ -87,6 +87,15 @@ final class LiveTextTests: XCTestCase {
         XCTAssertEqual(LiveText.staleNote(.err, "Bus times may be off."), "Can't reach the shuttle feed. Bus times may be off.")
     }
 
+    /// Same words as web core/arrivals.js runningText (tests/core-arrivals.js).
+    func testRunningTextSaysWhenTheCountIsLastKnown() {
+        XCTAssertEqual(LiveText.runningText(0, .fresh), "")
+        XCTAssertEqual(LiveText.runningText(1, .fresh), "1 bus running")
+        XCTAssertEqual(LiveText.runningText(2, .late), "2 buses running")
+        XCTAssertEqual(LiveText.runningText(2, .old), "Last known: 2 buses running")
+        XCTAssertEqual(LiveText.runningText(3, .err), "Last known: 3 buses running")
+    }
+
     func testStatusPill() {
         func pill(_ l: StaleLevel, lastOk: Double = 1, feedTs: Double = 0, buses: Int = 3, silent: Bool = false) -> LiveText.Pill? {
             LiveText.pill(level: l, polled: true, lastOk: lastOk, feedTs: feedTs, loaded: true, busCount: buses, silent: silent)

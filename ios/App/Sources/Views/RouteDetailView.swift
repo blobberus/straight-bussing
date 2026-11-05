@@ -34,7 +34,7 @@ struct RouteDetailView: View {
         let svc = model.staticData.service
         // scheduled but no bus reporting: "Scheduled until 4:29 AM, no live location", never "Not running" (rider safety)
         let quiet: String? = n == 0 && !model.liveOutage ? Operating.noLiveStatus(rid, buses: model.buses, service: svc, now: model.now) : nil
-        let status: String = n > 0 ? "\(n) bus\(n == 1 ? "" : "es") running"
+        let status: String = n > 0 ? LiveText.runningText(n, model.staleLevel)
             : model.liveOutage ? "Live status unavailable" : quiet ?? "Not running right now"
         let ids = RouteText.stopOrder(model.staticData.routeStops[rid])
         let list = model.staticData.routeStops[rid] ?? []
@@ -50,7 +50,7 @@ struct RouteDetailView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
-                    if n > 0 { LiveDot() }
+                    if n > 0 { LiveDot(level: model.staleLevel) }
                     Text(status).font(.subheadline.weight(.semibold))
                     if !r.short.isEmpty && !r.long.isEmpty { Text("· \(r.short)").font(.subheadline).foregroundStyle(Palette.text2) }
                 }

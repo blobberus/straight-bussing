@@ -20,10 +20,10 @@ import { registerAction } from "../actions.js";
 import { esc, safeColor, textOn } from "../../core/esc.js";
 import { nowS, minsUntil, ago } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
-import { arrivalsFor, staleLevel, staleNote, runningCount, activeAlerts, alertText, alertRouteIds, liveUnknown } from "../../core/arrivals.js";
+import { arrivalsFor, staleLevel, staleNote, runningText, runningCount, activeAlerts, alertText, alertRouteIds, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { serviceHoursAt, isScheduledNow, weekSummary, upcomingChanges, busesByHour, groupHours, hourLabel, dayKey, routeService } from "../../core/schedule.js";
-import { emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
+import { emptyState, skeleton, OFFICIAL_PHONE, liveDotHTML } from "../components.js";
 import { noLiveStatus, scheduledNoLive } from "../../core/operating.js";
 import { noBusHelpHTML } from "./alerts.js";
 import { busKey, busNumbers, busName, selectedBus, busArrival } from "../../core/busnum.js";
@@ -178,7 +178,8 @@ export function routeStatusText(state, rid, now = nowS()) {
 function statusHtml(state, rid, r, n, now) {
   const unknown = liveUnknown(state, now), quiet = !n && !unknown && noLiveStatus(state, rid, now);   // scheduled, silent: not "not running"
   const idle = unknown ? "Live status unavailable" : quiet || "Not running right now";   // a feed outage is not "not running"
-  let h = `<p class="v-status">${n ? '<span class="v-livedot" aria-hidden="true"></span>' : ""}${n ? `${n} bus${n > 1 ? "es" : ""} running` : esc(idle)}${r.short && r.long ? ` &middot; <span class="v-sec">${esc(r.short)}</span>` : ""}</p>`;
+  const lvl = staleLevel(state, now);
+  let h = `<p class="v-status">${n ? liveDotHTML(lvl) : ""}${n ? esc(runningText(n, lvl)) : esc(idle)}${r.short && r.long ? ` &middot; <span class="v-sec">${esc(r.short)}</span>` : ""}</p>`;
   if (quiet) h += `<p class="v-sec r-nolive">${esc(`No bus on this route is sending its location, so we can't confirm it's running. Call ${OFFICIAL_PHONE} before you rely on it.`)}</p>`;
   // the service day, not the calendar date: at 12:10 AM a route running until 12:25 AM reads "Friday service ...
   // · Scheduled now", never "Today No service · Scheduled now" (iOS RouteDetailView)

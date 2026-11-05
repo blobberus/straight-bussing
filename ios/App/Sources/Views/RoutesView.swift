@@ -336,7 +336,7 @@ struct RouteRow: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(model.longName(rid)).font(.body.weight(.medium)).foregroundStyle(hidden || idle ? Palette.text2 : Palette.text)
                         HStack(spacing: 4) {
-                            if n > 0 { LiveDot() }
+                            if n > 0 { LiveDot(level: model.staleLevel) }
                             Text(subtitle(n, tripOff: tripOff)).font(.caption).foregroundStyle(Palette.text2).lineLimit(2)
                         }
                         if idle && (tripOff || hidden) {   // one middle dot per line: why it is grayed on its own line
@@ -378,7 +378,7 @@ struct RouteRow: View {
     }
 
     func liveStatus(_ n: Int) -> String {
-        if n > 0 { return "\(n) bus\(n == 1 ? "" : "es") running" }
+        if n > 0 { return LiveText.runningText(n, model.staleLevel) }
         if model.liveOutage { return "Live status unknown" }   // a feed outage is not "not running"
         if let s = Operating.noLiveStatus(rid, buses: model.buses, service: model.staticData.service, now: model.now) { return s }
         // iOS adds today's hours to "Not running" (one glance without opening the route)

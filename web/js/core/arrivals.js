@@ -62,6 +62,20 @@ export function staleLevel({ lastOk, failed, feedTs } = {}, nowS) {
 }
 
 /**
+ * "2 buses running" for a route, said like the arrival rows say their times (DESIGN-SPEC 10.10): while the feed fails or
+ * its data is out of date the count is the last known one, "Last known: 2 buses running" (2026-11-05 QA: the Routes list
+ * kept a green live dot and a plain count through an outage). '' for no bus. Same words as the iOS Kit LiveText.runningText.
+ * @param {number} n buses
+ * @param {''|'late'|'old'|'err'} level staleLevel
+ * @returns {string}
+ */
+export function runningText(n, level) {
+  if (!(n > 0)) return "";
+  const s = `${n} bus${n === 1 ? "" : "es"} running`;
+  return level === "old" || level === "err" ? `Last known: ${s}` : s;
+}
+
+/**
  * The note shown in a sheet (trip options, a trip in progress, a route page) while live data is not fresh; the status
  * banner says the same at the top. It names the problem like the banner: "Live data delayed." while the feed answers
  * late, "Can't reach the shuttle feed." while it fails (2026-11-05 QA: the note said "delayed" during an outage).
