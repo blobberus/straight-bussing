@@ -8,6 +8,7 @@
 .v-card > .st-pad { padding: var(--s-3) var(--inset-content); margin: 0; }
 .st-label { display: block; margin: var(--s-3) 0 var(--s-2); padding: 0 var(--inset-content); font: var(--t-section); color: var(--label-2); }
 .st-theme { margin: 0; }
+.st-picker > .st-label { margin-top: var(--s-6); }   /* "Favorites" / "Search stations" in Bus alerts: the section rhythm, not 12 */
 
 /* Credits (owner 2026-10-16): the last item; the chevron turns down when the list is open */
 .st-credits { margin-top: var(--s-6); }
@@ -38,7 +39,8 @@
 .st-off { min-height: var(--tap); padding-left: 0; }
 .st-pick .v-grow > span { display: block; }
 .st-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-top: var(--s-1); }
-.st-search input { box-sizing: border-box; width: 100%; min-height: var(--tap); padding: 0 var(--s-3); border: 0; border-radius: var(--r-control); background: var(--bg-card); color: var(--label); font: var(--t-body); }
+.st-search { margin: 0 0 var(--s-3); }   /* the cards' gap, so the field never touches the alert switches below */
+.st-search input { box-sizing: border-box; width: 100%; min-height: var(--tap); padding: 0 var(--inset-content); border: 0; border-radius: var(--r-control); background: var(--bg-card); color: var(--label); font: var(--t-body); }
 .st-search input:focus-visible { outline: 2px solid var(--tint); outline-offset: 0; }
 
 /* options: route checks, switches, the minutes menu */
@@ -154,8 +156,14 @@
 .st-loc .v-btn--block { margin: var(--s-2) 0; }
 .st-loc .st-disclaimer { margin-bottom: 0; }
 /* Usage statistics (data/usage.js): the same inner spacing as Location */
-.st-usage { padding: var(--s-3) var(--inset-content); }
-.st-usage .st-intro { margin: 0 0 var(--s-2); }
+/* usage: the intro, then the switches as one hairline-separated group like the bus alert switches; the last row's own
+   8 of padding + 4 = the 12 above the intro */
+.st-usage { padding: var(--s-3) var(--inset-content) var(--s-1); }
+.st-usage .st-intro { margin: 0 0 var(--s-1); }
+.st-usage .st-sw + .st-sw { border-top: .5px solid var(--separator); }
+/* About and Credits: two lone cards at the end, each one section gap below what comes before (About used to sit 12
+   under the iPhone app card, as if part of it, while Credits sat 24 under About) */
+.st-about { margin-top: var(--s-6); }
 .st-steps-h { margin: var(--s-3) 0 var(--s-1); font: var(--t-row-title); color: var(--label); }
 .st-steps { margin: 0 0 var(--s-3); padding-left: 1.4em; color: var(--label); font: var(--t-row-detail); }
 .st-steps li { margin: 0 0 var(--s-2); }
