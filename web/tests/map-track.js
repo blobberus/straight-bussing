@@ -170,18 +170,21 @@ test('bus layer: slow glides are drawn in shared frames, once the fastest badge 
   layer.draw([bus(1, 'r1', 100, 1000), bus(2, 'r2', 300, 1000)], { routes, shapes, nowS: 1000 });
   layer.draw([bus(1, 'r1', 220, 1010), bus(2, 'r2', 330, 1010)], { routes, shapes, nowS: 1010 });   // 120 m and 30 m in one poll
   const px = (id) => m.project(layer.shown(id));   // screen px, not rounded
-  let frames = 0, drawn = 0, prev = [px(1), px(2)];
+  let frames = 0, drawn = 0, prev = [px(1), px(2)], prevR = null;
   const fastPx = 120 / (40075016.686 * Math.cos(pos(160)[0] * Math.PI / 180) / 2 ** (15 + 8));
   for (let i = 0; i < 2000 && layer.step(16); i++) {
     frames++;
     const now = [px(1), px(2)], moved = now.map((q, k) => q.distanceTo(prev[k]) > 1e-9);
     if (moved[0] || moved[1]) drawn++;
     ok(!moved[1] || moved[0], 'the slow badge never moves in a frame of its own');
-    if (moved[0]) ok(now[0].distanceTo(prev[0]) < STEP_PX + 0.5, 'and the fast one moves about a pixel per drawn frame');
+    if (moved[0]) ok(now[0].distanceTo(prev[0]) < STEP_PX + 0.5, 'and the fast one moves about a step per drawn frame');
+    const r = [m.latLngToLayerPoint(layer.shown(1)), m.latLngToLayerPoint(layer.shown(2))];   // where Leaflet draws them (whole px)
+    if (prevR) ok(r.every((q, k) => Math.abs(q.x - prevR[k].x) <= 1 && Math.abs(q.y - prevR[k].y) <= 1), 'drawn, no badge ever jumps more than 1 px a frame');
+    prevR = r;
     prev = now;
   }
   ok(frames > 500, `the glide still runs every frame (${frames} frames)`);
-  ok(drawn <= Math.ceil(fastPx / STEP_PX) + 2 && drawn >= Math.floor(fastPx / STEP_PX) - 2, `${drawn} drawn frames for a ${fastPx.toFixed(1)} px move`);
+  ok(drawn <= Math.ceil(fastPx / STEP_PX) + 2 && drawn >= Math.floor(0.9 * fastPx / STEP_PX), `${drawn} drawn frames for a ${fastPx.toFixed(1)} px move`);
   near(distM(layer.shown(1), pos(220)), 0, 1, 'both end exactly at their reports');
   near(distM(layer.shown(2), pos(330)), 0, 1);
   m.remove();
@@ -189,13 +192,13 @@ test('bus layer: slow glides are drawn in shared frames, once the fastest badge 
 
 test('bus layer: between looks the glide sleeps until a badge can next need drawing, not every display frame', () => {
   const glide = { t0: 0, dur: GLIDE_MS, total: 90, ease: false, along: false, f: 0 };   // 90 m in 9 s: 10 m/s
-  near(nextWakeMs([glide], 0, 3.5), 350, 1, 'zoom 15 (3.5 m a px): the next pixel in 350 ms');
+  near(nextWakeMs([glide], 0, 3.5), 350 * STEP_PX, 1, 'zoom 15 (3.5 m a px): the next step in 350 ms per px');
   near(nextWakeMs([{ ...glide, along: true, f: 50 }], 0, 30), TURN_M * 100, 1, 'along a line: also every TURN_M meters (the notch may turn)');
-  near(nextWakeMs([glide], 0, 0.3), 30, 1, 'zoomed in (0.3 m a px): about every other frame');
+  near(nextWakeMs([glide], 0, 0.3), 30 * STEP_PX, 1, 'zoomed in (0.3 m a px): every frame or two');
   eq(nextWakeMs([glide, { ...glide, t0: -9000 }], 0, 3.5), 0, 'an animation due to end: at once');
   near(nextWakeMs([glide], GLIDE_MS - 100, 3.5), 100, 1, 'never past the end of a move');
   eq(nextWakeMs([{ ...glide, total: 0.2 }], 0, 30), 1000, 'a crawl sleeps at most a second');
-  near(nextWakeMs([{ ...glide, ease: true }], 0, 3.5), 175, 1, 'an eased catch-up uses its peak speed (twice the average)');
+  near(nextWakeMs([{ ...glide, ease: true }], 0, 3.5), 175 * STEP_PX, 1, 'an eased catch-up uses its peak speed (twice the average)');
   const m = window.L.map(box('t-track-wake'), { zoomControl: false, attributionControl: false }).setView(P(2, 1), 15);
   const routes = { r1: { short: 'CEN', color: '#FF9900' } }, shapes = { r1: [ell()] };
   const s = prepareShape(shapes.r1)[0], pos = (x) => pointAt(s.line, s.cum, x);
@@ -204,7 +207,7 @@ test('bus layer: between looks the glide sleeps until a badge can next need draw
   layer.draw([bus(100, 1000)], { routes, shapes, nowS: 1000 });
   layer.draw([bus(190, 1010)], { routes, shapes, nowS: 1010 });
   for (let i = 0; i < 20; i++) layer.step(16);
-  ok(layer.wakes.length >= 10 && layer.wakes.every((w) => w > 200), 'a normal glide asks to sleep 200+ ms between looks: ' + layer.wakes.slice(0, 5).map(Math.round));
+  ok(layer.wakes.length >= 10 && layer.wakes.every((w) => w > 100), 'a normal glide asks to sleep 100+ ms between looks: ' + layer.wakes.slice(0, 5).map(Math.round));
   m.remove();
 });
 

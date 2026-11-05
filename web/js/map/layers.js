@@ -308,8 +308,10 @@ export function notchRadius(w, h, deg) {
 
 /** A normal poll's glide (ms): about one poll interval, at constant speed, so the badge keeps moving. */
 export const GLIDE_MS = 9000;
-/** Bus frames are drawn once some badge has moved this far on screen (CSS px; Leaflet places badges at whole px). */
-export const STEP_PX = 1;
+/** Bus frames are drawn once some badge has moved this far on screen (CSS px). Half a pixel, because Leaflet places badges
+    at whole px: at a 1 px threshold a badge could round two pixels at once, at half a pixel it never moves more than one
+    per drawn frame, as before the batching. */
+export const STEP_PX = 0.5;
 /** A gliding badge is looked at again after travelling this far along its line (m), so its notch turns with the street. */
 export const TURN_M = 4;
 /** Longest sleep between two looks while buses glide (ms); waits shorter than WAKE_RAF_MS just take the next frame. */
