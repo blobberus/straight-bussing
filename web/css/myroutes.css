@@ -102,8 +102,10 @@
 .mr-crow.is-on .mr-tick { background: var(--tint-fill); box-shadow: none; color: var(--on-fill); }
 .mr-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--s-1); }
 .mr-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--t-row-title); color: var(--label); }
-.mr-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); height: 20px; overflow: hidden; }   /* one line; chips that don't fit are hidden whole */
-.mr-plus { font: var(--t-footnote); line-height: 20px; color: var(--label-2); white-space: nowrap; }
+/* one line; chips that don't fit are hidden whole. The line is one small badge tall (20, or its text's line at larger
+   sizes: 26 at 200%), so a badge is never cut in half */
+.mr-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); height: max(20px, calc(1rem * 13 / 17)); overflow: hidden; }
+.mr-plus { font: var(--t-footnote); line-height: max(20px, calc(1rem * 13 / 17)); color: var(--label-2); white-space: nowrap; }
 .mr-morebtn { color: var(--label-2); margin-right: var(--s-1); }
 .mr-acts { position: absolute; top: 0; right: 0; bottom: 0; width: 216px; display: flex; visibility: hidden; transition: visibility 0s linear var(--m-sheet); }
 .mr-swipe.is-open .mr-acts, .mr-swipe.is-drag .mr-acts { visibility: visible; transition-delay: 0s; }   /* hidden when closed: no red bleed at the card's rounded corners */

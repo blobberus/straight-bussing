@@ -319,3 +319,18 @@ test("myroutes: at 200% text the swipe tray's labels (Details, Edit, Delete) fit
     }
   } finally { m.done(); html.style.fontSize = was; }
 });
+
+test("myroutes: a row's badge line is one badge tall at every text size, so no badge is cut in half (200% text)", async () => {
+  const html = document.documentElement, was = html.style.fontSize;
+  try {
+    for (const px of ["17px", "34px"]) {
+      html.style.fontSize = px;
+      const m = mountList({ customRoutes: [C1, C2] }, 288);
+      try {
+        const line = m.q('[data-id="c2"] .mr-chips'), chip = line.querySelector(".chip");
+        const l = line.getBoundingClientRect(), c = chip.getBoundingClientRect();
+        ok(c.bottom <= l.bottom + 0.5 && c.top >= l.top - 0.5, `${px} root: the first badge fits its line (${Math.round(c.height)} in ${Math.round(l.height)})`);
+      } finally { m.done(); }
+    }
+  } finally { html.style.fontSize = was; }
+});
