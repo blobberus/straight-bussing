@@ -124,7 +124,7 @@ export function tripBarHTML(state) {
     + `<span class="v-grow"><span class="v-prim j-title" tabindex="-1">Trip ${esc(j.label.replace(/^To /, "to "))}</span>`
     + (j.rids.length ? `<span class="v-sec j-sub">Map shows only ${j.rids.length > 1 ? "these routes" : "this route"} <span class="j-chips">${chips}</span></span></span>`
       : '<span class="v-sec j-sub">Walking the whole way, no bus</span></span>')
-    + `<button type="button" class="v-btn v-btn--secondary j-end" data-action="journey:end">End trip</button></div>`;
+    + `<button type="button" class="v-btn v-btn--destructive j-end" data-action="journey:end">End trip</button></div>`;
 }
 
 /**

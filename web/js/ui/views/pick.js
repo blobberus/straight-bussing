@@ -18,18 +18,18 @@ import { norm } from "../../data/places.js";
 import { createPlaceSearch, placeListHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
 import { officialLinks } from "../components.js";
 import { onlySwitchHTML, filterJourney, watchStation } from "./journey.js";
+import { svg } from "../icons.js";
 
 /** Radius for "stops near here" in the picker (meters). */
 export const PICK_RADIUS_M = 1500;
-const SVG = (d) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-/** Inline SVG icons used by the D2 views. */
+/** Icons used by the D2 views (ui/icons.js: the one set). */
 export const ICONS = {
-  loc: SVG('<path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'),
-  stop: SVG('<rect x="5" y="3" width="14" height="15" rx="3"/><path d="M5 11h14M8 21l1-3M16 21l-1-3"/>'),
-  place: SVG('<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'),
-  search: SVG('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'),
-  chev: SVG('<path d="M9 6l6 6-6 6"/>'),
-  star: SVG('<path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6-5.38-2.83-5.38 2.83 1.03-6L3.3 9.6l6-.9z" fill="currentColor" stroke-width="1.8"/>'),   // same star as the stop view / My Routes
+  loc: svg("navigation", 20),
+  stop: svg("bus-front", 20),
+  place: svg("map-pin", 20),
+  search: svg("search", 17),
+  chev: svg("chevron-right", 13, { stroke: 2.5 }),
+  star: svg("star-fill", 20),
 };
 
 /** Official service links (shown in empty/error states). */

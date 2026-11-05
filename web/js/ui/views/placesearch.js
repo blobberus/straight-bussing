@@ -13,12 +13,13 @@
 import { esc } from "../../core/esc.js";
 import { searchPlaces, localPlaces, debounce } from "../../data/geocode.js";
 import { loadPlaces, preloadPlaces, norm } from "../../data/places.js";
+import { svg } from "../icons.js";
 
 /** Pause before asking Photon (ms); local results never wait. */
 export const PHOTON_MS = 250;
 /** Local matches that make Photon unnecessary (privacy: nothing is sent). */
 const ENOUGH = 5;
-const PIN = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+const PIN = svg("map-pin", 20);
 
 /** Injectable place-search backend shared by the picker, Nearby and Directions (tests stub it). */
 export const placeDeps = { search: searchPlaces, local: localPlaces, load: () => loadPlaces() };
