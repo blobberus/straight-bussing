@@ -94,8 +94,12 @@
 }
 .sto.is-in { transform: none; opacity: 1; }
 .sto.is-dragging { transition: none; }
+/* the head is the sheet's toolbar: like iOS bar titles and bar buttons its words stop growing at 1.35 x (spec 2.2, 13.7),
+   and when room is short (larger text, 320 pt) the title gives way (it wraps to 2 lines, off center) before a button is
+   ever cut: each side column is at least as wide as its button, the title column takes what is left. */
 .sto-head {
-  position: relative; flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  position: relative; flex: none; display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+  align-items: center; column-gap: var(--s-2);
   min-height: calc(var(--sheet-header-min) + 8px); padding: 14px var(--s-3) 6px; touch-action: none;
 }
 .sto-head::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: .5px; background: var(--separator); }
@@ -105,11 +109,14 @@
 }
 .sto-side { display: flex; min-width: 0; }
 .sto-side--end { justify-content: flex-end; }
-.sto-title { margin: 0; font: var(--t-row-title); text-align: center; white-space: nowrap; }
+.sto-title {
+  min-width: 0; margin: 0; font: var(--t-row-title); font-size: min(1rem, var(--cap-body)); line-height: 1.3; text-align: center;
+  overflow-wrap: break-word; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
 .sto-done {
   position: relative; min-width: var(--tap); min-height: var(--tap); padding: 0 var(--s-4); border-radius: var(--r-capsule);
   display: inline-grid; place-items: center;
-  background: var(--tint-fill); color: var(--on-fill); font: var(--t-button); white-space: nowrap;
+  background: var(--tint-fill); color: var(--on-fill); font: var(--t-button); font-size: min(1rem, var(--cap-body)); line-height: 1.2; white-space: nowrap;
   transition: opacity var(--m-press) var(--ease-out);
 }
 .sto-done.is-check, .sto-start { width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0; border-radius: 50%; }
@@ -209,13 +216,13 @@
 .wh-list { margin: 0; padding: 80px 0; list-style: none; }
 .wh-item {
   height: 40px; line-height: 40px; text-align: center; white-space: nowrap;
-  font: var(--t-body); font-size: var(--size-hero-title); line-height: 40px; color: var(--label-2); scroll-snap-align: center;
+  font: var(--t-body); font-size: min(var(--size-hero-title), var(--cap-hero-title)); line-height: 40px; color: var(--label-2); scroll-snap-align: center;
   cursor: pointer; user-select: none; -webkit-user-select: none;
 }
 .wh-item.is-sel { color: var(--label); font-weight: var(--w-semibold); }
 /* keyboard focus: a ring around the chosen row (the column's own outline would be faded by its mask) */
 .wh-col:focus-visible .wh-item.is-sel { border-radius: var(--r-nested); box-shadow: inset 0 0 0 2px var(--tint); }
-.wh-colon { position: relative; align-self: center; font: var(--t-hero-title); color: var(--label); }
+.wh-colon { position: relative; align-self: center; font: var(--t-hero-title); font-size: min(var(--size-hero-title), var(--cap-hero-title)); line-height: 40px; color: var(--label); }
 .tp-desc { margin: var(--s-3) 0 var(--s-2); padding: 0 var(--s-1); font: var(--t-row-detail); color: var(--label); }
 .tp-result {
   margin: 0 0 var(--s-2); padding: var(--s-3) var(--inset-content); border-radius: var(--r-card); background: var(--bg-card);

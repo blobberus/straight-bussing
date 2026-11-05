@@ -76,6 +76,53 @@ test("the clock opens Lines by Time on the Settings card: own title, Cancel / Se
   } finally { t.done(); }
 });
 
+/** The open menu's own markup in a phone-sized iframe with the real stylesheets and a root font of `rootPx` (34 = 200%). */
+async function phoneCopy(html, w, h, rootPx) {
+  const f = document.createElement("iframe");
+  f.style.cssText = `position:absolute;left:-10000px;top:0;width:${w}px;height:${h}px;border:0`;
+  const css = ["tokens", "components", "views", "settings"].map((n) => `<link rel="stylesheet" href="../css/${n}.css">`).join("");
+  f.srcdoc = `<!doctype html><html style="font-size:${rootPx}px"><head><meta name="viewport" content="width=device-width">${css}`
+    + "<style>*,*::before,*::after{transition:none!important;animation:none!important}</style></head><body>" + html + "</body></html>";
+  await new Promise((res) => { f.onload = res; document.body.appendChild(f); });
+  await tick(30);
+  return f;
+}
+
+test("larger text (200%) at 320 and 393 pt: the head never cuts Set time or Done, the title gives way; month names fit their wheel", async () => {
+  const t = shell();
+  let f = null;
+  try {
+    click(t.clock);
+    const time = t.ov().outerHTML;
+    closeSettingsOverlay({ focus: "none" });
+    click(t.gear);
+    const settings = t.ov().outerHTML;
+    for (const [w, h] of [[320, 568], [393, 852]]) {
+      for (const [kind, html] of [["Lines by Time", time], ["Settings", settings]]) {
+        f = await phoneCopy(html, w, h, 34);
+        const d = f.contentDocument, head = d.querySelector(".sto-head"), title = d.querySelector(".sto-title");
+        const btns = [...head.querySelectorAll("button")], hr = head.getBoundingClientRect(), tr = title.getBoundingClientRect();
+        ok(btns.length >= 1, `${kind} ${w}: head buttons`);
+        for (const b of btns) {
+          const r = b.getBoundingClientRect(), name = b.getAttribute("aria-label");
+          ok(r.left >= hr.left - 0.5 && r.right <= hr.right + 0.5 && r.right <= w + 0.5, `${kind} ${w}: ${name} inside the head (${Math.round(r.left)}..${Math.round(r.right)})`);
+          ok(b.scrollWidth <= b.clientWidth + 1, `${kind} ${w}: ${name} shows all its words (${b.scrollWidth} > ${b.clientWidth})`);
+          ok(r.width >= 44 && r.height >= 44, `${kind} ${w}: ${name} stays a 44 pt target`);
+          ok(r.right <= tr.left + 0.5 || r.left >= tr.right - 0.5, `${kind} ${w}: the title never runs under ${name}`);
+        }
+        ok(parseFloat(f.contentWindow.getComputedStyle(title).fontSize) <= 22.95 + 0.01, `${kind} ${w}: the head's words stop at 1.35 x (a sheet toolbar, spec 2.2)`);
+        if (kind === "Lines by Time") {
+          const month = d.querySelector(".wh-col--month");
+          for (const li of month.querySelectorAll(".wh-item")) ok(li.scrollWidth <= month.clientWidth + 1, `${w}: "${li.textContent}" fits the month wheel (${li.scrollWidth} > ${month.clientWidth})`);
+          const px = parseFloat(f.contentWindow.getComputedStyle(month.querySelector(".wh-item")).fontSize);
+          ok(px <= 27.01 && px < 40, `${w}: wheel rows keep their 40 px height (text ${px} px, capped at 1.35 x like the system picker)`);
+        }
+        f.remove(); f = null;
+      }
+    }
+  } finally { f?.remove(); t.done(); }
+});
+
 test("wheels: arrow keys, Home / End and a tap move a column; the result line follows; February offers 29 days", async () => {
   const t = shell();
   try {
