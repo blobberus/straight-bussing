@@ -9,9 +9,11 @@
  * feedback. Which will silence the notification entirely. A silenced notification will entirely remove the button
  * from the navigation screen.").
  *
- * - The button (#feedbackBtn in index.html, `hidden` until this module shows it): the locate button's size and shape,
- *   right under it; a speech bubble in the accent color on the accent tint (--accent-bg, the feedback card's color,
- *   never the green live color) with a badge dot. Hidden at the full detent like the locate button (css/base.css).
+ * - The button (#feedbackBtn in index.html, `hidden` until this module shows it). In the glass layout
+ *   (docs/DESIGN-SPEC-GLASS.md 4, 8.5; owner 2026-11-04: Q7 yes) a 44 tinted glass circle right under the Settings circle,
+ *   top right, away from the thumb zone: the accent tint (--tint-bg, the feedback card's color, never the green live
+ *   color) at 85% with the glass filter, a speech bubble in the accent and a badge dot. It turns solid while a chip is
+ *   on the map, so at most 6 surfaces blur (12.1). Hidden at the full detent (the expanded sheet starts under Row B).
  * - Ping: two soft ring pulses on the badge (PING_MS), first after the app has been open PING_FIRST_MS, then every
  *   PING_EVERY_MS, at most PING_MAX per visit (page load). A ping that is due waits (PING_RETRY_MS) while a trip is in
  *   progress, the sheet is expanded, the Settings-style overlay or any dialog is open, a text field has focus or the
@@ -208,10 +210,10 @@ export function startFeedbackButton({ store, ctx, button, schedule, now = () => 
   return api;
 }
 
-/** Where focus goes when the panel closes and the button is gone: its neighbor, the locate button, else the sheet title. */
+/** Where focus goes when the panel closes and the button is gone: its neighbor, the Settings circle, else the sheet title. */
 function focusAfterGone() {
-  const loc = document.getElementById("locateBtn");
-  const to = isVisible(loc) ? loc : document.getElementById("title");
+  const gear = document.getElementById("settingsBtn");
+  const to = isVisible(gear) ? gear : document.getElementById("title");
   to?.focus?.({ preventScroll: true });
 }
 

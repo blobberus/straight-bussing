@@ -17,6 +17,7 @@
  *   Settings > Give feedback always stays. Storage blocked: remembered for this page load only. Every change is
  *   announced on the app bus as "feedback:done".
  */
+import { svg } from "./icons.js";
 import { esc } from "../core/esc.js";
 import { bus } from "../core/events.js";
 
@@ -43,7 +44,7 @@ export const FEEDBACK_NOTE = "Opens a Google Form in a new tab. What you type is
 /** What a screen reader adds to a feedback link's visible label. */
 export const NEW_TAB = "opens a Google Form in a new tab";
 /** Speech bubble on an accent disc (decoration: the words carry the meaning). Settings card, the map button's panel. */
-export const FEEDBACK_ICON = '<span class="fb-badge" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.4-4.3A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8.5 10h7M8.5 13.5h4.5"/></svg></span>';
+export const FEEDBACK_ICON = `<span class="fb-badge" aria-hidden="true">${svg("message-square", 20)}</span>`;
 
 let doneThisLoad = null;   // feedbackDone when storage could not keep it (private mode, blocked): this page load only
 
@@ -55,7 +56,7 @@ let doneThisLoad = null;   // feedbackDone when storage could not keep it (priva
  * @returns {string}
  */
 export function feedbackLinkHTML(label, { cls = "v-btn v-btn--secondary", attrs = "", icon = false } = {}) {
-  const arrow = icon ? '<svg class="v-ic fb-ext" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>' : "";
+  const arrow = icon ? svg("square-arrow-out-up-right", 15, { cls: "v-ic fb-ext" }) : "";
   return `<a class="${esc(cls)}" href="${esc(FEEDBACK_URL)}" target="_blank" rel="noopener" aria-label="${esc(`${label}, ${NEW_TAB}`)}"${attrs ? " " + attrs : ""}>${esc(label)}${arrow}</a>`;
 }
 
