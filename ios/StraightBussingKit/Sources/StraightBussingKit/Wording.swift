@@ -179,6 +179,10 @@ public enum TripInfo {
 /// renderPill, ui/components.js liveLabel, ui/views/stop.js updatedText, ui/views/alerts.js).
 public enum LiveText {
     public static let phone = "773.702.8181"
+    /// The feed never answered (`Arrivals.alertsUnknown`; web ui/views/alerts.js ALERTS_UNKNOWN*, same words).
+    public static let alertsUnknown = "Service alerts unavailable"
+    public static let alertsUnknownText = "Can't reach the shuttle feed, so we can't show the operator's alerts."
+    public static let alertsUnknownShort = "Can't load right now"
 
     public enum PillKind: String, Sendable { case err, warn, info }
     public struct Pill: Hashable, Sendable {

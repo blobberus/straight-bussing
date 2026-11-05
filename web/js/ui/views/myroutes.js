@@ -18,7 +18,8 @@ import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { nowS } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
-import { arrivalsFor, staleLevel, runningCount, activeAlerts, liveUnknown } from "../../core/arrivals.js";
+import { ALERTS_UNKNOWN_SHORT } from "./alerts.js";
+import { arrivalsFor, staleLevel, runningCount, activeAlerts, liveUnknown, alertsUnknown } from "../../core/arrivals.js";
 import { scheduledNoLive, noLiveStatus } from "../../core/operating.js";
 import { hoursOn, nextStartToday, clock12 } from "../../core/schedule.js";
 import { effectiveHidden } from "../../core/visibility.js";
@@ -133,9 +134,10 @@ export function renderMyRoutes(state, now = nowS()) {
     h += '<div class="v-card" data-key="favs">' + favs.map((id, i) => favRow(id, i, favs.length, state, now, hidden, stale)).join("") + "</div>";
   } else h += `<div class="mr-empty mr-empty--fav" data-key="fempty"><span class="mr-star" aria-hidden="true">${STAR}</span><p class="v-sec">Open a station on the map and tap Favorite. It will show up here with its next bus.</p></div>`;
 
-  const n = activeAlerts(state, now).length;
+  const n = activeAlerts(state, now).length, unknown = !n && state.liveLoaded && alertsUnknown(state);   // the feed never answered
+  const sub = n ? plural(n, "active alert") : unknown ? ALERTS_UNKNOWN_SHORT : "None right now";
   h += '<div class="v-card mr-links" data-key="links">'
-    + `<button type="button" class="v-row" data-action="alerts:open" aria-label="Service alerts, ${n ? n + " active" : "none right now"}"><span class="v-ic" aria-hidden="true">${icon("alert")}</span><span class="v-grow" aria-hidden="true"><span class="v-prim">Service alerts</span><span class="v-sec">${n ? plural(n, "active alert") : "None right now"}</span></span>${n ? `<span class="badge mr-badge" aria-hidden="true">${n}</span>` : ""}<span class="mr-chev" aria-hidden="true">${icon("chevron", 18)}</span></button>`
+    + `<button type="button" class="v-row" data-action="alerts:open" aria-label="Service alerts, ${n ? n + " active" : sub.toLowerCase()}"><span class="v-ic" aria-hidden="true">${icon("alert")}</span><span class="v-grow" aria-hidden="true"><span class="v-prim">Service alerts</span><span class="v-sec">${sub}</span></span>${n ? `<span class="badge mr-badge" aria-hidden="true">${n}</span>` : ""}<span class="mr-chev" aria-hidden="true">${icon("chevron", 18)}</span></button>`
     + `<button type="button" class="v-row" data-action="about:open"><span class="v-ic" aria-hidden="true">${icon("info")}</span><span class="v-grow"><span class="v-prim">About this app</span><span class="v-sec">Unofficial. Privacy, theme, official contact</span></span><span class="mr-chev" aria-hidden="true">${icon("chevron", 18)}</span></button></div>`;
   return h + "</div>";
 }

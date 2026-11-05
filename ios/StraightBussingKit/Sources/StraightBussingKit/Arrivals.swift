@@ -117,6 +117,13 @@ public enum Arrivals {
         return out
     }
 
+    /// The service alerts are not known (web core/arrivals.js alertsUnknown): the feed has failed and never answered in
+    /// this session, so "No active alerts" can't be said (an operator alert may be up). Last-known alerts are shown as
+    /// they are, with the "may be out of date" note.
+    public static func alertsUnknown(failed: Bool, lastOk: Double, alerts: [ServiceAlert]) -> Bool {
+        failed && !(lastOk > 0) && alerts.isEmpty
+    }
+
     /// Alerts active at `now`: no active period, or any period containing now (open ends allowed).
     public static func activeAlerts(_ alerts: [ServiceAlert], now: Double) -> [ServiceAlert] {
         alerts.filter { a in

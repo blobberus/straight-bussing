@@ -11,6 +11,8 @@ struct AlertsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 if !model.liveLoaded {
                     Hint("Checking for service alerts\u{2026}")
+                } else if model.alertsUnknown {
+                    EmptyStateView(title: LiveText.alertsUnknown, message: LiveText.alertsUnknownText, showOfficial: true)
                 } else {
                     let act = model.activeAlerts
                     if act.isEmpty {

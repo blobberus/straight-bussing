@@ -243,6 +243,12 @@ struct SettingsView: View {
         return Section {
             if !model.liveLoaded {
                 Text("Checking for service alerts\u{2026}").foregroundStyle(Palette.text2)
+            } else if model.alertsUnknown {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(LiveText.alertsUnknown)
+                    Text(LiveText.alertsUnknownText).font(.caption).foregroundStyle(Palette.text2)
+                    OfficialContact()
+                }
             } else if alerts.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("No active alerts")
@@ -261,7 +267,7 @@ struct SettingsView: View {
                     AlertPhoneLinks(text: a.description)   // a number in the alert is a call button (web b3ad52c)
                 }
             }
-            if model.liveLoaded && model.liveFailed {
+            if model.liveLoaded && model.liveFailed && !model.alertsUnknown {
                 Label("Alerts may be out of date: the shuttle feed is not responding.", systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(Palette.warn)
             }

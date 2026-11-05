@@ -3,6 +3,16 @@ import XCTest
 
 /// Port of web/tests/core-arrivals.js.
 final class ArrivalsTests: XCTestCase {
+    /// web tests/views-outage.js "the feed never answered = the alerts are unknown" (QA 2026-11-05).
+    func testAlertsUnknownOnlyWhenTheFeedNeverAnswered() {
+        let a = ServiceAlert(id: "a1", header: "Goldblatt boarding")
+        XCTAssertTrue(Arrivals.alertsUnknown(failed: true, lastOk: 0, alerts: []), "never reached")
+        XCTAssertFalse(Arrivals.alertsUnknown(failed: true, lastOk: 1_800_000_000, alerts: []), "reached before: last-known (none) + the note")
+        XCTAssertFalse(Arrivals.alertsUnknown(failed: true, lastOk: 0, alerts: [a]), "alerts in hand are shown")
+        XCTAssertFalse(Arrivals.alertsUnknown(failed: false, lastOk: 1_800_000_000, alerts: []), "a fresh feed with no alert: really none")
+        XCTAssertEqual(LiveText.alertsUnknown, "Service alerts unavailable")
+    }
+
     let T = 1_800_000_000.0
     lazy var trips: [TripUpdate] = [
         TripUpdate(trip: .init(tripId: "t1", routeId: "R1"), vehicle: .init(id: "v1", label: "101"),

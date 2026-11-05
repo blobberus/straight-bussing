@@ -88,6 +88,17 @@ export function runningCount({ buses } = {}, rid) {
 }
 
 /**
+ * The service alerts are not known: the feed has failed and never answered in this session, so "no active alerts" can't
+ * be said (an operator alert may be up). Last-known alerts (a feed that answered before) are shown as they are, with
+ * the "may be out of date" note. Kit Arrivals.alertsUnknown.
+ * @param {{failed?:boolean, lastOk?:number, alerts?:Array}} state
+ * @returns {boolean}
+ */
+export function alertsUnknown(state = {}) {
+  return !!state.failed && !(Number(state.lastOk) > 0) && !(state.alerts || []).length;
+}
+
+/**
  * Alerts active at `nowS`: no active_period, or any period containing now (open ends allowed).
  * @param {{alerts:Array}} state
  * @param {number} [nowS]

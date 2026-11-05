@@ -23,7 +23,7 @@ import * as theme from "../theme.js";
 import { esc } from "../../core/esc.js";
 import { nowS, clock, shortDate, sameDay } from "../../core/time.js";
 import { nearestStops } from "../../core/geo.js";
-import { activeAlerts, alertText, staleLevel } from "../../core/arrivals.js";
+import { activeAlerts, alertText, staleLevel, alertsUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { liveStatus, watchedRoutes, minutesText, stopsAway, tripAlertsOn } from "../../core/notify.js";
 import { tripNow } from "../../core/tripprogress.js";
@@ -31,7 +31,7 @@ import { legStatus } from "../../core/tripyou.js";
 import { cleanNotify } from "../../state.js";
 import { DEMO } from "../../core/demo.js";
 import { routeChip, officialLinks, icon } from "../components.js";
-import { alertBodyHTML } from "./alerts.js";
+import { alertBodyHTML, ALERTS_UNKNOWN, ALERTS_UNKNOWN_TEXT } from "./alerts.js";
 import { notificationSupport, requestPermission } from "../notifier.js";
 import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen, overlayKind } from "../settings-overlay.js";
 import { locPlatform, locEnv, LOC_STEPS, LOC_ORDER, locResultText } from "../../core/lochelp.js";
@@ -154,7 +154,8 @@ export function alertsHTML(state, now) {
   if (!state.liveLoaded) return '<p class="v-sec st-pad">Checking for service alerts…</p>';
   const act = activeAlerts(state, now);
   let h = "";
-  if (!act.length) h += `<div class="v-card st-empty"><p class="v-prim">No active alerts</p><p class="v-sec">${officialLinks()}</p></div>`;
+  if (!act.length && alertsUnknown(state)) h += `<div class="v-card st-empty"><p class="v-prim">${esc(ALERTS_UNKNOWN)}</p><p class="v-sec">${esc(ALERTS_UNKNOWN_TEXT)}</p><p class="v-sec">${officialLinks()}</p></div>`;   // the feed never answered
+  else if (!act.length) h += `<div class="v-card st-empty"><p class="v-prim">No active alerts</p><p class="v-sec">${officialLinks()}</p></div>`;
   else h += '<ul class="v-card st-alerts">' + act.map((a) => {
     const title = alertText(a.header_text) || "Service alert", body = alertText(a.description_text), when = period(a, now);
     return `<li class="st-alert"><span class="st-alertic" aria-hidden="true">!</span><div class="v-grow"><p class="v-prim">${esc(title)}</p>${body ? `<p class="v-sec v-alertbody">${alertBodyHTML(body)}</p>` : ""}${when ? `<p class="v-sec st-when">${esc(when)}</p>` : ""}</div></li>`;

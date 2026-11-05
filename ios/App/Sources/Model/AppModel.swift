@@ -652,6 +652,8 @@ final class AppModel {
         Arrivals.arrivals(in: arrivalIndex, stopId: stopId, routeId: routeId, hidden: routeId == nil ? Set(hidden) : [], now: now)
     }
     var activeAlerts: [ServiceAlert] { Arrivals.activeAlerts(alerts, now: now) }
+    /// The feed never answered: never "No active alerts" then (Kit `Arrivals.alertsUnknown`, web alertsUnknown).
+    var alertsUnknown: Bool { liveLoaded && Arrivals.alertsUnknown(failed: liveFailed, lastOk: lastOk, alerts: alerts) }
     func isFav(_ stopId: String) -> Bool { routeState.favStops.contains(stopId) }
     /// Live data is delayed or down (arrival times get "~", rows say "Live, delayed" / "Last known").
     var isStale: Bool { staleLevel != .fresh }

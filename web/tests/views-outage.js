@@ -4,14 +4,15 @@
 // (views-fixtures.js onTrip); with no trip it shows no list at all (views-current.js), and the status banner flags the feed.
 import { test, eq, ok } from "./lib.js";
 import { NOW, fixture, onTrip } from "./views-fixtures.js";
-import { liveUnknown } from "../js/core/arrivals.js";
+import { liveUnknown, alertsUnknown } from "../js/core/arrivals.js";
 import { renderNearby, N } from "../js/ui/views/nearby.js";
 import { renderStop } from "../js/ui/views/stop.js";
 import { renderRoutes } from "../js/ui/views/routes.js";
 import { renderRoute } from "../js/ui/views/route.js";
 import { D, resHTML } from "../js/ui/views/directions.js";
-import { renderCustom, renderEditor } from "../js/ui/views/myroutes.js";
-import { operatorPhone } from "../js/ui/views/alerts.js";
+import { renderCustom, renderEditor, renderMyRoutes } from "../js/ui/views/myroutes.js";
+import { alertsHTML } from "../js/ui/views/settings.js";
+import { operatorPhone, renderAlerts, ALERTS_UNKNOWN, ALERTS_UNKNOWN_SHORT } from "../js/ui/views/alerts.js";
 
 const DOWN = { buses: [], trips: [], lastOk: 0, failed: true, feedTs: 0, liveLoaded: true };   // never reached the feed
 const FAILING = { buses: [], trips: [], lastOk: NOW - 90, failed: true, feedTs: NOW - 90 };    // was fine, now failing, last data empty
@@ -221,4 +222,20 @@ test("no bus reports: no operator number means 773.702.8181 stays the call; the 
   const evil = { ...OP, header_text: "Help <img src=x onerror=alert(1)> 773-655-9934" };
   const e = renderNearby(onTrip({ ...QUIET, alerts: [evil] }), NOW);
   ok(!e.includes("<img") && e.includes("773-655-9934"), "escaped");
+});
+
+test("outage: the feed never answered = the alerts are unknown, never 'No active alerts' (QA 2026-11-05)", () => {
+  const OLD = { header_text: { translation: [{ text: "Goldblatt boarding", language: "en" }] }, active_period: [] };
+  eq(alertsUnknown(fixture(DOWN)), true, "never reached");
+  eq(alertsUnknown(fixture(FAILING)), false, "reached before: last-known alerts (none) with the out-of-date note");
+  eq(alertsUnknown(fixture({ ...DOWN, alerts: [OLD] })), false, "alerts in hand are shown");
+  eq(alertsUnknown(fixture(QUIET)), false, "a fresh feed with no alert: really none");
+  const page = renderAlerts(fixture(DOWN), NOW);
+  ok(page.includes(ALERTS_UNKNOWN) && page.includes("773.702.8181") && !page.includes("No active alerts"), "Alerts page: unavailable + the official number");
+  ok(renderAlerts(fixture(FAILING), NOW).includes("No active alerts") && renderAlerts(fixture(FAILING), NOW).includes("may be out of date"), "failing after a good poll: as before");
+  const mr = renderMyRoutes(fixture(DOWN), NOW);
+  ok(mr.includes(ALERTS_UNKNOWN_SHORT) && !mr.includes("None right now"), "My Routes row");
+  const st = alertsHTML(fixture(DOWN), NOW);
+  ok(st.includes(ALERTS_UNKNOWN) && st.includes("773.702.8181") && !st.includes("No active alerts"), "Settings > Service alerts");
+  ok(renderMyRoutes(fixture(QUIET), NOW).includes("None right now"), "a fresh feed with no alert still says none");
 });

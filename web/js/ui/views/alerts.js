@@ -8,7 +8,7 @@ import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
 import { esc } from "../../core/esc.js";
 import { nowS, clock, shortDate, sameDay } from "../../core/time.js";
-import { activeAlerts, alertRouteIds } from "../../core/arrivals.js";
+import { activeAlerts, alertRouteIds, alertsUnknown } from "../../core/arrivals.js";
 import { routeChip, emptyState, skeleton, officialLinks, OFFICIAL_PHONE, OFFICIAL_TEL, OFFICIAL_URL } from "../components.js";
 import { svg } from "../icons.js";
 
@@ -137,6 +137,12 @@ export function operatorAlertsHTML(state, now = nowS(), { rid = null, max = 2 } 
   return `<section class="v-opalerts" aria-label="Service alerts from the shuttle operator"><h3 class="v-h">From the shuttle operator</h3><ul class="v-alertlist">${act.slice(0, max).map((a) => alertItem(a, state, now)).join("")}</ul>${more}</section>`;
 }
 
+/** The feed never answered (core/arrivals.js alertsUnknown): never "No active alerts" then (iOS AlertsView, same words). */
+export const ALERTS_UNKNOWN = "Service alerts unavailable";
+export const ALERTS_UNKNOWN_TEXT = "Can't reach the shuttle feed, so we can't show the operator's alerts.";
+/** The My Routes row's second line in that state (iOS MyRoutesView). */
+export const ALERTS_UNKNOWN_SHORT = "Can't load right now";
+
 /**
  * Render the alerts view.
  * @param {object} state
@@ -146,6 +152,7 @@ export function operatorAlertsHTML(state, now = nowS(), { rid = null, max = 2 } 
 export function renderAlerts(state, now = nowS()) {
   let h = '<div class="v-alerts">';
   if (!state.liveLoaded) h += skeleton(2);
+  else if (alertsUnknown(state)) h += emptyState(ALERTS_UNKNOWN, ALERTS_UNKNOWN_TEXT, { icon: "wifi-off", official: true });
   else {
     const act = activeAlerts(state, now);
     if (!act.length) h += emptyState("No active alerts", "Service changes will show up here.", { icon: "bell" });

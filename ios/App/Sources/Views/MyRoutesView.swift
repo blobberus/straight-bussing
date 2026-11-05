@@ -99,7 +99,8 @@ struct MyRoutesView: View {
                         Label {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("Service alerts").foregroundStyle(Palette.text)
-                                Text(n > 0 ? "\(n) active alert\(n == 1 ? "" : "s")" : "None right now").font(.caption).foregroundStyle(Palette.text2)
+                                Text(n > 0 ? "\(n) active alert\(n == 1 ? "" : "s")" : model.alertsUnknown ? LiveText.alertsUnknownShort : "None right now")
+                                    .font(.caption).foregroundStyle(Palette.text2)
                             }
                         } icon: { Image(systemName: "exclamationmark.triangle") }
                         Spacer()
