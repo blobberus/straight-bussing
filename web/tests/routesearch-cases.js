@@ -21,3 +21,13 @@ export const WORD_CASES = [
   ["e53rd", false], ["007", false], ["111th", false], ["112th", false], ["2nd", false], ["2th", false], ["11st", false],
   ["the", false], ["the east", false], ["Institute for Study of Ancient Cultures", false], ["  ", false],
 ];
+
+/** rankByActive cases (owner 2026-11-05: active routes first unless the query names a route): [query, routes operating
+ * now by long or short name, or null = live status unknown (order unchanged)]. */
+export const ACTIVE_CASES = [
+  ["metra", ["Friend Center/Metra"]], ["metra", ["Midway Metra", "South"]], ["metra", []], ["metra", null],
+  ["53rd", []], ["53rd", ["Central", "North"]], ["53rdst", ["Downtown Campus Connector"]],
+  ["drexel", ["Apostolic/Drexel"]], ["drexl", ["Apostolic/Drexel"]], ["drex", ["Apostolic/Drexel"]], ["drexel", ["North", "FCM"]],
+  ["ratner", ["East"]], ["south", ["South Loop Shuttle"]], ["s loop", ["Downtown Campus Connector"]],
+  ["ap", ["East"]], ["re", ["Red Line/Arts Block", "Central"]], ["hospital", ["Midway Metra"]], ["move in", []], ["", ["East"]],
+];

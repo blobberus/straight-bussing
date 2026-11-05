@@ -1,10 +1,10 @@
 // core/routesearch.js (owner 2026-11-04: search routes from the Routes menu, "53rdst -> 53rd Street or 53rd St -> 53rd
 // Street"). The golden file (routesearch-golden.json, tools/gen_routesearch_golden.py) is also checked by the iOS Kit.
 import { test, eq, ok } from "./lib.js";
-import { buildRouteIndex, routeIndexFor, searchRoutes, routeWords, canon, ordinal, splitByHits, matchText, TIER } from "../js/core/routesearch.js";
+import { buildRouteIndex, routeIndexFor, searchRoutes, routeWords, canon, ordinal, splitByHits, matchText, TIER, NAMED_MIN, rankByActive } from "../js/core/routesearch.js";
 import { norm as textNorm, near1 } from "../js/core/text.js";
 import { norm as placesNorm } from "../js/data/places.js";
-import { CASES, WORD_CASES } from "./routesearch-cases.js";
+import { CASES, WORD_CASES, ACTIVE_CASES } from "./routesearch-cases.js";
 
 const golden = fetch(new URL("./routesearch-golden.json", import.meta.url), { cache: "no-store" }).then((r) => r.json());
 const r4 = (x) => Math.round(x * 10000) / 10000;
@@ -95,4 +95,48 @@ test("routesearch: index from the store; split keeps the rest in list order", ()
   eq([0, 1, 2].map(matchText), ["No routes match", "1 route matches", "2 routes match"]);
   eq(searchRoutes([], "x"), []);
   eq(searchRoutes(routeIndexFor({}), "53"), []);
+});
+
+// ---- owner 2026-11-05: inactive routes stay findable; active ones first unless the query names a route ----
+
+/** Route ids by long or short name on the golden's frozen routes. */
+async function idsOf(...names) {
+  const g = await golden;
+  return names.map((n) => g.routes.find((r) => r.long === n || r.short === n).id);
+}
+async function ranked(q, ...activeNames) {
+  const g = await golden, byId = Object.fromEntries(g.routes.map((r) => [r.id, r.long || r.short]));
+  return rankByActive(searchRoutes(buildRouteIndex(g.routes), q), await idsOf(...activeNames)).map((h) => byId[h.id]);
+}
+
+test("routesearch: every route is findable, running or not (Move In Charter, no stops, no trips today)", async () => {
+  const g = await golden, idx = buildRouteIndex(g.routes);
+  for (const r of g.routes) {
+    eq(searchRoutes(idx, r.long)[0]?.id, r.id, `long name ${r.long}`);
+    if (r.short) ok(searchRoutes(idx, r.short).some((h) => h.id === r.id), `short name ${r.short}`);
+    eq(rankByActive(searchRoutes(idx, r.long), new Set())[0]?.id, r.id, `${r.long} first even when nothing runs`);
+  }
+  ok(g.routes.some((r) => !r.stops.length), "the frozen copy has a route with no stops (Move In Charter)");
+});
+
+test("routesearch: active routes first unless the query names a route", async () => {
+  eq((await ranked("metra", "Friend Center/Metra")).slice(0, 2), ["Friend Center/Metra", "Midway Metra"], "the running Metra line first");
+  eq((await ranked("53rd"))[0], "53rd Street Express", "named: first even when it does not run");
+  eq((await ranked("53rd", "Central", "North")).slice(0, 3), ["53rd Street Express", "Central", "North"], "then the running lines");
+  eq((await ranked("drexel", "Apostolic/Drexel")).slice(0, 2), ["Drexel", "Apostolic/Drexel"], "exact name stays first");
+  eq((await ranked("drex", "Apostolic/Drexel")).slice(0, 2), ["Drexel", "Apostolic/Drexel"], "the start of a name stays first");
+  eq((await ranked("drexl", "Apostolic/Drexel")).slice(0, 2), ["Apostolic/Drexel", "Drexel"], "a typo match does not name a route");
+  eq((await ranked("ratner", "East"))[0], "East");
+  const g = await golden, idx = buildRouteIndex(g.routes), hits = searchRoutes(idx, "metra");
+  eq(rankByActive(hits, null), hits, "live status unknown: order unchanged");
+  ok(rankByActive(hits, null) !== hits, "a new array");
+  eq(rankByActive(hits, ["5700"]).map((h) => h.id)[0], "5700", "an array works like a Set");
+  eq(rankByActive([], new Set(["x"])), []);
+  eq(NAMED_MIN, 88.5);
+});
+
+test("routesearch: golden active-first cases (the iOS Kit checks the same file)", async () => {
+  const g = await golden, idx = buildRouteIndex(g.routes);
+  eq(g.active.map((c) => c.q), ACTIVE_CASES.map((c) => c[0]), "golden is up to date (run tools/gen_routesearch_golden.py)");
+  for (const c of g.active) eq(rankByActive(searchRoutes(idx, c.q), c.active == null ? null : new Set(c.active)).map((h) => h.id), c.hits, `"${c.q}" with ${JSON.stringify(c.active)}`);
 });

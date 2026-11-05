@@ -52,9 +52,12 @@ def main() -> int:
     lines += [f"    {json.dumps(w, ensure_ascii=False)}{',' if i < len(data['words']) - 1 else ''}" for i, w in enumerate(data["words"])]
     lines += ["  ],", '  "cases": [']
     lines += [f"    {json.dumps(c, ensure_ascii=False)}{',' if i < len(data['cases']) - 1 else ''}" for i, c in enumerate(data["cases"])]
+    lines += ["  ],", '  "active": [']
+    lines += [f"    {json.dumps(c, ensure_ascii=False)}{',' if i < len(data['active']) - 1 else ''}" for i, c in enumerate(data["active"])]
     lines += ["  ]", "}", ""]
     OUT.write_text("\n".join(lines), encoding="utf-8", newline="\n")
-    print(f"wrote {OUT.relative_to(WEB.parent)}: {len(data['routes'])} routes, {len(data['words'])} word cases, {len(data['cases'])} queries")
+    print(f"wrote {OUT.relative_to(WEB.parent)}: {len(data['routes'])} routes, {len(data['words'])} word cases, "
+          f"{len(data['cases'])} queries, {len(data['active'])} active-first cases")
     return 0
 
 

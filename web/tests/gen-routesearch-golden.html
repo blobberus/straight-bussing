@@ -9,8 +9,8 @@
      run it with tools/gen_routesearch_golden.py after changing core/routesearch.js or the cases, then commit the file. -->
 <pre id="out">running...</pre>
 <script type="module">
-import { buildRouteIndex, searchRoutes, routeWords, canon } from "../js/core/routesearch.js";
-import { CASES, WORD_CASES } from "./routesearch-cases.js";
+import { buildRouteIndex, searchRoutes, routeWords, canon, rankByActive } from "../js/core/routesearch.js";
+import { CASES, WORD_CASES, ACTIVE_CASES } from "./routesearch-cases.js";
 
 const get = (f) => fetch(`../data/${f}`, { cache: "no-store" }).then((r) => r.json());
 const [routes, stops, routeStops] = await Promise.all([get("routes.json"), get("stops.json"), get("route_stops.json")]);
@@ -27,6 +27,10 @@ const out = {
   routes: items,
   words: WORD_CASES.map(([s, typing]) => ({ s, typing, words: routeWords(s, typing), canon: routeWords(s, typing).map(canon) })),
   cases: CASES.map((q) => ({ q, hits: searchRoutes(index, q).map((h) => [h.id, r4(h.score), h.stop ?? null]) })),
+  active: ACTIVE_CASES.map(([q, names]) => {
+    const ids = names == null ? null : names.map((n) => { const it = items.find((x) => x.long === n || x.short === n); if (!it) throw new Error("no route " + n); return it.id; });
+    return { q, active: ids, hits: rankByActive(searchRoutes(index, q), ids).map((h) => h.id) };
+  }),
 };
 document.getElementById("out").textContent = JSON.stringify(out);
 document.title = "routesearch golden done";

@@ -27,6 +27,11 @@
  *   STOP_TYPO 45+  a stop word with one typo ("ratnr")
  * Within a word tier: + 3 x the mean word weight (1 exact, 0.85 start of a word, 0.7 one typo) - the name words
  * not typed as above.
+ *
+ * Active routes first (owner 2026-11-05: "Searching routes in the routes menu should still show results if they are
+ * inactive (the top results, unless the name is clearly specified, should priortize active routes ..."): `rankByActive`
+ * keeps the routes the query names (exact name or the start of one, score >= `NAMED_MIN`) on top in score order, then
+ * the other matches that operate now, then the ones that do not (each by score). Every route stays findable.
  */
 import { norm, near1 } from "./text.js";
 
@@ -47,6 +52,8 @@ const UNITS = new Map(Object.entries({ one: 1, first: 1, two: 2, second: 2, thre
 const TEENS = new Map(Object.entries({ ten: 10, tenth: 10, eleven: 11, eleventh: 11, twelve: 12, twelfth: 12, thirteen: 13, thirteenth: 13, fourteen: 14, fourteenth: 14, fifteen: 15, fifteenth: 15, sixteen: 16, sixteenth: 16, seventeen: 17, seventeenth: 17, eighteen: 18, eighteenth: 18, nineteen: 19, nineteenth: 19 }));
 const TENS = new Map(Object.entries({ twenty: 20, twentieth: 20, thirty: 30, thirtieth: 30, forty: 40, fortieth: 40, fifty: 50, fiftieth: 50, sixty: 60, sixtieth: 60, seventy: 70, seventieth: 70, eighty: 80, eightieth: 80, ninety: 90, ninetieth: 90 }));
 const UNMATCHED = 0.5;   // per name word the query does not mention (max 3)
+/** Lowest score of a match that names the route (exact name 100, the start of a name 90 down to 88.5). */
+export const NAMED_MIN = TIER.PREFIX - UNMATCHED * 3;
 
 /**
  * English ordinal suffix of a number written in digits ("1" -> "st", "53" -> "rd", "11" -> "th").
@@ -235,4 +242,22 @@ export function splitByHits(ids, hits) {
  */
 export function matchText(n) {
   return n === 0 ? "No routes match" : n === 1 ? "1 route matches" : `${n} routes match`;
+}
+
+/**
+ * Order matches for the Routes list (owner 2026-11-05): the routes the query names (score >= NAMED_MIN) stay on top
+ * whether or not they run, then the matches operating now, then the rest; each part keeps the score order (ties keep
+ * the list order). `active` = the Show running rule (routes.js operatingIds: a bus reporting, or scheduled now with no
+ * live location). null = live status unknown (feed not loaded or failing): the order is unchanged.
+ * @param {{id:string, score:number, stop?:string}[]} hits searchRoutes (best first)
+ * @param {Set<string>|string[]|null} active route ids operating now
+ * @returns {{id:string, score:number, stop?:string}[]} a new array
+ */
+export function rankByActive(hits, active) {
+  const list = hits || [];
+  if (active == null) return list.slice();
+  const on = active instanceof Set ? active : new Set([...active].map(String));
+  const named = [], run = [], rest = [];
+  for (const h of list) (h.score >= NAMED_MIN ? named : on.has(h.id) ? run : rest).push(h);
+  return [...named, ...run, ...rest];
 }
