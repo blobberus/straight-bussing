@@ -33,6 +33,12 @@ export const FIRST_POLL_GRACE_S = 20;
  * under the finger; then it shows the current state.
  */
 export const RETRY_HOLD_MS = 2500;
+/**
+ * The status banner appearing or going moves Row B / Row C (the trip chip) by its height; a tap that lands on the trip
+ * chip this soon after (ms) was aimed at what used to be there, so it is absorbed (main.js; 2026-11-05 QA: the chip's
+ * Show all ends the trip at once). Same idea as the iPhone app's context-bar guard after Retry.
+ */
+export const ROW_GUARD_MS = 800;
 /** What the held banner says once the feed answers again (spec 10.3). */
 export const BACK_MSG = "Live data is back.";
 /** The compact banner's call link (in its details, owner 2026-11-04: the official number stays one tap away). */
@@ -110,7 +116,7 @@ export function setPillText(el, msg) {
  * Retry tap the banner holds still for RETRY_HOLD_MS after the last tap (see there).
  * @param {{pill:HTMLElement, text:HTMLElement, retry:HTMLElement, app?:HTMLElement|null}} els
  * @param {{bootS?:number, graceS?:number, demo?:boolean}} [o]
- * @returns {{render(s:object, now:number):void}}
+ * @returns {{render(s:object, now:number):void, rowsMovedAt():number}}
  */
 export function createPill(els, o = {}) {
   let ic = els.pill.querySelector(".pillicon");
@@ -167,8 +173,9 @@ export function createPill(els, o = {}) {
     tap.setAttribute("aria-label", "Simulated buses: what this means, and how to see live buses");
     els.pill.appendChild(tap);
   }
-  let sig = "", holdUntil = 0, holdTimer = 0, latest = null, back = false, retryHold = false, heldIcon = "";
-  const api = {};
+  let sig = "", holdUntil = 0, holdTimer = 0, latest = null, back = false, retryHold = false, heldIcon = "", movedAt = 0;
+  /** When the banner last appeared, went or changed form (the rows under it moved): ms, Date.now(). */
+  const api = { rowsMovedAt: () => movedAt };
   const release = () => {
     holdUntil = 0; back = false; sig = ""; retryHold = false;
     els.retry.removeAttribute("aria-busy");
@@ -229,10 +236,12 @@ export function createPill(els, o = {}) {
     if (next === sig) return;
     sig = next;
     const open = els.pill.classList.contains("is-open") && !!p.msg && !p.demo;   // details stay open across state changes
+    const form = p.demo ? "chip" : "banner";
+    if (els.pill.hidden !== !p.msg || (p.msg && els.pill.dataset.form !== form)) movedAt = Date.now();   // the rows below move
     els.pill.hidden = !p.msg;
     els.pill.className = "statuspill" + (p.kind ? " " + p.kind : "");
     els.pill.dataset.icon = p.icon;
-    els.pill.dataset.form = p.demo ? "chip" : "banner";   // spec 10.3: simulated buses = a small chip, every other state = a banner
+    els.pill.dataset.form = form;   // spec 10.3: simulated buses = a small chip, every other state = a banner
     ic.innerHTML = pillIconSVG(p.icon, 15);
     if (p.demo) els.text.textContent = p.msg;
     else { setPillText(els.text, p.msg); setPillText(short, p.short || p.msg); }

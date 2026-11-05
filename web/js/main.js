@@ -23,7 +23,7 @@ import { initRouter, navigate, back, getView, activeTab, canGoBack, TABS, depth 
 import { registerAction, bindActions, setHTMLKeepFocus } from "./ui/actions.js";
 import { initTheme, isDark, onChange as onThemeChange } from "./ui/theme.js";
 import { emptyState } from "./ui/components.js";
-import { createPill } from "./ui/pill.js";
+import { createPill, ROW_GUARD_MS } from "./ui/pill.js";
 import { registerContextActions, mountContextBar } from "./ui/contextbar.js";
 import { initFrame, initTextSize, initGlassLite } from "./ui/frame.js";
 import { isSettingsOpen, closeSettingsOverlay } from "./ui/settings-overlay.js";
@@ -381,6 +381,11 @@ function wireUI() {
   el.content.addEventListener("scroll", onContentScroll, { passive: true });
   el.locate.addEventListener("click", onLocateFab);
   document.addEventListener("click", askCompassOnTap, true);   // capture: before any handler, synchronously in the tap
+  // the trip chip's Show all ends the trip at once: a tap that reaches the chip within ROW_GUARD_MS of the status banner
+  // appearing or going (the chip just moved under the finger) is absorbed (ui/pill.js ROW_GUARD_MS)
+  el.ctxbar?.addEventListener("click", (e) => {
+    if (Date.now() - pill.rowsMovedAt() < ROW_GUARD_MS) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
   for (const root of [el.content, el.pill, el.dlg, el.ctxbar, el.topbar || el.gear, el.right, el.bottomrow, el.mapctl]) if (root) bindActions(root, () => ctx);
   el.dlg.addEventListener("click", (e) => { if (e.target === el.dlg) closeDlg(); });
   el.content.addEventListener("focusout", () => setTimeout(() => { if (dirty && !inputFocused()) render(); }, 0));

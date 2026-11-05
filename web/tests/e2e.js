@@ -624,6 +624,36 @@ test("status banner: compact, one line; its details open and close under the lin
   }
 });
 
+// 2026-11-05 QA: the banner appearing or going moves the trip chip by its height; a tap aimed at what used to be there
+// must not land on Show all (it ends the trip at once). A tap on the chip within ROW_GUARD_MS of the move is absorbed.
+test("trip chip: a tap that lands on Show all right after the status banner appears or goes never ends the trip", async () => {
+  const { ROW_GUARD_MS } = await import("../js/ui/pill.js");
+  const rid = T.R;
+  SB.store.set({ journey: { kind: "plan", rids: [rid], label: "To E2E Place", to: "E2E Place", t0: Math.floor(Date.now() / 1000), legs: [] } });
+  await waitFor(() => !$("#ctxbar").hidden && $("#pill").hidden, "the trip chip, no banner");
+  const showAll = () => $('#ctxbar [data-action="journey:end"]');
+  try {
+    const y0 = showAll().getBoundingClientRect().top;
+    T.feedFail = true;
+    W.dispatchEvent(new W.Event("online"));
+    await waitFor(() => !$("#pill").hidden, "the banner appears");
+    ok(showAll().getBoundingClientRect().top > y0 + 20, "the chip moved down under it");
+    showAll().click();   // a tap that was aimed at the map just under the old chip
+    eq(state().journey && state().journey.kind, "plan", "absorbed: the trip is still on");
+    T.feedFail = false;
+    W.dispatchEvent(new W.Event("online"));
+    await waitFor(() => $("#pill").hidden, "the banner goes");
+    showAll().click();   // a tap that was aimed at the banner
+    eq(state().journey && state().journey.kind, "plan", "absorbed again: the trip is still on");
+    await new Promise((r) => setTimeout(r, ROW_GUARD_MS + 100));
+    showAll().click();
+    eq(state().journey, null, "a deliberate tap once the chip has settled still ends the trip");
+  } finally {
+    T.feedFail = false;
+    SB.store.set({ journey: null });
+  }
+});
+
 // Rider safety (2026-10-10): a fresh feed with no vehicles while a route is scheduled is not "no shuttles running".
 test("status pill: an empty feed while a route is scheduled says no bus reports a location, never 'no shuttles running'", async () => {
   const svc = state().service, feed = T.feed, rid = T.R;
