@@ -468,6 +468,18 @@ Apple's Simulator only runs on macOS, so there is no local option on Windows. Tw
 
 ## Web parity matrix (2026-10-10)
 
+**Since 2026-11-05 the website has the experimental build's glass interface** (owner: "Transfer the interface of the
+experimental build to the current main build of straight bussing"; docs/DESIGN-SPEC.md + docs/DESIGN-SPEC-GLASS.md,
+docs/ARCHITECTURE.md "Glass interface on the live site"). The iPhone app keeps its own interface (owner brief for the
+transfer: the experimental iPhone glass work is paused and was not copied); the behavior rows below still hold, but the
+web's layout, look and a few rules now differ from this app: the glass top rows and bottom row, the compact status
+banner (one line + Details, Retry held 2.5 s after the last tap instead of the 1 s context-bar guard), Settings / Lines
+by Time / the feedback panel as their own sheets, the feedback circle under Settings, the Apple-like basemap, map lines
+thinner at every zoom (z13 2 to z18 6 px; this app keeps "30% thinner zoomed out"), and Current trip with no trip =
+"No current trip selected" without nearby buses (this app still shows the next bus). Both platforms share the two owner
+changes of 2026-11-05: yellow favorite stars and route search results right under the field. What porting the glass
+interface to this app would take: the experimental repository's docs/redesign/GLASS-IOS-PAUSED.md.
+
 Every web feature (.claude/rules/project.md status table, docs/ARCHITECTURE.md contracts, web/js/ui/views/*.js, web/js/ui/*.js,
 web/js/core/*.js) against the iPhone app. "done" = same behavior and wording, adapted to iOS (native sheets, swipe
 actions, context menus, SF Symbols). Ported 2026-10-10 unless "before".
