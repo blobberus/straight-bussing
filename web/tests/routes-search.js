@@ -2,7 +2,7 @@
 // the field, matches first, the rest below, clear / Escape, focus kept while typing, nothing stored (routes.test.html).
 import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
-import { bindActions } from "../js/ui/actions.js";
+import { bindActions, runAction } from "../js/ui/actions.js";
 import { renderRoutes, listHTML, routeMatches, mountRoutes, unmountRoutes, _ui, notRunningText } from "../js/ui/views/routes.js";
 
 const base = (over = {}) => fixture({ routeOrder: [], customRoutes: [], activeCustom: null, prevHidden: [], favStops: [], journey: null, ...over });
@@ -29,11 +29,12 @@ const typeIn = (inp, text, caret = text.length) => {
 };
 const key = (el, k) => { const e = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }); el.dispatchEvent(e); return e; };
 
-test("routes search: a labelled field after Edit map order, above the list; not before the routes load", () => {
+test("routes search: a labelled field, the list's first control (Edit map order is the header's); not before the routes load", () => {
   reset();
   const h = renderRoutes(base(), NOW);
   const at = h.indexOf('data-input="routes-q"');
-  ok(at > h.indexOf('data-action="routes:order-edit"') && at < h.indexOf(">Running<"), "after Edit map order, before the groups");
+  ok(at > 0 && at < h.indexOf(">Running<") && h.match(/<(button|input|a)\s[^>]*>/)?.[0].includes('data-input="routes-q"'), "first control, before the groups");
+  ok(renderRoutes(base({ hiddenRoutes: ["R3"] }), NOW).indexOf("Make this a custom route") < renderRoutes(base({ hiddenRoutes: ["R3"] }), NOW).indexOf('data-input="routes-q"'), "under the custom-route bar");
   ok(/<label class="v-search rt-q">[\s\S]*?<span class="v-sr">Search routes<\/span><input type="search"/.test(h), "label + type=search");
   ok(/class="rt-qx" data-action="routes:search-clear" aria-label="Clear route search" hidden/.test(h), "clear button labelled, hidden while empty");
   ok(/data-live="routes-q" aria-live="polite"/.test(h), "live count");
@@ -127,7 +128,7 @@ test("routes search: hidden in map-order mode, back with the query after Done; b
   const { ctx, el, input, done } = mounted();
   typeIn(input(), "blue");
   await tick();
-  el.querySelector('[data-action="routes:order-edit"]').click();
+  runAction("routes:order-edit", {}, null, ctx);   // the header's Edit map order
   await tick();
   ok(el.querySelector(".rt-search").hidden, "no search while ordering");
   el.querySelector('[data-action="routes:order-done"]').click();
@@ -177,4 +178,36 @@ test("routes search: live status unknown grays nothing and keeps the score order
   eq(rowIds(h).slice(0, 2), ["R2", "R1"], "score order (ties: list order)");
   eq(routeMatches(onlyR1({ liveLoaded: false }), "library", NOW).active, null);
   ok(routeMatches(onlyR1(), "library", NOW).active.has("R1"), "the Show running rule's set otherwise");
+});
+
+// Owner 2026-11-05: "Routes that come up in searching for my routes should appear right under the search bar above the
+// phone numbers and other information." While searching, the matches lead the body; the feed notice, the operator's
+// alerts, both numbers, the bulk buttons and the station filter chip all stay on the page below them (rider safety).
+test("routes search: the matches come right under the field, above the notices, the operator's alerts and the numbers; none removed", () => {
+  const night = base({ buses: [], trips: [], alerts: [{ header_text: "Night service: call 773.555.0100 for route help", active_period: [] }] });
+  const plain = listHTML(night, NOW, "");
+  const note = (h) => Math.max(h.indexOf("No shuttles running right now"), h.indexOf("No live locations right now"));
+  ok(note(plain) >= 0 && plain.includes("From the shuttle operator") && plain.includes("Call bus route help:"), "fixture: no bus reports, an operator alert with its number");
+  ok(note(plain) < plain.indexOf("From the shuttle operator") && plain.indexOf("From the shuttle operator") < plain.indexOf('data-action="route:open"'), "empty field: the list exactly as before (notice, alerts, then the routes)");
+  const h = listHTML(night, NOW, "blue");
+  const first = h.indexOf("rt-qhead"), row = h.indexOf('data-id="R2"');
+  ok(h.startsWith('<h3 class="v-h rt-qhead">'), "the match heading is the body's first element");
+  ok(row > first && row < note(h), "the matching route before the notice");
+  ok(note(h) < h.indexOf("From the shuttle operator"), "then the notice, then the operator's alerts");
+  ok(h.indexOf("From the shuttle operator") < h.indexOf("rt-qdiv") && h.indexOf("rt-qdiv") < h.indexOf("rt-bulk"), "then Other routes and the bulk buttons");
+  ok(h.indexOf("Call bus route help:") > h.indexOf("rt-bulk") && h.includes("773.555.0100") && h.includes("773.702.8181") && h.includes("Official transportation page"), "both numbers and the official page still at the bottom");
+  const none = listHTML(night, NOW, "zzzz");
+  ok(none.startsWith('<div class="rt-qnone">') && none.indexOf("Clear search") < note(none) && none.includes("Call bus route help:"), "no match: the empty card + Clear search first, the rest below");
+  const out = listHTML(base({ buses: [], trips: [], lastOk: NOW - 3600, feedTs: NOW - 3600, failed: true, alerts: night.alerts }), NOW, "blue");
+  ok(out.startsWith('<h3 class="v-h rt-qhead">') && out.indexOf("Live bus status unavailable") > out.indexOf('data-id="R2"'), "feed unreachable: matches first, the outage notice right below");
+});
+
+test("routes search: with a station filter the matches still lead and their heading names the station; the chip follows", () => {
+  const s = base({ routeFilter: { ids: ["R1", "R3"], label: "Main" } });
+  const h = listHTML(s, NOW, "library");
+  ok(h.startsWith('<h3 class="v-h rt-qhead">') && h.includes("1 route matches at Main"), "heading first, names the scope");
+  ok(h.indexOf('class="v-fchip"') > h.indexOf('data-id="R1"') && h.includes('data-action="routes:clear-filter"'), "the filter chip and its clear button below the match");
+  const none = listHTML(s, NOW, "blue");
+  ok(none.includes("Only routes to Main are searched. Clear the station filter to search every route.") && none.indexOf('class="v-fchip"') > none.indexOf("Clear search"), "no match inside the filter says why");
+  ok(listHTML(s, NOW, "").startsWith('<div class="v-fchip"'), "empty field: the chip leads as before");
 });

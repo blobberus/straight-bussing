@@ -2,7 +2,7 @@
 import { test, eq, ok } from "./lib.js";
 import { fixture, makeCtx, tick, root, NOW } from "./views-fixtures.js";
 import { bindActions, runAction } from "../js/ui/actions.js";
-import { renderRoutes, groupRoutes, topBarHTML, orderHTML, defaultName, mountRoutes, unmountRoutes, _ui, operatingIds, onlyRunningShown, RUN_MSG } from "../js/ui/views/routes.js";
+import { renderRoutes, groupRoutes, topBarHTML, orderHTML, defaultName, mountRoutes, unmountRoutes, _ui, operatingIds, onlyRunningShown, RUN_MSG, routesMetaHTML } from "../js/ui/views/routes.js";
 import { showRunning } from "../js/core/custom.js";
 
 const noRaw = (h) => !h.includes("<script>") && !h.includes("javascript:");
@@ -73,7 +73,8 @@ test("routes: order editor lists draw order with labelled, end-disabled move but
   ok(/data-dir="down" aria-label="Move [^"]* down" disabled/.test(h), "last down disabled");
   ok(h.includes("Reset order") && !orderHTML(base()).includes("Reset order"));
   ok(noRaw(h));
-  ok(renderRoutes(base()).includes('data-action="routes:order-edit"'), "entry button in list mode");
+  ok(routesMetaHTML(base()).includes('data-action="routes:order-edit"'), "entry button in the header in list mode (DESIGN-SPEC 10.6)");
+  ok(!renderRoutes(base()).includes('data-action="routes:order-edit"'), "not repeated in the list");
 });
 
 test("routes: mounted naming flow: field focused + prefilled, Enter saves applied, toast, stays", async () => {
@@ -132,8 +133,8 @@ test("routes: Update rewrites the applied route with what is visible now", async
 
 test("routes: order mode moves routes, keeps focus on the moved button, Done/Reset", async () => {
   const { ctx, el, done } = mounted();
-  el.querySelector('[data-action="routes:order-edit"]').click();
-  ok(el.querySelector(".rt-order") && !el.querySelector(".v-routerow") && !el.querySelector('[data-action="routes:order-edit"]'), "editor replaces list and its entry button");
+  runAction("routes:order-edit", {}, null, ctx);   // the header's Edit map order
+  ok(el.querySelector(".rt-order") && !el.querySelector(".v-routerow") && routesMetaHTML(ctx.store.get()) === "", "editor replaces the list; the header's entry goes away");
   eq(document.activeElement, el.querySelector('[data-action="routes:order-done"]'));
   const first = () => el.querySelector(".rt-orow [data-dir=up]").dataset.id;
   const startTop = first();
@@ -152,7 +153,8 @@ test("routes: order mode moves routes, keeps focus on the moved button, Done/Res
   eq(first(), startTop);
   el.querySelector('[data-action="routes:order-done"]').click();
   ok(el.querySelector(".v-routerow") && _ui.mode === "list");
-  eq(document.activeElement, el.querySelector('[data-action="routes:order-edit"]'));
+  eq(document.activeElement, el.querySelector(".v-rowmain"), "no header here: focus on the first route");
+  ok(routesMetaHTML(ctx.store.get()).includes("routes:order-edit"), "the header's entry is back");
   done();
 });
 
@@ -166,7 +168,7 @@ const ptr = (el, type, y, id = 7) => el.dispatchEvent(new PointerEvent(type, { p
 
 test("routes: drag a row by its grip to a new position; Escape cancels; no rebuild mid-drag", async () => {
   const { ctx, el, done } = mounted();
-  el.querySelector('[data-action="routes:order-edit"]').click();
+  runAction("routes:order-edit", {}, null, ctx);
   const rows = () => [...el.querySelectorAll(".rt-orow")].map((r) => r.dataset.id);
   const start = rows();
   ok(el.querySelector(".rt-orow [data-grip][data-nodrag][aria-hidden=true]"), "grip is pointer-only and exempt from sheet drag");
@@ -216,25 +218,23 @@ test("routes: Show all / Hide all (disabled states, station-filter scope, clears
 test("routes: official phone + page sit at the bottom of the list", () => {
   for (const s of [base(), base({ buses: [], liveLoaded: true }), base({ routeFilter: { ids: ["R1"], label: "S" } })]) {
     const h = renderRoutes(s), at = h.indexOf("773.702.8181");
-    ok(at > 0 && at > h.lastIndexOf('class="v-routerow') && at > h.indexOf("routes:order-edit"), "after the list and its tools");
+    ok(at > 0 && at > h.lastIndexOf('class="v-routerow'), "after the list");
     eq((h.match(/773\.702\.8181/g) || []).length, 1, "shown once");
   }
 });
 
-test("routes: Edit map order is the first control; Routes to station / Directions are gone", () => {
-  const first = (h) => h.match(/<(button|input|a)\s[^>]*>/)?.[0] || "";
+test("routes: Edit map order is the header's action (DESIGN-SPEC 10.6); Routes to station / Directions are gone", () => {
   for (const s of [base(), base({ hiddenRoutes: ["R3"] }), base({ routeFilter: { ids: ["R1"], label: "Lib" } }), base({ journey: { rids: ["R1"], label: "x", kind: "plan" } })]) {
-    const h = renderRoutes(s), at = h.indexOf('data-action="routes:order-edit"');
-    ok(first(h).includes('data-action="routes:order-edit"'), "first control on the tab");
-    ok(at < h.indexOf(">Running<") && (h.indexOf("rt-bulk") < 0 || at < h.indexOf("rt-bulk")), "above the groups and Show all / Hide all");
+    const h = renderRoutes(s);
+    ok(routesMetaHTML(s).includes('data-action="routes:order-edit"') && !h.includes('data-action="routes:order-edit"'), "in the sheet header, before every list control");
     ok(!h.includes('data-action="pick:open"') && !h.includes('data-action="dir:open"') && !h.includes("Routes to station&hellip;"), "moved to Plan Trip");
   }
   const f = renderRoutes(base({ routeFilter: { ids: ["R1"], label: "Lib" }, hiddenRoutes: ["R3"] }));
-  ok(f.indexOf("routes:order-edit") < f.indexOf("Make this a custom route") && f.indexOf("Make this a custom route") < f.indexOf("v-fchip"), "order: tools, custom bar, filter chip");
+  ok(f.indexOf("Make this a custom route") < f.indexOf("v-fchip"), "order: custom bar, filter chip");
   ok(f.includes('data-action="routes:clear-filter"'), "filter chip kept");
   ok(renderRoutes(base({ journey: { rids: ["R1"], label: "x" } })).includes('data-action="journey:end"'), "journey bar kept");
-  ok(!renderRoutes(base({ staticLoaded: false })).includes("routes:order-edit"), "not offered before routes load");
-  ok(/class="v-btn v-btn--quiet rt-orderbtn"/.test(renderRoutes(base())), "quiet style");
+  eq(routesMetaHTML(base({ staticLoaded: false })), "", "not offered before routes load");
+  ok(/class="v-btn v-btn--quiet rt-orderbtn"/.test(routesMetaHTML(base())), "a text button (quiet style)");
 });
 
 test("routes: a Not running row also shows today's hours (iOS RouteRow), with 'to' and one middle dot", () => {
@@ -269,7 +269,7 @@ test("show running: core keeps the operating routes (live or scheduled now), hid
 
 test("show running: the button sits with Show all / Hide all, aria-disabled once only running routes show", () => {
   let h = renderRoutes(base());
-  ok(/data-action="routes:show-all"[^>]*>Show all.*data-action="routes:show-running"[^>]*>Show running.*data-action="routes:hide-all"/s.test(h), "between Show all and Hide all");
+  ok(/data-action="routes:show-all"[^>]*>(<span class="rt-check".*?<\/svg><\/span>)?Show all.*data-action="routes:show-running"[^>]*>(<span class="rt-check".*?<\/svg><\/span>)?Show running.*data-action="routes:hide-all"/s.test(h), "between Show all and Hide all");
   ok(!/data-action="routes:show-running" aria-disabled/.test(h), "R3 is visible and not running: enabled");
   h = renderRoutes(base({ hiddenRoutes: ["R3"] }));
   ok(/data-action="routes:show-running" aria-disabled="true"/.test(h) && h.includes("only running routes are shown"), "already only running: aria-disabled with the reason");

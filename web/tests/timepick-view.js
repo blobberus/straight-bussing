@@ -56,8 +56,10 @@ test("the clock opens Lines by Time on the Settings card: own title, Cancel / Se
     eq(t.clock.getAttribute("aria-expanded"), "true", "the clock says the menu is open");
     ok(t.gear.getAttribute("aria-expanded") !== "true", "the gear does not");
     const cancel = o.querySelector('[data-sto="start-btn"]'), set = o.querySelector('[data-sto="done"]');
-    eq([txt(cancel), txt(set)], ["Cancel", "Set time"]);
-    for (const b of [cancel, set]) { const r = b.getBoundingClientRect(); ok(r.width >= 44 && r.height >= 44, txt(b) + " is a 44px target"); }
+    // glass spec 9.9: Cancel is a cross in a fill circle named "Cancel"; Set time a tintFill capsule with its words
+    eq([cancel.getAttribute("aria-label"), txt(set)], ["Cancel", "Set time"]);
+    ok(cancel.querySelector("svg") && !txt(cancel), "Cancel shows the cross, its name is the label");
+    for (const b of [cancel, set]) ok(b.offsetWidth >= 44 && b.offsetHeight >= 44, b.getAttribute("aria-label") + " is a 44px target (layout size: the sheet may still be zooming in)");
     const cols = [...o.querySelectorAll('[role="spinbutton"]')];
     eq(cols.map((c) => c.getAttribute("aria-label")), ["Month", "Day", "Hour", "Minute", "AM or PM"]);
     eq(cols.map((c) => c.getAttribute("aria-valuetext")), ["January", "15", "2", "0", "AM"], "defaults: now in Chicago (Fri Jan 15, 2:00 AM)");
@@ -200,7 +202,7 @@ test("Cancel, Escape and the scrim close it without changes; the clock toggles; 
     await tick();
     ok(isSettingsOpen() && overlayKind() === "settings", "the gear opens Settings instead");
     eq(txt(document.getElementById("stoTitle")), "Settings");
-    ok(!t.ov().querySelector('[data-sto="start-btn"]') && txt(t.ov().querySelector('[data-sto="done"]')) === "Done", "Settings' own head");
+    ok(!t.ov().querySelector('[data-sto="start-btn"]') && t.ov().querySelector('[data-sto="done"]').getAttribute("aria-label") === "Done", "Settings' own head (the Done checkmark)");
     eq([t.clock.getAttribute("aria-expanded"), t.gear.getAttribute("aria-expanded")], ["false", "true"]);
   } finally { t.done(); }
 });

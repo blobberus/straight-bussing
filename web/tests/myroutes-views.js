@@ -3,8 +3,8 @@ import { test, eq, ok } from "./lib.js";
 import { NOW, fixture, makeCtx, tick, root } from "./views-fixtures.js";
 import { runAction } from "../js/ui/actions.js";
 import { getView } from "../js/ui/router.js";
-import { renderMyRoutes, renderCustom, renderEditor, saveEditor, createPatcher, _ui, restingText } from "../js/ui/views/myroutes.js";
-import { renderStop } from "../js/ui/views/stop.js";
+import { renderMyRoutes, renderCustom, renderEditor, saveEditor, createPatcher, _ui, restingText, myRoutesMetaHTML } from "../js/ui/views/myroutes.js";
+import { renderStop, favButton } from "../js/ui/views/stop.js";
 
 const noRaw = (h) => !h.includes("<script>") && !h.includes("javascript:") && !h.includes("<img");
 const C1 = { id: "c1", name: "Commute <img src=x>", rids: ["R1", "R3"], highlight: [] };
@@ -327,4 +327,34 @@ test("stop: favorite toggle, routes at this stop follow visibility", async () =>
   h = renderStop(fixture({ stopId: "S4", hiddenRoutes: ["R2"] }), NOW);
   ok(h.includes("None of your visible routes stop here"));
   ok(renderStop(fixture({ stopId: "S2" }), NOW).includes("Address not available"));
+});
+
+test("my routes header (DESIGN-SPEC 10.6): New once a custom route exists; the empty card keeps the primary", () => {
+  eq(myRoutesMetaHTML(fixture({ customRoutes: [] })), "", "no custom route: the empty card's New custom route is the action");
+  const h = myRoutesMetaHTML(fixture({ customRoutes: [{ id: "c1", name: "Mine", rids: ["R1"], highlight: [] }] }));
+  ok(h.includes('data-action="mr:new"') && h.includes('aria-label="New custom route"') && h.includes(">New<"), h);
+  const list = renderMyRoutes(fixture({ customRoutes: [{ id: "c1", name: "Mine", rids: ["R1"], highlight: [] }] }), NOW);
+  ok(!list.includes('data-action="mr:new"'), "not repeated in the list");
+});
+
+// Owner 2026-11-05: favorite stars yellow instead of brown, in the sheet the same as on the map (tokens --fav-mark /
+// --fav-edge); the outline star of "Favorite" stays the button's tint, only the filled "Favorited" star turns yellow.
+test("stop: the Favorited star is yellow with a dark edge in light, yellow alone in dark; Favorite stays tint", () => {
+  const host = document.createElement("div");
+  host.innerHTML = favButton("S1", true) + favButton("S2", false);
+  document.body.appendChild(host);
+  const root = document.documentElement, was = root.dataset.theme;
+  const on = host.querySelector(".mr-fav.is-on .ic-on"), off = host.querySelector(".mr-fav:not(.is-on) .ic-off");
+  try {
+    root.dataset.theme = "light";
+    eq(getComputedStyle(on).color, "rgb(255, 204, 0)", "filled star yellow (light)");
+    eq(getComputedStyle(on).stroke, "rgba(28, 28, 30, 0.6)", "thin dark edge on the light button");
+    ok(getComputedStyle(off).color !== "rgb(163, 84, 0)", "no brown left on the outline star");
+    root.dataset.theme = "dark";
+    eq(getComputedStyle(on).color, "rgb(255, 214, 10)", "filled star yellow (dark)");
+    eq(getComputedStyle(on).stroke, "rgb(255, 214, 10)", "no edge needed on dark");
+  } finally {
+    if (was === undefined) delete root.dataset.theme; else root.dataset.theme = was;
+    host.remove();
+  }
 });

@@ -42,24 +42,24 @@ test("tripinfo: walking total, leg clocks from t0, leave guidance only for a liv
   eq(leaveInfo(o, NOW + 400).kind, "now", "under a minute of slack -> Leave now");
   eq(leaveInfo(option([wk(START, B, 240, 3), bus({ waitLive: false }), wk(A, DEST, 160, 2)], NOW + 1200), NOW), null, "headway guess: no leave time");
   eq(walkMins(0.3), "<1"); eq(walkMins(2.6), "3");
+  // DESIGN-SPEC 10.15 line 4: when to leave and the first bus on one line (the walks are in the leg strip)
   const l = optionLines(o, NOW);
-  ok(l.text.includes("Walk 3 min to Main & 1st · bus " + clock(NOW + 600)), l.text);
-  ok(l.text.includes("includes 5 min walking"), l.text);
+  ok(l.text.includes("Leave in 7 min, bus " + clock(NOW + 600) + " at Main & 1st"), l.text);
+  ok(l.html.includes('class="v-livedot'), "the live dot: the first bus time is live");
 });
 
 test("directions: card and steps show the walk to the first stop and to the destination; totals include it", async () => {
   const { el, res } = await dirWith([FULL()]);
   const card = res.querySelector(".v-opt.is-on .v-optmain");
   const ct = card.textContent;
-  ok(ct.includes("~20") && ct.includes("Arrive " + clock(NOW + 1200)), "total and arrive include both walks: " + ct);
-  ok(ct.includes("Walk 3 min to Main & 1st"), "first walk named on the card");
-  ok(ct.includes("Leave in 7 min (by " + clock(NOW + 420) + ")") && ct.includes("includes 5 min walking"), ct);
+  ok(/20 min\s*est\./.test(ct) &&!ct.includes("~20") && ct.includes("Arrive " + clock(NOW + 1200)), "total (no ~ before an est. number, O4) and arrive include both walks: " + ct);
+  ok(ct.includes("Leave in 7 min") && ct.includes("bus " + clock(NOW + 600) + " at Main & 1st"), ct);
   ok(card.getAttribute("aria-label").includes("including 5 minutes walking"), card.getAttribute("aria-label"));
   eq(card.querySelectorAll(".v-wk").length, 2, "both walks in the chip summary");
   const steps = [...res.querySelectorAll(".v-steps li")].map((li) => li.textContent);
-  ok(steps[0].includes("Walk 3 min (240 m) to Main & 1st"), steps[0]);
-  ok(steps[0].includes("Leave by " + clock(NOW + 420) + " to catch the " + clock(NOW + 600) + " bus"), steps[0]);
-  ok(steps[1].includes("Bus arrives at Main & 1st"), steps[1]);
+  ok(steps[0].includes("Walk 3 min (240 m) to Main & 1st") && /Sidewalk route|Walking estimate/.test(steps[0]), "the walk and its source in words: " + steps[0]);
+  ok(steps[0].includes("Leave by " + clock(NOW + 420) + " to catch the " + clock(NOW + 600) + " bus, est."), steps[0]);
+  ok(steps[1].includes("Bus arrives at Main & 1st") && steps[1].includes("Live"), steps[1]);
   ok(steps[2].includes("Walk 2 min (160 m) to Hospital entrance"), "last walk goes to the destination: " + steps[2]);
   ok(steps[3].includes("Arrive at Hospital entrance about " + clock(NOW + 1200)) && steps[3].includes("including 5 min walking"), steps[3]);
   unmountDirections(); el.remove(); resetDir();
@@ -70,11 +70,12 @@ test("directions: short walks are still mentioned (<1 min), no-walk ends are sai
   let { el, res } = await dirWith([short]);
   let txt = res.textContent;
   ok(txt.includes("Walk <1 min (30 m) to Main & 1st") && txt.includes("Walk <1 min (26 m) to Hospital entrance"), txt);
-  ok(txt.includes("Walk <1 min to Main & 1st"), "card mentions it too");
+  ok(res.querySelectorAll(".v-opt.is-on .v-osum .v-wk").length === 2, "the card's leg strip shows both short walks");
   unmountDirections(); el.remove();
   ({ el, res } = await dirWith([option([bus({ waitLive: false })], NOW + 1080)]));
   txt = res.textContent;
-  ok(txt.includes("Board at Main & 1st, no walk") && txt.includes("No walking"), "card: " + txt);
+  ok(txt.includes("Bus about ") && txt.includes("at Main & 1st, est.") && txt.includes("no walking"), "card (scheduled first bus): " + txt);
+  eq(res.querySelectorAll(".v-opt.is-on .v-osum .v-wk").length, 0, "no walk in the leg strip");
   ok(txt.includes("Start at Main & 1st, no walk needed") && txt.includes("Get off at Hospital, no walk needed") && txt.includes("Hospital entrance is right there"), txt);
   ok(![...res.querySelectorAll(".v-stepsub")].some((e) => (e.textContent.match(/·/g) || []).length > 1), "at most one middle dot per step line");
   ok(!txt.includes("Leave"), "no leave time without a live bus");

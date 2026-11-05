@@ -1,6 +1,6 @@
 // ui/views/route.js render tests (bus rail, hours & service).
 import { test, eq, ok } from "./lib.js";
-import { renderRoute, renderService, busPositions, routeClosed } from "../js/ui/views/route.js";
+import { renderRoute, renderService, busPositions, routeClosed, routeStatusText } from "../js/ui/views/route.js";
 import { fixture, NOW } from "./views-fixtures.js";
 import { serviceFixture, utc } from "./route-fixtures.js";
 
@@ -179,4 +179,12 @@ test("route view: the order flips at the service boundary and back (render is a 
   ok(order(before).svc > order(before).tl, "7:20 PM: still scheduled, stops first");
   ok(order(after).svc < order(after).tl, "7:30 PM: closed, hours first");
   eq(renderRoute(s, utc("2026-10-15T00:30:00Z")), after, "same input, same HTML (no flicker between polls)");
+});
+
+test("route header (DESIGN-SPEC 10.6): buses running, else never Not running when we cannot know", () => {
+  const s = fixture({ routeId: "R1" });
+  ok(/^\d+ bus(es)?$/.test(routeStatusText(s, "R1", NOW)) || routeStatusText(s, "R1", NOW) === "Not running" || routeStatusText(s, "R1", NOW) === "No live location", routeStatusText(s, "R1", NOW));
+  eq(routeStatusText(fixture({ buses: [], failed: true, lastOk: NOW - 600 }), "R1", NOW), "Status unknown", "feed outage");
+  eq(routeStatusText(fixture({ liveLoaded: false, buses: [] }), "R1", NOW), "", "before the first poll: nothing");
+  eq(routeStatusText(fixture(), "nope", NOW), "", "unknown route");
 });

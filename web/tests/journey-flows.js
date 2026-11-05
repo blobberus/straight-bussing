@@ -4,6 +4,7 @@ import { NOW, makeCtx, tick, root } from "./views-fixtures.js";
 import { runAction } from "../js/ui/actions.js";
 import { optionRids, planJourney, filterJourney, sameRids, tripBarHTML, stationToggleHTML, watchStation, onlySwitchHTML } from "../js/ui/views/journey.js";
 import { D, deps, renderDirections, mountDirections, unmountDirections, swap, DIR_REFRESH_S, liveReplan } from "../js/ui/views/directions.js";
+import { bus } from "../js/core/events.js";
 import { PREF, renderPick, mountPick, unmountPick, setMode, resetPick, chooseStation } from "../js/ui/views/pick.js";
 
 const USER = { lat: 41.7899, lon: -87.6001 };
@@ -200,6 +201,30 @@ test("directions: leaving the view keeps the trip on the map until it ends", asy
   eq(last(ctx.calls.drawPlan), null, "cleared once the trip ends");
 });
 
+test("directions: collapsing the sheet frames the selected option again, once per collapse (spec J3, iOS parity)", async () => {
+  const { ctx, el } = await dirWith([opt("a", 12, "R1"), opt("b", 15, "R3")]);
+  const n = ctx.calls.fitTo.length;
+  bus.emit("sheet:inset", { px: 610, detent: "full" });
+  eq(ctx.calls.fitTo.length, n, "a settle while expanded never moves the map");
+  bus.emit("sheet:inset", { px: 118, detent: "peek" });
+  eq(ctx.calls.fitTo.length, n + 1, "collapsed: the selected option is framed in the larger map");
+  bus.emit("sheet:inset", { px: 140, detent: "peek" });
+  eq(ctx.calls.fitTo.length, n + 1, "a taller header while collapsed never moves the map");
+  bus.emit("sheet:inset", { px: 610, detent: "full" });
+  bus.emit("sheet:inset", { px: 0, detent: "peek" });
+  eq(ctx.calls.fitTo.length, n + 1, "landscape panel (no inset): nothing to re-frame");
+  bus.emit("sheet:inset", { px: 610, detent: "full" });
+  runAction("dir:start", {}, null, ctx);
+  const m = ctx.calls.fitTo.length;
+  bus.emit("sheet:inset", { px: 118, detent: "peek" });
+  eq(ctx.calls.fitTo.length, m, "a started trip owns the map");
+  ctx.store.set({ journey: null });
+  unmountDirections(); el.remove();
+  bus.emit("sheet:inset", { px: 610, detent: "full" });
+  bus.emit("sheet:inset", { px: 118, detent: "peek" });
+  eq(ctx.calls.fitTo.length, m, "after leaving Directions nothing listens");
+});
+
 test("directions: live updates re-plan in the background at most every 8 s, keep the picked card, never move the map (iOS refreshDirections)", async () => {
   const wall = { ms: 1e6 }, timers = [];
   const saved = { wallMs: deps.wallMs, later: deps.later };
@@ -253,7 +278,7 @@ test("directions: live updates re-plan in the background at most every 8 s, keep
 
 test("directions: walk-only results offer no Start", async () => {
   const { el } = await dirWith([]);
-  ok(el.textContent.includes("Walk the whole way"));
+  ok(el.textContent.includes("min walk"));
   ok(!el.querySelector('[data-action="dir:start"]'));
   unmountDirections(); el.remove();
 });

@@ -3,7 +3,7 @@ import { test, eq, ok, near } from "./lib.js";
 import { makeCtx, tick } from "./views-fixtures.js";
 import { bindActions, registerAction } from "../js/ui/actions.js";
 import { getView } from "../js/ui/router.js";
-import { overlayBox, isSettingsOpen, closeSettingsOverlay, OVERLAY_ID } from "../js/ui/settings-overlay.js";
+import { zoomOrigin, isSettingsOpen, closeSettingsOverlay, OVERLAY_ID, SWIPE_CLOSE_PX } from "../js/ui/settings-overlay.js";
 import "../js/ui/views/settings.js";
 import { cleanNotify } from "../js/state.js";
 
@@ -35,20 +35,14 @@ function shell({ detent = "half" } = {}) {
 const click = (el) => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 const key = (el, k, o = {}) => { const e = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }); el.dispatchEvent(e); return e; };
 
-test("overlay box: exactly over the full-detent sheet, also mid-transition, framed and floating", () => {
-  const sheet = { top: 110, left: 0, width: 393, bottom: 852 };
-  eq(overlayBox({ sheet, origin: { left: 0, top: 0 }, height: 852 }), { top: 110, left: 0, width: 393, bottom: 0 });
-  // sheet still 200 px below its full position: the overlay goes where the sheet will settle
-  const mid = overlayBox({ sheet: { ...sheet, top: 310, bottom: 1052 }, origin: { left: 0, top: 0 }, ty: 200, height: 852 });
-  eq([mid.top, mid.bottom], [110, 0]);
-  // desktop iPhone frame scaled to 0.5 at (100, 50): result is in #app layout px
-  const f = overlayBox({ sheet: { top: 50 + 110 * 0.5, left: 100, width: 196.5, bottom: 50 + 852 * 0.5 }, origin: { left: 100, top: 50 }, k: 0.5, height: 852 });
-  near(f.top, 110, 1e-9); eq([f.left, f.width, f.bottom], [0, 393, 0]);
-  // landscape panel (sheet ends 12 px above the bottom)
-  eq(overlayBox({ sheet: { top: 12, left: 12, width: 380, bottom: 380 }, origin: { left: 0, top: 0 }, height: 392 }).bottom, 12);
+test("zoom origin (mZoomSheet, glass spec 7): the trigger's center in the sheet's box, also in a scaled frame", () => {
+  eq(zoomOrigin({ left: 337, top: 62, width: 44, height: 44 }, { left: 0, top: 64 }), "359px 20px", "the gear, top right");
+  eq(zoomOrigin({ left: 100 + 337 * 0.5, top: 50 + 62 * 0.5, width: 22, height: 22 }, { left: 100, top: 50 + 64 * 0.5 }, 0.5), "359px 20px", "the desktop frame at half size: layout px");
+  eq(zoomOrigin(null, { left: 0, top: 0 }), null, "no trigger: no origin (the sheet scales from its center)");
+  eq(zoomOrigin({ left: 0, top: 0, width: 0, height: 0 }, { left: 0, top: 0 }), null, "a hidden trigger");
 });
 
-test("gear opens an accessible modal overlay over the whole sheet; sheet goes full; content not in the sheet", async () => {
+test("gear opens an accessible modal sheet of its own (glass spec 9.8); the app's sheet keeps its state; content not in the sheet", async () => {
   const t = shell();
   try {
     click(t.gear);
@@ -56,15 +50,16 @@ test("gear opens an accessible modal overlay over the whole sheet; sheet goes fu
     ok(o && t.app.contains(o) && !o.hidden && o.dataset.state === "open" && isSettingsOpen(), "overlay open inside #app");
     eq([o.getAttribute("role"), o.getAttribute("aria-modal")], ["dialog", "true"]);
     eq(document.getElementById(o.getAttribute("aria-labelledby")).textContent, "Settings");
-    const doneBtn = o.querySelector(".sto-done"), r = doneBtn.getBoundingClientRect();
-    ok(doneBtn.textContent === "Done" && r.width >= 44 && r.height >= 44, "Done is a 44px target: " + r.width + "x" + r.height);
+    const doneBtn = o.querySelector(".sto-done"), r = doneBtn.getBoundingClientRect();   // layout size: the sheet may still be zooming in
+    ok(doneBtn.getAttribute("aria-label") === "Done" && doneBtn.querySelector("svg") && doneBtn.offsetWidth >= 44 && doneBtn.offsetHeight >= 44, "Done: a 44px checkmark named Done: " + doneBtn.offsetWidth + "x" + doneBtn.offsetHeight);
     ok(r.right > o.getBoundingClientRect().right - 60, "Done sits top right");
-    eq(t.sheet.dataset.detent, "full");
+    eq(t.sheet.dataset.detent, "half", "the app's sheet is not moved");
     ok(o.contains(document.activeElement), "focus moved into the overlay");
     for (const s of ["Appearance", "Service alerts", "Bus alerts", "iPhone app", 'data-action="about:open"']) ok(o.innerHTML.includes(s), s);
     ok(!document.getElementById("content").innerHTML.includes("Bus alerts"), "settings never render in the sheet");
     ok(document.getElementById("content").inert, "sheet content inert behind the modal");
-    near(parseFloat(o.style.top), Math.max(0, t.sheet.getBoundingClientRect().top), 1, "top edge at the sheet's top (clamped to the screen): title and tabs covered");
+    eq(getComputedStyle(o).bottom, "0px", "reaches the bottom");
+    ok(parseFloat(getComputedStyle(o).borderTopLeftRadius) >= 28, "top corners 28 (rGlass)");
     ok(document.getElementById("sheetHead").inert, "covered sheet header (title, tabs) inert");
     const sc = t.app.querySelector(".sto-scrim");
     ok(sc && !sc.hidden, "scrim dims what is behind");
@@ -73,21 +68,27 @@ test("gear opens an accessible modal overlay over the whole sheet; sheet goes fu
   } finally { t.done(); }
 });
 
-test("status pill showing: the sheet sits translated at full (it is --v-max tall), the overlay still lands on its top", async () => {
+test("a swipe down on the header closes Settings; a short drag springs back", async () => {
   const t = shell();
-  // like css/sheet.css: element 500 px tall, the full detent (ui/sheet.js probe) 448 px, so at "full" translateY = 52
-  t.sheet.style.transform = "translate3d(0, 52px, 0)";
-  const probe = document.createElement("div");
-  probe.dataset.sheetProbe = "full";
-  probe.style.cssText = "position:fixed;left:-9px;top:0;width:1px;height:448px;visibility:hidden";
-  t.app.appendChild(probe);
   try {
     click(t.gear);
-    near(parseFloat(t.ov().style.top), t.sheet.getBoundingClientRect().top, 1, "not 52 px higher (that would cover the status pill)");
+    const head = t.ov().querySelector(".sto-head"), at = (y) => ({ clientX: 50, clientY: y, bubbles: true, cancelable: true, button: 0, pointerType: "mouse", pointerId: 1 });
+    head.dispatchEvent(new PointerEvent("pointerdown", at(100)));
+    window.dispatchEvent(new PointerEvent("pointermove", at(130)));
+    ok(/translate3d\(0px, 30px/.test(t.ov().style.transform), "follows the finger: " + t.ov().style.transform);
+    await tick(300);   // a slow, short drag (not a flick)
+    window.dispatchEvent(new PointerEvent("pointerup", at(130)));
+    ok(isSettingsOpen() && !t.ov().style.transform, "a short drag springs back");
+    await tick(600);   // slow, so no flick
+    head.dispatchEvent(new PointerEvent("pointerdown", at(100)));
+    window.dispatchEvent(new PointerEvent("pointermove", at(100 + SWIPE_CLOSE_PX + 5)));
+    window.dispatchEvent(new PointerEvent("pointerup", at(100 + SWIPE_CLOSE_PX + 5)));
+    ok(!isSettingsOpen(), "a long swipe closes it");
+    eq(document.activeElement, t.gear, "focus back on the gear");
   } finally { t.done(); }
 });
 
-test("Escape closes, restores the detent, returns focus to the gear; main.js Escape not triggered", async () => {
+test("Escape closes, leaves the sheet's detent, returns focus to the gear; main.js Escape not triggered", async () => {
   const t = shell({ detent: "half" });
   let leaked = 0;
   const spy = (e) => { if (e.key === "Escape" && !e.defaultPrevented) leaked++; };
@@ -120,7 +121,7 @@ test("Done closes; the gear toggles; Tab is trapped inside", async () => {
     eq(document.activeElement, last, "Shift+Tab from Done wraps to the last control");
     click(doneBtn);
     ok(!isSettingsOpen());
-    eq(t.sheet.dataset.detent, "peek", "previous detent restored");
+    eq(t.sheet.dataset.detent, "peek", "the sheet's detent untouched");
     click(t.gear);
     ok(isSettingsOpen());
     click(t.gear);
@@ -135,7 +136,7 @@ test("tapping the dimmed area closes Settings and un-inerts the sheet", async ()
     const sc = t.app.querySelector(".sto-scrim");
     click(sc);
     ok(!isSettingsOpen(), "scrim tap closes");
-    eq(t.sheet.dataset.detent, "half", "previous detent restored");
+    eq(t.sheet.dataset.detent, "half", "the sheet's detent untouched");
     ok(!document.getElementById("sheetHead").inert && !document.getElementById("content").inert, "sheet usable again");
     eq(document.activeElement, t.gear, "focus back on the gear");
     await tick(450);
@@ -143,7 +144,7 @@ test("tapping the dimmed area closes Settings and un-inerts the sheet", async ()
   } finally { t.done(); }
 });
 
-test("navigating (About) or dragging the sheet out of full closes Settings", async () => {
+test("navigating (About) closes Settings; the app's sheet behind it is never moved by it", async () => {
   const t = shell();
   try {
     click(t.gear);
@@ -154,10 +155,9 @@ test("navigating (About) or dragging the sheet out of full closes Settings", asy
     eq(document.activeElement, document.getElementById("title"), "focus to the sheet title");
     click(t.gear);
     ok(isSettingsOpen());
-    t.sheet.dataset.detent = "half";   // user dragged the sheet down
-    await tick();
-    ok(!isSettingsOpen());
-    eq(t.sheet.dataset.detent, "half", "user's detent kept");
+    eq(t.sheet.dataset.detent, "half", "opening left the sheet where it was");
+    closeSettingsOverlay();
+    eq(t.sheet.dataset.detent, "half", "and so did closing");
   } finally { t.done(); }
 });
 
