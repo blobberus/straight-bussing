@@ -557,8 +557,13 @@ registerAction("settings:open", (ds, ev, ctx) => {
     document.getElementById("toast")?.classList.add("hide");   // the "Still blocked" toast would cover the steps
     setTimeout(() => {
       const sec = o?.querySelector?.(`[data-region="${CSS.escape(ds.section)}"]`);
-      sec?.scrollIntoView?.({ block: "start" });
-      sec?.querySelector?.("button, summary")?.focus?.({ preventScroll: true });
+      // focus the section's heading, so a screen reader reads on from the start: the explanation and this phone's steps
+      // come before the buttons (the first focusable was "Using a different phone or browser?", after the steps; 2026-11-05 QA)
+      const h = sec?.previousElementSibling?.matches?.("h2, h3") ? sec.previousElementSibling : null;
+      const target = h || sec?.querySelector?.("button, summary");
+      if (h && !h.hasAttribute("tabindex")) h.setAttribute("tabindex", "-1");
+      (h || sec)?.scrollIntoView?.({ block: "start" });
+      target?.focus?.({ preventScroll: true });
     }, 60);
   }
 });

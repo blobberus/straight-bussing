@@ -186,3 +186,21 @@ test("settings view shim: navigate('settings') goes back and opens the overlay",
     ok(isSettingsOpen(), "stays open after the back navigation");
   } finally { t.done(); }
 });
+
+// 2026-11-05 QA: Current trip's "How to allow location" opened Settings with focus on "Using a different phone or
+// browser?", after the explanation and this phone's steps, so a screen reader started past them.
+test("opening Settings at a section (How to allow location) focuses that section's heading, before its steps", async () => {
+  const t = shell();
+  try {
+    t.ctx.store.set({ locState: "denied", user: null });
+    t.app.querySelector("#content").insertAdjacentHTML("beforeend", '<button id="howto" type="button" data-action="settings:open" data-section="loc">How to allow location</button>');
+    click(t.app.querySelector("#howto"));
+    await new Promise((r) => setTimeout(r, 200));
+    const a = document.activeElement;
+    ok(isSettingsOpen(), "Settings open");
+    eq(a && a.tagName, "H3", "focus on the section heading: " + (a && (a.textContent || a.tagName)));
+    eq(a.textContent, "Location");
+    const steps = t.ov().querySelector('[data-region="loc"] .st-steps');
+    ok(steps && (a.compareDocumentPosition(steps) & Node.DOCUMENT_POSITION_FOLLOWING), "the steps come after the focus, so they are read");
+  } finally { t.done(); }
+});
