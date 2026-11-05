@@ -358,3 +358,26 @@ test("stop: the Favorited star is yellow with a dark edge in light, yellow alone
     host.remove();
   }
 });
+
+// 2026-11-05 QA: at accessibility text on a 320 x 568 screen the editor's sticky Cancel / Save (stacked, 140 pt) covered
+// the Name field; on short screens at that size they stay at the end of the form, elsewhere they stay sticky.
+test("editor: Cancel / Save are sticky, except at accessibility text on a short screen", async () => {
+  const at = async (w, h, text) => {
+    const f = document.createElement("iframe");
+    f.style.cssText = `position:absolute;left:-10000px;top:0;width:${w}px;height:${h}px;border:0`;
+    document.body.appendChild(f);
+    const d = f.contentDocument;
+    d.open();
+    d.write(`<!doctype html><html data-text="${text}"><head>` + ["tokens", "base", "components", "sheet", "myroutes"]
+      .map((n) => `<link rel="stylesheet" href="${new URL("../css/" + n + ".css", location.href).href}">`).join("")
+      + '</head><body><div class="sheet-content"><form class="mr-edit"><div class="v-actions"><button class="v-btn">Cancel</button><button class="v-btn">Save</button></div></form></div></body></html>');
+    d.close();
+    await new Promise((r) => setTimeout(r, 250));
+    const pos = f.contentWindow.getComputedStyle(d.querySelector(".v-actions")).position;
+    f.remove();
+    return pos;
+  };
+  eq(await at(320, 568, "ax"), "static", "320 x 568 at accessibility text: in the form's flow");
+  eq(await at(393, 852, "ax"), "sticky", "a tall screen keeps the sticky bar");
+  eq(await at(320, 568, "default"), "sticky", "default text keeps the sticky bar");
+});

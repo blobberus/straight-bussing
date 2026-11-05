@@ -62,6 +62,9 @@
 .mr-err:empty { display: none; }
 /* sticky Save bar: the scroller keeps 16 px of bottom padding (sheet.css); reach into it so rows never show below the bar */
 .mr-edit .v-actions { position: sticky; bottom: -16px; margin: var(--s-3) 0 0; padding: var(--s-2) 0 calc(var(--s-2) + 16px); background: var(--bg-sheet); }
+/* accessibility text on a short screen (iPhone SE, 320 x 568): Cancel and Save stack 140 pt tall and a sticky bar would
+   cover the Name field and most of the list, so they stay at the end of the form (2026-11-05 QA) */
+@media (max-height: 700px) { html[data-text="ax"] .mr-edit .v-actions { position: static; padding-bottom: var(--s-2); } }
 
 /* stop view: the Favorite button (Secondary with the star; "Favorited" with a filled yellow star) */
 .mr-stoptop { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
