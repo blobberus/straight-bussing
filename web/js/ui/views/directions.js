@@ -137,6 +137,9 @@ function legStrip(o, state) {
     .join(`<span class="v-arr" aria-hidden="true">${CHEV_IC}</span>`);
 }
 
+/** Minutes in words for screen readers: "under 1 minute", "1 minute", "7 minutes" (n as walkMins / totalMin give it). */
+const minutesWords = (n) => (String(n) === "<1" ? "under 1 minute" : String(n) === "1" ? "1 minute" : `${n} minutes`);
+
 function optionHTML(o, i, now, state) {
   const on = i === D.sel;
   const lines = optionLines(o, now), wt = walkTotal(o);
@@ -144,7 +147,7 @@ function optionHTML(o, i, now, state) {
   const crit = (D.result?.options?.length || 0) > 1 ? criteriaText(o.meets) : "";
   const critHTML = crit ? `<span class="j-crit">${esc(crit)}</span>` : "";
   const routesTxt = o.legs.filter((l) => l.type === "bus").map((l) => state.routes?.[l.rid]?.short || l.rid).join(" then ");
-  const aria = `Option ${i + 1}${crit ? " (" + crit + ")" : ""}: about ${o.totalMin} minutes including ${wt > 0 ? walkMins(wt) + " minutes walking" : "no walking"}, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. ${lines.text} Estimate.`.replace(/<1 min/g, "under 1 min");
+  const aria = `Option ${i + 1}${crit ? " (" + crit + ")" : ""}: about ${minutesWords(o.totalMin)} including ${wt > 0 ? minutesWords(walkMins(wt)) + " walking" : "no walking"}, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. ${lines.text} Estimate.`.replace(/<1 min/g, "under 1 min");
   const start = on && !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Shows only this trip&rsquo;s routes on the map. Follow the bus stop by stop in Current trip.</p>' : "";
   // the total and its "est." stay together (no "~" in front of an est. number: spec O4); the arrival clock on the right
   return `<div class="v-opt${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}">${critHTML}<span class="v-otop"><span class="v-otot">${o.totalMin}<small> min</small>${tag("est.")}</span><span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span><span class="v-osum">${legStrip(o, state)}</span>${lines.html}</button>${on ? stepsHTML(o, now, state) + start : ""}</div>`;
@@ -156,7 +159,7 @@ function optionHTML(o, i, now, state) {
  */
 function walkOptionHTML(o, i, now, state) {
   const on = i === D.sel, l = o.legs[0] || {};
-  const aria = `Option ${i + 1}: walk the whole way, ${walkMins(o.walkMin)} minutes, ${Math.round(o.walkM || 0)} meters, arrive ${clock(o.arrive)}. Close enough to walk.`.replace(/<1 minutes/g, "under 1 minute");
+  const aria = `Option ${i + 1}: walk the whole way, ${minutesWords(walkMins(o.walkMin))}, ${Math.round(o.walkM || 0)} meters, arrive ${clock(o.arrive)}. Close enough to walk.`;
   const start = on && !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Follow your walk in Current trip.</p>' : "";
   return `<div class="v-opt v-opt--walk${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}">`
     + `<span class="j-crit">Close enough to walk</span><span class="v-otop"><span class="j-walkic" aria-hidden="true">${svg("walk", 20)}</span><span class="v-otot">${esc(walkMins(o.walkMin))}<small> min walk</small></span><span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span>`
@@ -491,7 +494,7 @@ export function metaDirectionsHTML() {
   const o = D.from && D.to ? D.result?.options?.[D.sel] : null;
   if (!o) return "";
   const m = o.walkOnly ? walkMins(o.walkMin) : String(o.totalMin);
-  return `<span class="hm" role="text" aria-label="${esc(`${o.walkOnly ? "Walk" : "Trip"} about ${m} minutes, estimate`)}"><span class="eta" aria-hidden="true"><span class="num">${esc(m)}</span> <span class="unit">min</span>${tag("est.")}</span></span>`;
+  return `<span class="hm" role="text" aria-label="${esc(`${o.walkOnly ? "Walk" : "Trip"} about ${minutesWords(m)}, estimate`)}"><span class="eta" aria-hidden="true"><span class="num">${esc(m)}</span> <span class="unit">min</span>${tag("est.")}</span></span>`;
 }
 
 registerView("directions", {

@@ -71,6 +71,12 @@ test("directions: short walks are still mentioned (<1 min), no-walk ends are sai
   let txt = res.textContent;
   ok(txt.includes("Walk <1 min (30 m) to Main & 1st") && txt.includes("Walk <1 min (26 m) to Hospital entrance"), txt);
   ok(res.querySelectorAll(".v-opt.is-on .v-osum .v-wk").length === 2, "the card's leg strip shows both short walks");
+  const said = res.querySelector(".v-opt.is-on .v-optmain").getAttribute("aria-label");
+  ok(said.includes("including 1 minute walking") && !/1 minutes|<1/.test(said), "screen readers hear words, in the singular: " + said);
+  unmountDirections(); el.remove();
+  ({ el, res } = await dirWith([option([wk(START, B, 20, 0.2), bus(), wk(A, DEST, 10, 0.1)], NOW + 1100)]));
+  const tiny = res.querySelector(".v-opt.is-on .v-optmain").getAttribute("aria-label");
+  ok(tiny.includes("including under 1 minute walking") && !tiny.includes("minutes walking"), tiny);
   unmountDirections(); el.remove();
   ({ el, res } = await dirWith([option([bus({ waitLive: false })], NOW + 1080)]));
   txt = res.textContent;
