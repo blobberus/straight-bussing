@@ -9,7 +9,8 @@
 import { esc, safeColor } from "../../core/esc.js";
 import { clock } from "../../core/time.js";
 import { walkMin } from "../../core/geo.js";
-import { routeChip } from "../components.js";
+import { routeChip, liveLabel } from "../components.js";
+import { staleLevel } from "../../core/arrivals.js";
 import { svg } from "../icons.js";
 
 /** Ride-time source wording for bus steps. */
@@ -72,12 +73,14 @@ export function walkTotal(o) {
  * When to leave for the first bus. Only for a live first bus (a headway guess is not a departure time).
  * @param {object} o Option
  * @param {number} now unix s
+ * @param {''|'late'|'old'|'err'} [level] staleLevel: while the feed fails or is out of date the bus time is the last
+ *   known one, so no leave time is given (2026-11-05 QA)
  * @returns {{kind:'now'|'later', text:string, by:number, slack:number}|null}
  */
-export function leaveInfo(o, now) {
+export function leaveInfo(o, now, level = "") {
   const fb = (o.legs || []).findIndex((l) => l.type === "bus");
   const bus = fb >= 0 ? o.legs[fb] : null;
-  if (!bus || !bus.waitLive || !bus.boardT) return null;
+  if (!bus || !bus.waitLive || !bus.boardT || level === "old" || level === "err") return null;
   const walkBefore = o.legs.slice(0, fb).reduce((s, l) => s + (l.type === "walk" ? l.min || 0 : 0), 0);
   const by = bus.boardT - walkBefore * 60, slack = (by - now) / 60;
   if (slack < 1) return { kind: "now", text: "Leave now", by, slack };
@@ -91,15 +94,17 @@ export function leaveInfo(o, now) {
  * The walks are in the leg strip above it; the card's aria-label says the rest.
  * @param {object} o Option
  * @param {number} now
+ * @param {''|'late'|'old'|'err'} [level] staleLevel: a last known time (old / err) reads as the estimate it is, a late
+ *   one keeps its leave time with the amber dot
  * @returns {{html:string, text:string}} html for the card, text for its aria-label
  */
-export function optionLines(o, now) {
+export function optionLines(o, now, level = "") {
   const times = legsTimes(o, now), fb = o.legs.findIndex((l) => l.type === "bus");
   if (fb < 0) return { html: "", text: "" };
-  const bus = o.legs[fb], board = bus.board?.name || "the stop", busAt = clock(times[fb].b), leave = leaveInfo(o, now);
+  const bus = o.legs[fb], board = bus.board?.name || "the stop", busAt = clock(times[fb].b), leave = leaveInfo(o, now, level);
   if (leave) {
     const text = `${leave.kind === "now" ? "Leave now" : `Leave in ${Math.floor(leave.slack)} min`}, bus ${busAt} at ${board}`;
-    return { text, html: `<span class="v-sec j-oline${leave.kind === "now" ? " j-now" : ""}">${esc(text)}<span class="v-livedot j-live" aria-hidden="true"></span></span>` };
+    return { text, html: `<span class="v-sec j-oline${leave.kind === "now" ? " j-now" : ""}">${esc(text)}<span class="${level === "late" ? "dot-live late" : "v-livedot"} j-live" aria-hidden="true"></span></span>` };
   }
   const text = `Bus about ${busAt} at ${board}, est.`;
   return { text, html: `<span class="v-sec j-oline">${esc(text)}</span>` };
@@ -122,6 +127,8 @@ const LIVE_LINE = '<span class="v-sec v-stepsub v-steplive"><span class="dot-liv
 export function stepsHTML(o, now, state, { fromLabel, toLabel } = {}) {
   const times = legsTimes(o, now), legs = o.legs, n = legs.length;
   const dest = toLabel || "destination";
+  // while the feed fails or is out of date a "live" bus time is the last known one: an estimate (2026-11-05 QA)
+  const level = staleLevel(state || {}, now), lastKnown = level === "old" || level === "err";
   const li = (node, h, cls, rc) => `<li${cls ? ` class="${cls}"` : ""}${rc ? ` style="--rc:${rc}"` : ""}><span class="v-si" aria-hidden="true">${node}</span><span class="v-stept">${h}</span></li>`;
   const sub = (h) => `<span class="v-sec v-stepsub">${h}</span>`;
   const steps = [];
@@ -135,7 +142,7 @@ export function stepsHTML(o, now, state, { fromLabel, toLabel } = {}) {
       const change = prev?.type === "bus" && next?.type === "bus" ? " to change" : "";
       let h = `Walk ${esc(walkMins(l.min))} min (${Math.round(l.m || 0)} m) to <b>${esc(to || "the stop")}</b>${change}`;
       if (i === 0 && next?.type === "bus") {
-        const lv = leaveInfo(o, now);
+        const lv = leaveInfo(o, now, level);
         if (lv) h += sub(`${lv.kind === "now" ? "Leave now" : "Leave by " + esc(clock(lv.by))} to catch the ${esc(clock(times[1].b))} bus,${tag("est.")}`);
       }
       h += sub(l.source === "router" ? "Sidewalk route" : "Walking estimate");
@@ -144,8 +151,8 @@ export function stepsHTML(o, now, state, { fromLabel, toLabel } = {}) {
     }
     const t = times[i], w = Math.round(l.wait || 0), r = mins(l.ride), sp = l.stopsPassed || 1;
     const color = safeColor(state.routes?.[l.rid]?.color);
-    steps.push(li(routeChip(l.rid, state.routes, { small: true }), `Bus arrives at <b>${esc(l.board?.name || "")}</b> <b class="v-clock">${esc(clock(t.b))}</b>${l.waitLive ? "" : tag("est.")}`
-      + (l.waitLive ? LIVE_LINE : "")
+    steps.push(li(routeChip(l.rid, state.routes, { small: true }), `Bus arrives at <b>${esc(l.board?.name || "")}</b> <b class="v-clock">${esc(clock(t.b))}</b>${l.waitLive && !lastKnown ? "" : tag("est.")}`
+      + (l.waitLive ? (level ? `<span class="v-sec v-stepsub v-steplive">${liveLabel(level).html}</span>` : LIVE_LINE) : "")
       + sub(`Wait ~${w < 1 ? "&lt;1" : w} min, then ride ~${r} min (${sp} stop${sp > 1 ? "s" : ""}) to ${esc(l.alight?.name || "")}, ${esc(clock(t.a))} &middot; ${esc(SRC[l.source] || "estimate")},${tag("est.")}`), "j-bus", color));
   });
   if (legs[n - 1]?.type === "bus") {

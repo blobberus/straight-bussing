@@ -370,7 +370,7 @@ struct OptionCard: View {
 
     var body: some View {
         let crit = showCriteria ? Rank.criteriaText(option.meets) : ""
-        let lines = TripInfo.optionLines(option, now: model.now)
+        let lines = TripInfo.optionLines(option, now: model.now, level: model.staleLevel)
         VStack(alignment: .leading, spacing: 6) {
             Button { model.selectOption(index) } label: {
                 VStack(alignment: .leading, spacing: 6) {
@@ -401,7 +401,7 @@ struct OptionCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(TripInfo.optionLabel(option, index: index, criteria: crit, routes: model.staticData.routes, now: model.now))
+            .accessibilityLabel(TripInfo.optionLabel(option, index: index, criteria: crit, routes: model.staticData.routes, now: model.now, level: model.staleLevel))
             .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
             if selected {
                 Divider()
@@ -459,7 +459,7 @@ struct StepList: View {
     @Environment(AppModel.self) private var model
     let option: TripOption
     var body: some View {
-        let steps = TripInfo.steps(option, now: model.now, fromLabel: model.dir.from?.label, toLabel: model.dir.to?.label)
+        let steps = TripInfo.steps(option, now: model.now, fromLabel: model.dir.from?.label, toLabel: model.dir.to?.label, level: model.staleLevel)
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(steps.enumerated()), id: \.offset) { item in
                 let s = item.element

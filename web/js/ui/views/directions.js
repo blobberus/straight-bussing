@@ -142,7 +142,7 @@ const minutesWords = (n) => (String(n) === "<1" ? "under 1 minute" : String(n) =
 
 function optionHTML(o, i, now, state) {
   const on = i === D.sel;
-  const lines = optionLines(o, now), wt = walkTotal(o);
+  const lines = optionLines(o, now, staleLevel(state, now)), wt = walkTotal(o);
   // what this option minimizes (core/rank.js), only when there is something to compare against
   const crit = (D.result?.options?.length || 0) > 1 ? criteriaText(o.meets) : "";
   const critHTML = crit ? `<span class="j-crit">${esc(crit)}</span>` : "";

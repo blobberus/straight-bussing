@@ -101,3 +101,16 @@ test("search bar: dir:open with focus=to opens Directions with the destination f
   eq(D.focusTo, false, "one-shot");
   unmountDirections(); el.remove(); resetDir();
 });
+
+// 2026-11-05 QA: during an outage a bus time from the last tripUpdates read "Leave in 7 min" with the green live dot and
+// "Live" in the steps. It is the last known time: no leave time, "est.", "Last known" (the iOS Kit TripInfo does the same).
+test("tripinfo: a last known bus time (feed failing or out of date) is an estimate, never Live", () => {
+  const o = option([wk(START, B, 240, 3), bus(), wk(A, DEST, 160, 2)], NOW + 1200);
+  ok(leaveInfo(o, NOW, "") && leaveInfo(o, NOW, "late"), "fresh or late data: a leave time");
+  eq(leaveInfo(o, NOW, "err"), null, "feed failing: no leave time");
+  eq(leaveInfo(o, NOW, "old"), null, "out of date: no leave time");
+  const fresh = optionLines(o, NOW, ""), late = optionLines(o, NOW, "late"), down = optionLines(o, NOW, "err");
+  ok(/Leave in/.test(fresh.text) && fresh.html.includes("v-livedot"), "fresh: leave time with the live dot");
+  ok(/Leave in/.test(late.text) && late.html.includes("dot-live late") && !late.html.includes("v-livedot"), "late: the amber dot, not green");
+  ok(/^Bus about .*, est\.$/.test(down.text) && !/livedot|dot-live/.test(down.html), "outage: \"Bus about ..., est.\", no live mark: " + down.text);
+});

@@ -35,6 +35,21 @@ final class TripInfoTests: XCTestCase {
         XCTAssertTrue(TripInfo.optionLabel(o, index: 0, criteria: "", routes: [:], now: NOW).contains("including 5 minutes walking"))
     }
 
+    /// A last known bus time (feed failing or out of date) is an estimate: no leave time, the step tagged "est."
+    /// (web tests/journey-walk.js, 2026-11-05 QA).
+    func testLastKnownBusTimeIsAnEstimate() throws {
+        let o = FULL
+        XCTAssertNotNil(TripInfo.leaveInfo(o, now: NOW, level: .late), "late data still gives a leave time")
+        XCTAssertNil(TripInfo.leaveInfo(o, now: NOW, level: .err))
+        XCTAssertNil(TripInfo.leaveInfo(o, now: NOW, level: .old))
+        let l = try XCTUnwrap(TripInfo.optionLines(o, now: NOW, level: .err))
+        XCTAssertFalse(l.second.contains("Leave"), l.second)
+        XCTAssertFalse(TripInfo.optionLabel(o, index: 0, criteria: "", routes: [:], now: NOW, level: .err).contains("Leave"), "VoiceOver hears no leave time either")
+        let steps = TripInfo.steps(o, now: NOW, fromLabel: nil, toLabel: nil, level: .err)
+        XCTAssertFalse(steps.contains { $0.tag == "live" }, "no step says live during an outage")
+        XCTAssertTrue(TripInfo.steps(o, now: NOW, fromLabel: nil, toLabel: nil).contains { $0.tag == "live" })
+    }
+
     func testStepsNameBothWalks() {
         let s = TripInfo.steps(FULL, now: NOW, fromLabel: "Home", toLabel: "Hospital entrance")
         XCTAssertEqual(s.count, 4)
