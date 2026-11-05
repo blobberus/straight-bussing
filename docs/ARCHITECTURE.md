@@ -888,6 +888,23 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   `web/tests/routesearch-golden.json` (a frozen copy of the route and stop names + every case's answer;
   `python tools/gen_routesearch_golden.py`, cases in tests/routesearch-cases.js) is checked by the web test and by
   Kit `RouteSearchTests` (ios.yml also runs when it changes). sw `sb-v2-86`.
+- Active routes first (2026-11-05, owner: "Searching routes in the routes menu should still show results if they are
+  inactive (the top results, unless the name is clearly specified, should priortize active routes--make it clearly
+  show which ones are active by graying them out in results)"): every route stays findable (all of routes.json, Move
+  In Charter included; only the station filter narrows the list, as before). `core/routesearch.js
+  rankByActive(hits, active)` (Kit `RouteSearch.rankByActive`): a route the query names (score >= `NAMED_MIN` 88.5:
+  exact name or the start of one) stays on top in score order whether or not it runs; then the matches operating
+  now, then the rest, each by score. `active` = the Show running rule (`operatingIds` / `AppModel.operatingRoutes`: a
+  bus reporting, or scheduled now with no live location); with live status unknown (`liveNotKnown` / `!liveLoaded ||
+  liveOutage`) it is null: no reordering and no graying (an outage is never "not running"). `routeMatches(state, q,
+  now)` returns `{top, stopOf, active}`. A match that does not operate now is drawn `.v-routerow.is-idle` (gray chip
+  via `filter: grayscale(1)`, the name in `--text-2`, both AA in light and dark) and its status says so in words:
+  `notRunningText` = myroutes.js `restingText` ("Not running now · Scheduled from 4:00 PM today", "Not running today")
+  with "Not running now · " added where it does not start that way ("Not running now · No more service today").
+  A hidden route keeps its own look (`.is-off` fade, crossed-out eye, "Hidden from map and times"); hidden and not
+  running shows both, the hidden line on its own line (one middle dot per line). iOS `RouteRow(idle:)` the same
+  (`.grayscale(1)`, `Schedule.restingText`). Golden file `active` cases (19: "metra" with one Metra line running,
+  "53rd" named but not running, "drexel" / "drex" / "drexl", unknown status) replayed by both tests. sw `sb-v2-89`.
 
 ### Context bar stays when the sheet is expanded (2026-11-04, owner: "When the menu is expanded, the current trip showing at the top of the screen should still show (same way as the settings button)")
 The map context bar (#ctxbar: "Only showing routes for: <trip>" + Show all, "My route: <name>" + Clear, "Lines active
