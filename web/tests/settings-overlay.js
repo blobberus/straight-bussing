@@ -42,6 +42,19 @@ test("zoom origin (mZoomSheet, glass spec 7): the trigger's center in the sheet'
   eq(zoomOrigin({ left: 0, top: 0, width: 0, height: 0 }, { left: 0, top: 0 }), null, "a hidden trigger");
 });
 
+test("behind the open sheet the map (its credit links) and the status banner (Retry, Details, Call) are inert too: covered, so not reachable by a screen reader; back after closing", async () => {
+  const t = shell();
+  try {
+    t.app.insertAdjacentHTML("afterbegin", '<div id="map" tabindex="0"><a href="#credit">OpenStreetMap</a></div>'
+      + '<div id="pill" role="status"><button id="pillRetry" type="button">Retry</button><button class="pillmore" type="button" aria-label="Details">Details</button></div>');
+    click(t.gear);
+    ok(isSettingsOpen(), "open");
+    for (const id of ["map", "pill", "sheetHead", "content", "tabs"]) ok(document.getElementById(id).inert, id + " inert while Settings is open");
+    closeSettingsOverlay({ focus: "none" });
+    for (const id of ["map", "pill"]) ok(!document.getElementById(id).inert, id + " usable again after closing");
+  } finally { t.done(); }
+});
+
 test("gear opens an accessible modal sheet of its own (glass spec 9.8); the app's sheet keeps its state; content not in the sheet", async () => {
   const t = shell();
   try {
