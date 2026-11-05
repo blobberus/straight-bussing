@@ -443,6 +443,8 @@ function onKey(e) {
     }
     return;
   }
+  // Escape leaves the map-order editor (its Done), before Back or a collapse (a drag in progress cancels itself first)
+  if (e.key === "Escape" && R.mode === "order") { e.preventDefault(); e.stopPropagation(); orderDone(ctxRef); return; }
   if (!e.target?.matches?.('[data-input="routes-name"]')) return;
   if (e.key === "Enter") { e.preventDefault(); saveName(ctxRef); }
   else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancelName(); }
@@ -578,12 +580,14 @@ const refreshHeader = () => { try { bus.emit("sheet:header", {}); } catch (e) { 
 registerAction("routes:order-edit", (ds, ev, ctx) => {
   ctxRef = ctx || ctxRef; R.mode = "order"; R.naming = false; pendingFocus = { sel: '[data-action="routes:order-done"]' }; patch(true); refreshHeader();
 });
-registerAction("routes:order-done", (ds, ev, ctx) => {
+/** Leave the map-order editor (Done, or Escape in it). */
+function orderDone(ctx) {
   ctxRef = ctx || ctxRef; R.mode = "list"; patch(true); refreshHeader();
   // back to the header's Edit map order (where the editor was opened), else the first route
   const back = document.querySelector('#titleRight [data-action="routes:order-edit"]') || rootRef?.querySelector?.(".v-rowmain");
   back?.focus?.({ preventScroll: true });
-});
+}
+registerAction("routes:order-done", (ds, ev, ctx) => orderDone(ctx));
 registerAction("routes:move", (ds, ev, ctx) => {
   ctxRef = ctx || ctxRef;
   const dir = ds.dir === "up" ? -1 : 1;

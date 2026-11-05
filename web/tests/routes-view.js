@@ -158,6 +158,22 @@ test("routes: order mode moves routes, keeps focus on the moved button, Done/Res
   done();
 });
 
+test("routes: Escape in the map-order editor leaves it like Done (not Back, not a collapse; QA 2026-11-05)", async () => {
+  const { ctx, el, done } = mounted();
+  runAction("routes:order-edit", {}, null, ctx);
+  const btn = el.querySelector('[data-action="routes:move"]:not([disabled])');
+  btn.focus();
+  const e = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+  btn.dispatchEvent(e);
+  ok(e.defaultPrevented, "consumed: main.js does not go Back or collapse the sheet");
+  ok(_ui.mode === "list" && el.querySelector(".v-routerow") && !el.querySelector(".rt-order"), "the list is back");
+  eq(document.activeElement, el.querySelector(".v-rowmain"), "focus on the first route, as after Done");
+  const again = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+  el.querySelector(".v-rowmain").dispatchEvent(again);
+  ok(!again.defaultPrevented, "in the list Escape goes on to Back / collapse as before");
+  done();
+});
+
 test("routes: moveInOrder no-op at the ends", () => {
   const ctx = makeCtx({ routeOrder: [] });
   runAction("routes:move", { id: "R1", dir: "up" }, null, ctx);   // R1 is first in data order
