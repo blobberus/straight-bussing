@@ -22,7 +22,9 @@ account, email, phone number, IP address (Apps Script cannot see it), user agent
 searches or taps. The random number is not linked to any of those; clearing the site's data in the browser replaces it (the Settings
 button "Get a new anonymous number" was removed on 2026-11-05, owner: "Remove the get a new anonymous number button").
 
-Never sent: in demo mode (`?demo=1`), from automated browsers, from pages not served over https (local testing), and
+Never sent: in demo mode (`?demo=1`), from automated browsers, from search-engine and link-preview crawlers and page-speed
+tools (recognized by their user agent on the device, which is never sent; data/usage.js BOT_UA, since 2026-11-05), from
+pages not served over https (local testing), and
 from the iPhone app. The iPhone app's App Privacy label stays **Data Not Collected**.
 
 A visit ends after 30 minutes in the background; coming back later is a new visit. Limits: one browser counts as one

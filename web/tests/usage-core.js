@@ -294,3 +294,28 @@ test("usage (glass transfer 2026-11-05): every row carries exactly the fields th
     eq(r.rows("place")[0].zone, "Reynolds Club", "a stop name, never coordinates");
   } finally { r.done(); }
 });
+
+// 2026-11-05 QA: navigator.webdriver is false for crawlers that run JavaScript (and for CDP-driven headless Edge), so each
+// would count as a new visitor in the owner's Sheet. Their user agents never count; real phones (even a Cubot) do.
+test("usage: search-engine crawlers, link previews and page-speed tools never count; real phones do", () => {
+  const live = { protocol: "https:", pathname: "/straight-bussing/" };
+  for (const ua of [
+    "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm) Chrome/116.0.1938.76 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15 (Applebot/0.1; +http://www.apple.com/go/applebot)",
+    "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36 Chrome-Lighthouse",
+    "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/120.0.0.0 Safari/537.36",
+  ]) {
+    const r = realSite(live, { webdriver: false, userAgent: ua });
+    ok(!r.started && !r.sent.length, "never counts: " + ua.slice(0, 60));
+  }
+  for (const ua of [
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 13; CUBOT X70) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+  ]) {
+    const r = realSite(live, { webdriver: false, userAgent: ua });
+    ok(r.started && r.sent.length === 1, "counts: " + ua.slice(0, 60));
+  }
+});

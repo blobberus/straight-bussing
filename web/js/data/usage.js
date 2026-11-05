@@ -24,7 +24,8 @@
  *        Settings can replace it with a new one at any time.
  *   sid  a random number for this visit.
  * Never sent: coordinates, IP address (the receiver cannot see it), user agent, screen, referrer, searches, taps.
- * Never sent at all: demo mode, automated browsers, pages not served over https, the experimental test site
+ * Never sent at all: demo mode, automated browsers, search-engine and link-preview crawlers and page-speed tools (their
+ * user agent, read on the device and never sent: BOT_UA), pages not served over https, the experimental test site
  * (/straight-bussing-experimental/; the live site /straight-bussing/ counts as before). The iPhone app has no part in this
  * (its App Privacy label stays Data Not Collected).
  * A visit ends after 30 min in the background (NEW_SESSION_S): coming back later is a new visit. A page that loads in
@@ -218,7 +219,14 @@ async function defaultSend(url, body, o = {}) {
   }
 }
 
-/** May this page send at all (receiver set, real site, not demo, not an automated browser)? */
+/**
+ * Crawlers and page tools that run the page's JavaScript (a search engine indexing the site, a link preview, a speed
+ * test) would each count as a new visitor; navigator.webdriver does not flag them (2026-11-05 QA: it is false even in
+ * headless Edge driven over CDP). Named products only: a bare "bot" would also match phones such as the Cubot.
+ */
+export const BOT_UA = /Googlebot|Google-InspectionTool|AdsBot|Mediapartners-Google|bingbot|BingPreview|DuckDuckBot|Baiduspider|YandexBot|Applebot|Slurp|AhrefsBot|SemrushBot|MJ12bot|PetalBot|facebookexternalhit|Twitterbot|Slackbot|Discordbot|LinkedInBot|TelegramBot|WhatsApp|Lighthouse|PageSpeed|GTmetrix|HeadlessChrome|crawler|spider/i;
+
+/** May this page send at all (receiver set, real site, not demo, not an automated browser or a crawler)? */
 function allowedHere() {
   if (!cfg.url) return false;
   if (cfg.force) return true;
@@ -226,6 +234,7 @@ function allowedHere() {
   try {
     const nav = cfg.nav || navigator, loc = cfg.loc || location;   // tests may stand in for both (_configureUsage)
     if (nav.webdriver) return false;
+    if (BOT_UA.test(String(nav.userAgent || ""))) return false;
     if (loc.protocol !== "https:") return false;
     // the experimental test site (blobberus.github.io/straight-bussing-experimental/) never counts: its visits would mix
     // into the live app's statistics in the owner's Sheet (owner 2026-11-03 enabled the test site)
