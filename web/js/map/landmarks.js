@@ -19,7 +19,7 @@ import { esc } from '../core/esc.js';
 /** First map zoom of each tier. */
 export const LANDMARK_Z = Object.freeze({ 1: 14.5, 2: 16, 3: 17 });
 /** Box padding (px) around a label and a stop circle's radius as an obstacle. */
-export const LABEL = Object.freeze({ PAD: 2, STOP_R: 6.5, MAX_EM: 8.5, LINE: 1.12, GAPS: [4, 14], STOP_OK: { 1: 0, 2: 0, 3: 0 }, TEXT_OK: { 1: true } });   // a stop circle never cuts a name; only tier 1 may sit on street text
+export const LABEL = Object.freeze({ PAD: 2, STOP_R: 6.5, ME_R: 11, MAX_EM: 8.5, LINE: 1.12, GAPS: [4, 14], STOP_OK: { 1: 0, 2: 0, 3: 0 }, TEXT_OK: { 1: true } });   // a stop circle never cuts a name; only tier 1 may sit on street text
 const SIDES = ['below', 'above', 'right', 'left', 'below-right', 'below-left', 'above-right', 'above-left'];
 
 /**
@@ -128,13 +128,13 @@ function measurer(font) {
     return (s) => ctx2d.measureText(s).width;
   } catch (e) { const px = parseFloat(/(\d+(\.\d+)?)px/.exec(font)?.[1] || '12'); return (s) => s.length * px * 0.58; }
 }
-const FONT = (px) => `700 ${px}px -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif`;
+const FONT = (px) => `600 ${px}px -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif`;   // mapLandmark Semibold (spec 11.5), measured as drawn
 
 /**
  * The label layer.
  * @param {L.Map} map
- * @param {{pane?:string, textAt?:(box:{x, y, w, h})=>boolean}} [o] textAt: basemap text in a box of the map's
- *   container (the vector basemap answers it from its own placed labels)
+ * @param {{pane?:string, textAt?:(box:{x, y, w, h})=>boolean, avoid?:()=>(L.LatLng|null)}} [o] textAt: basemap text in a box
+ *   of the map's container (the vector basemap answers it from its own placed labels); avoid: the location dot, kept free
  * @returns {{setData(list:Array<object>):void, setStops(points:Array<[number, number]>):void, refresh():void, count():number}}
  */
 export function createLandmarkLayer(map, o = {}) {
@@ -157,6 +157,9 @@ export function createLandmarkLayer(map, o = {}) {
     });
     const R = LABEL.STOP_R, obstacles = [];
     if (z >= 14) for (const s of stops) { const p = map.latLngToContainerPoint(s); if (p.x > -R && p.y > -R && p.x < size.x + R && p.y < size.y + R) obstacles.push({ x: p.x - R, y: p.y - R, w: 2 * R, h: 2 * R }); }
+    // the location dot (spec 11.5: you rank above every name): a name never covers it
+    const me = typeof o.avoid === 'function' ? o.avoid() : null;
+    if (me) { const p = map.latLngToContainerPoint(me), r = LABEL.ME_R; obstacles.push({ x: p.x - r, y: p.y - r, w: 2 * r, h: 2 * r }); }
     const placed = placeLabels(cands, obstacles, { w: size.x, h: size.y }, typeof o.textAt === 'function' ? o.textAt : null);
     const s = placed.map((q) => `${q.id}:${Math.round(q.box.x)},${Math.round(q.box.y)}`).join(';') + '|' + z;
     if (s === sig) return;

@@ -113,37 +113,59 @@ export function busHeading(feedBearing, prev, cur, last, distFn) {
   return Number.isFinite(last) ? last : NaN;
 }
 
-/** The route line weight before 2026-11-04 (4 px at z13, 5 at z15, 6 at z17): focused lines and the tap reach keep it. */
-const fullWeight = (z) => Math.max(3.5, Math.min(6.5, 4 + (z - 13) * 0.5));
-
 /**
- * Route line weight in px for a zoom level. Street level (z17 and closer) keeps 6 to 6.5 px; zoomed out the lines are
- * 30% thinner (owner 2026-11-04: "Make the bus lines slightly thinner from the zoomed out view to not overclutter the
- * map"): 3.5 px at the campus view (z15, was 5), 2.8 at z13 (was 4), 15% thinner at z16. A focused route (route page,
- * highlights, station filter) keeps the full weight, so it reads above the thinner rest and its chevrons fit on it.
- * @param {number} z
- * @param {boolean} [focused]
- * @returns {number}
+ * Route line width by map zoom: z13 2, z14 2.25, z15 3, z16 4, z17 5, z18 6 (owner 2026-11-04: "Remove the outlines for the
+ * lines but make the lines themselves thinner": about a third thinner zoomed out, a quarter up close; DESIGN-SPEC 11.3
+ * had 3, 3.5, 4.5, 5.5, 6.5, 8).
  */
-export function lineWeight(z, focused = false) {
-  const full = fullWeight(z);
-  if (focused) return full;
-  const k = Math.max(0.7, Math.min(1, 0.7 + (z - 15) * 0.15));
-  return Math.round(full * k * 100) / 100;
+export const LINE_WIDTHS = Object.freeze([[13, 2], [14, 2.25], [15, 3], [16, 4], [17, 5], [18, 6]]);
+/** The widths before 2026-11-04 (spec 11.3): the line tap still measures from them, so a thinner line is as easy to tap. */
+const TAP_WIDTHS = Object.freeze([[13, 3], [14, 3.5], [15, 4.5], [16, 5.5], [17, 6.5], [18, 8]]);
+
+/** A width table at a zoom, linear between the stops, clamped at both ends. */
+function widthAt(t, z) {
+  const n = Number.isFinite(z) ? z : 15;
+  if (n <= t[0][0]) return t[0][1];
+  for (let i = 1; i < t.length; i++) {
+    if (n <= t[i][0]) { const [z0, w0] = t[i - 1], [z1, w1] = t[i]; return Math.round((w0 + ((n - z0) / (z1 - z0)) * (w1 - w0)) * 100) / 100; }
+  }
+  return t[t.length - 1][1];
 }
 
 /**
- * Width (px) a tap on a route line is measured from (lineAt: LINE_TAP_PX beyond half of it): the full weight plus the
- * 3 px white edge the lines had before 2026-11-04, so the thinner, edgeless lines keep the same finger-sized reach.
+ * Route line weight in px for a zoom level (LINE_WIDTHS). A focused line adds FOCUS_EXTRA. No casing (owner 2026-11-04).
+ * @param {number} z
+ * @returns {number}
+ */
+export function lineWeight(z) {
+  return widthAt(LINE_WIDTHS, z);
+}
+/** Focused lines are this much wider (spec 11.3): 5 against 3 at z15, plus full opacity while the rest dim to 0.2. */
+export const FOCUS_EXTRA = 2;
+
+/**
+ * Width (px) a tap on a route line is measured from (lineAt: LINE_TAP_PX beyond half of it): the widest line as drawn
+ * before 2026-11-04 (a focused one with its 3 px casing), so the thinner, edgeless lines keep the same finger-sized reach.
  * @param {number} z
  * @returns {number}
  */
 export function lineTapWidth(z) {
-  return fullWeight(z) + 3;
+  return widthAt(TAP_WIDTHS, z) + 3 + FOCUS_EXTRA;
 }
 
 /**
- * Short badge label for a route: GTFS short name, else initials of the long name (max 3 chars).
+ * Stop circle size by zoom (spec 11.4): hidden below z14, radius 4 / stroke 2 at z14 to 15, radius 5 / stroke 2.5 from z16.
+ * @param {number} z
+ * @returns {{radius:number, weight:number}}
+ */
+export function stopStyle(z) {
+  return z >= 16 ? { radius: 5, weight: 2.5 } : { radius: 4, weight: 2 };
+}
+
+/**
+ * The text on a bus marker (docs/DESIGN-SPEC.md 11.4): the same as the route badge in the sheet and on the iPhone app
+ * (Route.chipText): the published short name, never truncated ("AP/DX", was cut to "AP/D"), else the first letter of the
+ * long name ("N" for North).
  * @param {string} rid
  * @param {object} routes
  * @returns {string}
@@ -151,16 +173,15 @@ export function lineTapWidth(z) {
 export function routeLabel(rid, routes) {
   const r = routes?.[rid] || {};
   const s = String(r.short || '').trim();
-  if (s) return s.slice(0, 4);
-  const words = String(r.long || '').split(/[\s/&-]+/).filter(Boolean);
-  if (!words.length) return '?';
-  return (words.length === 1 ? words[0][0] : words.map((w) => w[0]).join('')).toUpperCase().slice(0, 3);
+  if (s) return s;
+  const l = String(r.long || '').trim();
+  return l ? l.charAt(0).toUpperCase() : '?';
 }
 
 /**
- * Network layer: route lines in two panes (unfocused, focused above), the colored line only (no outline, owner
- * 2026-11-04: "Remove the outlines on each line"), in stack order so a higher-priority route covers lower ones where
- * they overlap; stops in their own group shown at zoom >= 14; chevrons along 1-3 focused routes.
+ * Network layer: route lines in two panes (unfocused, focused above), the colored line only (no outline, 2026-11-04),
+ * right under its own lines in stack order so a higher-priority route covers lower ones where they
+ * overlap; stops in their own group shown at zoom >= 14; chevrons along 1-3 focused routes.
  * @param {L.Map} map
  * @param {{onStopTap:(id:string)=>void}} cb
  * lineAt(containerPoint) names the route line under a tap: the topmost one drawn (map/geometry.js lineAt).
@@ -171,7 +192,7 @@ export function createNetworkLayer(map, cb) {
   const lines = L.layerGroup().addTo(map);
   const stopsG = L.layerGroup();
   const chev = createChevronLayer(map);
-  let last = '', polys = [], stopPts = [], hits = [];   // hits: drawn route lines, bottom to top: {rid, ll, bounds}
+  let last = '', polys = [], stopPts = [], hits = [], stopMks = [];   // hits: drawn route lines, bottom to top: {rid, ll, bounds}
   const showStops = () => {
     const on = map.getZoom() >= 14;
     if (on && !map.hasLayer(stopsG)) stopsG.addTo(map);
@@ -182,20 +203,22 @@ export function createNetworkLayer(map, cb) {
     const s = networkSig(o, dimAll);
     if (s === last) return false;
     last = s;
-    lines.clearLayers(); stopsG.clearLayers(); polys = []; stopPts = []; hits = [];
+    lines.clearLayers(); stopsG.clearLayers(); polys = []; stopPts = []; hits = []; stopMks = [];
     const routes = o.routes || {}, shapes = o.shapes || {}, hidden = new Set((o.hidden || []).map(String));
     const focus = focusSet(o.focus);
-    const z = map.getZoom();
+    const w = lineWeight(map.getZoom());
     const { back, front: fronts } = stackOrder(Object.keys(shapes), o);
     for (const rid of [...back, ...fronts]) {
-      const front = !!focus?.has(rid), dim = dimAll || (focus && !front);
+      // network state: every line at 0.9; focused state: focused lines 2 px wider at full opacity, the others at 0.2
+      // (spec 11.3); no outlines (owner 2026-11-04)
+      const front = !!focus?.has(rid), dim = dimAll || (focus && !front), bonus = front && !dimAll ? FOCUS_EXTRA : 0;
       const color = safeColor(routes[rid]?.color), pane = front ? 'sbFocusLines' : 'sbLines';
       const segs = (shapes[rid] || []).filter((pts) => pts && pts.length >= 2);
       for (const pts of segs) {
-        const line = L.polyline(pts, { pane, className: 'sb-route', color, weight: lineWeight(z, front),
-          opacity: dim ? 0.25 : 0.92, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(lines);
-        polys.push({ line, front });
-        hits.push({ rid, ll: pts, bounds: L.latLngBounds(pts) });
+        const line = L.polyline(pts, { pane, className: 'sb-route', color, weight: w + bonus,
+          opacity: dim ? 0.2 : front ? 1 : 0.9, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(lines);
+        polys.push({ line, bonus });
+        hits.push({ rid, ll: pts, bounds: L.latLngBounds(pts), bonus });
       }
     }
     const chevRoutes = !dimAll && fronts.length && fronts.length <= 3 ? fronts : [];
@@ -208,8 +231,9 @@ export function createNetworkLayer(map, cb) {
       const single = new Set(rs).size === 1;
       const ll = [st.lat, st.lon];
       stopPts.push(ll);
-      L.circleMarker(ll, { pane: 'sbStops', radius: 5, weight: 2.5, color: single ? safeColor(routes[rs[0]]?.color) : '#5c5c63',
-        className: single ? 'sb-stop' : 'sb-stop sb-stop-multi', opacity: dimAll ? 0.4 : 1, fillOpacity: dimAll ? 0.4 : 1, interactive: false }).addTo(stopsG);
+      // a circle in the card color with a route-color stroke; a stop of several routes gets the neutral label2 stroke
+      stopMks.push(L.circleMarker(ll, { pane: 'sbStops', ...stopStyle(map.getZoom()), color: single ? safeColor(routes[rs[0]]?.color) : '#5c5c63',
+        className: single ? 'sb-stop' : 'sb-stop sb-stop-multi', opacity: dimAll ? 0.4 : 1, fillOpacity: dimAll ? 0.4 : 1, interactive: false }).addTo(stopsG));
       L.circleMarker(ll, { pane: 'sbStops', radius: 22, stroke: false, fillOpacity: 0, className: 'sb-halo', bubblingMouseEvents: false })
         .on('click', () => cb.onStopTap(id)).addTo(stopsG);
     }
@@ -218,8 +242,9 @@ export function createNetworkLayer(map, cb) {
   }
 
   function restyle() {
-    const z = map.getZoom();
-    for (const p of polys) p.line.setStyle({ weight: lineWeight(z, p.front) });
+    const z = map.getZoom(), w = lineWeight(z), ss = stopStyle(z);
+    for (const p of polys) p.line.setStyle({ weight: w + p.bonus });
+    for (const m of stopMks) if (m.options.radius !== ss.radius) m.setStyle(ss).setRadius(ss.radius);
     showStops();
     chev.redraw();
   }
@@ -242,6 +267,11 @@ export function createNetworkLayer(map, cb) {
 
 const STALE_S = 60;
 
+/**
+ * A bus marker (spec 11.4): a 26 pt rounded rectangle in the route color with a 2 pt ring, the short name in mapBadge (10 pt
+ * over five characters), the bus number inside it after a thin divider when the line has 2 or more buses, and the heading
+ * notch in the route color on the ring.
+ */
 function busIcon(color, label, num = 0) {
   const root = document.createElement('div');
   root.className = 'sb-bus';
@@ -249,25 +279,31 @@ function busIcon(color, label, num = 0) {
   root.style.setProperty('--t', textOn(color));
   const hd = document.createElement('span'); hd.className = 'sb-bus-hd'; hd.setAttribute('aria-hidden', 'true');
   const tx = document.createElement('span'); tx.className = 'sb-bus-tx'; tx.textContent = label;
-  if (label.length > 3) tx.classList.add('sb-bus-tx-sm');
+  if (label.length > 5) tx.classList.add('sb-bus-tx-sm');
   root.append(hd, tx);
   setNum(root, num);
-  return window.L.divIcon({ className: 'sb-busicon', html: root, iconSize: [28, 28], iconAnchor: [14, 14] });
+  return window.L.divIcon({ className: 'sb-busicon', html: root, iconSize: [32, 26], iconAnchor: [16, 13] });
 }
 
-/** The bus number badge (core/busnum.js: routes with 2 or more buses) on a bus marker; 0 removes it. */
+/** The bus number (core/busnum.js: routes with 2 or more buses) inside the marker after a divider; 0 removes it. */
 function setNum(root, num) {
   let b = root.querySelector('.sb-bus-num');
-  if (!num) { b?.remove(); return; }
-  if (!b) { b = document.createElement('span'); b.className = 'sb-bus-num'; b.setAttribute('aria-hidden', 'true'); root.append(b); }
+  if (!num) { if (b) { b.remove(); root.dataset.w = ''; } return; }
+  if (!b) { b = document.createElement('span'); b.className = 'sb-bus-num'; b.setAttribute('aria-hidden', 'true'); root.append(b); root.dataset.w = ''; }
   if (b.textContent !== String(num)) b.textContent = String(num);
 }
 
-/** Restart the one-shot pulse ring (CSS animation) on a fresh position. */
-function pulse(el) {
-  el.classList.remove('sb-pulse');
-  void el.offsetWidth; // reflow so the animation restarts
-  el.classList.add('sb-pulse');
+/**
+ * Where the heading notch sits from the marker's center (px): half the height pointing north or south, growing toward
+ * half the width pointing east or west, so the notch never hides under a wide marker ("AP/DX | 2"; iOS does the same).
+ * @param {number} w marker width
+ * @param {number} h marker height
+ * @param {number} deg heading
+ * @returns {number}
+ */
+export function notchRadius(w, h, deg) {
+  const a = (Number(deg) || 0) * Math.PI / 180;
+  return Math.round((h / 2 + Math.max(0, w / 2 - h / 2) * Math.abs(Math.sin(a))) * 10) / 10;
 }
 
 /** A normal poll's glide (ms): about one poll interval, at constant speed, so the badge keeps moving. */
@@ -307,9 +343,8 @@ const easeInOut = (k) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
  * moved position, dimmed when stale (> 60 s). Heading = feed bearing, else derived from movement (busHeading);
  * focused routes get a larger arrow. Hidden routes' buses are never shown (unless that route is in focus). A bus on a
  * faded route is faded too (owner 2026-11-04; core/visibility.js busFaded: other routes in focus, or a drawn plan
- * that does not ride it; o.plan = the plan's route ids): smaller, see-through, under the other buses, no pulse, and
- * it takes no tap (a tap there reaches the map, the stops and the lines in focus). Stale keeps its gray edge. The bus
- * you ride is never faded.
+ * that does not ride it; o.plan = the plan's route ids): smaller, see-through, under the other buses, and it takes no
+ * tap (a tap there reaches the map, the stops and the lines in focus). The bus you ride is never faded.
  * Movement (2026-10-18, owner: smooth, never off the roads and the route lines): a report near its route's line is
  * drawn on the line and each move is animated along it (map/track.js follow; o.shapes), at constant speed over one
  * poll, or eased in about 1 to 2.5 s when it catches up after a reload or a gap in the feed; the heading turns with
@@ -334,14 +369,17 @@ export function createBusLayer(map, cb, opt = {}) {
   map.on('zoomstart', () => { zooming = true; });
   map.on('zoomend', () => { zooming = false; kick(); });
 
-  /** Rotate the heading triangle the short way round (unwrapDeg: never a spin across north). */
+  /** Rotate the heading notch the short way round (unwrapDeg: never a spin across north), at its distance for the angle. */
   function turn(m, deg) {
     if (!Number.isFinite(deg)) return;
     const rot = unwrapDeg(m.rot, deg);
     if (Number.isFinite(m.rot) && Math.abs(rot - m.rot) < 2) return;
     m.rot = rot;
-    const hd = m.mk.getElement()?.querySelector('.sb-bus-hd');
-    if (hd) hd.style.transform = `rotate(${rot}deg)`;
+    const el = m.mk.getElement()?.firstElementChild, hd = el?.querySelector('.sb-bus-hd');
+    if (!hd) return;
+    if (!el.dataset.w) el.dataset.w = String(el.offsetWidth || 32);   // measured once per label / number change
+    hd.style.transform = `rotate(${rot}deg)`;
+    hd.style.setProperty('--sb-hr', notchRadius(+el.dataset.w, 26, rot) + 'px');
   }
 
   /** Fraction (0..1, eased) of a move done at time t. */
@@ -507,14 +545,13 @@ export function createBusLayer(map, cb, opt = {}) {
       m.ll = [lat, lon]; m.s = s; m.brg = brg; m.seen = now;
       if (Number.isFinite(vt)) m.vt = vt;
       const el = m.mk.getElement()?.firstElementChild;
-      if (m.num !== num || m.name !== name) { m.num = num; m.name = name; if (el) setNum(el, num); nameMarker(m); }
+      if (m.num !== num || m.name !== name) { m.num = num; m.name = name; if (el) { setNum(el, num); const r = m.rot; m.rot = NaN; turn(m, r); } nameMarker(m); }
       if (m.sel !== picked || m.faded !== faded) { m.sel = picked; m.faded = faded; dress(m); }
       if (el) {
         el.classList.toggle('is-picked', picked);
         el.classList.toggle('is-stale', stale);
         el.classList.toggle('no-hd', !Number.isFinite(m.rot));
         el.classList.toggle('is-focus', focused);
-        if (moved && !stale && !(faded && key !== youId)) pulse(el);
       }
     }
     for (const [key, m] of markers) {

@@ -1,17 +1,23 @@
 /* map.css: map overlays (route lines, stops, favorites, selection, buses, user dot, trip plan, map credit).
    Owned by map/ (agent C). Theme: map.js toggles .sb-dark on the map element (.sb-map); every overlay
-   color below comes from these variables so a theme switch never needs a redraw. --sb-accent is the UI accent
-   token (tokens.css: --accent-fill on light, --accent on dark; a separate system blue until the 2026-10-10 design audit). */
+   color below comes from these variables so a theme switch never needs a redraw. --sb-accent is tintFill (the user dot,
+   the walking path, callouts: the same blue in both themes, DESIGN-SPEC 11.4), --sb-tint the accent as a ring or outline
+   (selection, the picked bus). Every color reads its css/tokens.css token (spec 14: no literal colors outside the token
+   files); the literals after the commas are only fallbacks for the map test pages that load map.css alone. */
 .sb-map{
-  --sb-land:#eeefeb;--sb-stop-fill:#fff;--sb-stop-multi:#5c5c63;
-  --sb-accent:var(--accent-fill,#0071e3);--sb-live:#1e9e4a;--sb-danger:#d63a2e;--sb-text:#111114;--sb-text2:#5c5c63;
-  --sb-chrome:rgba(255,255,255,.82);--sb-chrome-solid:#fff;--sb-ring:rgba(0,0,0,.22);--sb-shadow:0 1px 4px rgba(0,0,0,.28);
+  --sb-land:var(--map-land,#f5f3ee);
+  --sb-stop-fill:var(--bg-card,#fcfcfd);--sb-stop-multi:var(--label-2,#5c5c63);
+  --sb-accent:var(--tint-fill,#0071e3);--sb-tint:var(--tint,#0060cc);--sb-live:var(--live-mark,#1e9e4a);--sb-danger:var(--danger-fill,#c4291c);--sb-text:var(--label,#111114);--sb-text2:var(--label-2,#5c5c63);
+  --sb-chrome-solid:var(--bg-chrome-solid,#fcfcfd);--sb-ring:rgba(0,0,0,.22);--sb-bus-ring:var(--map-ring,#fff);--sb-white:var(--on-fill,#fff);--sb-shadow:var(--e-marker,0 1px 3px rgba(30,32,45,.3));
+  --sb-hairline:var(--separator,rgba(60,60,67,.29));
   background:var(--sb-land);
 }
 .sb-map.sb-dark{
-  --sb-land:#18181b;--sb-stop-fill:#f5f5f7;--sb-stop-multi:#a1a1a8;
-  --sb-accent:var(--accent,#409cff);--sb-live:#32d74b;--sb-danger:#ff6961;--sb-text:#f5f5f7;--sb-text2:#a1a1a8;
-  --sb-chrome:rgba(28,28,30,.78);--sb-chrome-solid:#1c1c1e;--sb-ring:rgba(0,0,0,.6);--sb-shadow:0 1px 4px rgba(0,0,0,.6);
+  --sb-land:var(--map-land,#202124);
+  --sb-stop-fill:var(--bg-card,#2c2c2e);--sb-stop-multi:var(--label-2,#aeaeb2);
+  --sb-accent:var(--tint-fill,#0071e3);--sb-tint:var(--tint,#64b0ff);--sb-live:var(--live-mark,#32d74b);--sb-danger:var(--danger-fill,#c4291c);--sb-text:var(--label,#f5f5f7);--sb-text2:var(--label-2,#aeaeb2);
+  --sb-chrome-solid:var(--bg-chrome-solid,#2c2c2e);--sb-ring:rgba(0,0,0,.6);--sb-bus-ring:var(--map-ring,#202124);--sb-shadow:var(--e-marker,0 1px 4px rgba(0,0,0,.6));
+  --sb-hairline:var(--separator,rgba(84,84,88,.65));
 }
 .sb-map .maplibregl-canvas{outline:none}
 
@@ -35,7 +41,8 @@
 /* phone landscape (left panel, must match ui/sheet.js PANEL_MEDIA): right of the panel, at the map bottom */
 @media (min-width:768px) and (max-height:559px){.sb-credits{left:calc(var(--panel-w,380px) + 20px);bottom:6px}}
 
-/* route network (CSS beats Leaflet's stroke/fill attributes); route and plan lines have no outline (owner 2026-11-04) */
+/* route network (CSS beats Leaflet's stroke/fill attributes); route, plan and walk lines have no outline (owner
+   2026-11-04: "Remove the outlines on each line"; the spec 11.3 casing and its contrast switch are gone) */
 .sb-stop{fill:var(--sb-stop-fill)}
 .sb-stop-multi{stroke:var(--sb-stop-multi)}
 .sb-halo{fill:transparent;cursor:pointer}
@@ -43,66 +50,69 @@
 .sb-chev{fill:none;pointer-events:none}
 
 /* selected stop + picker highlights + accuracy */
-.sb-sel{stroke:var(--sb-accent);fill:var(--sb-stop-fill)}
-.sb-hl{stroke:var(--sb-accent);fill:var(--sb-accent);fill-opacity:.22}
-.sb-acc{stroke:var(--sb-accent);stroke-opacity:.35;fill:var(--sb-accent);fill-opacity:.12}
+/* the open stop (spec 11.4): 16 pt with a 3 pt tint ring and its name in mapCallout above it */
+.sb-sel{stroke:var(--sb-tint);fill:var(--sb-stop-fill)}
+.sb-hl{stroke:var(--sb-tint);fill:var(--sb-tint);fill-opacity:.2}
+.sb-acc{stroke:var(--sb-accent);stroke-opacity:.25;fill:var(--sb-accent);fill-opacity:.1}
 .sb-map .leaflet-tooltip.sb-sel-label{
-  padding:3px 8px;border:0;border-radius:8px;background:var(--sb-chrome-solid);color:var(--sb-text);
-  font:600 13px/18px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;box-shadow:var(--sb-shadow);white-space:nowrap}
+  padding:4px 10px;border:0;border-radius:12px;background:var(--sb-chrome-solid);color:var(--sb-text);
+  font:var(--t-map-callout,600 13px/16px sans-serif);box-shadow:var(--e-1,0 4px 14px rgba(30,32,45,.12));white-space:nowrap}
 .sb-map .leaflet-tooltip.sb-sel-label::before{display:none}
-.sb-map.sb-dark .leaflet-tooltip.sb-sel-label{box-shadow:0 0 0 1px rgba(255,255,255,.14),var(--sb-shadow)}
+.sb-map.sb-dark .leaflet-tooltip.sb-sel-label{box-shadow:0 0 0 1px var(--sb-hairline),var(--sb-shadow)}
 
-/* favorite stations (map/favorites.js): gold disc, dark star, white casing; static (never pulses).
+/* favorite stations (map/favorites.js): yellow disc, dark star, ring in the bus-ring color; static (never pulses).
    44 px hit area (28 px below z14, where the badge shrinks); the outer 44 px box ignores pointers.
    A selected favorite gets a wider unfilled accent ring (.sb-sel-fav) around the badge. */
-.sb-map{--sb-fav:#ffb400;--sb-fav-ink:#3a2400;--sb-accent-solid:#0071e3}
-.sb-map.sb-dark{--sb-fav:#ffc53d;--sb-fav-ink:#2b1a00;--sb-accent-solid:#0a63c9}
+/* yellow (owner 2026-11-05, was a #A35400 brown disc): #FFCC00 light / #FFD60A dark with a #1C1C1E star (11:1); on the light
+   land a 1 px dark edge outside the white ring keeps the badge 4.3:1 against the map (the yellow alone is 1.4:1); on dark the
+   edge is the dark ring itself (the yellow is 11:1 on the land) */
+.sb-map{--sb-fav:var(--fav-mark,#ffcc00);--sb-fav-ink:var(--fav-ink,#1c1c1e);--sb-fav-edge:var(--fav-edge,rgba(28,28,30,.6))}
+.sb-map.sb-dark{--sb-fav:var(--fav-mark,#ffd60a);--sb-fav-edge:var(--sb-bus-ring)}
 .sb-map .leaflet-marker-icon.sb-favicon{pointer-events:none;outline:none}
 .sb-fav-wrap{position:absolute;inset:0;display:grid;place-items:center}
 .sb-fav-hit{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;pointer-events:auto;cursor:pointer}
-.sb-fav{position:relative;box-sizing:border-box;width:22px;height:22px;border-radius:50%;border:2px solid #fff;background:var(--sb-fav);
-  display:grid;place-items:center;box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow);pointer-events:none}
-.sb-fav-star{display:block;width:14px;height:14px;fill:var(--sb-fav-ink)}
+.sb-fav{position:relative;box-sizing:border-box;width:20px;height:20px;border-radius:50%;border:2px solid var(--sb-bus-ring);background:var(--sb-fav);
+  display:grid;place-items:center;box-shadow:0 0 0 1px var(--sb-fav-edge),var(--e-marker,0 1px 3px rgba(30,32,45,.3));pointer-events:none}
+.sb-fav-star{display:block;width:12px;height:12px;fill:var(--sb-fav-ink)}
 .sb-fav-sm .sb-fav{width:16px;height:16px;border-width:1.5px}
 .sb-fav-sm .sb-fav-star{width:10px;height:10px}
 .sb-fav-sm .sb-fav-hit{width:28px;height:28px;margin:-14px 0 0 -14px}
 .sb-fav-pane.is-dim{opacity:.5}
-.sb-fav-name{position:absolute;left:50%;bottom:calc(50% + 14px);transform:translateX(-50%);display:none;padding:2px 7px;border-radius:7px;
-  background:var(--sb-chrome-solid);color:var(--sb-text);box-shadow:var(--sb-shadow);white-space:nowrap;pointer-events:none;
-  font:600 12px/16px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif}
-.sb-map.sb-dark .sb-fav-name{box-shadow:0 0 0 1px rgba(255,255,255,.14),var(--sb-shadow)}
+.sb-fav-name{position:absolute;left:50%;bottom:calc(50% + 14px);transform:translateX(-50%);display:none;padding:2px 8px;border-radius:9px;
+  background:var(--sb-chrome-solid);color:var(--sb-text);box-shadow:var(--e-marker,0 1px 3px rgba(30,32,45,.3));white-space:nowrap;pointer-events:none;
+  font:var(--t-map-callout,600 13px/16px sans-serif)}
+.sb-map.sb-dark .sb-fav-name{box-shadow:0 0 0 1px var(--sb-hairline),var(--sb-shadow)}
 @media (hover:hover){.sb-favicon:hover .sb-fav-name{display:block}}
 .sb-favicon:focus-visible .sb-fav-name{display:block}
 .sb-favicon.is-sel .sb-fav-name{display:none}
-.sb-map .leaflet-marker-icon.sb-favicon:focus-visible .sb-fav{outline:2px solid var(--sb-accent);outline-offset:3px}
+.sb-map .leaflet-marker-icon.sb-favicon:focus-visible .sb-fav{outline:2px solid var(--sb-tint);outline-offset:3px}
 .sb-sel.sb-sel-fav{fill:none}
 
-/* building and place names (map/landmarks.js, owner 2026-10-13): text only, above the route lines, a halo in the
-   map background color so a line under a letter never cuts it; never interactive */
-.sb-map{--sb-lm:#2c4a66;--sb-lm-halo:#ffffff;--sb-lm-plate:rgba(255,255,255,.5)}
-.sb-map.sb-dark{--sb-lm:#bcd0e2;--sb-lm-halo:#18181b;--sb-lm-plate:rgba(24,24,27,.5)}
+/* building and place names (map/landmarks.js, owner 2026-10-13; DESIGN-SPEC 11.5): above the route lines (owner rule) but
+   lighter than them: mapLandmark Semibold (was Bold navy) in a quiet slate, #565C66 / #B4B9C2 (6.0:1 and 8.9:1 on the
+   land), a 1.5 px halo in the land color in four directions (was ten shadows and a plate); never interactive */
+.sb-map{--sb-lm:var(--map-landmark,#565c66);--sb-lm-halo:var(--sb-land)}
 .sb-lmicon{pointer-events:none}
 .sb-lm{position:absolute;left:0;top:0;display:block;white-space:nowrap;text-align:center;line-height:1.12;
-  font-weight:700;font-family:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;color:var(--sb-lm);
-  letter-spacing:.005em;pointer-events:none;border-radius:5px;background:var(--sb-lm-plate);   /* softens basemap text in the rare spot with no clear room */
-  text-shadow:0 0 2px var(--sb-lm-halo),0 0 2px var(--sb-lm-halo),1px 1px 0 var(--sb-lm-halo),-1px -1px 0 var(--sb-lm-halo),
-    1px -1px 0 var(--sb-lm-halo),-1px 1px 0 var(--sb-lm-halo),0 1.5px 0 var(--sb-lm-halo),0 -1.5px 0 var(--sb-lm-halo),
-    1.5px 0 0 var(--sb-lm-halo),-1.5px 0 0 var(--sb-lm-halo)}
+  font-weight:600;font-family:var(--font,system-ui,sans-serif);color:var(--sb-lm);letter-spacing:0;pointer-events:none;
+  text-shadow:1.5px 0 0 var(--sb-lm-halo),-1.5px 0 0 var(--sb-lm-halo),0 1.5px 0 var(--sb-lm-halo),0 -1.5px 0 var(--sb-lm-halo),
+    1px 1px 0 var(--sb-lm-halo),-1px -1px 0 var(--sb-lm-halo),1px -1px 0 var(--sb-lm-halo),-1px 1px 0 var(--sb-lm-halo)}
 .sb-map.sb-zooming .sb-lm{visibility:hidden}   /* re-placed at zoomend; a zoom never shows them overlapping */
 
-/* user location */
-.sb-me{position:relative;box-sizing:border-box;width:20px;height:20px;border-radius:50%;background:var(--sb-accent);border:3px solid #fff;
-  box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow)}
+/* user location (spec 11.4): an 18 pt dot in tintFill with a 3 pt white ring and a soft shadow; the accuracy circle in
+   tintFill at 10% with a 1 pt 25% edge */
+.sb-me{position:relative;box-sizing:border-box;width:18px;height:18px;border-radius:50%;background:var(--sb-accent);border:3px solid var(--sb-white);
+  box-shadow:var(--e-marker,0 1px 3px rgba(30,32,45,.3))}
 /* heading cone (map.js setHeading, ui/compass.js; owner 2026-10-14): where the phone faces, an accent wedge behind the
    dot fading outward, --sb-spread wide (wider = the compass is less sure), turned by --sb-head. Hidden with the dot
    (on the bus the whole icon steps back, below). */
 .sb-mecone{position:absolute;left:50%;top:50%;width:92px;height:92px;margin:-46px 0 0 -46px;display:none;pointer-events:none;
   background:conic-gradient(from calc(var(--sb-spread,60deg) / -2),var(--sb-accent) 0 var(--sb-spread,60deg),transparent 0);
-  -webkit-mask:radial-gradient(closest-side,#000 18%,rgba(0,0,0,.5) 58%,transparent 100%);
-  mask:radial-gradient(closest-side,#000 18%,rgba(0,0,0,.5) 58%,transparent 100%);
-  opacity:.55;transform:rotate(var(--sb-head,0deg));transition:transform .15s linear}
+  -webkit-mask:radial-gradient(closest-side,#000 12%,transparent 100%);
+  mask:radial-gradient(closest-side,#000 12%,transparent 100%);
+  opacity:.35;transform:rotate(var(--sb-head,0deg));transition:transform .15s linear}   /* tintFill 35% fading to 0 (spec 11.4) */
 .sb-me-head .sb-mecone{display:block}
-.sb-dark .sb-mecone{opacity:.7}
+.sb-dark .sb-mecone{opacity:.45}
 @media (prefers-reduced-motion:reduce){.sb-mecone{transition:none}}
 
 /* you on a started trip (map.js setTrip, 2026-10-13): on the bus = an accent ring + "You" pill on its marker (the
@@ -110,73 +120,71 @@
    Labels on your stops: "Board here" / the get-off count, the same words as the Current trip card; under the stop
    (the destination pin and the You pill sit above their points). */
 .sb-map.sb-you-onbus .sb-meicon,.sb-map.sb-you-onbus .sb-acc{display:none}
-.sb-you-ring{position:absolute;inset:-7px;border-radius:14px;border:3px solid var(--sb-accent);box-shadow:0 0 0 2px #fff,var(--sb-shadow);
+.sb-you-ring{position:absolute;inset:-7px;border-radius:13px;border:3px solid var(--sb-accent);box-shadow:0 0 0 2px var(--sb-white),var(--e-marker,0 1px 3px rgba(30,32,45,.3));
   pointer-events:none}
-.sb-you-pill{position:absolute;left:50%;bottom:calc(100% + 13px);transform:translateX(-50%);padding:1px 7px;border-radius:8px;
-  background:var(--sb-accent-solid,var(--sb-accent));color:#fff;font:800 11px/16px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
-  white-space:nowrap;box-shadow:0 0 0 1.5px #fff,var(--sb-shadow);pointer-events:none}
+.sb-you-pill{position:absolute;left:50%;bottom:calc(100% + 13px);transform:translateX(-50%);padding:1px 8px;border-radius:9px;
+  background:var(--sb-accent);color:var(--sb-white);font:var(--t-map-badge,700 11px/16px sans-serif);line-height:16px;
+  white-space:nowrap;box-shadow:0 0 0 1.5px var(--sb-white),var(--sb-shadow);pointer-events:none}
 .sb-you{position:relative;width:20px;height:20px}
-.sb-you-dot{position:absolute;inset:0;box-sizing:border-box;border-radius:50%;background:var(--sb-accent);border:3px solid #fff;
+.sb-you-dot{position:absolute;inset:0;box-sizing:border-box;border-radius:50%;background:var(--sb-accent);border:3px solid var(--sb-white);
   box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow)}
 .sb-you--stop .sb-you-dot{background:var(--sb-chrome-solid);border:3px dashed var(--sb-accent)}
 .sb-you .sb-you-pill{bottom:calc(100% + 4px)}
-.sb-tlabel{position:absolute;left:0;top:11px;transform:translateX(-50%);padding:2px 8px;border-radius:8px;white-space:nowrap;
-  background:var(--sb-chrome-solid);color:var(--sb-text);font:700 12px/16px -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
-  box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow);pointer-events:none}
-.sb-tlabel--off{box-shadow:0 0 0 2px var(--sb-accent),var(--sb-shadow)}
+/* trip callouts (spec 11.4): "Board here" / the get-off count as a 24 pt capsule in tintFill with mapCallout text, a 6 pt
+   pointer toward the stop above it */
+.sb-tlabel{position:absolute;left:0;top:14px;transform:translateX(-50%);display:flex;align-items:center;height:24px;padding:0 10px;
+  border-radius:12px;white-space:nowrap;background:var(--sb-accent);color:var(--sb-white);font:var(--t-map-callout,600 13px/16px sans-serif);
+  box-shadow:var(--e-marker,0 1px 3px rgba(30,32,45,.3));pointer-events:none}
+.sb-tlabel::before{content:"";position:absolute;left:50%;top:-6px;margin-left:-6px;border:6px solid transparent;border-top:0;border-bottom-color:var(--sb-accent)}
 
 /* trip plan */
 .sb-walk{stroke:var(--sb-accent)}
 .sb-plan-stop{fill:var(--sb-stop-fill)}
-.sb-pin-start{fill:var(--sb-live);stroke:#fff}
+/* the start: a hollow ring in tintFill (green means live data only; the Directions Start mark is the same ring) */
+.sb-pin-start{fill:var(--sb-stop-fill);stroke:var(--sb-accent)}
 .sb-pin-end{position:relative;width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);margin-top:2px;
-  background:var(--sb-danger);border:3px solid #fff;box-sizing:border-box;box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow)}
-.sb-pin-end::after{content:"";position:absolute;left:50%;top:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:#fff}
+  background:var(--sb-danger);border:3px solid var(--sb-white);box-sizing:border-box;box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow)}
+.sb-pin-end::after{content:"";position:absolute;left:50%;top:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:var(--sb-white)}
 
-/* buses: 28 px rounded square in route color, white border, heading triangle, one-shot pulse */
-.sb-bus{position:absolute;left:50%;top:0;transform:translateX(-50%);box-sizing:border-box;min-width:28px;height:28px;padding:0 4px;
-  border-radius:9px;border:2px solid #fff;background:var(--c,#555);color:var(--t,#fff);display:grid;place-items:center;
-  box-shadow:0 0 0 1px var(--sb-ring),var(--sb-shadow);transition:opacity .22s,border-color .22s,transform .22s}
-.sb-bus-tx{position:relative;font:800 11.5px/1 -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;letter-spacing:-.01em;white-space:nowrap}
-.sb-bus-tx-sm{font-size:10px;letter-spacing:-.03em}
-.sb-bus-hd{position:absolute;inset:-2px;pointer-events:none;transition:transform .6s ease}
-.sb-bus-hd::before{content:"";position:absolute;left:50%;top:-8px;margin-left:-5px;border:5px solid transparent;border-top:0;
-  border-bottom:7px solid var(--c,#555);filter:drop-shadow(0 -1px 0 #fff)}
+/* buses (DESIGN-SPEC 11.4): a 26 pt rounded rectangle (radius 7, min width 32) in the route color, a 2 pt ring (white on the
+   light map, the land on the dark map), the short name in mapBadge (11 Bold, never truncated; 10 pt over five characters),
+   the bus number inside after a divider in the text color at 40% ("AP/DX | 2", never an overlapping disc), the heading
+   notch in the route color on the ring, turned by map/layers.js (rotate + --sb-hr), a small slate shadow. */
+.sb-bus{position:absolute;left:50%;top:0;transform:translateX(-50%);box-sizing:border-box;min-width:32px;height:26px;padding:0 6px;
+  border-radius:var(--r-marker,7px);border:2px solid var(--sb-bus-ring);background:var(--c,#555);color:var(--t,#fff);
+  display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;
+  box-shadow:var(--e-marker,0 1px 3px rgba(30,32,45,.3));transition:opacity .2s}
+.sb-bus-tx{position:relative;font:var(--t-map-badge,700 11px/13px sans-serif);letter-spacing:0}
+.sb-bus-tx-sm{font:var(--t-map-badge-sm,700 10px/13px sans-serif)}
+.sb-bus-num{position:relative;padding-left:4px;border-left:1px solid color-mix(in srgb,currentColor 40%,transparent);
+  font:var(--t-map-badge,700 11px/13px sans-serif)}
+.sb-bus-hd{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;transition:transform .6s ease}
+.sb-bus-hd::before{content:"";position:absolute;left:-4px;top:calc(-1 * var(--sb-hr,13px) - 6px);border:4px solid transparent;border-top:0;
+  border-bottom:6px solid var(--c,#555);filter:drop-shadow(0 -1px 0 var(--sb-bus-ring))}
 .sb-bus.no-hd .sb-bus-hd{display:none}
-/* focused route (route detail / highlight): bigger, outlined arrow so travel direction reads at a glance */
-.sb-bus.is-focus .sb-bus-hd::before{top:-11px;margin-left:-7px;border-width:0 7px 10px;border-bottom-color:var(--c,#555);
-  filter:drop-shadow(0 -1.5px 0 #fff) drop-shadow(0 0 1px var(--sb-ring))}
-.sb-bus::after{content:"";position:absolute;inset:-6px;border-radius:13px;border:2px solid var(--c,#555);opacity:0;pointer-events:none}
-.sb-bus.sb-pulse::after{animation:sb-pulse 2s cubic-bezier(.2,.8,.2,1) 1}
+/* focused route (route detail / highlight): a larger notch so the travel direction reads at a glance */
+.sb-bus.is-focus .sb-bus-hd::before{left:-5px;top:calc(-1 * var(--sb-hr,13px) - 8px);border-width:0 5px 8px}
 .sb-busicon{overflow:visible}
-.sb-bus.is-stale{opacity:.5;border-color:#9a9aa0}
-.sb-bus.is-stale::after{display:none}
+.sb-bus.is-stale{opacity:.5}
 /* a bus on a faded route (core/visibility.js busFaded, owner 2026-11-04): it steps back like its line (smaller and
    see-through, under the other buses) and takes no tap, so taps reach the stops and lines in focus. Its label, heading
-   and number stay: only its prominence changes. A stale faded bus keeps the gray edge, a little fainter. */
+   and number stay: only its prominence changes. A stale faded bus is fainter still. */
 .leaflet-marker-icon.sb-busicon.is-faded{pointer-events:none}
-.sb-bus.is-faded{opacity:.42;transform:translateX(-50%) scale(.8);box-shadow:0 0 0 1px var(--sb-ring)}
-.sb-bus.is-faded.is-stale{opacity:.32}
-/* bus number (core/busnum.js: a route showing 2 or more buses): a white disc at the top right, readable on any route
-   color and on the dark map */
-.sb-bus-num{position:absolute;right:-8px;top:-8px;min-width:17px;height:17px;padding:0 3px;box-sizing:border-box;border-radius:9px;
-  background:#fff;color:#111;border:2px solid var(--c,#555);display:grid;place-items:center;
-  font:800 10.5px/1 -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.35)}
-/* the bus picked on its route page */
-.sb-bus.is-picked{outline:3px solid var(--sb-accent,#0a7cff);outline-offset:3px}
-@keyframes sb-pulse{0%{transform:scale(.85);opacity:.55}100%{transform:scale(1.45);opacity:0}}
+.sb-bus.is-faded{opacity:.42;transform:translateX(-50%) scale(.8);box-shadow:none}
+.sb-bus.is-faded.is-stale{opacity:.3}
+/* the bus picked on its route page: a 3 pt tint outline at a 3 pt offset */
+.sb-bus.is-picked{outline:3px solid var(--sb-tint);outline-offset:3px}
 /* buses move by script along their route line (map/layers.js createBusLayer, map/track.js): no CSS glide on the
    badge, except Leaflet's own zoom animation */
 .sb-map .leaflet-marker-icon.sb-busicon{transition:none}
 .sb-map .leaflet-zoom-anim .leaflet-marker-icon.sb-busicon{transition:transform .25s cubic-bezier(0,0,.25,1)}
-.sb-map .leaflet-marker-icon.sb-busicon:focus-visible{outline:2px solid var(--sb-accent);outline-offset:3px;border-radius:11px}
+.sb-map .leaflet-marker-icon.sb-busicon:focus-visible{outline:2px solid var(--sb-accent);outline-offset:3px;border-radius:10px}
 
 /* raster fallback basemap in dark */
 .sb-map.sb-dark .sb-raster{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.88)}
 
 @media (prefers-reduced-motion:reduce){
   .sb-map .leaflet-marker-icon.sb-busicon,.sb-bus,.sb-bus-hd{transition:none!important}
-  .sb-bus.sb-pulse::after{animation:none}
   .sb-credits,.sb-credits.is-fading{transition:opacity .12s linear,visibility 0s linear .12s}
 }
 @media (prefers-contrast:more){
@@ -185,6 +193,5 @@
 }
 @media (forced-colors:active){
   .sb-bus,.sb-me,.sb-pin-end,.sb-fav{border:2px solid CanvasText;forced-color-adjust:none}
-  .sb-bus-num{border-color:CanvasText;forced-color-adjust:none}
   .sb-bus.is-picked{outline-color:Highlight}
 }

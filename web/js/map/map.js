@@ -71,7 +71,7 @@ export function createMap(elId) {
   const network = createNetworkLayer(map, { onStopTap: (id) => stopTap.emit(id) });
   const buses = createBusLayer(map, { onBusTap: (info) => busTap.emit(info) });
   const favs = createFavoritesLayer(map, { onStopTap: (id) => stopTap.emit(id) });
-  const landmarks = createLandmarkLayer(map, { pane: 'sbLabels', textAt: (box) => !!basemap.textAt?.(box) });
+  const landmarks = createLandmarkLayer(map, { pane: 'sbLabels', textAt: (box) => !!basemap.textAt?.(box), avoid: () => { try { return me ? me.getLatLng() : null; } catch (e) { return null; } } });
   basemap.onIdle?.(() => landmarks.refresh());   // the basemap placed its own names: keep building names off them
   const selG = L.layerGroup().addTo(map), hlG = L.layerGroup().addTo(map), planG = L.layerGroup().addTo(map);
   const labG = L.layerGroup().addTo(map);
@@ -185,11 +185,15 @@ export function createMap(elId) {
 
     /**
      * Height in px of the sheet covering the bottom of the map; fits/flies keep targets above it and the
-     * map credit (while shown) sits just above it (hidden when almost no map shows). @param {number} px
+     * map credit (while shown) sits just above it (hidden when almost no map shows). `controls` (px) = map chrome
+     * riding on the sheet (the lower-right group, glass spec 3: the visible rectangle excludes it): fits and the
+     * follow camera keep clear of it too, the credit does not move for it.
+     * @param {number} px
+     * @param {number} [controls]
      */
-    setBottomInset(px) {
-      const v = Math.max(0, Math.round(+px || 0)), h = map.getSize().y;
-      inset = Math.min(v, Math.max(0, h - 160));
+    setBottomInset(px, controls = 0) {
+      const v = Math.max(0, Math.round(+px || 0)), h = map.getSize().y, c = Math.max(0, Math.round(+controls || 0));
+      inset = Math.min(v + c, Math.max(0, h - 160));
       credits.place(v, h);
     },
 
@@ -275,8 +279,9 @@ export function createMap(elId) {
       if (!ll) { me?.remove(); meAcc?.remove(); me = meAcc = null; headTurn = NaN; headS = ''; return; }
       if (!me) {
         me = L.marker(ll, { icon: L.divIcon({ className: 'sb-meicon', html: '<div class="sb-mecone"></div><div class="sb-me"></div>',
-          iconSize: [20, 20], iconAnchor: [10, 10] }), interactive: false, keyboard: false, zIndexOffset: 400 }).addTo(map);
+          iconSize: [18, 18], iconAnchor: [9, 9] }), interactive: false, keyboard: false, zIndexOffset: 400 }).addTo(map);
         renderHeading();
+        landmarks.refresh();   // keep the names off the new dot
       } else if (!me.getLatLng().equals(ll)) me.setLatLng(ll);
       const acc = +pos.accuracy;
       if (Number.isFinite(acc) && acc > 15 && acc < 2000) {
@@ -417,7 +422,8 @@ function renderPlan(L, g, o, ctx) {
     const ll = normLatLngs(coords);
     if (ll.length < 2) return;
     pts.push(...ll);
-    L.polyline(ll, { pane: 'sbPlan', className: 'sb-walk', weight: 5, dashArray: '0.1 11', lineCap: 'round', interactive: false }).addTo(g);
+    // the walking path as round 4 pt dots 7 pt apart in tintFill (spec 11.4, Apple Maps style), no outline (owner 2026-11-04)
+    L.polyline(ll, { pane: 'sbPlan', className: 'sb-walk', weight: 4, dashArray: '0.1 7', lineCap: 'round', interactive: false }).addTo(g);
   };
   const legs = Array.isArray(o.legs) ? o.legs : [];
   if (!legs.length && o.from && o.to) walk(o.coords?.length > 1 ? o.coords : [o.from, o.to]);
