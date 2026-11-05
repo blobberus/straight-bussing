@@ -310,6 +310,34 @@ export function notchRadius(w, h, deg) {
 export const GLIDE_MS = 9000;
 /** Bus frames are drawn once some badge has moved this far on screen (CSS px; Leaflet places badges at whole px). */
 export const STEP_PX = 1;
+/** A gliding badge is looked at again after travelling this far along its line (m), so its notch turns with the street. */
+export const TURN_M = 4;
+/** Longest sleep between two looks while buses glide (ms); waits shorter than WAKE_RAF_MS just take the next frame. */
+const MAX_WAKE_MS = 1000, WAKE_RAF_MS = 40, FRAME_MS = 16;
+
+/**
+ * How long (ms) after time t the glide loop can sleep before some badge may need drawing again: the fastest badge's time
+ * to move STEP_PX on screen, a badge's time to travel TURN_M along its line (its notch may turn), or the end of an
+ * animation; at most MAX_WAKE_MS. Pure (2026-11-05 optimization run: the loop used to run on every display frame while
+ * any bus glided, all day during service).
+ * @param {Array<{t0:number, dur:number, total:number, ease:boolean, along:boolean, f:number}>} anims running moves
+ * @param {number} t now (ms, the layer's clock)
+ * @param {number} mPerPx meters per CSS px at the current zoom
+ * @returns {number}
+ */
+export function nextWakeMs(anims, t, mPerPx) {
+  let w = MAX_WAKE_MS;
+  for (const a of anims) {
+    const left = a.t0 + a.dur - t;
+    if (!(left > 0)) return 0;
+    w = Math.min(w, left);
+    const v = (a.total / a.dur) * (a.ease ? 2 : 1);   // m per ms; an eased catch-up peaks at twice its average
+    if (!(v > 0)) continue;
+    if (mPerPx > 0) w = Math.min(w, (STEP_PX * mPerPx) / v);
+    if (a.along && a.f > 2) w = Math.min(w, TURN_M / v);
+  }
+  return Math.max(0, w);
+}
 /** A move along the line longer than this (m), or after a gap of more than GLIDE_GAP_S, catches up quickly. */
 const NORMAL_M = 350, GLIDE_GAP_S = 30;
 /** Off the line, a move longer than this (m) is drawn as a jump: a straight glide would cross the blocks. */
@@ -354,8 +382,9 @@ const easeInOut = (k) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
  * (no CSS transition on the badge), paused while Leaflet animates a zoom; prefers-reduced-motion moves at once.
  * @param {L.Map} map
  * @param {{onBusTap:(info:{id:string, rid:string, label:string})=>void}} cb
- * @param {{clock?:()=>number, frame?:(fn:Function)=>any, reduce?:()=>boolean}} [opt] tests: a manual clock (ms),
- *   frame scheduler and reduced-motion switch (defaults: performance.now, requestAnimationFrame, the media query)
+ * @param {{clock?:()=>number, frame?:(fn:Function)=>any, later?:(fn:Function, ms:number)=>any, cancel?:(id:any)=>void,
+ *   reduce?:()=>boolean}} [opt] tests: a manual clock (ms), frame scheduler, timer and reduced-motion switch (defaults:
+ *   performance.now, requestAnimationFrame, setTimeout / clearTimeout, the media query)
  * @returns {{draw(buses:Array, o:object):number, setYou(id):boolean, shown(id):[number,number]|null}}
  *   draw returns how many markers changed; shown = where a bus's badge is drawn now (tests)
  */
@@ -364,9 +393,10 @@ export function createBusLayer(map, cb, opt = {}) {
   const group = L.layerGroup().addTo(map);
   const markers = new Map(); // vehicle id -> {rid, color, label, mk, s, ll, disp, to, anim, vt, seen, rot}
   let youId = null;          // the bus you ride (Current trip): ring + "You" pill on its marker
-  let zooming = false, raf = 0;
+  let zooming = false, raf = 0, timer = 0;
   const clock = opt.clock || (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
   const schedule = opt.frame || (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
+  const later = opt.later || ((fn, ms) => setTimeout(fn, ms)), cancel = opt.cancel || ((id) => clearTimeout(id));
   const reduce = opt.reduce || (() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
   map.on('zoomstart', () => { zooming = true; });
   map.on('zoomend viewreset', () => { zooming = false; for (const m of markers.values()) m.px = null; kick(); });   // new zoom: new layer px
@@ -401,7 +431,8 @@ export function createBusLayer(map, cb, opt = {}) {
      STEP_PX on screen since the last drawn frame (or an animation ends), and then it moves all of them. Leaflet draws a
      badge at whole CSS px anyway, so nothing looks different, but a normal glide (2 to 4 px a second at the default zoom)
      no longer gives every bus its own redraw: one redraw per pixel of the fastest bus instead of one per pixel of each
-     bus. Every redraw repaints the blurred glass over the map, so this is most of the idle GPU work. */
+     bus. Every redraw repaints the blurred glass over the map, so this is most of the idle GPU work. Between looks the
+     loop sleeps until a badge can next need drawing (nextWakeMs) instead of running on every display frame. */
   function frame() {
     raf = 0;
     const t = clock();
@@ -427,7 +458,18 @@ export function createBusLayer(map, cb, opt = {}) {
         if (e >= 1) { m.anim = null; if (Number.isFinite(a.endHd)) turn(m, a.endHd); } else more = true;
       }
     } else if (moves.length) more = true;
-    if (more) raf = schedule(frame) || 1;
+    if (more) wake(zooming ? 0 : nextWakeMs([...markers.values()].map((m) => m.anim).filter(Boolean), t, mPerPx()));
+  }
+  /** The next look at the gliding badges: the next frame, or a timer and then a frame. */
+  function wake(ms) {
+    if (!schedule) return;
+    if (ms <= WAKE_RAF_MS) { raf = schedule(frame) || 1; return; }
+    raf = 0;
+    timer = later(() => { timer = 0; if (!raf) raf = schedule(frame) || 1; }, ms - FRAME_MS) || 1;
+  }
+  /** Meters per CSS px at the map's zoom and latitude (0 when the map cannot say). */
+  function mPerPx() {
+    try { return 40075016.686 * Math.cos(map.getCenter().lat * Math.PI / 180) / 2 ** (map.getZoom() + 8); } catch (e) { return 0; }
   }
   /** The badge's screen position (px at the current zoom, not rounded: latLngToLayerPoint rounds) for a lat/lon; null when
       the map cannot say. */
@@ -441,6 +483,7 @@ export function createBusLayer(map, cb, opt = {}) {
   }
 
   function kick() {
+    if (timer) { cancel(timer); timer = 0; }   // a new move or a new zoom: look now, not after the sleep
     if (raf || !schedule) return;
     for (const m of markers.values()) if (m.anim) { raf = schedule(frame) || 1; return; }
   }

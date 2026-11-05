@@ -1,7 +1,7 @@
 /** Tests for map/track.js (buses stay on their route line) and the bus layer's movement along it (needs Leaflet). */
 import { test, eq, ok, near } from './lib.js';
 import { prepareShape, pointAt, walk, locate, follow, headingAt, advance, ON_M } from '../js/map/track.js';
-import { createBusLayer, moveTiming, GLIDE_MS, MISSING_S, STEP_PX } from '../js/map/layers.js';
+import { createBusLayer, moveTiming, nextWakeMs, GLIDE_MS, MISSING_S, STEP_PX, TURN_M } from '../js/map/layers.js';
 import { distM } from '../js/map/geometry.js';
 import { P, squareLoop } from './map-fixtures.js';
 
@@ -109,11 +109,15 @@ function box(id) {
   return d;
 }
 
-/** A bus layer with a manual clock and frame queue: step(ms) advances time and runs one frame. */
+/** A bus layer with a manual clock and frame queue: step(ms) advances time and runs one frame. Its sleeps (opt.later) end
+    at once, so every step looks at the badges; wakes() lists the sleeps asked for (ms). */
 function manualLayer(m, reduce = false) {
   let T = 0, queue = [];
-  const layer = createBusLayer(m, { onBusTap: () => {} }, { clock: () => T, frame: (fn) => { queue.push(fn); return queue.length; }, reduce: () => reduce });
+  const wakes = [];
+  const layer = createBusLayer(m, { onBusTap: () => {} }, { clock: () => T, frame: (fn) => { queue.push(fn); return queue.length; },
+    later: (fn, ms) => { wakes.push(ms); fn(); return wakes.length; }, cancel: () => {}, reduce: () => reduce });
   layer.step = (ms) => { T += ms; const q = queue; queue = []; q.forEach((f) => f()); return q.length; };
+  layer.wakes = wakes;
   return layer;
 }
 
@@ -180,6 +184,27 @@ test('bus layer: slow glides are drawn in shared frames, once the fastest badge 
   ok(drawn <= Math.ceil(fastPx / STEP_PX) + 2 && drawn >= Math.floor(fastPx / STEP_PX) - 2, `${drawn} drawn frames for a ${fastPx.toFixed(1)} px move`);
   near(distM(layer.shown(1), pos(220)), 0, 1, 'both end exactly at their reports');
   near(distM(layer.shown(2), pos(330)), 0, 1);
+  m.remove();
+});
+
+test('bus layer: between looks the glide sleeps until a badge can next need drawing, not every display frame', () => {
+  const glide = { t0: 0, dur: GLIDE_MS, total: 90, ease: false, along: false, f: 0 };   // 90 m in 9 s: 10 m/s
+  near(nextWakeMs([glide], 0, 3.5), 350, 1, 'zoom 15 (3.5 m a px): the next pixel in 350 ms');
+  near(nextWakeMs([{ ...glide, along: true, f: 50 }], 0, 30), TURN_M * 100, 1, 'along a line: also every TURN_M meters (the notch may turn)');
+  near(nextWakeMs([glide], 0, 0.3), 30, 1, 'zoomed in (0.3 m a px): about every other frame');
+  eq(nextWakeMs([glide, { ...glide, t0: -9000 }], 0, 3.5), 0, 'an animation due to end: at once');
+  near(nextWakeMs([glide], GLIDE_MS - 100, 3.5), 100, 1, 'never past the end of a move');
+  eq(nextWakeMs([{ ...glide, total: 0.2 }], 0, 30), 1000, 'a crawl sleeps at most a second');
+  near(nextWakeMs([{ ...glide, ease: true }], 0, 3.5), 175, 1, 'an eased catch-up uses its peak speed (twice the average)');
+  const m = window.L.map(box('t-track-wake'), { zoomControl: false, attributionControl: false }).setView(P(2, 1), 15);
+  const routes = { r1: { short: 'CEN', color: '#FF9900' } }, shapes = { r1: [ell()] };
+  const s = prepareShape(shapes.r1)[0], pos = (x) => pointAt(s.line, s.cum, x);
+  const bus = (x, ts) => ({ vehicle: { id: 4 }, trip: { route_id: 'r1' }, position: { latitude: pos(x)[0], longitude: pos(x)[1] }, timestamp: ts });
+  const layer = manualLayer(m);
+  layer.draw([bus(100, 1000)], { routes, shapes, nowS: 1000 });
+  layer.draw([bus(190, 1010)], { routes, shapes, nowS: 1010 });
+  for (let i = 0; i < 20; i++) layer.step(16);
+  ok(layer.wakes.length >= 10 && layer.wakes.every((w) => w > 200), 'a normal glide asks to sleep 200+ ms between looks: ' + layer.wakes.slice(0, 5).map(Math.round));
   m.remove();
 });
 
