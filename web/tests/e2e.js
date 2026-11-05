@@ -632,21 +632,31 @@ test("trip chip: a tap that lands on Show all right after the status banner appe
   SB.store.set({ journey: { kind: "plan", rids: [rid], label: "To E2E Place", to: "E2E Place", t0: Math.floor(Date.now() / 1000), legs: [] } });
   await waitFor(() => !$("#ctxbar").hidden && $("#pill").hidden, "the trip chip, no banner");
   const showAll = () => $('#ctxbar [data-action="journey:end"]');
+  const tap = (el) => el.dispatchEvent(new W.MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));   // a finger, not the keyboard
   try {
     const y0 = showAll().getBoundingClientRect().top;
     T.feedFail = true;
     W.dispatchEvent(new W.Event("online"));
     await waitFor(() => !$("#pill").hidden, "the banner appears");
     ok(showAll().getBoundingClientRect().top > y0 + 20, "the chip moved down under it");
-    showAll().click();   // a tap that was aimed at the map just under the old chip
+    tap(showAll());   // a tap that was aimed at the map just under the old chip
     eq(state().journey && state().journey.kind, "plan", "absorbed: the trip is still on");
     T.feedFail = false;
     W.dispatchEvent(new W.Event("online"));
     await waitFor(() => $("#pill").hidden, "the banner goes");
-    showAll().click();   // a tap that was aimed at the banner
+    tap(showAll());   // a tap that was aimed at the banner
     eq(state().journey && state().journey.kind, "plan", "absorbed again: the trip is still on");
+    T.feedFail = true;
+    W.dispatchEvent(new W.Event("online"));
+    await waitFor(() => !$("#pill").hidden, "the banner again");
+    showAll().click();   // keyboard / switch activation (detail 0): aimed at the focused button, never absorbed
+    eq(state().journey, null, "a keyboard activation is not a misplaced tap: it ends the trip");
+    SB.store.set({ journey: { kind: "plan", rids: [rid], label: "To E2E Place", to: "E2E Place", t0: Math.floor(Date.now() / 1000), legs: [] } });
+    T.feedFail = false;
+    W.dispatchEvent(new W.Event("online"));
+    await waitFor(() => $("#pill").hidden && !$("#ctxbar").hidden, "the banner gone, the trip back");
     await new Promise((r) => setTimeout(r, ROW_GUARD_MS + 100));
-    showAll().click();
+    tap(showAll());
     eq(state().journey, null, "a deliberate tap once the chip has settled still ends the trip");
   } finally {
     T.feedFail = false;

@@ -382,9 +382,10 @@ function wireUI() {
   el.locate.addEventListener("click", onLocateFab);
   document.addEventListener("click", askCompassOnTap, true);   // capture: before any handler, synchronously in the tap
   // the trip chip's Show all ends the trip at once: a tap that reaches the chip within ROW_GUARD_MS of the status banner
-  // appearing or going (the chip just moved under the finger) is absorbed (ui/pill.js ROW_GUARD_MS)
+  // appearing or going (the chip just moved under the finger) is absorbed (ui/pill.js ROW_GUARD_MS). Pointer taps only
+  // (detail > 0): a keyboard or switch activation aims at the focused button, not at a spot on the screen.
   el.ctxbar?.addEventListener("click", (e) => {
-    if (Date.now() - pill.rowsMovedAt() < ROW_GUARD_MS) { e.preventDefault(); e.stopPropagation(); }
+    if (e.detail > 0 && Date.now() - pill.rowsMovedAt() < ROW_GUARD_MS) { e.preventDefault(); e.stopPropagation(); }
   }, true);
   for (const root of [el.content, el.pill, el.dlg, el.ctxbar, el.topbar || el.gear, el.right, el.bottomrow, el.mapctl]) if (root) bindActions(root, () => ctx);
   el.dlg.addEventListener("click", (e) => { if (e.target === el.dlg) closeDlg(); });
