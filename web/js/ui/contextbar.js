@@ -1,55 +1,55 @@
 /**
  * @module ui/contextbar
- * Map context bar (SHELL): a small floating bar under the status pill that says why the map shows
- * fewer routes than usual, with a one-tap way out. It stays when the sheet is expanded (owner 2026-11-04);
- * its height is kept in --ctx-h on #app so the expanded sheet stops below it.
- *   journey set          -> "Only showing routes for: <label>" + route chips + "Show all" (journey:end)
- *   custom route applied -> "My route: <name>" + "Clear" (custom:clear)
- *   Lines by Time on     -> "Lines active at <time>" + "Clear" (time:clear; core/custom.js clearTimeView)
- * Registers the global actions `journey:end`, `custom:clear` and `time:clear`; they work from any button in the
- * app (sheet content, dialogs, this bar) because actions are looked up by name at tap time.
- * Text too long for the bar scrolls like a song title in Apple Music (startMarquee): it rests at the
- * start, glides left until a copy of the text sits where it began, rests again. Off with reduced motion.
+ * The trip and filter chip under the search bar (docs/DESIGN-SPEC.md 10.5; was the "context bar"): says why the map shows
+ * fewer routes than usual, with a one-tap way out. A 36 pt capsule: up to 3 route badges (then "+2"), the label, and a
+ * 44 pt text button. Only the label truncates (an ellipsis); the badges and the action never clip (audit defect 2). The
+ * same labels as the iPhone app's TripChip:
+ *   journey (Directions trip) -> "Trip to <destination>"       + "Show all" (journey:end)
+ *   journey (Routes to station) -> "Routes to <station>"       + "Show all"
+ *   Lines by Time on          -> "Lines active at <time>"     + "Clear" (time:clear; core/custom.js clearTimeView)
+ *   custom route applied      -> "<custom route name>"        + "Clear" (custom:clear)
+ * Screen readers hear the full sentence ("Only showing routes for Trip to X", "Showing Lines active at 4:00 PM", "My
+ * route: Morning commute"). Registers the global actions journey:end, custom:clear and time:clear; they work from any
+ * button in the app (sheet content, dialogs, this chip) because actions are looked up by name at tap time.
  */
 import { registerAction } from "./actions.js";
 import { esc } from "../core/esc.js";
 import { activeCustomRoute } from "../core/visibility.js";
 import { clearCustom, clearTimeView } from "../core/custom.js";
-import { TIME_PREFIX } from "../core/timeactive.js";
 import { routeChip } from "./components.js";
 
-const MAX_CHIPS = 4;
-/** Marquee timing: rest at the start (ms), then glide at pxPerS until the copy lands where the text began. */
-export const MARQUEE = { restMs: 3500, pxPerS: 32 };
-const reducedMotion = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; } };
-/** The scrolling text of the bar: a viewport (.ctx-text) around a run that holds the text (and its copy while scrolling). */
-const textHTML = (k, v) => `<span class="ctx-text"><span class="ctx-run"><span class="ctx-track"><span class="ctx-k">${k}</span> <span class="ctx-v">${esc(v)}</span></span></span></span>`;
+/** Route badges shown before "+N" (iOS TripChip.maxBadges). */
+export const MAX_CHIPS = 3;
+
+function chip(state, rids, label, spoken, btn) {
+  const known = (rids || []).filter((r) => state.routes && state.routes[r]);
+  const badges = known.slice(0, MAX_CHIPS).map((r) => routeChip(r, state.routes, { small: true })).join("")
+    + (known.length > MAX_CHIPS ? `<span class="ctx-more">+${known.length - MAX_CHIPS}</span>` : "");
+  return (badges ? `<span class="ctx-chips" aria-hidden="true">${badges}</span>` : "")
+    + `<span class="ctx-text"><span class="sr">${esc(spoken)}</span><span class="ctx-v" aria-hidden="true">${esc(label)}</span></span>` + btn;
+}
 
 /**
- * Inner HTML of the context bar for a state ('' = hide the bar).
+ * Inner HTML of the chip for a state ('' = hide it).
  * @param {object} state store state
  * @returns {string}
  */
 export function contextBarHTML(state) {
   const j = state && state.journey;
   if (j && Array.isArray(j.rids) && j.rids.length) {
-    const rids = j.rids.filter((r) => state.routes && state.routes[r]);
-    const chips = rids.slice(0, MAX_CHIPS).map((r) => routeChip(r, state.routes, { small: true })).join("")
-      + (rids.length > MAX_CHIPS ? `<span class="ctx-more">+${rids.length - MAX_CHIPS}</span>` : "");
-    return textHTML("Only showing routes for:", j.label || "your trip")
-      + (chips ? `<span class="ctx-chips">${chips}</span>` : "")
-      + '<button type="button" class="ctx-btn" data-action="journey:end">Show all</button>';
+    const label = j.kind === "plan" ? `Trip to ${j.to || String(j.label || "your destination").replace(/^To /, "")}` : `Routes to ${j.label || "station"}`;
+    return chip(state, j.rids, label, `Only showing routes for ${label}`,
+      '<button type="button" class="ctx-btn" data-action="journey:end" aria-label="Show all, every route on the map again">Show all</button>');
   }
   const tv = state && state.timeView;
   if (tv && tv.name) {
-    const rest = tv.name.startsWith(TIME_PREFIX) ? tv.name.slice(TIME_PREFIX.length).trim() : tv.name;
-    return textHTML(tv.name.startsWith(TIME_PREFIX) ? TIME_PREFIX : "Showing", rest)
-      + `<button type="button" class="ctx-btn" data-action="time:clear" aria-label="Clear ${esc(tv.name)}, show your usual routes">Clear</button>`;
+    return chip(state, tv.rids, tv.name, `Showing ${tv.name}`,
+      `<button type="button" class="ctx-btn" data-action="time:clear" aria-label="Clear ${esc(tv.name)}, show your usual routes">Clear</button>`);
   }
   const c = activeCustomRoute(state || {});
   if (c) {
-    return textHTML("My route:", c.name)
-      + `<button type="button" class="ctx-btn" data-action="custom:clear" aria-label="Clear my route ${esc(c.name)}">Clear</button>`;
+    return chip(state, c.rids, c.name, `My route: ${c.name}`,
+      `<button type="button" class="ctx-btn" data-action="custom:clear" aria-label="Clear my route ${esc(c.name)}">Clear</button>`);
   }
   return "";
 }
@@ -85,83 +85,23 @@ export function registerContextActions() {
 }
 
 /**
- * Scroll the bar's text when it does not fit: rest at the start, glide left until an aria-hidden copy of
- * the text sits exactly where the text began (so the loop restarts seamlessly), repeat. Text that fits,
- * a hidden bar and reduced motion stay still (ellipsis). Safe to call again: it rebuilds from scratch.
- * @param {HTMLElement|null} el the bar
- * @param {{reduced?:()=>boolean}} [opts] reduced: prefers-reduced-motion check (injectable for tests)
- * @returns {Animation|null} the running animation, or null when the text stays still
- */
-export function startMarquee(el, { reduced = reducedMotion } = {}) {
-  const box = el && el.querySelector(".ctx-text"), run = box && box.querySelector(".ctx-run");
-  const track = run && run.querySelector(".ctx-track");
-  if (!track) return null;
-  for (const a of run.getAnimations ? run.getAnimations() : []) a.cancel();
-  for (const n of run.querySelectorAll(".ctx-copy")) n.remove();
-  box.classList.remove("is-marquee");
-  const w = track.getBoundingClientRect().width;
-  if (!(box.clientWidth > 0) || w - box.clientWidth <= 1 || reduced() || typeof run.animate !== "function") return null;
-  const copy = track.cloneNode(true);
-  copy.classList.add("ctx-copy");
-  copy.setAttribute("aria-hidden", "true");
-  run.appendChild(copy);
-  box.classList.add("is-marquee");
-  const d = copy.getBoundingClientRect().left - track.getBoundingClientRect().left;   // text + gap
-  const total = MARQUEE.restMs + (d / MARQUEE.pxPerS) * 1000;
-  return run.animate([
-    { transform: "translate3d(0,0,0)" },
-    { transform: "translate3d(0,0,0)", offset: MARQUEE.restMs / total, easing: "ease-in-out" },
-    { transform: `translate3d(${-d}px,0,0)` },
-  ], { duration: total, iterations: Infinity });
-}
-
-/**
- * Keep the bar element in sync with the store (patch only when the markup changes) and keep its text
- * scrolling when it does not fit (re-measured when the bar is drawn or resized; a mouse hover pauses it).
+ * Keep the chip element in sync with the store (patch only when the markup changes).
  * @param {HTMLElement|null} el
  * @param {{get():object, subscribe(fn):()=>void}} store
- * @param {{reduced?:()=>boolean, frame?:(fn:() => void) => number, cancelFrame?:(id:number) => void}} [opts] reduced: passed
- *   to startMarquee; frame / cancelFrame: when to measure (default the next animation frame; tests pass a timer, as
- *   headless test browsers can go seconds without a frame)
  * @returns {() => void} unsubscribe
  */
-export function mountContextBar(el, store, opts = {}) {
+export function mountContextBar(el, store) {
   if (!el || !store) return () => {};
-  const frame = opts.frame || ((fn) => requestAnimationFrame(fn)), cancelFrame = opts.cancelFrame || ((id) => cancelAnimationFrame(id));
-  let last = null, anim = null, raf = 0, width = -1;
-  const marquee = () => { cancelFrame(raf); raf = frame(() => { anim = startMarquee(el, opts); }); };
+  let last = null;
   const draw = (s) => {
     const html = contextBarHTML(s);
     if (html === last) return;
     last = html;
-    if (anim) { anim.cancel(); anim = null; }
     el.innerHTML = html;
     el.hidden = !html;
-    if (html) marquee();
   };
-  // --ctx-h on #app = the bar's real height (larger text makes it taller): the expanded sheet stops below it (sheet.css)
-  const app = opts.app || (typeof document !== "undefined" ? document.getElementById("app") : null);
-  const ro = typeof ResizeObserver === "function" ? new ResizeObserver(() => {
-    const w = el.clientWidth;
-    if (w !== width) { width = w; if (!el.hidden) marquee(); }
-    const h = el.offsetHeight + "px";
-    if (app && h !== "0px" && app.style.getPropertyValue("--ctx-h") !== h) app.style.setProperty("--ctx-h", h);
-  }) : null;
-  ro?.observe(el);
-  const hover = (on) => (e) => { if (e.pointerType === "mouse" && anim) { if (on) anim.pause(); else anim.play(); } };
-  const enter = hover(true), leave = hover(false);
-  el.addEventListener("pointerenter", enter);
-  el.addEventListener("pointerleave", leave);
   draw(store.get());
-  const off = store.subscribe((s, changed) => {
+  return store.subscribe((s, changed) => {
     if (!changed || ["journey", "activeCustom", "customRoutes", "routes", "timeView"].some((k) => changed.has(k))) draw(s);
   });
-  return () => {
-    off();
-    ro?.disconnect();
-    cancelFrame(raf);
-    if (anim) anim.cancel();
-    el.removeEventListener("pointerenter", enter);
-    el.removeEventListener("pointerleave", leave);
-  };
 }
