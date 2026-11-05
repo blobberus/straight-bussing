@@ -55,6 +55,10 @@ test('favorites layer: pane order, no repaint on same input, taps, zoom size, di
   eq(hit.width, '44px', '44 px hit area at z15');
   eq(getComputedStyle(els[0]).pointerEvents, 'none', 'outer box ignores pointers (only the round hit area taps)');
   eq(getComputedStyle(els[0].querySelector('.sb-fav')).animationName, 'none', 'static badge, no pulse');
+  const badgeCss = getComputedStyle(els[0].querySelector('.sb-fav'));
+  eq(badgeCss.backgroundColor, 'rgb(255, 204, 0)', 'yellow disc (owner 2026-11-05), no longer the brown #A35400');
+  eq(getComputedStyle(els[0].querySelector('.sb-fav-star')).fill, 'rgb(28, 28, 30)', 'dark star on the yellow');
+  ok(/^rgba\(28, 28, 30, 0\.6\) 0px 0px 0px 1px/.test(badgeCss.boxShadow), 'a 1 px dark edge keeps the yellow visible on the light land: ' + badgeCss.boxShadow);
   ok(!pane.classList.contains('sb-fav-sm'), 'normal size at z15');
   m.setZoom(FAV_SMALL_BELOW - 1.5, { animate: false });
   ok(pane.classList.contains('sb-fav-sm'), 'small below z14');

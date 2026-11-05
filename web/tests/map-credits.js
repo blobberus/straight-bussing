@@ -116,6 +116,13 @@ test('MapApi: the credit replaces Leaflet attribution (no copyright sign) and fo
     ok(/OpenStreetMap/.test(cr.textContent) && /OpenMapTiles/.test(cr.textContent) && /OpenFreeMap|OpenStreetMap/.test(cr.textContent));
     api.setBottomInset(250);
     eq(cr.style.getPropertyValue('--sb-credit-y'), '250px');
+    api.setBottomInset(250, 96);   // the lower-right group riding on the card (glass spec 3): fits avoid it, the credit does not move
+    eq(cr.style.getPropertyValue('--sb-credit-y'), '250px', 'the credit stays 10 above the card, not above the group');
+    const beside = api.leaflet.containerPointToLatLng([200, 600 - 150 - 50]);
+    api.setBottomInset(150);
+    eq(api.inView([beside]), true, 'without the group: inside the visible rectangle');
+    api.setBottomInset(150, 96);
+    eq(api.inView([beside]), false, 'with the group riding on the card: outside it (fits and the follow camera keep clear)');
     api.setBottomInset(560);
     ok(cr.classList.contains('is-off'), 'hidden when the sheet covers the map');
   } finally { api.leaflet.remove(); d.remove(); }

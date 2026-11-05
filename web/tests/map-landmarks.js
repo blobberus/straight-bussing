@@ -172,3 +172,21 @@ test('landmarks: Aba in Fulton Market is drawn close in, its nickname at the egg
   if (aba.egg) ok((await at(Math.max(17, aba.eggZ))).includes(flat(aba.egg)), 'the nickname from the egg zoom');
   api.leaflet.remove();
 });
+
+test('landmarks: a name never covers the location dot (DESIGN-SPEC 11.5: you rank above every name)', () => {
+  box('t-lm-me');
+  const m = window.L.map('t-lm-me', { zoomControl: false, attributionControl: false, zoomSnap: 0.25 }).setView([41.7922, -87.5999], 16);
+  m.createPane('sbLabels').style.zIndex = '410';
+  let me = null;
+  const layer = createLandmarkLayer(m, { pane: 'sbLabels', avoid: () => me });
+  const reg = { name: 'Regenstein Library', lat: 41.7922, lon: -87.5999, tier: 1, kind: 'library' };
+  layer.setData([reg]);
+  const rect = () => m.getContainer().querySelector('.sb-lm')?.getBoundingClientRect();
+  const dot = () => { const p = m.latLngToContainerPoint([reg.lat, reg.lon]), c = m.getContainer().getBoundingClientRect(); return { x: c.left + p.x, y: c.top + p.y }; };
+  const covers = (r, d, rad) => r && d.x + rad > r.left && d.x - rad < r.right && d.y + rad > r.top && d.y - rad < r.bottom;
+  ok(covers(rect(), dot(), 4), 'without a dot the name sits on its point');
+  me = window.L.latLng(reg.lat, reg.lon);
+  layer.refresh();
+  ok(rect() && !covers(rect(), dot(), LABEL.ME_R - 2), 'with you there, the name moves off the dot');
+  m.remove();
+});
