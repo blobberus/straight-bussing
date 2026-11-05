@@ -1,6 +1,6 @@
 /** Tests for map/style.js patchStyle (fixture JSON + optional live OpenFreeMap styles). */
 import { test, eq, ok } from './lib.js';
-import { patchStyle, emptyStyle, PALETTE, campusFilter } from '../js/map/style.js';
+import { patchStyle, emptyStyle, PALETTE, campusFilter, symbolIds } from '../js/map/style.js';
 import { POSITRON, DARK } from './map-fixtures.js';
 
 const ids = (s) => s.layers.map((l) => l.id);
@@ -223,4 +223,17 @@ test('palette: no road but a motorway is yellow or orange (a street must never l
   probe.remove();
   eq(bad, [], 'yellow / orange non-motorway roads');
   ok(motorways >= 2, 'the motorways stay yellow-orange (' + motorways + ' layers)');
+});
+
+test('basemap text check: the symbol layers are read once per style change, not on every box (2026-11-05 optimization run)', () => {
+  let reads = 0;
+  const gl = { getStyle: () => { reads++; return { layers: [{ id: 'road', type: 'line' }, { id: 'name', type: 'symbol' }, { id: 'poi', type: 'symbol' }] }; } };
+  const cache = {};
+  for (let i = 0; i < 50; i++) eq(symbolIds(gl, cache, 3), ['name', 'poi']);
+  eq(reads, 1, 'fifty boxes, one style read');
+  symbolIds(gl, cache, 4);
+  eq(reads, 2, 'a style change (styledata) reads it again');
+  const gl2 = { getStyle: () => { reads++; return { layers: [{ id: 'other', type: 'symbol' }] }; } };
+  eq(symbolIds(gl2, cache, 4), ['other'], 'a rebuilt map (WebGL context lost) is read again');
+  eq(reads, 3);
 });

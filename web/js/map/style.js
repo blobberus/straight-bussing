@@ -222,6 +222,22 @@ function loadBase(name) {
   return cache.get(name);
 }
 
+/**
+ * The basemap's text (symbol) layer ids, read once per style change (2026-11-05 optimization run). getStyle() serializes
+ * the whole style (every layer, deep copied), and map/landmarks.js asks textAt() for every box it tries, after every move
+ * and every time the basemap goes idle: that was tens of full style copies per label pass on the main thread.
+ * @param {object} gl a MapLibre map
+ * @param {{gl?:object, rev?:number, ids?:string[]}} cache kept by the caller
+ * @param {number} rev the caller's style revision (bumped on every 'styledata')
+ * @returns {string[]}
+ */
+export function symbolIds(gl, cache, rev) {
+  if (cache.ids && cache.gl === gl && cache.rev === rev) return cache.ids;
+  const ids = (gl.getStyle()?.layers || []).filter((l) => l.type === 'symbol').map((l) => l.id);
+  Object.assign(cache, { gl, rev, ids });
+  return ids;
+}
+
 function hasWebGL() {
   try {
     const c = document.createElement('canvas');
@@ -266,7 +282,7 @@ export function createBasemap(map, isDark) {
       // phones drop WebGL contexts (memory pressure, the app in the background): rebuild the layer if it does not
       // come back by itself, so the streets never stay blank until a reload
       // landmarks that arrive while a style is still loading: update its campus-name filter once it is in
-      let filtered = null, textLayers = { style: null, ids: [] };
+      let filtered = null, textLayers = {}, styleRev = 0;
       const syncMarks = () => {
         const gl = layer.getMaplibreMap?.();
         try {
@@ -279,7 +295,7 @@ export function createBasemap(map, isDark) {
       const watchGl = () => {
         const gl = layer.getMaplibreMap?.();
         if (!gl?.on) return;
-        gl.on('styledata', syncMarks);
+        gl.on('styledata', () => { styleRev++; syncMarks(); });   // textAt reads the symbol layers again (symbolIds)
         gl.on('idle', () => { for (const fn of idleFns) { try { fn(); } catch (e) { console.error(e); } } });   // labels placed: textAt is current
         gl.on('webglcontextlost', () => { lostAt = Date.now(); setTimeout(checkGl, 2500); });
         gl.on('webglcontextrestored', () => { lostAt = 0; });
@@ -311,11 +327,10 @@ export function createBasemap(map, isDark) {
           const gl = layer.getMaplibreMap?.();
           try {
             if (!gl?.isStyleLoaded?.()) return false;
-            const style = gl.getStyle();
-            if (style !== textLayers.style) textLayers = { style, ids: (style.layers || []).filter((l) => l.type === 'symbol').map((l) => l.id) };
+            const ids = symbolIds(gl, textLayers, styleRev);
             // the GL canvas is larger than the Leaflet container and offset: map both through the same latlng
             const o = gl.project(map.containerPointToLatLng([0, 0]));
-            return gl.queryRenderedFeatures([[box.x + o.x, box.y + o.y], [box.x + box.w + o.x, box.y + box.h + o.y]], { layers: textLayers.ids }).length > 0;
+            return gl.queryRenderedFeatures([[box.x + o.x, box.y + o.y], [box.x + box.w + o.x, box.y + box.h + o.y]], { layers: ids }).length > 0;
           } catch (e) { return false; }
         } };
     } catch (e) { /* fall through to raster */ }
