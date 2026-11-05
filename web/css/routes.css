@@ -1,81 +1,93 @@
-/* routes view styles (see docs/ARCHITECTURE.md ownership). Prefix rt-. */
+/* Routes list (ui/views/routes.js, routes-drag.js). Prefix rt-. docs/DESIGN-SPEC.md 10.8, 10.12. Groups are grouped
+   cards under section titles; each row: the route badge, name and status, the show / hide eye. */
+
+/* each group is a grouped card */
+.v-list { margin: 0 0 var(--s-3); border-radius: var(--r-card); background: var(--bg-card); overflow: hidden; }
+.v-list > .v-routerow:first-child::before { display: none; }
 
 /* custom-route / journey bar */
-.rt-bar { margin-top: var(--s2); }
-.rt-bar .v-grow { display: block; color: var(--text-2); }
-.rt-bar .v-btn--quiet { flex: none; min-width: var(--tap); }
-.rt-cname { color: var(--text); font-weight: 600; }
+.rt-bar { margin: 0 0 var(--s-3); }
+.rt-bar .v-grow { display: block; color: var(--label-2); }
+.rt-bar .v-btn--quiet { flex: none; min-width: var(--tap); margin-right: calc(var(--s-2) * -1); }
+.rt-cname { color: var(--label); font-weight: var(--w-semibold); }
 .rt-cact { margin-top: 0; }
-.rt-make { margin-top: var(--s2); }
+.rt-make { margin-top: 0; }
 
 /* inline name field */
-.rt-name { margin: var(--s2) 0; padding: var(--s3) var(--s4); border-radius: var(--r-card); background: var(--surface); }
-.rt-namelab { display: block; margin-bottom: var(--s2); font-size: var(--fs-body); font-weight: 600; color: var(--text-2); }
-.rt-name input { box-sizing: border-box; width: 100%; min-height: var(--tap); padding: 0 var(--s3); border: 1px solid var(--hairline-strong); border-radius: var(--r-control); background: var(--bg-solid); color: var(--text); font: inherit; font-size: var(--fs-row); appearance: none; -webkit-appearance: none; }
-.rt-name input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
-.rt-nameact { margin: var(--s3) 0 0; }
-.rt-name .v-btn--secondary { background: var(--bg-solid); }
+.rt-name { margin: 0 0 var(--s-3); padding: var(--s-3) var(--inset-content); border-radius: var(--r-card); background: var(--bg-card); }
+.rt-namelab { display: block; margin-bottom: var(--s-2); font: var(--t-section); color: var(--label-2); }
+.rt-name input { box-sizing: border-box; width: 100%; min-height: var(--tap); padding: 0 var(--s-3); border: 0; border-radius: var(--r-control); background: var(--fill); color: var(--label); font: var(--t-body); appearance: none; -webkit-appearance: none; }
+.rt-name input:focus-visible { outline: 2px solid var(--tint); outline-offset: 0; }
+.rt-nameact { margin: var(--s-3) 0 0; }
 
-/* entry to the order editor: first control on the tab, a quiet left-aligned text button with an icon */
-.rt-tools { display: flex; justify-content: flex-start; margin: var(--s1) 0 0; }
-.rt-orderbtn { min-height: var(--tap); margin-left: calc(-1 * var(--s2)); gap: var(--s2); }
+/* "Edit map order" (the header's trailing action on Routes, spec 10.6) */
+.rt-tools { display: flex; justify-content: flex-start; margin: 0 0 var(--s-2); }
+.rt-orderbtn { min-height: var(--tap); margin-left: calc(var(--s-2) * -1); gap: var(--s-2); }
 .rt-orderbtn .rt-toolic { width: 20px; height: 20px; flex: none; }
 
 /* map-order editor */
-.rt-ordertitle { margin-top: var(--s3); }
-.rt-orderhead { display: flex; align-items: center; gap: var(--s3); margin: 0 0 var(--s2); }
+.rt-ordertitle { margin-top: var(--s-2); }
+.rt-orderhead { display: flex; align-items: center; gap: var(--s-3); margin: 0 0 var(--s-3); padding: 0 var(--s-1); }
 .rt-orderhelp { flex: 1 1 auto; margin: 0; }
 .rt-done { flex: none; min-width: 88px; }
 .rt-order { list-style: none; margin: 0; padding: 0; }
-.rt-orow { display: flex; align-items: center; gap: var(--s2); min-height: 56px; position: relative; }
-.rt-orow + .rt-orow::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--hairline); }
-.rt-orow > .chip:first-child { min-width: 56px; margin-right: var(--s1); }
-.rt-orow .v-prim { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rt-move { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); border: 0; border-radius: var(--r-control); background: none; color: var(--accent); cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.rt-move:active:not(:disabled) { background: var(--surface-press); }
-.rt-move:disabled { color: var(--text-2); opacity: .35; cursor: default; }
-.rt-move:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.rt-reset { display: flex; margin: var(--s2) auto 0; }
+.rt-orow { display: flex; align-items: center; gap: var(--s-2); min-height: 56px; padding: 0 var(--s-1) 0 var(--s-2); position: relative; background: var(--bg-card); }
+.rt-orow + .rt-orow::before { content: ""; position: absolute; top: 0; left: 92px; right: 0; height: .5px; background: var(--separator); }
+.rt-orow > .chip { min-width: var(--leading-slot); margin-right: var(--s-1); }
+.rt-orow .v-prim { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.rt-move { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); border: 0; border-radius: 50%; background: none; color: var(--tint); cursor: pointer; transition: opacity var(--m-press) var(--ease-out); }
+.rt-move:active:not(:disabled) { opacity: .6; }
+.rt-move:disabled { color: var(--label-3); opacity: .5; cursor: default; }
+.rt-move:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
+.rt-reset { display: flex; margin: var(--s-2) auto 0; }
 
-/* drag to reorder (routes-drag.js): grip handle, lifted row, others slide */
-.rt-grip { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); margin-left: calc(-1 * var(--s2)); color: var(--text-2); cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+/* drag to reorder (routes-drag.js): grip handle (menu glyph), lifted row, others slide */
+.rt-grip { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); color: var(--label-2); cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
 .rt-order.is-sorting { -webkit-user-select: none; user-select: none; }
-.rt-order.is-sorting .rt-orow { transition: transform 160ms var(--ease); }
+.rt-order.is-sorting .rt-orow { transition: transform var(--m-quick) var(--ease-standard); }
 .rt-order.is-sorting .rt-orow::before { opacity: 0; }
-.rt-orow.is-dragging { z-index: 2; transition: none; border-radius: var(--r-control); background: var(--bg-solid); box-shadow: var(--shadow-float); outline: 2px solid var(--accent); outline-offset: -2px; }
-.rt-orow.is-dragging .rt-grip { cursor: grabbing; color: var(--accent); }
-.rt-orow > .rt-grip + .chip { min-width: 56px; margin-right: var(--s1); }
+.rt-orow.is-dragging { z-index: 2; transition: none; border-radius: var(--r-control); background: var(--bg-card); box-shadow: var(--e-3); }
+.rt-orow.is-dragging .rt-grip { cursor: grabbing; color: var(--tint); }
 
-/* route search (owner 2026-11-04): the field (same look as .v-search), its clear button, the matches heading,
-   the stop that matched and the quiet "Other routes" divider */
-.rt-search { position: relative; margin: var(--s2) 0 0; }
+/* route search (owner 2026-11-04): the sheet's search field (.v-search), a clear button like the Directions fields',
+   the matches heading, the stop that matched and the quiet "Other routes" divider */
+.rt-search { position: relative; margin: 0 0 var(--s-3); }
 .rt-search .v-search { margin: 0; }
 .rt-search input { padding-right: var(--tap); }
 .rt-search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
-.rt-qx { position: absolute; top: 0; right: 0; display: grid; place-items: center; width: var(--tap); height: var(--tap); border: 0; border-radius: var(--r-control); background: none; color: var(--text-2); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.rt-qx { position: absolute; top: 0; right: 0; display: grid; place-items: center; width: var(--tap); height: var(--tap); border: 0; border-radius: 50%; background: none; color: var(--label-2); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: opacity var(--m-press) var(--ease-out); }
 .rt-qx[hidden] { display: none; }
-.rt-qx:active { background: var(--surface-press); }
-.rt-qx:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.rt-qhead { margin-top: var(--s4); }
+.rt-qx:active { opacity: .6; }
+.rt-qx:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
 .rt-why { overflow-wrap: anywhere; }
-/* a search result that does not operate now (owner 2026-11-05): a gray chip and a secondary-color name, and its text
-   says "Not running now". Unlike a hidden route (.is-off: the whole row faded, the crossed-out eye, "Hidden from map
-   and times"); a route both hidden and not running shows both. */
+/* a search result that does not operate now (owner 2026-11-05): a gray chip and a label2 name, and its text says
+   "Not running now". Unlike a hidden route (.is-off: faded row, crossed-out eye, "Hidden from map and times"); a
+   route both hidden and not running shows both. */
 .v-routerow.is-idle .chip { filter: grayscale(1); }
-.v-routerow.is-idle .v-prim { color: var(--text-2); }
-.rt-qnone { display: flex; flex-direction: column; align-items: center; gap: var(--s2); margin: var(--s2) 0 0; }
-.rt-qnone .empty { padding-bottom: 0; }
+.v-routerow.is-idle .v-prim { color: var(--label-2); }
+.rt-qnone { display: flex; flex-direction: column; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-3); }
+.rt-qnone .empty { align-self: stretch; margin: 0; }
 .rt-qnone .v-btn { min-height: var(--tap); }
-.rt-qdiv { display: flex; align-items: center; gap: var(--s3); margin: var(--s5) 0 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text-2); }
-.rt-qdiv::before, .rt-qdiv::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--hairline); }
+.rt-qdiv { display: flex; align-items: center; gap: var(--s-3); margin: var(--s-2) 0 var(--s-3); font: var(--t-section); color: var(--label-2); }
+.rt-qdiv::before, .rt-qdiv::after { content: ""; flex: 1 1 auto; height: .5px; background: var(--separator); }
+@media (prefers-reduced-motion: reduce) { .rt-qx { transition: none; } }
 
-/* Show all / Hide all */
-.rt-bulk { display: flex; justify-content: flex-end; gap: var(--s1); margin: var(--s2) 0 calc(-1 * var(--s2)); }
-.rt-bulk .v-btn--quiet { min-height: var(--tap); padding: 0 var(--s3); }
-.rt-bulk .v-btn:disabled, .rt-bulk .v-btn[aria-disabled="true"] { opacity: .4; cursor: default; }
+/* Show all / Show running / Hide all (10.12): three actions as Secondary capsule buttons, 36 tall (44 hit area); the
+   one matching the current state shows a check and label text; none is drawn disabled */
+.rt-bulk { display: flex; flex-wrap: wrap; gap: var(--s-2); margin: 0 0 var(--s-1); }
+.rt-bulk .v-btn {
+  flex: 0 1 auto; min-height: 36px; padding: 0 var(--s-3); border-radius: var(--r-capsule);
+  background: var(--fill); color: var(--tint); font: var(--t-row-detail); font-weight: var(--w-semibold);
+}
+.rt-bulk .v-btn::after { content: ""; position: absolute; inset: -4px 0; }
+.rt-bulk .v-btn .rt-check { display: none; }
+.rt-bulk .v-btn:disabled, .rt-bulk .v-btn[aria-disabled="true"] { opacity: 1; color: var(--label); gap: var(--s-1); }
+.rt-bulk .v-btn:disabled .rt-check, .rt-bulk .v-btn[aria-disabled="true"] .rt-check { display: inline-grid; }
+.rt-check .ic { width: var(--i-inline); height: var(--i-inline); }
+.rt-bulk .v-btn:active:not(:disabled) { background: var(--fill-pressed); }
 
 /* official service contact, always at the bottom of the list */
-.rt-official { margin: var(--s3) 0 var(--s4); padding-top: var(--s3); border-top: 1px solid var(--hairline); }
+.rt-official { margin: var(--s-4) 0; }
 
 @media (prefers-reduced-motion: reduce) {
   .rt-move, .rt-order.is-sorting .rt-orow { transition: none; }
