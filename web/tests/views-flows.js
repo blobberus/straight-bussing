@@ -142,9 +142,10 @@ function stubDeps(planImpl, refineImpl) {
 const ep = (s) => ({ lat: s.lat, lon: s.lon, name: s.name, id: s.id });
 function fakeOption(key, total, rid) {
   const b = { id: "S1", name: "Main & 1st", lat: 41.79, lon: -87.6 }, a = { id: "S3", name: "Hospital", lat: 41.795, lon: -87.595 };
+  const late = (total - 12) * 60;   // a later trip = a later bus (core/rank.js uniqueOptions lists the same bus once)
   return { key, total, totalMin: Math.round(total), arrive: NOW + total * 60, legs: [
     { type: "walk", from: { lat: 41.7899, lon: -87.6001, name: "Start" }, to: ep(b), m: 20, min: 0.3, source: "estimate" },
-    { type: "bus", rid, board: b, alight: a, path: [], stopsPassed: 2, wait: 2, waitLive: true, ride: 8, source: "live", conf: 1, boardT: NOW + 120, alightT: NOW + 600 },
+    { type: "bus", rid, board: b, alight: a, path: [], stopsPassed: 2, wait: 2 + late / 60, waitLive: true, ride: 8, source: "live", conf: 1, boardT: NOW + 120 + late, alightT: NOW + 600 + late },
     { type: "walk", from: ep(a), to: { lat: 41.7952, lon: -87.5951, name: "Destination" }, m: 30, min: 0.4, source: "estimate" },
   ] };
 }

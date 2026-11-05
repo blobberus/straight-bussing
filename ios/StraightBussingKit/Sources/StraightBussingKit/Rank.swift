@@ -73,6 +73,18 @@ public enum Rank {
             .joined(separator: "|")
     }
 
+    /// Options that became the same trip (route, stops and boarding time of every bus leg) listed once, the first kept
+    /// (web core/rank.js uniqueOptions): the sidewalk refinement re-times walks and re-plans a missed bus, so two options
+    /// can end up on the same bus (QA 2026-11-05). Options with no bus leg are kept as they are.
+    public static func uniqueOptions(_ options: [TripOption]) -> [TripOption] {
+        var seen = Set<String>()
+        return options.filter { o in
+            let sig = legSig(o.legs)
+            if sig.isEmpty { return true }
+            return seen.insert(sig).inserted
+        }
+    }
+
     /// Candidates -> ranked options: drop ones absurdly slower than walking and transfers that do not beat
     /// the best direct trip by `xferGainMin`, merge duplicates, rank, cap.
     public static func pickOptions(_ cands: [PlanCandidate], t0: Double, walkOnlyMin: Double, max: Int = 4,

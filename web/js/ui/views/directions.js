@@ -27,7 +27,7 @@ import { staleLevel, liveUnknown } from "../../core/arrivals.js";
 import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { plan, refineWalking, PLANNER } from "../../core/planner.js";
-import { rankOptions, criteriaText, walkFirst } from "../../core/rank.js";
+import { rankOptions, criteriaText, walkFirst, uniqueOptions } from "../../core/rank.js";
 import { walkRoute } from "../../core/walk.js";
 import { createThrottle } from "../../core/throttle.js";
 import { predict } from "../../core/predict.js";
@@ -297,7 +297,7 @@ export async function replan({ fresh = false } = {}) {
   const opts = settled.map((s, i) => (s.status === "fulfilled" ? s.value : top[i])).filter((o) => o && Array.isArray(o.legs));
   const walkOnly = walk ? { m: walk.m, min: walk.min, coords: walk.coords, source: walk.source } : r.walkOnly;
   // sidewalk times can change who walks least; very close = walk first (core/rank.js walkFirst, owner 2026-10-30)
-  const ranked = walkFirst(rankOptions(opts), walkOnly, { from, to, t0: now, max: PLANNER.MAX_OPTS });
+  const ranked = walkFirst(rankOptions(uniqueOptions(opts)), walkOnly, { from, to, t0: now, max: PLANNER.MAX_OPTS });   // two options can land on the same bus
   D.missed = top.length > 0 && !ranked.length;
   D.result = { ...r, options: ranked, walkOnly };
   D.refining = false; pickSel(fresh); syncJourney(); patchRes(); drawSel(fresh);

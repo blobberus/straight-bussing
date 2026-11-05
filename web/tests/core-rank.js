@@ -1,7 +1,7 @@
 // Tests for core/rank.js (trip option ranking: least walking, then earliest arrival, then shortest
 // wait, then how many criteria an option meets) and its use by core/planner.js.
 import { test, eq, ok } from "./lib.js";
-import { CRITERIA, optionStats, rankOptions, criteriaText, pickOptions, walkTotals, walkFirst, WALK_FIRST_MIN, besideWalk } from "../js/core/rank.js";
+import { CRITERIA, optionStats, rankOptions, criteriaText, pickOptions, walkTotals, walkFirst, WALK_FIRST_MIN, besideWalk, uniqueOptions } from "../js/core/rank.js";
 import { plan } from "../js/core/planner.js";
 
 const T = 1_800_000_000;
@@ -141,4 +141,14 @@ test("walk first: a bus option never claims what the walk above it disproves (QA
   eq(slow.meets, ["walk"], "less walking than the walk, but later and with a 4 min wait");
   const same = { ...bus("y", 5, 1, 0), meets: ["walk"] };
   ok(besideWalk(same, 8, T0 + 8 * 60) === same, "unchanged options are not copied");
+});
+
+test("uniqueOptions: two options refined onto the same bus are listed once, the first kept (QA 2026-11-05)", () => {
+  const legs = (boardT) => [{ type: "walk", min: 0.1 }, { type: "bus", rid: "AP", board: { id: "8609" }, alight: { id: "8630" }, boardT }, { type: "walk", min: 0.4 }];
+  const a = { key: "AP:8609>8630", legs: legs(T0 + 300) }, b = { key: "AP", legs: legs(T0 + 300.4) }, c = { key: "RED", legs: [{ type: "bus", rid: "RED", board: { id: "1" }, alight: { id: "2" }, boardT: T0 + 200 }] };
+  eq(uniqueOptions([a, b, c]).map((o) => o.key), ["AP:8609>8630", "RED"], "same route, stops and boarding minute: one card");
+  eq(uniqueOptions([a, { key: "later", legs: legs(T0 + 900) }]).length, 2, "the next bus on the same route is another option");
+  const w = { key: "walk", walkOnly: true, legs: [{ type: "walk", min: 5 }] };
+  eq(uniqueOptions([w, w]).length, 2, "no bus leg: left alone");
+  eq(uniqueOptions(null), []);
 });

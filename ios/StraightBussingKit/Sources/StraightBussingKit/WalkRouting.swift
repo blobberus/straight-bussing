@@ -208,7 +208,7 @@ extension Planner {
             return out
         }
         var out = r
-        out.options = Rank.rankOptions(refined.compactMap { $0 })
+        out.options = Rank.rankOptions(Rank.uniqueOptions(refined.compactMap { $0 }))   // two options can land on the same bus
         out.missedAll = !top.isEmpty && out.options.isEmpty
         if let w = await walkAll.value, w.m.isFinite, w.min.isFinite, abs(w.m) < 1e9 {   // a junk route never traps Int()
             out.walkOnlyM = Int(JS.round(w.m))

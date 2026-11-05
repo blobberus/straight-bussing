@@ -102,6 +102,26 @@ function legSig(legs) {
 }
 
 /**
+ * Options that became the same trip (route, stops and boarding time of every bus leg) listed once, the first kept: the
+ * sidewalk refinement re-times walks and re-plans a missed bus, so two options can end up on the same bus (QA
+ * 2026-11-05: two identical "AP, 8 min, bus 7:16 at 57th Street & Drexel (NB)" cards). Options with no bus leg are
+ * kept as they are. Pure; Kit Rank.uniqueOptions.
+ * @param {Array<Object>} options
+ * @returns {Array<Object>}
+ */
+export function uniqueOptions(options) {
+  const seen = new Set();
+  return (options || []).filter((o) => {
+    if (!o || !Array.isArray(o.legs)) return false;
+    const sig = legSig(o.legs);
+    if (!sig) return true;
+    if (seen.has(sig)) return false;
+    seen.add(sig);
+    return true;
+  });
+}
+
+/**
  * Turn planner candidates into ranked options: drop ones absurdly slower than walking and
  * transfers that do not beat the best direct trip, merge duplicates, rank, cap.
  * @param {Array<{key:string, legs:Array<Object>, arr:number, xfer:boolean}>} cands

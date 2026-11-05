@@ -129,6 +129,23 @@ final class RankTests: XCTestCase {
         XCTAssertEqual(wt.walkMin, 4); XCTAssertEqual(wt.walkM, 320)
     }
 
+    func testUniqueOptionsListsTheSameBusOnce() {   // web core-rank.js "uniqueOptions" (QA 2026-11-05)
+        let a = TripOption(key: "AP:8609>8630", total: 8, totalMin: 8, arrive: T + 480, t0: T, walkMin: 0.5, walkM: 40, meets: [],
+                           legs: [walk(0.1), bus("AP", 5, boardT: T + 300), walk(0.4)])
+        var b = a
+        b.key = "AP"
+        b.legs = [walk(0.1), bus("AP", 5, boardT: T + 300.4), walk(0.4)]
+        let c = TripOption(key: "RED", total: 8, totalMin: 8, arrive: T + 480, t0: T, walkMin: 7, walkM: 560, meets: [],
+                           legs: [walk(7), bus("RED", 0, boardT: T + 200)])
+        XCTAssertEqual(Rank.uniqueOptions([a, b, c]).map(\.key), ["AP:8609>8630", "RED"], "same route, stops and boarding minute: one card")
+        var later = a
+        later.key = "later"
+        later.legs = [walk(0.1), bus("AP", 15, boardT: T + 900), walk(0.4)]
+        XCTAssertEqual(Rank.uniqueOptions([a, later]).count, 2, "the next bus on the same route is another option")
+        let w = TripOption(key: "walk", total: 5, totalMin: 5, arrive: T + 300, t0: T, walkMin: 5, walkM: 400, meets: [], legs: [walk(5)])
+        XCTAssertEqual(Rank.uniqueOptions([w, w]).count, 2, "no bus leg: left alone")
+    }
+
     func testWalkThenArrivalThenWait() {
         let r = Rank.rankOptions([opt("S", 6, 20, 1), opt("A", 8, 10, 6), opt("W", 1, 30, 9)])
         XCTAssertEqual(r.map(\.key), ["W", "A", "S"])
