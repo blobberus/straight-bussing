@@ -206,6 +206,23 @@ test("layout: the grab bar's hit area (12 px into the header) never covers Back:
   } finally { t.done(); }
 });
 
+test("layout: the top-right column takes taps only on its circles: not in the gap, not in the hidden feedback circle's slot over the expanded sheet", async () => {
+  const t = await frame(393, 852);
+  try {
+    t.$("topbar").insertAdjacentHTML("beforeend", '<button id="feedbackBtn" class="glass gpress fbfab" type="button" aria-label="Give feedback">F</button>');
+    t.set({ detent: "peek" });
+    const g = t.rect("settingsBtn"), f = t.rect("feedbackBtn"), x = g.left + g.width / 2;
+    ok(f.top - g.bottom >= 7.5, "8 between the circles");
+    ok(t.d.elementFromPoint(x, f.top + f.height / 2)?.closest("#feedbackBtn"), "the circle takes its taps");
+    ok(!t.d.elementFromPoint(x, (g.bottom + f.top) / 2)?.closest("#topbar"), "the gap between the circles is the map's");
+    t.set({ detent: "full" });   // the feedback circle hides at the full detent (base.css); its slot is over the sheet header
+    t.$("feedbackBtn").style.transition = "none";
+    eq(t.f.contentWindow.getComputedStyle(t.$("feedbackBtn")).visibility, "hidden", "hidden at full");
+    const hit = t.d.elementFromPoint(x, f.top + f.height / 2);
+    ok(hit && !hit.closest("#topbar") && hit.closest("#sheet"), `the slot belongs to the sheet header under it (${hit && (hit.id || hit.className)})`);
+  } finally { t.done(); }
+});
+
 test("layout: toast never covers the status pill", async () => {
   const t = await frame(393, 852);
   try {

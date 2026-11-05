@@ -171,8 +171,11 @@ test("real app, 320 pt wide, short, 200% text: an open status banner pushes Sett
     fab.style.transition = "none";   // the end state of its fade (this runner's virtual time draws no frames for transitions)
     eq(w.getComputedStyle(fab).visibility, "hidden", "then hidden: no focus, not read out");
     fab.style.removeProperty("transition");
-    const t = $("timeBtn").getBoundingClientRect();
-    eq(d.elementFromPoint(t.left + t.width / 2, t.top + 6)?.closest("#timeBtn"), $("timeBtn"), "Lines by Time takes its own taps");
+    const t = $("timeBtn").getBoundingClientRect(), f = fab.getBoundingClientRect();
+    const shared = [Math.max(t.top, f.top), Math.min(t.bottom, f.bottom)];   // where the circle would sit over the clock
+    const y = shared[1] > shared[0] ? (shared[0] + shared[1]) / 2 : t.top + t.height / 2;
+    const hit = d.elementFromPoint(t.left + t.width / 2, y);
+    ok(hit && hit.closest("#timeBtn"), `Lines by Time takes its own taps (${hit && (hit.id || hit.className)}, clock ${Math.round(t.top)}..${Math.round(t.bottom)}, circle ${Math.round(f.top)}..${Math.round(f.bottom)})`);
     more.click();
     await settle();
     ok(!fab.classList.contains("is-crowded"), "the banner closed: the circle is back");

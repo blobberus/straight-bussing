@@ -77,7 +77,9 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
   position: fixed; z-index: var(--z-search);
   top: var(--row-b-top); right: calc(var(--safe-r) + var(--inset-chrome));
   display: flex; flex-direction: column; align-items: flex-end; gap: var(--gap-chrome);
-}
+  pointer-events: none;   /* only its circles take taps: the gap and a hidden feedback circle's slot (expanded sheet, no */
+}                         /* room) must not swallow taps meant for the map, the sheet header or the lower-right group */
+.topbar > * { pointer-events: auto; }
 .gcircle {
   position: relative; width: var(--chrome-btn); height: var(--chrome-btn); border-radius: 50%;
   display: grid; place-items: center; color: var(--label);
