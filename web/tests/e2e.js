@@ -655,6 +655,19 @@ test("trip chip: a tap that lands on Show all right after the status banner appe
     T.feedFail = false;
     W.dispatchEvent(new W.Event("online"));
     await waitFor(() => $("#pill").hidden && !$("#ctxbar").hidden, "the banner gone, the trip back");
+    T.feedFail = true;
+    W.dispatchEvent(new W.Event("online"));
+    await waitFor(() => !$("#pill").hidden, "the banner once more");
+    await new Promise((r) => setTimeout(r, ROW_GUARD_MS + 100));
+    const more = $("#pill .pillmore");
+    more.click();   // details open: the banner grows, the chip moves down
+    await new Promise((r) => setTimeout(r, ROW_GUARD_MS + 100));
+    more.click();   // details close: the chip moves up into where the details were
+    tap(showAll());   // a tap that was aimed at the details' Call link
+    eq(state().journey && state().journey.kind, "plan", "absorbed after the details close too");
+    T.feedFail = false;
+    W.dispatchEvent(new W.Event("online"));
+    await waitFor(() => $("#pill").hidden, "the banner gone for good");
     await new Promise((r) => setTimeout(r, ROW_GUARD_MS + 100));
     tap(showAll());
     eq(state().journey, null, "a deliberate tap once the chip has settled still ends the trip");

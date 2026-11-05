@@ -34,9 +34,10 @@ export const FIRST_POLL_GRACE_S = 20;
  */
 export const RETRY_HOLD_MS = 2500;
 /**
- * The status banner appearing or going moves Row B / Row C (the trip chip) by its height; a tap that lands on the trip
- * chip this soon after (ms) was aimed at what used to be there, so it is absorbed (main.js; 2026-11-05 QA: the chip's
- * Show all ends the trip at once). Same idea as the iPhone app's context-bar guard after Retry.
+ * The status banner appearing, going, or changing height (its details opening or closing, a longer line) moves Row B /
+ * Row C (the trip chip); a tap that lands on the trip chip this soon after (ms) was aimed at what used to be there, so it
+ * is absorbed (main.js; 2026-11-05 QA: the chip's Show all ends the trip at once). Same idea as the iPhone app's
+ * context-bar guard after Retry.
  */
 export const ROW_GUARD_MS = 800;
 /** What the held banner says once the feed answers again (spec 10.3). */
@@ -160,6 +161,7 @@ export function createPill(els, o = {}) {
   if (els.text.id) more.setAttribute("aria-controls", els.text.id);
   const setOpen = (on) => {
     const v = on ? "true" : "false";
+    if (!els.pill.hidden && els.pill.classList.contains("is-open") !== !!on) movedAt = Date.now();   // the rows below move
     if (more.getAttribute("aria-expanded") !== v) more.setAttribute("aria-expanded", v);
     els.pill.classList.toggle("is-open", !!on);
     call.hidden = !on;
@@ -219,8 +221,10 @@ export function createPill(els, o = {}) {
   if (els.app && typeof ResizeObserver === "function") {
     // --pill-h on #app = the pill's real height (text can wrap); the full detent and the chip sit below it (sheet.css, base.css)
     new ResizeObserver(() => {
-      const v = els.pill.offsetHeight + "px";
-      if (v !== "0px" && els.app.style.getPropertyValue("--pill-h") !== v) els.app.style.setProperty("--pill-h", v);
+      const v = els.pill.offsetHeight + "px", was = els.app.style.getPropertyValue("--pill-h");
+      if (v === "0px" || was === v) return;
+      if (was && !els.pill.hidden && els.pill.dataset.form !== "chip") movedAt = Date.now();   // a longer or shorter line moved the rows
+      els.app.style.setProperty("--pill-h", v);
     }).observe(els.pill);
   }
   api.render = (s, now) => {
