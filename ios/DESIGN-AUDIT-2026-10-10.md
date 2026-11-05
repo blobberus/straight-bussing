@@ -35,8 +35,8 @@ Every finding below is fixed, except those under "Left deliberately".
 | `iOS design: own button styles, swipe tray colors, keyboard hides the tab bar (from the CI screenshots)` | 3.7, 4.4, 4.10, 10.8, 11.1 (stop chips): found in the screenshots of the first pass |
 
 The tokens live in `ios/Shared/Palette.swift` (app and widget extension): `Palette.text / text2 / text3 / accent /
-accentFill / live / liveMark / warn / warnBg / danger / dangerFill / neutralFill / star / starBadge / sheet / card /
-shadow` and `Radius.sheet / card / control / inner / badge / tag`. `primaryButtonStyle()` is the one primary button
+accentFill / live / liveMark / warn / warnBg / danger / dangerFill / neutralFill / favMark / favInk / favEdge / sheet /
+card / shadow` (the favorite tokens replaced `star` / `starBadge` on 2026-11-05: yellow stars, owner) and `Radius.sheet / card / control / inner / badge / tag`. `primaryButtonStyle()` is the one primary button
 (`PrimaryButtonStyle`: white on the accent fill); `secondaryButtonStyle(destructive:)` the secondary one
 (`SecondaryButtonStyle`: accent or danger text on the neutral gray fill). Both are 44 pt tall with the 12 pt control
 radius and are drawn by the app, so they look the same on the iOS 17 and iOS 26 SDKs.

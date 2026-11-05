@@ -66,7 +66,7 @@ struct MyRoutesView: View {
             Section {
                 if favs.isEmpty {
                     HStack(spacing: 10) {
-                        Image(systemName: "star").font(.title2).foregroundStyle(Palette.star).accessibilityHidden(true)
+                        FavoriteStar(filled: false, font: .title2).accessibilityHidden(true)
                         Text("Open a station on the map and tap Favorite. It will show up here with its next bus.")
                             .font(.subheadline).foregroundStyle(Palette.text2)
                     }

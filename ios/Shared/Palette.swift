@@ -5,7 +5,8 @@ import UIKit
 /// ios/DESIGN-AUDIT-2026-10-10.md). Member of the app and the widget extension.
 ///
 /// Color lock: ONE accent for every action, selection and switch; green only for live GPS / prediction data;
-/// gold (`warn`) for stale data, warnings and the favorite star (always with the star shape); `danger` is error
+/// gold (`warn`) for stale data and warnings; yellow (`favMark`) for the favorite star, always with the star shape
+/// (owner 2026-11-05, was the brown `warn`); `danger` is error
 /// text, `dangerFill` the red under white text; route colors are data, never decoration. No pure #000 / #fff
 /// surfaces. Every text pair below is at least 4.5:1 in light and dark, including on the gray fill of a
 /// `.bordered` button, and Increase Contrast gets stronger text and accent variants.
@@ -39,7 +40,7 @@ enum Palette {
     static let live = dynamic(0x157A38, 0x32D74B)
     /// Live data as a mark (the live dot).
     static let liveMark = dynamic(0x1E9E4A, 0x32D74B)
-    /// Stale data, warnings, the favorite star.
+    /// Stale data, warnings.
     static let warn = dynamic(0xA35400, 0xFFB340)
     static let warnBg = dynamic(0xFFF4E0, 0x3A2A10)
     /// Error / destructive text.
@@ -48,10 +49,17 @@ enum Palette {
     static let dangerFill = fixed(0xC4291C)
     /// Neutral fill under white text (swipe Details): 6.6:1.
     static let neutralFill = fixed(0x5C5C63)
-    /// Favorite star: gold, always with the star shape (never state by color alone).
-    static let star = warn
-    /// The favorite badge on the map: a white star on dark gold (5.3:1) in both themes.
-    static let starBadge = fixed(0xA35400)
+    /// Favorite star (owner 2026-11-05: "yellow instead of brown"; web tokens --fav-mark / --fav-ink / --fav-edge):
+    /// #FFCC00 light / #FFD60A dark, a deeper gold than 53rd Street's lemon route color. Always with the star shape
+    /// (never state by color alone).
+    static let favMark = dynamic(0xFFCC00, 0xFFD60A)
+    /// The star glyph on the yellow map badge: 11.3:1 on #FFCC00.
+    static let favInk = fixed(0x1C1C1E)
+    /// The yellow's thin edge on light surfaces (the yellow alone is 1.5:1 on white; this edge is 4.5:1 on the card,
+    /// 4.3:1 on the light map). Dark needs none (the yellow is 9.9:1 on the dark card), so it is the yellow itself.
+    static let favEdge = Color(uiColor: UIColor { t in
+        t.userInterfaceStyle == .dark ? UIColor(rgb: 0xFFD60A) : UIColor(red: 28 / 255, green: 28 / 255, blue: 30 / 255, alpha: 0.6)
+    })
     /// The bottom sheet and page backgrounds (grouped background; dark is the elevated #1C1C1E, never #000).
     static let sheet = dynamic(0xF2F2F7, 0x1C1C1E)
     /// Cards and list rows on the sheet (off-white, never #FFF; dark is the elevated #2C2C2E).

@@ -429,7 +429,7 @@ struct FavoritesCard: View {
         return Button { model.push(.stop(id)) } label: {
             HStack(spacing: 10) {
                 if let a { RouteChip(route: model.route(a.rid), rid: a.rid) }
-                else { Image(systemName: "star.fill").foregroundStyle(Palette.star).frame(width: 24).accessibilityHidden(true) }
+                else { FavoriteStar().frame(width: 24).accessibilityHidden(true) }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(name).font(.subheadline.weight(.medium)).foregroundStyle(Palette.text).lineLimit(1)
                     if let a { Text(model.route(a.rid)?.long ?? "").font(.caption).foregroundStyle(Palette.text2).lineLimit(1) }

@@ -32,6 +32,38 @@ struct RouteChip: View {
     }
 }
 
+/// The favorite star in the sheet (owner 2026-11-05: yellow, not the old brown; web .v-favic / .mr-fav): filled =
+/// a favorite, in `favMark` with the thin `favEdge` outline (light surfaces need it); not filled = the outline alone in
+/// `favEdge`. The shape carries the state, never the color alone.
+struct FavoriteStar: View {
+    var filled = true
+    var font: Font = .body
+
+    var body: some View {
+        if filled {
+            Image(systemName: "star.fill").font(font).foregroundStyle(Palette.favMark)
+                .overlay(Image(systemName: "star").font(font).foregroundStyle(Palette.favEdge))
+        } else {
+            Image(systemName: "star").font(font).foregroundStyle(Palette.favEdge)
+        }
+    }
+}
+
+/// The favorite badge on the map (web map/favorites.js .sb-fav): a yellow disc with a dark star, a thin dark edge in
+/// light mode so it keeps its outline on the light land.
+struct FavoriteBadge: View {
+    var size: CGFloat = 18
+
+    var body: some View {
+        ZStack {
+            Circle().fill(Palette.favMark)
+            Image(systemName: "star.fill").font(.system(size: size * 0.56, weight: .bold)).foregroundStyle(Palette.favInk)
+        }
+        .frame(width: size, height: size)
+        .overlay(Circle().strokeBorder(Palette.favEdge, lineWidth: 1))
+    }
+}
+
 /// Small "est." / source tag (ui/components.js estTag).
 struct EstTag: View {
     let text: String

@@ -430,7 +430,7 @@ struct StopDot: View, Equatable {
                         .background(Circle().fill(Palette.accent.opacity(0.18)))
                 }
                 if isFav {
-                    Image(systemName: "star.circle.fill").font(.system(size: 18)).foregroundStyle(.white, Palette.starBadge)
+                    FavoriteBadge(size: 18)
                         .opacity(faded ? 0.45 : 1)
                 } else {
                     Circle().fill(.white).frame(width: 9, height: 9).overlay(Circle().stroke(.gray, lineWidth: 2))

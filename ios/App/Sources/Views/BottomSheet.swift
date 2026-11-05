@@ -217,7 +217,7 @@ struct SheetHeader: View {
         switch model.page {
         case .stop(let id):
             Button { model.toggleFavorite(id) } label: {
-                Image(systemName: model.isFav(id) ? "star.fill" : "star").font(.title3).foregroundStyle(Palette.star).tapTarget()
+                FavoriteStar(filled: model.isFav(id), font: .title3).tapTarget()
             }
             .accessibilityLabel(model.isFav(id) ? "Remove from favorites" : "Add to favorites")
             .accessibilityValue(model.isFav(id) ? "Favorited" : "")
