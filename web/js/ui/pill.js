@@ -158,7 +158,7 @@ export function createPill(els, o = {}) {
     els.pill.classList.toggle("is-open", !!on);
     call.hidden = !on;
   };
-  more.addEventListener("click", () => setOpen(more.getAttribute("aria-expanded") !== "true"));
+  more.addEventListener("click", () => { hold(false); setOpen(more.getAttribute("aria-expanded") !== "true"); });
   let tap = els.pill.querySelector('[data-action="demo:info"]');
   if (!tap) {
     tap = document.createElement("button");
@@ -167,24 +167,35 @@ export function createPill(els, o = {}) {
     tap.setAttribute("aria-label", "Simulated buses: what this means, and how to see live buses");
     els.pill.appendChild(tap);
   }
-  let sig = "", holdUntil = 0, holdTimer = 0, latest = null, back = false;
+  let sig = "", holdUntil = 0, holdTimer = 0, latest = null, back = false, retryHold = false, heldIcon = "";
   const api = {};
   const release = () => {
-    holdUntil = 0; back = false; sig = "";
+    holdUntil = 0; back = false; sig = ""; retryHold = false;
     els.retry.removeAttribute("aria-busy");
     els.retry.removeAttribute("aria-disabled");
     els.pill.style.removeProperty("min-height");
     els.pill.classList.remove("is-back");
     if (latest) api.render(latest, nowS());
   };
-  // a Retry tap: keep the banner's height and place until RETRY_HOLD_MS after the last tap (spec 10.3), then the real state
-  els.retry?.addEventListener?.("click", () => {
-    if (els.retry.hidden) return;
-    if (!holdUntil) els.pill.style.minHeight = els.pill.offsetHeight + "px";   // its height now: nothing below it moves
+  /* A tap on the banner (Retry, or Details on its trailing side): keep the banner's height and place until RETRY_HOLD_MS
+     after the last tap (spec 10.3), then the real state. Details sits right where the trip chip's Show all (which ends the
+     trip) would slide up to if the banner went away under a second tap (the feed coming back between two taps), so it holds
+     too (2026-11-05 QA); a Details hold still shows a new warning (the line stays put; the banner only grows downward). */
+  function hold(isRetry) {
+    if (!holdUntil) heldIcon = els.pill.dataset.icon || "";
     holdUntil = Date.now() + RETRY_HOLD_MS;
-    if (!back) els.retry.setAttribute("aria-busy", "true");   // the poll runs (repeated taps join it: data/live.js pollNow)
+    if (isRetry) {
+      // its height now (unrounded, unscaled): nothing below it moves; the rows keep to the top (base.css align-content)
+      if (!retryHold) els.pill.style.minHeight = getComputedStyle(els.pill).height;
+      retryHold = true;
+      if (!back) els.retry.setAttribute("aria-busy", "true");   // the poll runs (repeated taps join it: data/live.js pollNow)
+    }
     clearTimeout(holdTimer);
     holdTimer = setTimeout(release, RETRY_HOLD_MS);
+  }
+  els.retry?.addEventListener?.("click", () => {
+    if (els.retry.hidden) return;
+    hold(true);
   });
   /** The feed answered during the hold: "Live data is back." with a check, Retry kept in its slot but absorbing taps. */
   const showBack = () => {
@@ -208,9 +219,11 @@ export function createPill(els, o = {}) {
   api.render = (s, now) => {
     latest = s;
     const p = pillState(s, now, o);
-    if (Date.now() < holdUntil && !els.retry.hidden) {   // Retry was just tapped: nothing moves under the finger
-      if (!p.retry) showBack();
-      return;
+    if (Date.now() < holdUntil && !els.pill.hidden) {   // the banner was just tapped: nothing moves under the finger
+      const gone = !p.msg || (retryHold && !p.retry);   // the banner would go (or Retry would: the feed answered)
+      if (gone && (retryHold || heldIcon === "feed" || heldIcon === "delay")) showBack();
+      if (gone || retryHold) return;
+      if (back) { back = false; sig = ""; els.retry.removeAttribute("aria-disabled"); }   // a new warning replaces "Live data is back."
     }
     const next = [p.kind, p.icon, p.msg, p.short, p.retry, p.alert, p.demo].join("|");
     if (next === sig) return;

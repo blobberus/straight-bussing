@@ -112,7 +112,9 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
 .statuspill {
   position: fixed; z-index: var(--z-float);
   top: var(--search-top); left: calc(var(--safe-l) + var(--inset-chrome)); right: calc(var(--safe-r) + var(--inset-chrome));
-  display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center;
+  /* align-content: start = the height a Retry hold keeps (ui/pill.js) stays under the line: closing the details during
+     the hold never moves the line down */
+  display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; align-content: start;
   min-height: var(--tap); padding: 0 0 0 var(--s-3); border-radius: var(--r-card);
   background: var(--warn-bg); box-shadow: var(--glass-shadow), var(--glass-edge);
   color: var(--label); font: var(--t-footnote); font-size: min(var(--size-footnote), var(--cap-footnote)); line-height: 1.3;

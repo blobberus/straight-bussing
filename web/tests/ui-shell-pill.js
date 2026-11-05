@@ -112,6 +112,34 @@ test("pill: after a Retry tap the banner holds still, then shows the feed's stat
   host.remove();
 });
 
+// 2026-11-05 QA: Details sits on the banner's trailing side, where the trip chip's Show all (which ends the trip at once)
+// would slide up if the banner went away between two taps (the feed coming back). A Details tap holds the banner too.
+test("pill: a Details tap holds the banner, so the trip chip never slides up under a second tap", async () => {
+  const host = document.createElement("div");
+  host.innerHTML = '<div class="statuspill" hidden><button class="pillbtn" hidden>Retry</button><span class="pilltext"></span></div>';
+  document.body.appendChild(host);
+  const el = host.firstChild, retry = el.querySelector(".pillbtn"), p = createPill({ pill: el, text: el.querySelector(".pilltext"), retry });
+  const more = () => el.querySelector(".pillmore");
+  p.render({ ...fresh, feedTs: NOW - 150 }, NOW);   // delayed: a banner with no Retry
+  ok(!el.hidden && retry.hidden, "a delayed-feed banner");
+  more().click();
+  p.render(fresh, NOW);   // the feed is fresh again a moment later
+  ok(!el.hidden && el.textContent.includes(BACK_MSG), "held: the banner stays and says \"Live data is back.\"");
+  p.render({ ...fresh, failed: true, lastOk: NOW - 120 }, NOW);   // a new problem during the hold still shows
+  ok(!el.hidden && el.textContent.includes("Can't reach the shuttle feed") && !retry.hidden && !retry.hasAttribute("aria-disabled"), "a new warning still shows, Retry usable");
+  p.render(fresh, NOW);
+  await new Promise((r) => setTimeout(r, RETRY_HOLD_MS + 80));
+  ok(el.hidden, "after the hold: the current state");
+  p.render({ ...fresh, buses: [] }, NOW);   // "No shuttles running": not a feed problem
+  ok(!el.hidden, "a no-shuttles banner");
+  more().click();
+  p.render(fresh, NOW);
+  ok(!el.hidden && !el.textContent.includes(BACK_MSG), "held without \"Live data is back.\" (the live data never went)");
+  await new Promise((r) => setTimeout(r, RETRY_HOLD_MS + 80));
+  ok(el.hidden, "then gone");
+  host.remove();
+});
+
 // Owner 2026-11-04: "Reduce the size of the reconnecting notification." One 44 pt line in the footnote role that still
 // says the times can't be relied on; the full sentence and the official number one tap away (Details); screen readers
 // always hear the full sentence; the line (and the Retry slot) never moves when the details open or close.
@@ -151,7 +179,7 @@ test("pill: Details opens the full sentence and the call link under the line; th
     + '<button id="pillAlert" class="pillbtn pillslot" type="button" data-action="alerts:open" hidden>See alert</button>'
     + '<span id="pillIcon" class="pillicon" aria-hidden="true"></span><span id="pillText" class="pilltext"></span></div></div></body></html>');
   d.close();
-  return new Promise((res) => setTimeout(res, 300)).then(() => {
+  return new Promise((res) => setTimeout(res, 300)).then(async () => {
     try {
       const el = d.getElementById("pill"), retry = d.getElementById("pillRetry"), text = d.getElementById("pillText");
       const p = createPill({ pill: el, text, retry });
@@ -182,9 +210,16 @@ test("pill: Details opens the full sentence and the call link under the line; th
       eq([R(more).top, R(retry).top], [line0.top, slot0.top], "closing moves nothing on the line");
       near(R(el).height, h0, 1, "back to one line");
       p.render(fresh, NOW);
-      ok(el.hidden, "fresh data: no banner");
+      ok(!el.hidden && short.textContent === BACK_MSG, "fresh data right after a Details tap: the banner holds (\"Live data is back.\")");
+      await new Promise((r) => setTimeout(r, RETRY_HOLD_MS + 80));
+      ok(el.hidden, "fresh data: no banner once the hold ends");
       p.render({ ...fresh, feedTs: NOW - 150 }, NOW);
       ok(!el.classList.contains("is-open") && call.hidden, "a banner that comes back starts closed");
+      p.render({ ...fresh, failed: true, lastOk: NOW - 120 }, NOW);
+      more.click();    // details open...
+      retry.click();   // ...a Retry hold keeps the open height...
+      more.click();    // ...and closing the details during it leaves the extra height under the line (base.css align-content)
+      eq([R(more).top, R(retry).top], [line0.top, slot0.top], "closing the details during a Retry hold moves nothing on the line");
       // the demo chip: no Details, the words in the chip
       const q = createPill({ pill: el, text, retry }, { demo: true });
       q.render({ ...fresh }, NOW);
