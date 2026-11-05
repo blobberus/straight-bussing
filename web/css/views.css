@@ -87,7 +87,10 @@
    accessibility sizes stack all three with Directions first (components.css .v-actions) */
 .v-stopacts { flex-wrap: wrap; }
 .v-stopacts .v-btn { flex: 1 1 auto; padding: 0 var(--s-3); }
-.v-chipbtn { position: relative; display: inline-grid; place-items: center; min-width: var(--tap); min-height: var(--tap); margin: -10px -6px; padding: 0; border: 0; background: none; cursor: pointer; }
+/* a 44 pt target around a smaller badge: the negative margin hands the extra back to the row; the padding (as large as
+   that margin) keeps a badge wider or taller than 44 pt (AP/DX, 200% text) from eating the gap and overlapping its
+   neighbor, so every badge is 8 pt from the next */
+.v-chipbtn { position: relative; display: inline-grid; place-items: center; min-width: var(--tap); min-height: var(--tap); margin: -10px -6px; padding: 10px 6px; border: 0; background: none; cursor: pointer; }
 .v-chipbtn:active { opacity: .6; }
 .v-addr { margin: 0; }
 

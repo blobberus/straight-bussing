@@ -263,3 +263,32 @@ test("map view: opening a stop selects it without moving the map; choosing a rou
   eq(ctx.store.get().view, "route");
   eq(ctx.calls.fitTo.length, 1, "choosing a route frames it");
 });
+
+test("stop: the route badges never overlap, also at 200% text where a badge is wider than its 44 pt target (QA 2026-11-05)", async () => {
+  const base = fixture({ stopId: "S1" });
+  const s = { ...base, routes: { ...base.routes, R1: { ...base.routes.R1, short: "FCM" }, R2: { ...base.routes.R2, short: "AP/DX" } },
+    stopRoutes: { ...base.stopRoutes, S1: ["R1", "R2", "R3", "R1"].slice(0, 3) } };
+  const tmp = document.createElement("div");
+  tmp.innerHTML = renderStop(s, NOW);
+  const chipsHTML = tmp.querySelector(".v-stopchips")?.outerHTML;
+  ok(chipsHTML, "the stop shows its route badges");
+  for (const [root, w] of [[17, 361], [34, 361], [34, 288]]) {
+    const f = document.createElement("iframe");
+    f.style.cssText = `position:absolute;left:-10000px;top:0;width:${w}px;height:400px;border:0`;
+    const css = ["tokens", "base", "components", "views"].map((n) => `<link rel="stylesheet" href="../css/${n}.css">`).join("");
+    f.srcdoc = `<!doctype html><html style="font-size:${root}px"><head>${css}</head><body style="margin:0;padding:20px 0">${chipsHTML}${chipsHTML.replace(/class="v-chips/, 'style="width:90px" class="v-chips')}</body></html>`;
+    await new Promise((res) => { f.onload = res; document.body.appendChild(f); });
+    await tick(30);
+    try {
+      for (const list of f.contentDocument.querySelectorAll(".v-stopchips")) {
+        const chips = [...list.querySelectorAll(".chip")].map((c) => c.getBoundingClientRect());
+        ok(chips.length === 3, "three badges");
+        for (let i = 0; i < chips.length; i++) for (let j = i + 1; j < chips.length; j++) {
+          const a = chips[i], b = chips[j], ix = Math.min(a.right, b.right) - Math.max(a.left, b.left), iy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+          ok(!(ix > 0.5 && iy > 0.5), `${root} px text, ${list.style.width || w + "px"}: badges ${i + 1} and ${j + 1} do not overlap (${Math.round(ix)} x ${Math.round(iy)})`);
+        }
+        for (const b of list.querySelectorAll(".v-chipbtn")) ok(b.offsetWidth >= 44 && b.offsetHeight >= 44, "each badge stays a 44 pt target");
+      }
+    } finally { f.remove(); }
+  }
+});
