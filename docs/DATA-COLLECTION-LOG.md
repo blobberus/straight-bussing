@@ -140,6 +140,29 @@ about 11:50. What the feed held (positions every 10 s; the owner's point 41.7924
   change are a separate workstream started 2026-11-06 (idle buses); the off-route rule (E27, `core/offroute.js`) does
   not hide these buses because they stand on their own line.
 
+**6. The GPS sweep still misses some stops of buses with sparse reports (open, small; detector).**
+- Found while checking per-line hours against the week before: Red Line/Arts Block logged 6 and 8 arrivals at 2 and 3 PM
+  on Mon Nov 2 (30 and 28 the Monday before) although bus 4322 drove its loop all afternoon. 4322 was on Passio's
+  unlisted Red Line trip 672392 (item 4's pattern: no stop, no prediction), so only the GPS sweep could log it, and it
+  logged about every other lap: 6 of 17 stops it passed at 2 PM, 4 of 13 at 3 PM.
+- Cause, from an instrumented replay of that day (the live rows and a one-pass replay agree, so it is not a run edge):
+  (a) Passio sent this bus's position only every 70 to 350 s at times, and the sweep skips any stretch between two
+  reports more than `MAX_GAP` (60 s) apart, so the first half of a lap (Institute for the Study of Ancient Cultures,
+  Ellis/57th, Smart Museum, Garfield Green Line) went unseen; (b) the second half was then refused by `_fits_rules`:
+  its stops were more than half the loop ahead of the bus's last row, which was still inside `MAX_LINK_S` (25 min)
+  because a Red Line loop takes about 24 min. Day totals of dropped sweep visits are small (Nov 2: Red Line 13 not
+  confirmed + 21 out of order, every other line 0 to 7; Nov 5: 0 to 7 per line), but report gaps over 60 s on moving
+  buses are common on the long lines (Nov 2: Downtown Campus Connector 124, Red Line 61, Midway Metra 21).
+- Impact: a rough check (a fresh report within 30 m of a stop of the bus's own route, against any row of that bus at that
+  stop within 4 min) finds 87 to 100% of stop passes logged per line and day on Nov 2 to 5; the lowest are Red
+  Line/Arts Block 87% on Nov 2 (98 to 99% on Nov 3 and 4), South 87 to 91%, Downtown Campus Connector 88 to 93%; by trip,
+  Red Line 672392 329 of 407 and the Downtown Campus Connector's frequency trip 874028 1,578 of 1,732. This is the
+  residual of DC-003 (91 to 95% after the sweep), not new.
+- Follow-up (owner's call, not changed today): a detector change validated by replays, e.g. let the sweep cross a report
+  gap of up to about 3 min when both ends lie on the route's line, and ignore a previous-lap row in `_fits_rules` when
+  the bus's own GPS visits confirm the new order; then replay a week and count added rows against the raw tracks.
+  Rows of past days would change only with the owner's go-ahead (`tools/apply_replay.py`).
+
 ### DC-022 Two false alarms on the health alerts' first day (fixed 2026-11-02)
 - Found in the 2026-11-02 checkup; both issues had opened and closed by themselves.
 - **Data repo watchdog, Sun Nov 1 4:00 to 4:51 PM ("stale"):** the rule "buses running and a collect run active, but no
