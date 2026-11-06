@@ -432,3 +432,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5704,Downtown Campus Connector,1793938054,2026-11-05 22:07:34,drop,3,2,12643,155005,S Lake Park Ave & E Hyde Park Blvd,1793938054,874028,12642;12644,6,4,0,,,1,
 5704,Downtown Campus Connector,1793938067,2026-11-05 22:07:47,drop,2,1,12642,132968,Roosevelt Station,1793938067,874028,12644,6,4,0,,,1,
 1076,South,1793939930,2026-11-05 22:38:50,drop,2,1,12648,8630,Levi Hall (W),1793939930,501647,4538,2,2,0,,,1,
+6126,Apostolic/Drexel,1793944839,2026-11-06 00:00:39,drop,2,1,12645,8630,Levi Hall (W),1793944839,676401,4318,3,0,0,,,,
