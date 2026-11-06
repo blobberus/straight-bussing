@@ -139,6 +139,12 @@ about 11:50. What the feed held (positions every 10 s; the owner's point 41.7924
 - Not this checkup's job: the end-of-service analysis (where buses linger before they leave service) and the app
   change are a separate workstream started 2026-11-06 (idle buses); the off-route rule (E27, `core/offroute.js`) does
   not hide these buses because they stand on their own line.
+- Follow-up done 2026-11-06 (RouteKnower E28): labeled end-of-trip / end-of-shift episodes in
+  `data/labeled/end_of_service/` (one CSV per service day, linger spots, summary by line); the app now hides idle buses
+  that are not in service (`core/idle.js` = Kit `Idle.swift`, docs/ARCHITECTURE.md "Idle buses that are not in
+  service"): on the Nov 5 polls North 4328 hidden from 11:50 PM, South 4538 11:49, Central 4313 11:54, Apostolic/Drexel
+  4318 / 12645 11:53 / 11:58; East 4325 stays (its last bus logs the first stops of the midnight trip). Most affected
+  lines: `docs/LINES-MOST-AFFECTED.md`.
 
 **6. The GPS sweep still misses some stops of buses with sparse reports (open, small; detector).**
 - Found while checking per-line hours against the week before: Red Line/Arts Block logged 6 and 8 arrivals at 2 and 3 PM
