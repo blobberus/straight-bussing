@@ -9,6 +9,9 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   it also checks out main's `tools/`). Each run logs 70 min and **starts its own successor 40 min in**
   (`tools/collect_chain.py`; GitHub drops most scheduled runs), so runs overlap by ~30 min. The **:07 / :37**
   cron is only a backstop that restarts the chain. At most 2 collect runs ever run at once (slots a/b).
+  A failed dispatch (GitHub's API answering 5xx) is tried up to 10 times, 1, 2, 4, then 5 min apart (DC-023: on
+  Nov 5, 2026 three tries in two minutes all failed and nothing collected for 2 hours); `dispatch failed (10/10)` in a
+  run's Self-chain line means the API was down for over half an hour: dispatch by hand once it answers.
   Off switch: repo variable `COLLECT_CHAIN=off`, or Disable workflow. A run's summary says `Self-chain: done:dispatched`. Each run merges its rows with `tools/merge_arrivals.py`
   (drops overlap duplicates) into `data/ground_truth/arrivals.csv` on the orphan **`data`** branch, refreshes
   `web/data/learned.json` there, and re-enables itself (60-day idle rule). Schema and details: `docs/DATA.md`.
@@ -19,7 +22,8 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   the arrival loop) and merges one row per alert version into `data/ground_truth/alerts.csv` (`tools/merge_alerts.py`;
   the local fallback does the same); the run summary ends `alerts: N versions, F of P polls failed`, and a
   `Service alerts not collected` warning means the alerts feed failed that run (arrivals unaffected).
-- **Daily archive** `.github/workflows/archive.yml` (about 5:40 AM Chicago, catches up the last 10 days): turns the
+- **Daily archive** `.github/workflows/archive.yml` (cron 10:41 UTC, 4:41 AM CST / 5:41 AM CDT, but GitHub fires it 6
+  to 10 hours late, so yesterday is often archived only around noon; it catches up the last 85 days): turns the
   90-day artifacts into one file per service day (`pred-updates`, `raw-polls`, the 10%-rule table `eta-<day>.csv.gz`,
   the GTFS zip) on the GitHub Release `data-archive-YYYY-MM`, and merges the day's pass rates into
   `data/eta/summary.csv` on the data branch. Check: Releases page, or `gh release view data-archive-2026-10`. If CI
@@ -44,7 +48,9 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   (`tools/collector_selftest.py`) and collects with the last good code (git tag `collector-ok`) if main's is broken;
   `tools/check_merge.py` stops a push that would lose rows (the run's files stay as the artifact `unmerged-<run>`);
   `tools/health.py` keeps **one GitHub issue labeled `collector-health`** up to date (it opens for a new problem and
-  closes itself when all is clear: check it first, it is the quickest verdict), and the data repo's sync chain runs
+  closes itself when all is clear: check it first, it is the quickest verdict; a data gap stays listed until its day is
+  more than 2 days old, because the data check covers the last 2 finished days, so after a gap the issue closes about 2
+  days later by itself), and the data repo's sync chain runs
   `health.py watchdog` from outside (an issue in straight-bussing-data when buses run but nothing collects them). Each
   run records its timetable in `data/ground_truth/gtfs_versions.csv`. Repo variable `HEALTH_ISSUES=off` silences the
   issues (annotations stay).
@@ -66,6 +72,7 @@ Git Bash gotcha: it rewrites `rev:path` arguments (`git show origin/data:data/..
 |---|---|---|
 | `workflow is disabled_...` | 60-day idle rule or someone disabled it | Ask the owner to open https://github.com/blobberus/straight-bussing/actions/workflows/collect.yml and press **Enable workflow** (or, with a token: `curl -X PUT -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/blobberus/straight-bussing/actions/workflows/collect.yml/enable`). Then dispatch. |
 | `no scheduled run has fired yet` / `no run started for ...` | The self-chain stopped (read the last run's **Self-chain** summary line / `::warning::`) and the cron backstop hasn't fired; GitHub delays or drops scheduled runs under load | `python tools/monitor.py dispatch` (uses `GITHUB_TOKEN` or the logged-in `gh` CLI; otherwise it prints the manual steps for the owner). One dispatch restarts the chain. If the chain keeps stopping: `python tools/test_chain.py`, check `vars.COLLECT_CHAIN` is not `off` (`gh variable list`). Check the workflow is on main: `git fetch -q origin && git ls-tree --name-only origin/main .github/workflows/` (must list `collect.yml`). Over 2 h with no run: take over locally, recheck in an hour. |
+| a run's Self-chain line `done:error: dispatch failed (10/10)` (or `(3/3)` before 2026-11-06) | GitHub's workflow-dispatch API failed for over half an hour (DC-023: 500 / 502 on Nov 5 2026), and the cron backstop may be silent for hours too | `python tools/monitor.py dispatch` as soon as the API answers; check https://www.githubstatus.com; log the gap (DC entry). |
 | `a run failed` / `the last 3 runs failed` | Python error, GTFS download, git push | Steps of a run: `curl -s https://api.github.com/repos/blobberus/straight-bussing/actions/runs/<run_id>/jobs` (run id is in the URL that status prints; shows each step's conclusion). Full logs need auth: ask the owner to open the run URL, or read it with Claude in Chrome. Reproduce locally: `python tools/truth_logger.py --once`, `python tools/test_truth.py`, `python tools/test_merge.py`. Fix, then **Update the collector**. |
 | `push failed after 5 attempts` (in a run's Merge step) | Many runs racing, or a file > 100 MB | One lost run is covered by the overlap. If repeated: `git fetch origin data && git log --oneline -5 origin/data`; the CSV rotates to `archive/` at 40 MB, so check that the rotation still works. |
 | `N bus(es) reporting live but only an idle run is active` | The idle run's next feed check (every 2 min) has not seen them yet, or Passio sent one odd answer | Wait 5 min and rerun `status`. If it persists: read the idle run's log (`idle run ...` lines), then `gh workflow run collect.yml -f slot=a -f mode=collect`; check `python tools/service_gate.py` and `python tools/test_gate.py`. |
