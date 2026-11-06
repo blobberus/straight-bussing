@@ -6,7 +6,7 @@ public enum StaticLoader {
     /// [file name, required].
     public static let files: [(String, Bool)] = [
         ("routes.json", true), ("stops.json", true), ("shapes.json", true), ("route_stops.json", true),
-        ("stop_addresses.json", false), ("service.json", false), ("segments.json", false),
+        ("stop_addresses.json", false), ("service.json", false), ("segments.json", false), ("idle.json", false),
     ]
 
     public struct Loaded: Sendable {
@@ -90,8 +90,10 @@ public enum StaticLoader {
         }
         let service = get("service.json", ServiceData.self) ?? ServiceData()
         let segments = get("segments.json", SegmentsData.self)
+        var idle: IdleData? = nil
+        if let d = files["idle.json"], let parsed = IdleData.parse(d) { idle = parsed } else { failed.append("idle.json") }
         let data = StaticData(routes: routes, stops: stops, shapes: shapes, routeStops: routeStops, addresses: addresses,
-                              service: service, segments: segments, generated: service.generated)
+                              service: service, segments: segments, generated: service.generated, idle: idle)
         return Loaded(data: data, failed: failed)
     }
 
