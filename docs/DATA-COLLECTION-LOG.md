@@ -13,6 +13,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 ## Checkups
 | When (Chicago) | Verdict | Coverage | Data | Notes |
 |---|---|---|---|---|
+| 2026-11-06 03:45 | degraded: one 2-hour gap on Thu Nov 5 (DC-023, fixed); otherwise healthy | 92% since Nov 5 03:43 (collecting 66%, idle with no bus 26%), the only gap 10:39 AM to 12:39 PM Nov 5; every collect run since Nov 2 succeeded; an idle run since 02:35, collecting from 4:15 AM | arrivals: 3,931 (Mon Nov 2), 4,148 (Tue), 4,080 (Wed), 3,656 (Thu, about 310 short in the gap); the week before 3,925 / 4,151 / 3,728 / 4,168 / 4,203; 13 lines and 92 stations each day, 0 duplicates, 0 rows missing ids; Passio prediction on 85% / 85% / 81% / 82% of non-`gps` arrivals (the week before 81 to 92%); ~89,400 rows; timetable 708be9d370e2 unchanged (last seen Nov 6 00:37); archive complete through Nov 4, Nov 5 dispatched by hand; weather daily; data repo synced every 25 min | `collector-health` issue #1 open for the Nov 5 gap (it closes itself once Nov 5 leaves the 2-day window, about Nov 8); the data repo's watchdog issue opened 12:12 PM and closed 1:03 PM Nov 5; owner's report of idle buses at Regenstein checked on the raw polls (DC-023 item 5) |
 | 2026-11-04 11:30 | healthy; no alert since Nov 2 | 100% since Nov 3 11:26 (collecting 84%, idle with no bus 16%); 13 buses live at 11:25 AM | arrivals: 4,148 on Tue Nov 3 (13 lines, 92 stations: the most of any day so far), 1,385 on Nov 4 by 10:32 AM, ~82,600 rows; 0 duplicates, 0 rows missing ids; prediction on 85% / 88% of non-`gps` arrivals; health.py data all clear; timetable 708be9d370e2 unchanged (last seen Nov 4 10:33); archive complete through Nov 2 | the daily archive's schedule fires 6 to 10 hours late (Nov 1 16:54Z, Nov 2 20:29Z, Nov 3 18:00Z for a 10:41Z cron), so Nov 3 was not archived yet at 11:30 AM: dispatched by hand (it catches up 85 days anyway, and the health check flags a day only after 2 days) |
 | 2026-11-03 04:00 | healthy; no alert in 24 h | 100% since Nov 2 03:42 (collecting 90%, idle with no bus 10%); every finished collect run succeeded; an idle run since 01:15, collecting again from 4:15 AM for the 5 AM buses | arrivals: 3,931 on Mon Nov 2 (13 lines, 92 stations; weekdays 3,700 to 4,200), ~80,400 rows; 0 duplicates, 0 rows missing ids; prediction on 85% of non-`gps` arrivals; health.py data all clear; timetable 708be9d370e2 still in use (last seen Nov 3 01:14); archive complete through Nov 1 (the first day on the new release data-archive-2026-11, built with the recorded timetable) | the DC-022 fix held: the same after-service pattern (buses listed on trips on their way to the garage, last arrival 00:06) raised no "buses but no rows" alert this time; no watchdog alert in the data repo |
 | 2026-11-02 01:30 | healthy; the first day with the safety nets (DC-021) | 100% since Nov 1 01:26 (collecting 52%, idle with no bus 48%); 28 of 28 finished collect runs since Nov 1 09:00Z succeeded (2 cancelled were my test dispatches), 1 idle run running; Passio 0 buses at 1:26 AM, next start 5 AM | arrivals: 929 on Sat Oct 31 (5 lines, 37 stations), 776 on Sun Nov 1 (4 lines, 35 stations; Sundays 729 to 856), ~79,600 rows; 0 duplicates, 0 rows missing ids; prediction on 71% / 75% of non-`gps` arrivals; health.py data all clear; timetable 708be9d370e2 recorded Nov 1 03:26 to Nov 2 01:23 (no change since Oct 26); archive complete through Oct 31 (archived with the recorded timetable); data repo synced 06:52Z; weather current; collector-tests green; tag collector-ok = main (686ec5d); off-GitHub backup refreshed (121 files, 259 MB) | two automatic alerts in the first day, both false, both closed by themselves (DC-022, fixed); watch: South's single bus 4314 logged 60 to 71% of its stops through the GPS sweep on Sat / Sun (142 and 107 rows; 4320 the same on Oct 27, 93): Passio did not name those stops for that bus, South's totals stayed normal (201, 177), but those arrivals carry no Passio prediction |
@@ -30,6 +31,30 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 | 2026-10-14 17:33 | healthy | 100% of 33.9 h of actual logging time (job start to end), no gaps, 145/145 runs since Oct 11 succeeded | arrivals: 3,469 (Oct 12), 3,640 (Oct 13), 2,473 (Oct 14 so far); predictions.csv 46,386 rows since Oct 12 12:20; no duplicate rows; archive complete through Oct 13 | `monitor.py status` said DEGRADED: DC-004, DC-005 (both false or harmless); the data check found DC-006 to DC-011 |
 
 ## Errors
+
+### DC-023 Checkup 2026-11-06: a 2-hour gap on Nov 5 from GitHub API errors, and the anomalies of Nov 2 to 5 (fixed / watch)
+Owner (2026-11-06): "Check the data collection status and create a log on any anomalies." Times are Chicago (CST since
+Nov 1). Compared with the week before (Oct 26 to 30). Scripts and downloads stayed off the repo (job folder).
+
+**1. Collection gap, Thu Nov 5, 10:39 AM to 12:39 PM (fixed).**
+- What: no collect run was active for 2 hours during weekday service (12 buses were live at 12:12 PM). The health
+  issue's data check flagged it at 1:50 PM ("No arrival on any route 10:40 AM to 12:40 PM ..."); `monitor.py status`
+  shows it as the coverage gap (92%, DEGRADED).
+- Cause: run 42055348229 (9:28 to 10:39 AM) tried to start its successor at 10:09 AM; GitHub's workflow-dispatch API
+  answered HTTP 502, 500, 500 at 10:09:03, 10:09:56 and 10:10:53, and the chain gave up after its 3 tries
+  (`chain done:error: dispatch failed (3/3)`). The `:07` / `:37` cron backstop fired no scheduled run at all from
+  5:26 AM to 12:39 PM (GitHub dropped seven hours of them), so nothing restarted the chain until the 12:39 PM
+  backstop run (42086383740). The data repo's sync chain failed its single dispatch at 10:15 AM the same way (item 3).
+- Impact: lost, not recoverable (no local collector ran): about 310 arrivals (the same window had 282 to 339 on the 8
+  weekdays before; 53rd Street Express ~61, Apostolic/Drexel ~80, Downtown Campus Connector ~65, Friend Center/Metra
+  ~45, Red Line/Arts Block ~60), about 1,500 prediction rows, ~20 bus count changes, and 2 hours of raw polls and
+  prediction updates (the Nov 5 eta table has no rows 10:40 AM to 12:40 PM). Nov 5 totals 3,656 arrivals.
+- Fix (`91954826`): a failed dispatch is now tried up to 10 times, 1, 2, 4, then 5 min apart (the last try 77 min into
+  a collect run, inside its 85-min deadline), reading the run list again before every try so a run GitHub created
+  despite the error is never doubled; idle runs the same. Tests `a_few_minutes_of_github_errors_do_not_stop_the_chain`,
+  `sleeper_retries_a_failed_dispatch_with_backoff` (both fail on the old code). An outage of the dispatch API longer
+  than about 37 min would still stop the chain; the outside watchdog (item 3) is the net for that, and with the
+  owner's `COLLECT_DISPATCH_TOKEN` secret in the data repo it would restart the collector by itself.
 
 ### DC-022 Two false alarms on the health alerts' first day (fixed 2026-11-02)
 - Found in the 2026-11-02 checkup; both issues had opened and closed by themselves.
