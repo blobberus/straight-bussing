@@ -4,7 +4,7 @@ Owner, 2026-11-06: "determine 5 bus lines that are most plagued by the schedulin
 so I can advertise to those riders." Measured on the archived bus reports of Oct 10 to Nov 5, 2026 (RouteKnower.md E28,
 labeled data in `data/labeled/end_of_service/`), with E27 (off-route time) and E24 (Passio's prediction misses).
 
-How the lines were ranked: six measures, each line ranked 1 (worst) to 14 on each, ranks added (lowest sum = most
+How the lines were ranked (`experiments/routeknower/E28-scripts/lines_rank.py`): six measures, each line ranked 1 (worst) to 14 on each, ranks added (lowest sum = most
 affected): idle buses the map showed (parked, on a long break or after the shift, not counting normal layovers), Passio
 arrival times given for buses that were not going to serve, minutes far from every route line (E27), bus reports
 outside the listed hours, the share of listed hours with no live bus at all, and the share of all Passio prediction
@@ -41,14 +41,14 @@ saw at Reynolds Club at 11:50 PM; like East, 35% of its listed hours have no liv
 
 | Line | Rank sum | Idle shown, bus-min/day | Shift ends/day | Passio times for idle buses, min/day | Far from every line, bus-min (E27, 25 days) | Reports outside listed hours, min/day | Listed time with no live bus | Share of all misses (E24) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Downtown Campus Connector | 23 | 288 | 6.1 | 139 | 2,100 | 5 | 11% | 14% |
+| Downtown Campus Connector | 24 | 288 | 6.1 | 139 | 2,100 | 5 | 11% | 14% |
 | Apostolic/Drexel | 28 | 119 | 3.4 | 56 | 605 | 25 | 6% | 13% |
 | Red Line/Arts Block | 31 | 122 | 1.3 | 28 | 654 | 24 | 4% | 12% |
 | East | 37 | 29 | 1.3 | 13 | 493 | 12 | 35% | 7% |
 | Midway Metra | 40 | 34 | 1.0 | 5 | 46 | 75 | 19% | 9% |
 | Central | 43 | 34 | 1.7 | 13 | 133 | 57 | 3% | 7% |
 | South | 43 | 63 | 1.4 | 24 | 321 | 3 | 35% | 3% |
-| North | 44 | 34 | 1.3 | 12 | 339 | 7 | 35% | 4% |
+| North | 43 | 34 | 1.3 | 12 | 339 | 7 | 35% | 4% |
 
 Caveats: the labels come from what each bus did next (data/labeled/end_of_service/README.md); the collector missed
 Nov 5 10:39 AM to 12:39 PM and Oct 28 7:31 to 8:11 PM; "no live bus" after midnight may mean the night buses run without
