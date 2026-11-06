@@ -78,6 +78,28 @@ Nov 1). Compared with the week before (Oct 26 to 30). Scripts and downloads stay
   and 9 times. Still open for the owner: the watchdog can only report, not restart, until the repository secret
   `COLLECT_DISPATCH_TOKEN` is set in the data repo (DC-021).
 
+**4. Buses whose two Passio feeds disagreed for hours, Nov 4 and 5 (watch: Passio's side).**
+- What: `gps` rows (stops found from the GPS track because Passio named none, DC-003) rose to 611 on Wed Nov 4 and 552 on
+  Thu Nov 5 (Nov 2 / 3: 241 / 417; the week before 277 to 398), and Passio's prediction share of the other arrivals fell
+  to 81% / 82% (Nov 2 / 3: 85%). Three buses explain most of it, each in a different way:
+  - **4319, Wed Nov 4, 12:45 to 8:45 PM:** in the vehicle feed its trip and stop froze (Friend Center/Metra trip 499505
+    with stop Goldblatt Pavilion all afternoon, then Apostolic/Drexel trip 676394 from 6:15 PM) while Passio's trip
+    updates moved on through the timetable's trips (499506 ... 499521, 676395 ... 676405). Friend Center/Metra 23% and
+    Apostolic/Drexel 28% `gps` rows that day (normally 0 to 7% and 0 to 2%).
+  - **4317, Thu Nov 5, 1:45 to after 8:45 PM:** on Red Line/Arts Block with trip id 672392, which is not in the
+    timetable, no stop in any report and not one prediction update all afternoon: all 146 of its arrivals are `gps` rows
+    (Red Line/Arts Block 45% that day). Earlier (12:30 to 1:15 PM, on Apostolic/Drexel) its feed trip 675899 and its
+    predictions' trip 501459 already differed.
+  - **4326, Thu Nov 5, 4 to 9 PM (South):** the vehicle feed advanced through the evening's trips (501625 ... 501643)
+    but Passio's predictions stayed on its first two trips (501621, 501625) all evening; 80 of its 126 arrivals are `gps`
+    rows (South 43%, normally 1 to 6%).
+- Impact: the arrivals themselves were logged through the GPS sweep (4319: 69 + 84 rows, 4317: 146, 4326: 80; daily
+  totals of those lines stayed in their usual range), but they carry no Passio prediction, so they drop out of the scoring sample; for riders, those buses were on the map with no or stale
+  arrival times (4317 for 7 hours). Nothing in the collector to fix; the week before had similar single-bus episodes
+  (South's 4314 / 4320 in the DC-022 watch note), so this is Passio's normal noise, larger on these two days.
+- Follow-up: recheck the `gps` share at the next checkup; if one bus keeps this up for days, tell the owner (it is the
+  case where the app should say "no live times for this bus" rather than show a stale one).
+
 ### DC-022 Two false alarms on the health alerts' first day (fixed 2026-11-02)
 - Found in the 2026-11-02 checkup; both issues had opened and closed by themselves.
 - **Data repo watchdog, Sun Nov 1 4:00 to 4:51 PM ("stale"):** the rule "buses running and a collect run active, but no
