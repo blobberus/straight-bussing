@@ -149,6 +149,38 @@ def test_seed_falls_back_to_the_newest_archive_after_a_rotation():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_tail_of_the_data_csv_uses_explicit_byte_ranges():
+    """DC-023 (2026-11-06): raw.githubusercontent.com answers a suffix range ("bytes=-65536") with 501 Unsupported
+    client range; status then showed "arrivals.csv 0.00 MB, 0 rows" and its 3-hour no-new-arrivals check was off."""
+    import contextlib, urllib.error
+    m = load_monitor(TOOLS.parent)
+    data = ("epoch,ts\n" + "".join(f"{1793900000 + k},x{k:04d}\n" for k in range(5000))).encode()
+    asked = []
+
+    def cdn(url, headers=None, **kw):                  # GitHub's raw CDN as of Nov 2026
+        rng = (headers or {}).get("Range", "")
+        asked.append(rng)
+        a, b = rng[6:].split("-")
+        if not a:
+            raise urllib.error.HTTPError(url, 501, "Unsupported client range", {}, None)
+        a, b = int(a), min(int(b) if b else len(data) - 1, len(data) - 1)
+        r = io.BytesIO(data[a:b + 1])
+        r.headers = {"Content-Range": f"bytes {a}-{b}/{len(data)}"}
+        return contextlib.closing(r)
+    text, size, partial = m.fetch_tail("u", 1000, opener=cdn)
+    assert size == len(data) and partial and len(text.encode()) == 1000, (size, partial, len(text))
+    assert text.splitlines()[-1] == "1793904999,x4999" and all(not r.startswith("bytes=-") for r in asked), asked
+    text, size, partial = m.fetch_tail("u", 10 ** 6, opener=cdn)          # small file: all of it, exact
+    assert not partial and text.encode() == data
+
+    def plain(url, headers=None, **kw):                # a server without range support sends the whole file
+        r = io.BytesIO(data)
+        r.headers = {}
+        return contextlib.closing(r)
+    text, size, partial = m.fetch_tail("u", 1000, opener=plain)
+    assert not partial and size == len(data) and text.encode() == data
+
+
 def test_coverage_math():
     m = load_monitor(TOOLS.parent)
     iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))

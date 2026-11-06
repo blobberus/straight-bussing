@@ -291,6 +291,25 @@ def coverage(runs, now, complete, window=86400, idle=True):
     return start, (covered / span if span > 0 else 1.0), gaps
 
 
+def fetch_tail(url, n=65536, opener=None):
+    """The last n bytes of a file on raw.githubusercontent.com -> (text, size, partial). Explicit byte ranges only:
+    since about Nov 5, 2026 the raw CDN answers a suffix range ("bytes=-65536") with 501 Unsupported client range
+    (DC-023), so ask for byte 0 first (Content-Range carries the size), then for the tail. A server that ignores
+    Range sends the whole file (partial False)."""
+    opener = opener or http
+    with opener(url, headers={"Range": "bytes=0-0"}) as r:
+        cr, body = r.headers.get("Content-Range") or "", r.read()
+    if "/" not in cr:                                  # no range support: that was the whole file
+        return body.decode("utf-8", "replace"), len(body), False
+    size = int(cr.rsplit("/", 1)[1])
+    if size <= 1:
+        return body.decode("utf-8", "replace"), size, False
+    start = max(0, size - n)
+    with opener(url, headers={"Range": f"bytes={start}-{size - 1}"}) as r:
+        cr, body = r.headers.get("Content-Range") or "", r.read()
+    return body.decode("utf-8", "replace"), size, bool(cr) and start > 0
+
+
 def data_branch(token):
     """-> dict(commit_age, msg, size, rows, rows_exact, newest) or None if the branch is missing."""
     try:
@@ -302,11 +321,9 @@ def data_branch(token):
     c = b["commit"]["commit"]
     out = {"commit_age": time.time() - epoch(c["committer"]["date"]), "msg": c["message"].splitlines()[0]}
     try:
-        with http(f"https://raw.githubusercontent.com/{REPO}/data/{CSV}", headers={"Range": "bytes=-65536"}) as r:
-            body, cr = r.read().decode("utf-8", "replace"), r.headers.get("Content-Range") or ""
-        size = int(cr.rsplit("/", 1)[1]) if "/" in cr else len(body.encode())
+        body, size, partial = fetch_tail(f"https://raw.githubusercontent.com/{REPO}/data/{CSV}")
         lines = body.splitlines()
-        exact = size <= 65536 or not cr
+        exact = not partial
         if not exact:
             lines = lines[1:]
         rows = [ln for ln in lines if ln and not ln.startswith("epoch,")]
@@ -406,8 +423,9 @@ def status(ctx, a):
                 issues.append((1, "buses are running but no data branch exists", "read the last run's 'Merge' step log"))
         else:
             nw = f", newest arrival {ts(db['newest'])[:16]} ({age(now - db['newest'])} ago)" if db.get("newest") else ""
-            print(f"data      last commit {age(db['commit_age'])} ago ({db['msg']}); arrivals.csv "
-                  f"{db['size'] / 1e6:.2f} MB, {'' if db['rows_exact'] else '~'}{db['rows']:,} rows{nw}")
+            csv_txt = (f"could not be read ({db['csv_error']}), so the 3-hour no-new-arrivals check is off" if db.get("csv_error")
+                       else f"{db['size'] / 1e6:.2f} MB, {'' if db['rows_exact'] else '~'}{db['rows']:,} rows{nw}")
+            print(f"data      last commit {age(db['commit_age'])} ago ({db['msg']}); arrivals.csv {csv_txt}")
             if vehicles and db.get("newest") and now - db["newest"] > 3 * 3600:
                 issues.append((1, "buses are running but no new arrivals merged for 3 h", "read the last runs' logs"))
     except Exception as e:
