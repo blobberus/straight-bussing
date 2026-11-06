@@ -295,7 +295,7 @@ export function statusHTML(state, now) {
   const it = stopsAway(state, n.stopId, s.rid, now)[0];
   const away = s.stopsAway === 0 ? "Your stop is next" : `${s.stopsAway} stop${s.stopsAway === 1 ? "" : "s"} away`;
   const when = it ? minutesText(it.etaS, now) : "";
-  return `<div class="v-card st-status" role="status">${routeChip(s.rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(away)}${when ? ` · ${esc(when)}` : ""}</span><span class="v-sec">Next stop: ${esc(s.nextStop)}. From live predictions.</span></span></div>`;
+  return `<div class="v-card st-status" role="status">${routeChip(s.rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(away)}${when ? ` · ${esc(when)}` : ""}</span><span class="v-sec">${it && it.num > 0 ? `Bus ${it.num}. ` : ""}Next stop: ${esc(s.nextStop)}. From live predictions.</span></span></div>`;
 }
 
 /** Footer under the bus alerts (iOS SettingsView footer, adapted to a browser). */

@@ -120,6 +120,9 @@ struct LiveDot: View {
 /// One arrival row (ui/components.js arrivalRow): route chip, route name, live label (+ bus or walking guidance),
 /// ETA. `sub` replaces "Bus N" with walking guidance ("Leave in 3 min, est."); `miss` = cannot walk there in
 /// time (said in words, the ETA is struck through, never color alone). VoiceOver reads one sentence.
+/// Which bus (owner 2026-11-06): on a line with two or more buses the map badge's number, "Live · Bus 2" (with guidance
+/// "Live · Bus 2, leave in 3 min, est."), spoken "Route R1, Red Line, Bus 2, arrives in 4 minutes, live"; one bus on
+/// the line: as before (Kit `BusNumbers.arrivalName` / `rowExtra`).
 struct ArrivalRow: View {
     @Environment(AppModel.self) private var model
     let a: Arrival
@@ -131,7 +134,8 @@ struct ArrivalRow: View {
         let lbl = LiveText.liveLabel(model.staleLevel)
         let m = TimeFmt.minsUntil(a.t, from: model.now)
         let when = m < 1 ? "arriving now" : "arrives in \(m) minute\(m == 1 ? "" : "s")"
-        let extra = sub.map { " · " + $0 } ?? a.bus.map { " · Bus \($0)" } ?? ""
+        let num = BusNumbers.arrivalName(a, numbers: model.busNumbers)   // "Bus 2" on a line with several buses, else ""
+        let extra = BusNumbers.rowExtra(number: num, sub: sub, label: a.bus)
         HStack(spacing: 10) {
             RouteChip(route: r, rid: a.rid)
             VStack(alignment: .leading, spacing: 1) {
@@ -149,7 +153,7 @@ struct ArrivalRow: View {
         .frame(minHeight: 44)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Route \(model.shortName(a.rid)), \(model.longName(a.rid)), \(when), \(lbl.spoken)\(aria.map { ", " + $0 } ?? "")")
+        .accessibilityLabel("Route \(model.shortName(a.rid)), \(model.longName(a.rid)), \(num.isEmpty ? "" : num + ", ")\(when), \(lbl.spoken)\(aria.map { ", " + $0 } ?? "")")
     }
 }
 

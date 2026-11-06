@@ -10,10 +10,13 @@
 // again on its first report back within a block.
 // Trip updates of buses that left the feed 15 min ago or more while Passio still predicts them (core/transition.js: a
 // break, a shift end, another route) are dropped too, so nothing recommends a bus that has left its route.
+// store.busNums: "Bus 1", "Bus 2" on lines with 2 or more buses for this list (core/busnum.js numberStep: a bus left
+// out of a poll keeps its number 45 s, like its map badge), read by the map badges and every arrival that names a bus.
 import { operatingBuses } from '../core/operating.js';
 import { offRouteStep, dropHidden, awayBuses } from '../core/offroute.js';
 import { idleStep } from '../core/idle.js';
 import { goneStep } from '../core/transition.js';
+import { numberStep } from '../core/busnum.js';
 
 /** Passio feed base URL. */
 export const BASE = 'https://passio3.com/chicago/passioTransit/gtfs/realtime/';
@@ -94,6 +97,7 @@ export function startLive(store, opts = {}) {
   let offTracks = {}, offHidden = [];      // core/offroute.js clocks between polls; the vehicles it hides now
   let idleTracks = {}, idleHidden = [];    // core/idle.js still clocks between polls; the vehicles it hides now
   let goneSeen = {}, goneIds = [];         // core/transition.js latest report times; the gone buses whose trip updates drop
+  let numSeen = null;                      // core/busnum.js numberStep memory: a bus left out of a poll keeps its number 45 s
 
   /** Paused: the page is hidden and nothing needs data in the background. */
   const hidden = () => !!(doc && doc.hidden) && !keepAlive();
@@ -163,6 +167,11 @@ export function startLive(store, opts = {}) {
       const d = dropHidden(patch.buses, patch.trips, hiddenNow);
       if (patch.buses) patch.buses = d.buses;
       if (patch.trips) patch.trips = d.trips;
+    }
+    if (patch.buses) {   // "Bus 1", "Bus 2" for this list (core/busnum.js): the map badges and every arrival read them
+      const nn = numberStep(numSeen, patch.buses, { away: patch.away, nowS: nowFn() });
+      numSeen = nn.seen;
+      patch.busNums = { of: patch.buses, routes: nn.routes };
     }
     const ok = vp.status === 'fulfilled' && tu.status === 'fulfilled';
     if (ok) { fails = 0; patch.lastOk = Date.now() / 1000; patch.failed = false; }

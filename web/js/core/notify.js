@@ -18,6 +18,7 @@
 import { staleLevel, ERR_AFTER_S } from "./arrivals.js";
 import { effectiveHidden } from "./visibility.js";
 import { busName, legStatus, offText } from "./tripyou.js";
+import { busKey, busNumber } from "./busnum.js";
 
 /** A vehicle report older than this (s) is ignored. */
 export const BUS_STALE_S = 180;
@@ -88,7 +89,7 @@ function etaAt(tu, stopId, now) {
  * @param {string} stopId
  * @param {string|string[]|null} [rid] only this route (or these routes); default every route serving the stop
  * @param {number} [now] unix seconds (default Date.now)
- * @returns {Array<{rid:string, tripId:string|null, vehicleId:string|null, label:string, stopsAway:number, etaS:number|null, nextStopId:string, nextStopName:string}>}
+ * @returns {Array<{rid:string, tripId:string|null, vehicleId:string|null, label:string, num:number, stopsAway:number, etaS:number|null, nextStopId:string, nextStopName:string}>}
  */
 export function stopsAway(state, stopId, rid = null, now = Date.now() / 1000) {
   const want = String(stopId);
@@ -112,6 +113,7 @@ export function stopsAway(state, stopId, rid = null, now = Date.now() / 1000) {
     }
     out.push({ rid: r, tripId: b.trip.trip_id != null ? String(b.trip.trip_id) : null,
       vehicleId: b.vehicle?.id != null ? String(b.vehicle.id) : null, label: String(b.vehicle?.label ?? b.vehicle?.id ?? ""),
+      num: busNumber(state, r, busKey(b)),   // "Bus 2" on its map badge when the line has several buses (core/busnum.js)
       stopsAway: away, etaS: etaAt(tu, want, now), nextStopId: next, nextStopName: state.stops?.[next]?.name || next });
   }
   return out.sort((a, b) => a.stopsAway - b.stopsAway || (a.etaS ?? Infinity) - (b.etaS ?? Infinity));
@@ -155,7 +157,7 @@ function alertFor(state, it, kind, now, late) {
   const when = minutesText(it.etaS, now);
   const head = kind === "minutes" ? (when ? `arriving in ${when}` : "arriving soon")
     : it.stopsAway === 0 ? "your stop is next" : it.stopsAway === 1 ? "1 stop away" : `${it.stopsAway} stops away`;
-  const bus = it.label ? `Bus ${it.label}` : "The bus";
+  const bus = busName(it);   // "Bus 2" on a line with several buses (the map badge), else "Bus 101", else "The bus"
   let body = `${bus} to ${stop}. Next stop: ${it.nextStopName}.`;
   if (kind !== "minutes" && when) body += ` Arrives in ${when}.`;
   if (late) body += " Live data is delayed.";
@@ -239,7 +241,7 @@ export function tripAlerts(p, state, prevFired, now, opts = {}) {
   const v = leg.vehicle;
   if (leg.state !== "active" || !v) return { alerts, fired };
   const route = routeName(state, leg.rid), late = level === "late" ? " Live data is delayed." : "";
-  const bus = v.label ? `${busName(v)}. ` : "";   // a bus without a number is just not named
+  const bus = v.num > 0 || v.label ? `${busName(v)}. ` : "";   // a bus without a number or label is just not named
   const add = (key, kind, title, body) => {
     if (fired.has(key)) return;
     fired.add(key);
@@ -256,7 +258,7 @@ export function tripAlerts(p, state, prevFired, now, opts = {}) {
       add(`${vk}|boardMin`, "boardMin", `${route}: arriving at ${leg.board.name} in ${minutesText(leg.boardEta, now)}`, `${bus}Next stop: ${v.nextName}.`);
     }
   } else if (p.phase === "on-bus" && leg.stopsLeft != null) {
-    const body = (v.label ? `${route}, ${busName(v)}.` : `${route}.`) + (leg.alightLive && leg.alightEta ? ` Your stop in ${minutesText(leg.alightEta, now)}.` : "");
+    const body = (v.num > 0 || v.label ? `${route}, ${busName(v)}.` : `${route}.`) + (leg.alightLive && leg.alightEta ? ` Your stop in ${minutesText(leg.alightEta, now)}.` : "");
     if (n.oneStop && leg.stopsLeft <= 1) add(`${tk}|off1`, "off1", offText(leg.stopsLeft, leg.alight.name), body);
     else if (n.twoStops && leg.stopsLeft === 2 && !fired.has(`${tk}|off1`)) add(`${tk}|off2`, "off2", offText(2, leg.alight.name), body);
   }

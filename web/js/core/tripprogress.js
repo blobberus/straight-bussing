@@ -27,6 +27,7 @@
 import { arrivalsFor, staleLevel } from "./arrivals.js";
 import { hav, WALK_M_PER_MIN, WALK_DETOUR } from "./geo.js";
 import { routeOrder } from "./notify.js";
+import { busKey, busNumber } from "./busnum.js";
 
 /** Tunables (read-only). */
 export const TRIP = Object.freeze({
@@ -148,6 +149,7 @@ function vehicleAt(S, W, w, bus, how, now, preferBehind, tuFor) {
   return {
     id: bus.vehicle && bus.vehicle.id != null ? String(bus.vehicle.id) : null,
     label: String((bus.vehicle && (bus.vehicle.label ?? bus.vehicle.id)) ?? ""),
+    num: busNumber(S, bus.trip && bus.trip.route_id, busKey(bus)),   // "Bus 2" on its map badge (core/busnum.js; 0 = one bus on the line)
     tripId: bus.trip && bus.trip.trip_id != null ? String(bus.trip.trip_id) : null,
     how, idx: loc.idx, behind: loc.behind || 0, beyond: loc.beyond || 0, frac, at,
     pos: loc.idx < 0 ? -1 : loc.idx >= w.length ? w.length : at ? loc.idx : loc.idx - 1 + frac,
@@ -449,7 +451,7 @@ export function stopTimes(leg, now, ride) {
  *   legs[i] walk: {type:'walk', min, minNow, toName, final, state:'done'|'active'|'upcoming'}
  *   legs[i] bus: {type:'bus', rid, board, alight, state:'done'|'active'|'upcoming', phase:'walk-to-stop'|'waiting'|'on-bus'|'done'|'upcoming',
  *     stops:[{id, name, role:'before'|'board'|'ride'|'alight', state:'passed'|'current'|'next'|'upcoming', eta:unixS|null}],
- *     boardIdx, alightIdx, vehicle:{id, label, tripId, how:'trip'|'onboard'|'next', idx, behind, beyond, frac, at, pos, nextId, nextName, prevName, seen, stale}|null,
+ *     boardIdx, alightIdx, vehicle:{id, label, num, tripId, how:'trip'|'onboard'|'next', idx, behind, beyond, frac, at, pos, nextId, nextName, prevName, seen, stale}|null,
  *     stopsAway, stopsLeft, boardEta, boardLive, alightEta, alightLive, rideMin, live, byTime, missed, canCatch, slackMin, walkMin, planTripId, source}
  *   null when the journey is not a plan with at least one bus leg.
  */

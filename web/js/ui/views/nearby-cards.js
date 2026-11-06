@@ -12,6 +12,7 @@ import { silentService } from "../../core/operating.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { ICONS } from "./pick.js";
 import { catchNote } from "./tripinfo.js";
+import { arrivalBusName } from "../../core/busnum.js";
 
 /** Favorites shown on Current trip (the rest are in My Routes). */
 export const FAV_MAX = 3;
@@ -64,11 +65,11 @@ export function favoritesHTML(state, now = nowS()) {
   const rows = ids.slice(0, FAV_MAX).map((id) => {
     const name = state.stops[id].name || id;
     const a = state.liveLoaded ? arrivalsFor(state, id, { hidden, nowS: now })[0] : null;
-    const m = a ? Math.max(0, minsUntil(a.t, now)) : null;
-    const label = a ? `Favorite ${name}: route ${nameOf(state, a.rid)} ${m < 1 ? "arriving now" : "in " + m + (m === 1 ? " minute" : " minutes")}${stale ? ", estimate" : ""}`
+    const m = a ? Math.max(0, minsUntil(a.t, now)) : null, num = a ? arrivalBusName(state, a) : "";   // "Bus 2" (owner 2026-11-06)
+    const label = a ? `Favorite ${name}: route ${nameOf(state, a.rid)}${num ? ", " + num + "," : ""} ${m < 1 ? "arriving now" : "in " + m + (m === 1 ? " minute" : " minutes")}${stale ? ", estimate" : ""}`
       : `Favorite ${name}: ${unknown ? "live times unavailable" : state.liveLoaded ? "no upcoming arrivals" : "loading"}`;
     const right = a ? etaBlock(a.t, { stale, now }) : `<span class="v-sec">${unknown ? "No live times" : state.liveLoaded ? "No buses soon" : ""}</span>`;
-    return `<button type="button" class="v-row" data-action="stop:open" data-id="${esc(id)}" aria-label="${esc(label)}">${a ? routeChip(a.rid, state.routes) : `<span class="v-ic v-favic" aria-hidden="true">${ICONS.star}</span>`}<span class="v-grow"><span class="v-prim">${esc(name)}</span>${a ? `<span class="v-sec">${esc(state.routes?.[a.rid]?.long || "")}</span>` : ""}</span>${right}</button>`;
+    return `<button type="button" class="v-row" data-action="stop:open" data-id="${esc(id)}" aria-label="${esc(label)}">${a ? routeChip(a.rid, state.routes) : `<span class="v-ic v-favic" aria-hidden="true">${ICONS.star}</span>`}<span class="v-grow"><span class="v-prim">${esc(name)}</span>${a ? `<span class="v-sec">${esc((state.routes?.[a.rid]?.long || "") + (num ? " · " + num : ""))}</span>` : ""}</span>${right}</button>`;
   }).join("");
   const more = '<button type="button" class="v-link v-favmore" data-action="nav" data-view="myroutes">All favorites</button>';
   return `<div class="v-favhead"><h3 class="v-h">Favorites</h3>${more}</div><section class="v-card v-favs" aria-label="Favorite stations">${rows}</section>`;

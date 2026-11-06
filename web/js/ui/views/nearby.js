@@ -38,6 +38,7 @@ import { stopWalkMin } from "./tripinfo.js";
 import { FAV_MAX, isStale, nameOf, guidedRow, pickArrivals, favoritesHTML, soonest } from "./nearby-cards.js";
 import { isPlanJourney } from "./journey.js";
 import { tripProgressHTML, tripMetaText, tripMetaHTML, tripHeader } from "./tripprogress.js";
+import { arrivalBusName } from "../../core/busnum.js";
 
 export { FAV_MAX, guidedRow, pickArrivals, favoritesHTML };   // their home is ./nearby-cards.js (tests import them from here)
 
@@ -101,9 +102,9 @@ function soonList(state, now) {
   const soon = soonest(state, now), stale = isStale(state, now);
   if (!soon.length) return noService(state, now);
   return '<h3 class="v-h">Arriving soon</h3><div class="v-card">' + soon.map(({ id, a }) => {
-    const m = Math.max(0, minsUntil(a.t, now));
-    const label = `Route ${nameOf(state, a.rid)} at ${state.stops[id]?.name || id}, ${m < 1 ? "arriving now" : "in " + m + (m === 1 ? " minute" : " minutes")}${stale ? ", estimate" : ""}`;
-    return `<button type="button" class="v-row" data-action="stop:open" data-id="${esc(id)}" aria-label="${esc(label)}">${routeChip(a.rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(state.stops[id]?.name || id)}</span><span class="v-sec">${esc(state.routes?.[a.rid]?.long || "")}</span></span>${etaBlock(a.t, { stale, now })}</button>`;
+    const m = Math.max(0, minsUntil(a.t, now)), num = arrivalBusName(state, a);   // "Bus 2" on a line with several buses
+    const label = `Route ${nameOf(state, a.rid)}${num ? ", " + num + "," : ""} at ${state.stops[id]?.name || id}, ${m < 1 ? "arriving now" : "in " + m + (m === 1 ? " minute" : " minutes")}${stale ? ", estimate" : ""}`;
+    return `<button type="button" class="v-row" data-action="stop:open" data-id="${esc(id)}" aria-label="${esc(label)}">${routeChip(a.rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(state.stops[id]?.name || id)}</span><span class="v-sec">${esc((state.routes?.[a.rid]?.long || "") + (num ? " · " + num : ""))}</span></span>${etaBlock(a.t, { stale, now })}</button>`;
   }).join("") + "</div>";
 }
 

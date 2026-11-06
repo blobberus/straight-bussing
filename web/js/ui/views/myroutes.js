@@ -20,6 +20,7 @@ import { nowS } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
 import { ALERTS_UNKNOWN_SHORT } from "./alerts.js";
 import { arrivalsFor, staleLevel, runningCount, runningText, activeAlerts, liveUnknown, alertsUnknown } from "../../core/arrivals.js";
+import { arrivalBusName } from "../../core/busnum.js";
 import { scheduledNoLive, noLiveStatus } from "../../core/operating.js";
 import { hoursOn, nextStartToday, clock12 } from "../../core/schedule.js";
 import { effectiveHidden } from "../../core/visibility.js";
@@ -102,8 +103,9 @@ function favRow(id, i, n, state, now, hidden, stale) {
       + `<button type="button" class="v-btn v-btn--quiet mr-rm" data-action="mr:favrm" data-id="${esc(id)}" aria-label="Remove ${name} from favorites">Remove</button></div>`;
   }
   const a = state.liveLoaded ? arrivalsFor(state, id, { hidden, nowS: now })[0] : null;
-  const sub = a ? longName(a.rid, state.routes) : liveUnknown(state, now) ? "Live times unavailable" : state.liveLoaded ? "No upcoming buses on your visible routes" : "Waiting for live data";
-  const when = a ? `, next bus ${longName(a.rid, state.routes)} in ${Math.max(0, Math.floor((a.t - now) / 60))} min` : "";
+  const num = a ? arrivalBusName(state, a) : "";   // "Bus 2" on a line with several buses (owner 2026-11-06)
+  const sub = a ? longName(a.rid, state.routes) + (num ? " · " + num : "") : liveUnknown(state, now) ? "Live times unavailable" : state.liveLoaded ? "No upcoming buses on your visible routes" : "Waiting for live data";
+  const when = a ? `, next bus ${longName(a.rid, state.routes)}${num ? ", " + num + "," : ""} in ${Math.max(0, Math.floor((a.t - now) / 60))} min` : "";
   return `<button type="button" class="v-row mr-favrow" data-key="f:${esc(id)}" data-action="stop:open" data-id="${esc(id)}" aria-label="${esc((st.name || id) + when)}">`
     + `<span class="v-grow" aria-hidden="true"><span class="v-prim">${name}</span><span class="v-sec">${a ? routeChip(a.rid, state.routes, { small: true }) + " " : ""}${esc(sub)}</span></span>`
     + (a ? `<span aria-hidden="true">${etaBlock(a.t, { stale, now })}</span>` : "") + "</button>";
@@ -159,7 +161,7 @@ function nearestNext(state, rid, now) {
   }
   if (!best || best.d > 1500) return null;
   const a = arrivalsFor(state, best.sid, { routeId: rid, nowS: now })[0];
-  return a ? { t: a.t, stop: state.stops[best.sid].name || best.sid } : null;
+  return a ? { t: a.t, stop: state.stops[best.sid].name || best.sid, num: arrivalBusName(state, a) } : null;
 }
 
 /**
@@ -217,7 +219,7 @@ export function renderCustom(state, id, now = nowS()) {
   for (const rid of rids) {   // every saved route stays listed: running, scheduled, not running, hidden on the map
     const hl = (c.highlight || []).includes(rid), st = savedRouteStatus(state, rid, now, hiddenSet);
     const nx = hiddenSet.has(String(rid)) ? null : nearestNext(state, rid, now);   // a hidden route shows no arrival time
-    const next = nx ? ` · ${stale ? "~" : ""}${Math.max(0, Math.floor((nx.t - now) / 60))} min at ${nx.stop}` : "";
+    const next = nx ? ` · ${nx.num ? nx.num + " in " : ""}${stale ? "~" : ""}${Math.max(0, Math.floor((nx.t - now) / 60))} min at ${nx.stop}` : "";
     h += `<div class="mr-rrow"><button type="button" class="v-row mr-rmain" data-action="route:open" data-id="${esc(rid)}">${routeChip(rid, state.routes)}<span class="v-grow"><span class="v-prim">${esc(longName(rid, state.routes))}</span><span class="v-sec">${st.live ? liveDotHTML(st.level) : ""}${esc(st.text + next)}</span></span></button>`
       + `<button type="button" class="mr-hl${hl ? " is-on" : ""}" data-action="mr:hl" data-id="${esc(c.id)}" data-rid="${esc(rid)}" aria-pressed="${hl}" aria-label="Highlight ${esc(longName(rid, state.routes))}"><span class="mr-hltick" aria-hidden="true">${CHECK}</span>Highlight</button></div>`;
   }

@@ -63,6 +63,120 @@ final class BusNumbersTests: XCTestCase {
         XCTAssertTrue(one[0].text.hasPrefix("Bus 102 between"), one[0].text)
     }
 
+    // MARK: arrivals name their bus (owner 2026-11-06; web tests/core-busnum.js + tests/arrive-busnum.js, same cases)
+
+    func vp(_ id: String?, _ label: String?, _ rid: String) -> VehiclePosition {
+        VehiclePosition(vehicle: .init(id: id, label: label), latitude: 41.79, longitude: -87.6, trip: .init(tripId: nil, routeId: rid))
+    }
+
+    func testArrivalNamesTheNumberedBusOfItsOwnRouteOnly() {
+        let n = BusNumbers.byRoute([vp("v1", "101", "A"), vp("v2", "202", "A"), vp("v9", "909", "B")])
+        func a(_ rid: String, _ vid: String?, _ label: String?) -> Arrival { Arrival(rid: rid, t: NOW + 60, bus: label, tripId: nil, vehicleId: vid) }
+        XCTAssertEqual(BusNumbers.arrivalName(a("A", "v2", "202"), numbers: n), "Bus 2")
+        XCTAssertEqual(BusNumbers.arrivalName(a("A", "v1", "101"), numbers: n), "Bus 1")
+        XCTAssertEqual(BusNumbers.arrivalName(a("B", "v9", "909"), numbers: n), "", "one bus on the line: no number")
+        XCTAssertEqual(BusNumbers.arrivalName(a("A", nil, nil), numbers: n), "", "no vehicle on the trip update")
+        XCTAssertEqual(BusNumbers.arrivalName(a("A", "v7", "707"), numbers: n), "", "a vehicle the map does not draw")
+        XCTAssertEqual(BusNumbers.arrivalName(a("B", "v2", "202"), numbers: n), "", "Bus 2 of route A predicted on route B")
+        let labels = BusNumbers.byRoute([vp(nil, "L1", "A"), vp(nil, "L2", "A")])
+        XCTAssertEqual(BusNumbers.arrivalName(a("A", nil, "L2"), numbers: labels), "Bus 2", "no vehicle ids anywhere: the label is the key, as on the map")
+        XCTAssertEqual(BusNumbers.arrivalKey(a("A", "v1", "101")), "v1")
+        XCTAssertEqual(BusNumbers.arrivalKey(a("A", "", "101")), "101")
+        XCTAssertNil(BusNumbers.arrivalKey(a("A", nil, nil)))
+        XCTAssertEqual([BusNumbers.numberName(2), BusNumbers.numberName(nil), BusNumbers.numberName(0)], ["Bus 2", "", ""])
+        XCTAssertEqual(BusNumbers.number(n, rid: "A", key: "v2"), 2)
+        XCTAssertNil(BusNumbers.number(n, rid: "B", key: "v2"), "the number is the route's own")
+        XCTAssertNil(BusNumbers.number(n, rid: "A", key: nil))
+    }
+
+    func testRowExtraIsTheWebArrivalRowText() {
+        XCTAssertEqual(BusNumbers.rowExtra(number: "Bus 2", sub: nil, label: "103"), " · Bus 2", "the map number replaces the fleet label")
+        XCTAssertEqual(BusNumbers.rowExtra(number: "Bus 2", sub: "Leave in 22 min, est.", label: "103"), " · Bus 2, leave in 22 min, est.",
+                       "with walking guidance: one middle dot, then a comma")
+        XCTAssertEqual(BusNumbers.rowExtra(number: "Bus 1", sub: "Leaves before you can walk there, est.", label: nil),
+                       " · Bus 1, leaves before you can walk there, est.")
+        XCTAssertEqual(BusNumbers.rowExtra(number: "", sub: "Leave in 22 min, est.", label: "202"), " · Leave in 22 min, est.", "one bus: as before")
+        XCTAssertEqual(BusNumbers.rowExtra(number: "", sub: nil, label: "202"), " · Bus 202", "one bus: the fleet label, unchanged")
+        XCTAssertEqual(BusNumbers.rowExtra(number: "", sub: nil, label: nil), "")
+    }
+
+    func busLeg(waitLive: Bool, vehicleId: String?, rid: String = "R1") -> BusLeg {
+        BusLeg(rid: rid, board: Place(id: "S1", name: "Main & 1st", lat: 41.79, lon: -87.6), alight: Place(id: "S3", name: "Hospital", lat: 41.795, lon: -87.595),
+               stopIds: [], path: [], stopsPassed: 2, wait: 25, waitLive: waitLive, ride: 5, source: .live, conf: 1,
+               boardT: NOW + 1500, alightT: NOW + 1800, tripId: nil, vehicleId: vehicleId, p10: nil, p90: nil)
+    }
+
+    func testLegNamesItsBusOnlyWithALiveBoardingTime() {
+        let n = ["R1": ["v1": 1, "v3": 2]]
+        XCTAssertEqual(BusNumbers.legName(busLeg(waitLive: true, vehicleId: "v3"), numbers: n), "Bus 2")
+        XCTAssertEqual(BusNumbers.legName(busLeg(waitLive: false, vehicleId: "v3"), numbers: n), "", "schedule time: no bus")
+        XCTAssertEqual(BusNumbers.legName(busLeg(waitLive: true, vehicleId: nil), numbers: n), "")
+        XCTAssertEqual(BusNumbers.legName(busLeg(waitLive: true, vehicleId: "v2", rid: "R2"), numbers: n), "", "one bus on the line")
+    }
+
+    func testDirectionsNameALiveNumberedFirstBus() throws {
+        let n = ["R1": ["v1": 1, "v3": 2]]
+        let walk1 = Leg.walk(WalkLeg(from: Place(name: "Start", lat: 41.789, lon: -87.6), to: Place(id: "S1", name: "Main & 1st", lat: 41.79, lon: -87.6), m: 160, min: 2))
+        let walk2 = Leg.walk(WalkLeg(from: Place(id: "S3", name: "Hospital", lat: 41.795, lon: -87.595), to: Place(name: "Dest", lat: 41.796, lon: -87.595), m: 160, min: 2))
+        func opt(_ leg: BusLeg) -> TripOption {
+            TripOption(key: "k", total: 32, totalMin: 32, arrive: NOW + 1920, t0: NOW, walkMin: 4, walkM: 320, meets: [], legs: [walk1, .bus(leg), walk2])
+        }
+        let live = opt(busLeg(waitLive: true, vehicleId: "v3"))
+        let l = try XCTUnwrap(TripInfo.optionLines(live, now: NOW, numbers: n))
+        XCTAssertEqual(l.first, "Walk 2 min to Main & 1st · Bus 2 at " + TimeFmt.clock(NOW + 1500))
+        XCTAssertTrue(l.second.hasPrefix("Leave in 23 min (by "), l.second)
+        XCTAssertEqual(try XCTUnwrap(TripInfo.optionLines(live, now: NOW)).first, "Walk 2 min to Main & 1st · bus " + TimeFmt.clock(NOW + 1500),
+                       "without the numbers: as before")
+        XCTAssertTrue(TripInfo.optionLabel(live, index: 0, criteria: "", routes: [:], now: NOW, numbers: n).contains("Bus 2 at"))
+        let st = TripInfo.steps(live, now: NOW, fromLabel: nil, toLabel: nil, numbers: n)
+        XCTAssertEqual(st[0].sub, "Leave by \(TimeFmt.clock(NOW + 1380)) to catch Bus 2 at \(TimeFmt.clock(NOW + 1500))")
+        XCTAssertEqual(st[1].plain, "Bus 2 arrives at Main & 1st " + TimeFmt.clock(NOW + 1500))
+        let sched = opt(busLeg(waitLive: false, vehicleId: "v3"))
+        XCTAssertEqual(try XCTUnwrap(TripInfo.optionLines(sched, now: NOW, numbers: n)).first, "Walk 2 min to Main & 1st · bus " + TimeFmt.clock(NOW + 1500),
+                       "a schedule time names no bus")
+        XCTAssertEqual(TripInfo.steps(sched, now: NOW, fromLabel: nil, toLabel: nil, numbers: n)[1].plain, "Bus arrives at Main & 1st " + TimeFmt.clock(NOW + 1500))
+        let one = opt(busLeg(waitLive: true, vehicleId: "v2", rid: "R2"))
+        XCTAssertTrue(try XCTUnwrap(TripInfo.optionLines(one, now: NOW, numbers: n)).first.hasSuffix("· bus " + TimeFmt.clock(NOW + 1500)), "one bus: as before")
+    }
+
+    func testStationAlertsSayTheMapNumber() {
+        let buses = [TripFix.bus("v101", "101", "R", "tR1", "A2", "A3"), TripFix.bus("v105", "105", "R", "tR5", "A4", "A5")]
+        let live = TripFix.live(buses), n = BusNumbers.byRoute(buses)
+        var station = NotifyPrefs(); station.stopId = "A6"
+        let r = Notify.dueAlerts(prefs: station, staticData: TripFix.S, live: live, hidden: [], fired: [], now: NOW, numbers: n)
+        XCTAssertTrue(r.alerts.contains { $0.body.hasPrefix("Bus 2 to 59th & Ellis.") }, "\(r.alerts.map(\.body))")
+        let solo = TripFix.live([buses[1]])
+        let r1 = Notify.dueAlerts(prefs: station, staticData: TripFix.S, live: solo, hidden: [], fired: [], now: NOW, numbers: BusNumbers.byRoute([buses[1]]))
+        XCTAssertTrue(r1.alerts.contains { $0.body.hasPrefix("Bus 105 to 59th & Ellis.") }, "one bus: its fleet label")
+        XCTAssertEqual(Notify.stopsAway(staticData: TripFix.S, live: live, stopId: "A6", now: NOW, numbers: n).map(\.number), [2, 1])
+    }
+
+    func testATripsBusIsNamedAsOnTheMap() throws {
+        var w = TripFix.scene("waiting")
+        w.live.buses.append(TripFix.bus("v105", "105", "R", "tR5", "A7", "A8"))
+        w.live.trips.append(TripFix.trip("tR5", "R", "v105", "105", [("A8", 60)]))
+        let p = try XCTUnwrap(TripFollow.compute(w.journey, staticData: TripFix.S, live: w.live, user: w.user, now: NOW,
+                                                 numbers: BusNumbers.byRoute(w.live.buses)))
+        let leg = try XCTUnwrap(p.currentBus)
+        XCTAssertEqual(leg.vehicle?.number, 1)
+        XCTAssertEqual(TripText.busWords(leg, now: NOW).status, "Bus 1 is 2 stops away")
+        let r = Notify.tripAlerts(p, prefs: NotifyPrefs(), staticData: TripFix.S, live: w.live, t0: w.journey.t0, fired: [], now: NOW)
+        XCTAssertEqual(r.alerts.first?.title, "Red Line: Bus 1 is 2 stops away")
+        var ob = TripFix.scene("onbus")
+        ob.live.buses.append(TripFix.bus("v100", "100", "R", "tR0", "A0", "A1"))
+        let po = try XCTUnwrap(TripFollow.compute(ob.journey, staticData: TripFix.S, live: ob.live, user: ob.user, now: NOW,
+                                                  numbers: BusNumbers.byRoute(ob.live.buses)))
+        let y = try XCTUnwrap(TripYou.compute(po, user: nil, accuracy: nil, staticData: TripFix.S, dest: nil))
+        XCTAssertTrue(y.text.hasPrefix("You are on Bus 2."), y.text)
+        let ro = Notify.tripAlerts(po, prefs: NotifyPrefs(), staticData: TripFix.S, live: ob.live, t0: ob.journey.t0, fired: [], now: NOW)
+        XCTAssertTrue(ro.alerts.first?.body.hasPrefix("Red Line, Bus 2.") == true, ro.alerts.first?.body ?? "no alert")
+        // one bus on the line: the fleet label, as before
+        let solo = TripFix.scene("waiting"), ps = TripFix.follow(solo)
+        XCTAssertNil(ps.currentBus?.vehicle?.number)
+        XCTAssertEqual(Notify.tripAlerts(ps, prefs: NotifyPrefs(), staticData: TripFix.S, live: solo.live, t0: solo.journey.t0, fired: [], now: NOW).alerts.first?.title,
+                       "Red Line: Bus 101 is 2 stops away")
+    }
+
     // MARK: a picked bus's own times
 
     func testBusArrivalIsThatBusOnly() {

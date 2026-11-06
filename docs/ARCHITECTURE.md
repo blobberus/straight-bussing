@@ -950,6 +950,35 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   bus is no longer shown. State: `busId` (nav, not persisted). Tests: core-busnum.js, route-busnum.js, map-layers.js,
   e2e.js (a bus tap picks it, back clears it).
 - 2026-10-30 (later): a picked bus left out of a feed poll keeps its pick for `PICK_HOLD_S` (45 s, like the map's badge, MISSING_S); leaving the route page still lets go at once (`busnum.pickCheck`, main.js). sw sb-v2-75.
+- Arrivals name the numbered bus (2026-11-06, owner: "When showing which bus is about to arrive at station, it should
+  state which bus number displayed on the route is about to arrive if there is more than 1 bus"). One source:
+  core/busnum.js. An arrival is tied to a bus by its trip update's vehicle id (arrivalsFor `vehicleId`; else the label,
+  as busKey: `arrivalKey`) and named "Bus 2" only when that bus is numbered on the arrival's own route
+  (`arrivalBusName(state, a)`, `busNumber(state, rid, key)`); a Directions leg only with a live boarding time
+  (`legBusName`: `waitLive` + the planner's `vehicleId`). No vehicle, a vehicle the app does not show, another route's
+  bus, a schedule or estimated time: no number (never a guess). One bus on the line: unchanged (no number; the arrival
+  row keeps "Live · Bus <fleet label>"). Where: arrival rows (ui/components.js arrivalRow: stop page, the Current trip
+  next-bus card, Also nearby) "Live · Bus 2", with walking guidance "Live · Bus 2, leave in 3 min, est.", spoken
+  "Route 53, 53rd Street, Bus 2, arrives in 4 minutes, live"; Favorites / Arriving soon / My Routes favorite stations
+  "<route name> · Bus 2" (and in the row's label); the stop's collapsed header (badge, "Bus 2", ETA; text
+  "RED, Bus 2 · 3 min"); a custom route's detail "2 buses running · Bus 2 in 3 min at X"; the route page timeline,
+  when no bus is picked, "Bus 2" under each station's time (`.v-tlwho`, spoken "Main & 1st, Bus 2 in 3 min"; picked:
+  the note names the bus, rows unchanged); Directions "Leave in 10 min for Bus 2, 3:11 PM at X", steps "Bus 2 arrives
+  at X 3:11 PM" and "to catch Bus 2 at 3:11 PM"; the trip in progress: core/tripprogress.js puts `num` on the followed
+  vehicle and core/tripyou.js `busName` / `busMid` prefer it, so the card ("Bus 2 is 3 stops away"), the timeline pills
+  and chip, the map's You label and the trip alerts ("Red Line: Bus 2 is 2 stops away", "Red Line, Bus 2.") say the
+  badge's number; station alerts (core/notify.js stopsAway `num`) "Bus 2 to Library."; the Settings alert preview.
+- Numbers stay put while riders look (the same rule as the map, so a row never disagrees with a badge): data/live.js
+  runs `numberStep` every poll and stores `store.busNums` = {of: buses, routes: {rid: {key: n}}}; a bus Passio leaves
+  out of a poll while others report keeps its place for `NUM_HOLD_S` (45 s, the badge's MISSING_S), so the others keep
+  their numbers; a bus more than a block off its route (store.away) leaves at once, like its badge; an empty poll lets
+  every bus go (live.js already holds ONE odd empty answer). `routeNumbers(state)` reads busNums while it belongs to
+  store.buses, else numbers store.buses (tests, a fresh store); main.js passes `numbers: numberMap(s)` to drawBuses
+  (BUS_KEYS has busNums) and the route page uses the same map. A bus that leaves for good or joins renumbers the line in
+  vehicle id order (every phone shows the same numbers for the same feed; a line back to one bus shows no number). iOS
+  numbers what its map draws (BusMotion, 45 s), the same rule. Tests: core-busnum.js (numberStep, routeNumbers,
+  arrivalBusName, legBusName), data-live.js (busNums hold), map-layers.js, route-busnum.js, arrive-busnum.js (rows,
+  stop page and header, Current trip, My Routes, Directions, station and trip alerts), trip-view.js.
 
 ## Arriving In, trips with no bus, walk first (2026-10-30, owner: "the time that is shown when the menu is minimized ... should show the time until the next bus will arrive at their stop. Call it Arriving In: ... rather show the current walking time or the duration of the next step if the user's trip has no bus", "if the distance is very close, it is ok to just suggest the user to walk on their first travel option")
 - Current trip header (main.js shows the view's meta at every detent, so also minimized): while a plan journey is on,

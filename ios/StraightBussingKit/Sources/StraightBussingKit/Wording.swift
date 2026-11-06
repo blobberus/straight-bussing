@@ -87,13 +87,17 @@ public enum TripInfo {
         return Leave(now: false, text: "Leave in \(Int(slack.rounded(.down))) min (by \(TimeFmt.clock(by)))", by: by, slack: slack)
     }
 
-    /// Option card lines under the chips: first walk + first bus, then leave guidance + walking total.
-    public static func optionLines(_ o: TripOption, now: Double, level: StaleLevel = .fresh) -> (first: String, second: String, leaveNow: Bool)? {
+    /// Option card lines under the chips: first walk + first bus, then leave guidance + walking total. A live first bus
+    /// of a line with several buses is named as on its map badge (owner 2026-11-06, `BusNumbers.legName`):
+    /// "Walk 3 min to Main & 1st · Bus 2 at 3:11 PM"; otherwise "· bus 3:11 PM" as before.
+    public static func optionLines(_ o: TripOption, now: Double, level: StaleLevel = .fresh,
+                                   numbers: [String: [String: Int]] = [:]) -> (first: String, second: String, leaveNow: Bool)? {
         let times = legsTimes(o, now: now)
         guard let fb = o.legs.firstIndex(where: { $0.bus != nil }), let bus = o.legs[fb].bus, let tb = times[fb] else { return nil }
         let board = bus.board.name.isEmpty ? "the stop" : bus.board.name
-        let busAt = TimeFmt.clock(tb.b)
-        let l1 = o.legs[0].walk.map { "Walk \(walkMins($0.min)) min to \(board) · bus \(busAt)" } ?? "Board at \(board), no walk · bus \(busAt)"
+        let num = BusNumbers.legName(bus, numbers: numbers)
+        let busAt = num.isEmpty ? "bus " + TimeFmt.clock(tb.b) : "\(num) at \(TimeFmt.clock(tb.b))"
+        let l1 = o.legs[0].walk.map { "Walk \(walkMins($0.min)) min to \(board) · \(busAt)" } ?? "Board at \(board), no walk · \(busAt)"
         let wt = walkTotal(o), leave = leaveInfo(o, now: now, level: level)
         let incl = wt > 0 ? "includes \(walkMins(wt)) min walking" : "no walking"
         let l2 = leave.map { $0.text + " · " + incl } ?? (incl.prefix(1).uppercased() + incl.dropFirst())
@@ -120,8 +124,11 @@ public enum TripInfo {
         public var plain: String { title.map(\.text).joined() }
     }
 
-    /// Step list for an option: the walk to the first stop and to the destination are always shown.
-    public static func steps(_ o: TripOption, now: Double, fromLabel: String?, toLabel: String?, level: StaleLevel = .fresh) -> [Step] {
+    /// Step list for an option: the walk to the first stop and to the destination are always shown. A live bus of a line
+    /// with several buses is named as on its map badge: "Bus 2 arrives at X 3:11 PM", "to catch Bus 2 at 3:11 PM"
+    /// (owner 2026-11-06, web tripinfo.js stepsHTML); otherwise "Bus arrives at X", "to catch the 3:11 PM bus".
+    public static func steps(_ o: TripOption, now: Double, fromLabel: String?, toLabel: String?, level: StaleLevel = .fresh,
+                             numbers: [String: [String: Int]] = [:]) -> [Step] {
         let lastKnown = level == .old || level == .err   // a "live" bus time is the last known one then: an estimate
         let times = legsTimes(o, now: now), legs = o.legs, n = legs.count
         let dest = (toLabel ?? "").isEmpty ? "destination" : toLabel!
@@ -141,8 +148,10 @@ public enum TripInfo {
                 var s = Step(kind: .walk, title: [Run("Walk \(walkMins(w.min)) min (\(Int(JS.round(w.m))) m) to "),
                                                   Run(to.isEmpty ? "the stop" : to, bold: true), Run(change)],
                              tag: w.source == .router ? "sidewalk route" : "estimate")
-                if i == 0, next != nil, let lv = leaveInfo(o, now: now, level: level), times.count > 1, let t1 = times[1] {
-                    s.sub = "\(lv.now ? "Leave now" : "Leave by " + TimeFmt.clock(lv.by)) to catch the \(TimeFmt.clock(t1.b)) bus"
+                if i == 0, let nb = next, let lv = leaveInfo(o, now: now, level: level), times.count > 1, let t1 = times[1] {
+                    let num = BusNumbers.legName(nb, numbers: numbers)
+                    let what = num.isEmpty ? "the \(TimeFmt.clock(t1.b)) bus" : "\(num) at \(TimeFmt.clock(t1.b))"
+                    s.sub = "\(lv.now ? "Leave now" : "Leave by " + TimeFmt.clock(lv.by)) to catch \(what)"
                     s.subTag = "est."
                 }
                 out.append(s)
@@ -150,7 +159,8 @@ public enum TripInfo {
                 guard let t = times[i] else { continue }
                 let w = Int(JS.round(b.wait)), r = mins(b.ride), sp = max(1, b.stopsPassed)
                 out.append(Step(kind: .bus(b.rid),
-                                title: [Run("Bus arrives at "), Run(b.board.name, bold: true), Run(" "), Run(TimeFmt.clock(t.b), bold: true)],
+                                title: [Run((BusNumbers.legName(b, numbers: numbers).isEmpty ? "Bus" : BusNumbers.legName(b, numbers: numbers)) + " arrives at "),
+                                        Run(b.board.name, bold: true), Run(" "), Run(TimeFmt.clock(t.b), bold: true)],
                                 tag: b.waitLive && !lastKnown ? "live" : "est.",
                                 sub: "Wait ~\(w < 1 ? "<1" : String(w)) min, then ride ~\(r) min (\(sp) stop\(sp > 1 ? "s" : "")) to \(b.alight.name), \(TimeFmt.clock(t.a)) · \(sourceText(b.source))",
                                 subTag: "est."))
@@ -168,10 +178,11 @@ public enum TripInfo {
     }
 
     /// VoiceOver label of an option card (directions.js optionHTML aria).
-    public static func optionLabel(_ o: TripOption, index: Int, criteria: String, routes: [String: Route], now: Double, level: StaleLevel = .fresh) -> String {
+    public static func optionLabel(_ o: TripOption, index: Int, criteria: String, routes: [String: Route], now: Double, level: StaleLevel = .fresh,
+                                   numbers: [String: [String: Int]] = [:]) -> String {
         let wt = walkTotal(o)
         let names = o.busLegs.map { routes[$0.rid]?.short.isEmpty == false ? routes[$0.rid]!.short : $0.rid }.joined(separator: " then ")
-        let lines = optionLines(o, now: now, level: level).map { "\($0.first). \($0.second)" } ?? ""
+        let lines = optionLines(o, now: now, level: level, numbers: numbers).map { "\($0.first). \($0.second)" } ?? ""
         let crit = criteria.isEmpty ? "" : " (" + criteria + ")"
         let s = "Option \(index + 1)\(crit): about \(o.totalMin) minutes including \(wt > 0 ? walkMins(wt) + " minutes walking" : "no walking"), arrive \(TimeFmt.clock(o.arrive))\(names.isEmpty ? "" : ", take " + names). \(lines) Estimate."
         return s.replacingOccurrences(of: "<1 min", with: "under 1 min")

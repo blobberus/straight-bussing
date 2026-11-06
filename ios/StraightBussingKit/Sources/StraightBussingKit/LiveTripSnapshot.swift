@@ -95,11 +95,12 @@ public struct LiveTripSnapshot: Codable, Hashable, Sendable {
         return ""
     }
 
-    /// What VoiceOver reads for the progress bar ("Red Line. Bus 2 stops from Ratner Center. Times are estimates.",
-    /// "Red Line. Get off at the next stop: Medical Center. Times are estimates."), the trip card's words.
+    /// What VoiceOver reads for the progress bar ("Red Line. The bus is 2 stops from Ratner Center. Times are
+    /// estimates.", "Red Line. Get off at the next stop: Medical Center. Times are estimates."), the trip card's words.
+    /// Never "Bus 2 stops from": since 2026-11-06 "Bus 2" names a numbered bus.
     public var spokenProgress: String {
         var t = "\(routeName). "
-        if let a = stopsAway { t += a == 0 ? "Bus arriving at \(boardName). " : "Bus \(a) stop\(a == 1 ? "" : "s") from \(boardName). " }
+        if let a = stopsAway { t += a == 0 ? "The bus is arriving at \(boardName). " : "The bus is \(a) stop\(a == 1 ? "" : "s") from \(boardName). " }
         if let l = stopsLeft { t += TripText.offText(l, alightName) + ". " }
         return t + "Times are estimates."
     }

@@ -50,6 +50,8 @@ public struct BusAway: Hashable, Sendable {
     public var etaS: Double?
     public var nextStopId: String
     public var nextStopName: String
+    /// "Bus 2" on its map badge when the line shows two or more buses (web stopsAway `num`); nil = the fleet label.
+    public var number: Int? = nil
 }
 
 /// A due bus alert: a station alert (twoStops / oneStop / minutes), a trip alert (board2 / board1 / boardMin before
@@ -110,8 +112,10 @@ public enum Notify {
         return best
     }
 
-    /// Every live bus heading to `stopId` and how far away it is, nearest first.
-    public static func stopsAway(staticData: StaticData, live: LiveState, stopId: String, rids: [String]? = nil, now: Double) -> [BusAway] {
+    /// Every live bus heading to `stopId` and how far away it is, nearest first. `numbers`: the app's bus numbers
+    /// (`BusNumbers`), so each bus carries the number its map badge shows.
+    public static func stopsAway(staticData: StaticData, live: LiveState, stopId: String, rids: [String]? = nil, now: Double,
+                                 numbers: [String: [String: Int]] = [:]) -> [BusAway] {
         let only: Set<String>? = rids.map { Set($0) }
         var out: [BusAway] = []
         for b in live.buses {
@@ -130,7 +134,8 @@ public enum Notify {
             }
             out.append(BusAway(rid: r, tripId: b.trip.tripId, vehicleId: b.vehicle.id, label: b.vehicle.label ?? b.vehicle.id ?? "",
                                stopsAway: away, etaS: etaAt(tu, stopId, now), nextStopId: next,
-                               nextStopName: staticData.stops[next].flatMap { $0.name.isEmpty ? nil : $0.name } ?? next))
+                               nextStopName: staticData.stops[next].flatMap { $0.name.isEmpty ? nil : $0.name } ?? next,
+                               number: BusNumbers.number(numbers, rid: r, key: BusNumbers.key(b))))
         }
         return out.stableSorted { a, b in
             a.stopsAway != b.stopsAway ? a.stopsAway < b.stopsAway : (a.etaS ?? .infinity) < (b.etaS ?? .infinity)
@@ -182,7 +187,7 @@ public enum Notify {
     ///   old data is not an outage.
     public static func dueAlerts(prefs: NotifyPrefs, staticData: StaticData, live: LiveState, hidden: [String],
                                  fired prevFired: [String], now: Double, tripOn: Bool = false,
-                                 polling: Bool = true) -> (alerts: [BusAlert], fired: [String]) {
+                                 polling: Bool = true, numbers: [String: [String: Int]] = [:]) -> (alerts: [BusAlert], fired: [String]) {
         var fired = prevFired
         guard let sid = prefs.stopId, !tripOn else { return ([], fired) }
         let level = live.staleLevel(now: now), dk = "\(sid)|delayed"
@@ -196,7 +201,7 @@ public enum Notify {
         if rids.isEmpty { return ([], fired) }
         let stop = staticData.stops[sid].flatMap { $0.name.isEmpty ? nil : $0.name } ?? "your station"   // web `||`
         var alerts: [BusAlert] = []
-        for it in stopsAway(staticData: staticData, live: live, stopId: sid, rids: rids, now: now) {
+        for it in stopsAway(staticData: staticData, live: live, stopId: sid, rids: rids, now: now, numbers: numbers) {
             var kinds: [BusAlert.Kind] = []
             if prefs.oneStop && it.stopsAway <= 1 { kinds.append(.oneStop) }
             else if prefs.twoStops && it.stopsAway == 2 { kinds.append(.twoStops) }
@@ -205,7 +210,9 @@ public enum Notify {
                 let when = minutesText(it.etaS, now: now)
                 let head = k == .minutes ? (when.isEmpty ? "arriving soon" : "arriving in \(when)")
                     : it.stopsAway == 0 ? "your stop is next" : it.stopsAway == 1 ? "1 stop away" : "\(it.stopsAway) stops away"
-                var body = "\(it.label.isEmpty ? "The bus" : "Bus \(it.label)") to \(stop). Next stop: \(it.nextStopName)."
+                // "Bus 2" on a line with several buses (the map badge), else "Bus 101", else "The bus" (web alertFor busName)
+                let who = (it.number ?? 0) > 0 ? "Bus \(it.number!)" : it.label.isEmpty ? "The bus" : "Bus \(it.label)"
+                var body = "\(who) to \(stop). Next stop: \(it.nextStopName)."
                 if k != .minutes && !when.isEmpty { body += " Arrives in \(when)." }
                 if level == .late { body += " Live data is delayed." }
                 let key = "\(sid)|\(it.tripId ?? "")|\(it.vehicleId ?? "")|\(k.rawValue)"   // trip ids are shared by several buses
@@ -255,7 +262,7 @@ public enum Notify {
         fired.removeAll { $0 == "\(tk)|delayed" }
         guard leg.state == .active, let v = leg.vehicle else { return (alerts, fired) }
         let route = routeName(S, leg.rid), late = level == .late ? " Live data is delayed." : ""
-        let named = !v.label.isEmpty, bus = named ? TripText.busName(v) + ". " : ""   // a bus without a number is just not named
+        let named = TripText.busNamed(v), bus = named ? TripText.busName(v) + ". " : ""   // a bus without a number or label is just not named
         func add(_ key: String, _ kind: BusAlert.Kind, _ title: String, _ body: String) {
             if fired.contains(key) { return }
             fired.append(key)

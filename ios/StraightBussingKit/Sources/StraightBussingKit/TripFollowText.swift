@@ -6,17 +6,22 @@ import Foundation
 public enum TripText {
     static func plural(_ n: Int, _ w: String) -> String { "\(n) \(w)\(n == 1 ? "" : "s")" }
 
-    /// "Bus 101" / "The bus".
+    /// "Bus 2" on a line with several buses (its map badge's number; owner 2026-11-06), else "Bus 101" (fleet label),
+    /// else "The bus" (web core/tripyou.js busName).
     public static func busName(_ v: TripFollow.Vehicle?) -> String {
-        guard let v, !v.label.isEmpty else { return "The bus" }
-        return "Bus \(v.label)"
+        guard let v else { return "The bus" }
+        if let n = v.number, n > 0 { return "Bus \(n)" }
+        return v.label.isEmpty ? "The bus" : "Bus \(v.label)"
     }
 
-    /// The same inside a sentence: "Bus 101" / "the bus" (web core/tripyou.js busMid).
+    /// The same inside a sentence: "Bus 2" / "Bus 101" / "the bus" (web core/tripyou.js busMid).
     public static func busMid(_ v: TripFollow.Vehicle?) -> String {
-        guard let v, !v.label.isEmpty else { return "the bus" }
-        return "Bus \(v.label)"
+        guard let v, (v.number ?? 0) > 0 || !v.label.isEmpty else { return "the bus" }
+        return busName(v)
     }
+
+    /// The bus is named at all: a map number or a fleet label (web notify.js `v.num > 0 || v.label`).
+    public static func busNamed(_ v: TripFollow.Vehicle) -> Bool { (v.number ?? 0) > 0 || !v.label.isEmpty }
 
     /// "4 min" / "Now" (with "~" while live data is delayed), like the route detail timeline.
     public static func etaText(_ t: Double?, now: Double, late: Bool) -> String {

@@ -47,11 +47,11 @@ final class BusAlerter {
 
     /// Station alerts due now. Choosing another station starts fresh, like the web notifier.
     func due(prefs: NotifyPrefs, staticData: StaticData, live: LiveState, hidden: [String], now: Double, tripOn: Bool,
-             polling: Bool) -> [BusAlert] {
+             polling: Bool, numbers: [String: [String: Int]] = [:]) -> [BusAlert] {
         if prefs.stopId != station { station = prefs.stopId; fired = [] }
         guard prefs.stopId != nil, !staticData.isEmpty else { return [] }
         let r = Notify.dueAlerts(prefs: prefs, staticData: staticData, live: live, hidden: hidden, fired: fired, now: now,
-                                 tripOn: tripOn, polling: polling)
+                                 tripOn: tripOn, polling: polling, numbers: numbers)
         fired = r.fired
         return r.alerts
     }
@@ -141,8 +141,9 @@ extension AppModel {
     /// Deliver the station alerts due now. Called after every poll and every bus-alert settings change.
     func checkBusAlerts() {
         guard !feedSimulated, !notifAsking else { return }   // never notify about a simulated bus
+        // "Bus 2 to Library." on a line with several buses: the numbers the map draws (Kit BusNumbers, owner 2026-11-06)
         let due = busAlerter.due(prefs: notify, staticData: staticData, live: liveState, hidden: hidden,
-                                 now: Date().timeIntervalSince1970, tripOn: tripAlertsRunning, polling: feedPolling)
+                                 now: Date().timeIntervalSince1970, tripOn: tripAlertsRunning, polling: feedPolling, numbers: busNumbers)
         deliver(due, thread: "bus-alerts")
     }
 

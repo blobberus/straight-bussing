@@ -166,6 +166,9 @@ struct RouteDetailView: View {
                 let last = i == ids.count - 1
                 let eta = TimeFmt.etaLabel(next?.t, now: model.now, stale: model.isStale)
                 let name = model.staticData.stops[id]?.name ?? id
+                // which bus comes next on a line with several, as on its map badge (owner 2026-11-06, web route.js
+                // arrivalBusName); a picked bus: the note names it, the rows do not repeat it
+                let num = pick == nil && !eta.isEmpty ? next.map { BusNumbers.arrivalName($0, numbers: model.busNumbers) } ?? "" : ""
                 HStack(spacing: 10) {
                     ZStack(alignment: .top) {
                         VStack(spacing: 0) {
@@ -200,8 +203,11 @@ struct RouteDetailView: View {
                             }
                             Spacer()
                             if !eta.isEmpty {
-                                Text(eta).font(.subheadline.weight(.semibold)).monospacedDigit()
-                                    .foregroundStyle(eta == "Now" ? Palette.live : Palette.text)
+                                VStack(alignment: .trailing, spacing: 0) {
+                                    Text(eta).font(.subheadline.weight(.semibold)).monospacedDigit()
+                                        .foregroundStyle(eta == "Now" ? Palette.live : Palette.text)
+                                    if !num.isEmpty { Text(num).font(.footnote).foregroundStyle(Palette.text2) }   // "Bus 2" under the time
+                                }
                             }
                         }
                         .frame(minHeight: rowH)
@@ -209,7 +215,7 @@ struct RouteDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(name)\(Self.etaSay(eta, pick: pick?.name))\(here.isEmpty ? "" : ", a bus is heading here")")
+                    .accessibilityLabel("\(name)\(Self.etaSay(eta, pick: pick?.name, num: num))\(here.isEmpty ? "" : ", a bus is heading here")")
                     .accessibilityAddTraits(.isButton)
                 }
             }
@@ -217,11 +223,13 @@ struct RouteDetailView: View {
     }
 
     /// The spoken time of a stop row (web route.js): ", next bus in 4 min" / ", no prediction", or for a picked bus
-    /// ", Bus 2 in 4 min" / ", no prediction for Bus 2".
-    static func etaSay(_ eta: String, pick: String?) -> String {
+    /// ", Bus 2 in 4 min" / ", no prediction for Bus 2". Not picked, on a line with several buses the next one is named
+    /// (`num`, owner 2026-11-06): ", Bus 1 in 2 min".
+    static func etaSay(_ eta: String, pick: String?, num: String = "") -> String {
         let when = eta == "Now" ? "now" : "in " + eta.replacingOccurrences(of: "~", with: "about ")
         if let pick { return eta.isEmpty ? ", no prediction for \(pick)" : ", \(pick) \(when)" }
-        return eta.isEmpty ? ", no prediction" : ", next bus \(when)"
+        if eta.isEmpty { return ", no prediction" }
+        return num.isEmpty ? ", next bus \(when)" : ", \(num) \(when)"
     }
 
     /// Local (America/Chicago) date of `t`, e.g. "2026-10-9": the schedule section only changes with it.

@@ -142,7 +142,7 @@ const minutesWords = (n) => (String(n) === "<1" ? "under 1 minute" : String(n) =
 
 function optionHTML(o, i, now, state) {
   const on = i === D.sel;
-  const lines = optionLines(o, now, staleLevel(state, now)), wt = walkTotal(o);
+  const lines = optionLines(o, now, staleLevel(state, now), state), wt = walkTotal(o);
   // what this option minimizes (core/rank.js), only when there is something to compare against; the least walking the long
   // way around also says that walking the whole way is faster (criteriaLine, owner 2026-11-06)
   const wo = D.result?.walkOnly?.min, walkArrive = wo > 0 ? (typeof o.t0 === "number" ? o.t0 : now) + wo * 60 : 0;

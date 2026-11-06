@@ -69,6 +69,37 @@ test('live: one empty vehicle answer in service keeps the last buses (one poll, 
   } finally { live.stop(); }
 });
 
+test('live: store.busNums numbers each poll; a bus left out of one poll keeps its number (45 s), like its badge', async () => {
+  const store = initial();
+  const ts = 1700000000;
+  const veh = (id) => ({ vehicle: { vehicle: { id, label: 'L' + id }, position: { latitude: 41.79, longitude: -87.6 }, trip: { trip_id: 't' + id, route_id: 'r1' }, timestamp: String(ts - 5) } });
+  const st = { ids: ['1', '3', '7'] };
+  const f = stubFetch((url) => {
+    const name = feedName(url), body = feeds()[name];
+    return res(name === 'vehiclePositions' ? { ...body, entity: st.ids.map(veh) } : body);
+  });
+  let T = ts;
+  const live = startLive(store, { ...fast, fetch: f, now: () => T });
+  const nums = () => store.get().busNums.routes.r1;
+  try {
+    await live.pollNow();
+    eq(nums(), { 1: 1, 3: 2, 7: 3 });
+    ok(store.get().busNums.of === store.get().buses, 'the numbers belong to this list');
+    st.ids = ['3', '7']; T += 10;
+    await live.pollNow();
+    eq(store.get().buses.length, 2);
+    eq(nums(), { 1: 1, 3: 2, 7: 3 }, 'bus 1 missing from a poll: Bus 2 and Bus 3 keep their numbers');
+    T += 46;
+    await live.pollNow();
+    eq(nums(), { 3: 1, 7: 2 }, 'gone for good: the line renumbers');
+    st.ids = ['7']; T += 10;
+    await live.pollNow();
+    T += 46;
+    await live.pollNow();
+    eq(store.get().busNums.routes, {}, 'one bus left: no numbers');
+  } finally { live.stop(); }
+});
+
 test('live: failure keeps last good data and sets failed; lastOk unchanged', async () => {
   const store = initial();
   const f = modal('ok');

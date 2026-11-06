@@ -279,11 +279,11 @@ final class TripYouTests: XCTestCase {
         XCTAssertEqual(a.spokenProgress, "Red Line. Get off here: Medical Center. Times are estimates.")
         let w = try snap(scene("waiting"))
         XCTAssertEqual(w.compactPrefix, "2 stops")
-        XCTAssertEqual(w.spokenProgress, "Red Line. Bus 2 stops from Ratner Center. Times are estimates.")
+        XCTAssertEqual(w.spokenProgress, "Red Line. The bus is 2 stops from Ratner Center. Times are estimates.")
         var one = w; one.stopsAway = 1
-        XCTAssertEqual(one.compactPrefix, "1 stop"); XCTAssertEqual(one.spokenProgress, "Red Line. Bus 1 stop from Ratner Center. Times are estimates.")
+        XCTAssertEqual(one.compactPrefix, "1 stop"); XCTAssertEqual(one.spokenProgress, "Red Line. The bus is 1 stop from Ratner Center. Times are estimates.")
         one.stopsAway = 0
-        XCTAssertEqual(one.compactPrefix, "Arriving"); XCTAssertEqual(one.spokenProgress, "Red Line. Bus arriving at Ratner Center. Times are estimates.")
+        XCTAssertEqual(one.compactPrefix, "Arriving"); XCTAssertEqual(one.spokenProgress, "Red Line. The bus is arriving at Ratner Center. Times are estimates.")
     }
 
     // MARK: iOS: stored prefs from before trip alerts keep every setting

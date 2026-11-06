@@ -138,7 +138,8 @@ struct FavoriteRow: View {
     var body: some View {
         let name = model.staticData.stops[id]?.name ?? id
         let a = model.liveLoaded ? model.arrivals(at: id).first : nil
-        let sub = a.map { model.longName($0.rid) } ?? (model.liveOutage ? "Live times unavailable"
+        let num = a.map { BusNumbers.arrivalName($0, numbers: model.busNumbers) } ?? ""   // "Bus 2" on a line with several buses (owner 2026-11-06)
+        let sub = a.map { model.longName($0.rid) + (num.isEmpty ? "" : " \u{00B7} " + num) } ?? (model.liveOutage ? "Live times unavailable"
             : model.liveLoaded ? "No upcoming buses on your visible routes" : "Waiting for live data")
         let m = a.map { max(0, TimeFmt.minsUntil($0.t, from: model.now)) } ?? 0
         Button { if !editing { model.push(.stop(id)) } } label: {
@@ -158,7 +159,7 @@ struct FavoriteRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(name + (a.map { ", next bus \(model.longName($0.rid)) in \(m) min" } ?? ", " + sub))
+        .accessibilityLabel(name + (a.map { ", next bus \(model.longName($0.rid))\(num.isEmpty ? "" : ", " + num + ",") in \(m) min" } ?? ", " + sub))
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -267,8 +268,9 @@ struct CustomRouteLine: View {
     let rid: String
     let highlighted: Bool
 
-    /// Next arrival of the route at its stop nearest you (within 1.5 km), or nil without location.
-    var nearestNext: (t: Double, stop: String)? {
+    /// Next arrival of the route at its stop nearest you (within 1.5 km), or nil without location; `num` names its bus as
+    /// on the map badge on a line with several buses ("Bus 2", else "").
+    var nearestNext: (t: Double, stop: String, num: String)? {
         guard let u = model.user, model.liveLoaded else { return nil }
         var best: (sid: String, d: Double)? = nil
         for sid in Set(model.staticData.routeStops[rid] ?? []) {
@@ -277,7 +279,7 @@ struct CustomRouteLine: View {
             if best == nil || d < best!.d { best = (sid, d) }
         }
         guard let b = best, b.d <= 1500, let a = model.arrivals(at: b.sid, routeId: rid).first else { return nil }
-        return (a.t, model.staticData.stops[b.sid]?.name ?? b.sid)
+        return (a.t, model.staticData.stops[b.sid]?.name ?? b.sid, BusNumbers.arrivalName(a, numbers: model.busNumbers))
     }
 
     var body: some View {
@@ -287,7 +289,7 @@ struct CustomRouteLine: View {
             : Operating.noLiveStatus(rid, buses: model.buses, service: model.staticData.service, now: model.now)
                 ?? Schedule.restingText(model.staticData.service, rid, model.now)
         let off = hidden ? (model.routeState.journey != nil ? " \u{00B7} Not on this trip" : " \u{00B7} Hidden on map") : ""
-        let next = hidden ? "" : nearestNext.map { " \u{00B7} \(model.isStale ? "~" : "")\(max(0, TimeFmt.minsUntil($0.t, from: model.now))) min at \($0.stop)" } ?? ""
+        let next = hidden ? "" : nearestNext.map { " \u{00B7} \($0.num.isEmpty ? "" : $0.num + " in ")\(model.isStale ? "~" : "")\(max(0, TimeFmt.minsUntil($0.t, from: model.now))) min at \($0.stop)" } ?? ""
         HStack(spacing: 10) {
             Button { model.push(.route(rid)) } label: {
                 HStack(spacing: 10) {

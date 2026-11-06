@@ -26,10 +26,14 @@ export const YOU = Object.freeze({
 
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
-/** "Bus 101" / "The bus". @param {{label?:string}|null} v */
-export function busName(v) { return v && v.label ? `Bus ${v.label}` : "The bus"; }
-/** The same inside a sentence: "Bus 101" / "the bus". @param {{label?:string}|null} v */
-export function busMid(v) { return v && v.label ? `Bus ${v.label}` : "the bus"; }
+/**
+ * "Bus 2" on a line with several buses (the map badge's number, core/busnum.js; owner 2026-11-06: the card, the map
+ * label and the alerts name the bus the way the map does), else "Bus 101" (fleet label), else "The bus".
+ * @param {{num?:number, label?:string}|null} v trip vehicle (core/tripprogress.js)
+ */
+export function busName(v) { return v && v.num > 0 ? `Bus ${v.num}` : v && v.label ? `Bus ${v.label}` : "The bus"; }
+/** The same inside a sentence: "Bus 2" / "Bus 101" / "the bus". @param {{num?:number, label?:string}|null} v */
+export function busMid(v) { return v && (v.num > 0 || v.label) ? busName(v) : "the bus"; }
 
 /**
  * The get-off count in words (card, timeline, map, alerts, Live Activity alike).
