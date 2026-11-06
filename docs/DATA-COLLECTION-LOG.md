@@ -163,6 +163,47 @@ about 11:50. What the feed held (positions every 10 s; the owner's point 41.7924
   the bus's own GPS visits confirm the new order; then replay a week and count added rows against the raw tracks.
   Rows of past days would change only with the owner's go-ahead (`tools/apply_replay.py`).
 
+**7. Buses reporting on a route outside its listed hours, Nov 2 to 5 (facts; for the idle-buses workstream).**
+From every position poll the collector kept (48,242 polls, Nov 2 3:28 AM to Nov 6 12:37 AM; the Nov 5 gap excluded),
+a bus counts when its route label is outside the route's listed hours by more than 30 min before the first trip or
+15 min after the last (night trips after midnight count for the day before):
+- **Central, every night:** one bus 36 to 72 min past 11:29 PM, and it drove one more full loop each night (8 to 14
+  arrivals logged 11:30 to 11:51 PM, mostly `gps` rows: the timetable's last Central trip is 11:00 to 11:14 PM), then
+  stood at Reynolds Club until midnight (item 5).
+- **The morning lines after they end** (Drexel 10:15 AM, Apostolic 10:25 AM): buses kept those labels for 4 to 312
+  min. Longest: Tue Nov 3 bus 4328 on Drexel trip 676422 from 10:31 AM to 3:42 PM, frozen on Wyler Pavilion, no
+  prediction, driving the hospital loop (Drexel Garage, Goldblatt, Wyler, Bernard Mitchell, 58th & Drexel, Comer)
+  about ten times: 58 arrivals logged as Drexel after hours; at 3:45 PM it became Apostolic/Drexel. Same day 4322 (218
+  min) and 4317 (92 min) on Apostolic, with 0 and 1 arrivals logged; Mon Nov 2 4313 on Drexel 118 min (11:53 AM to
+  1:50 PM, 2 arrivals).
+- **Midway Metra after 7:10 PM** (listed to 6:55 PM): 12 to 36 min every evening, 0 to 4 arrivals logged; and 4538
+  for 18 min in its midday break (1:17 PM Tue).
+- **Single evenings:** Red Line/Arts Block bus 12648 112 min after 9:30 PM on Mon Nov 2 (listed to 9:15 PM), Regents
+  Express 12646 43 min to 9:58 PM on Wed (listed to 9 PM), 53rd Street Express 4326 13 min on Wed.
+- **Before service:** buses leaving the garage at 4:17 to 6:41 AM with yesterday's or a later route's label (Mon Nov 2
+  South Loop Shuttle 4538, a line with no listed service, 64 min from 4:18 AM; NightRide labels 4:41 to 5:33 AM on Thu).
+- The evening NightRide ran every 30 minutes all week by the operator's alerts (Nov 2, 3, 5: all NightRide routes,
+  4 PM to 00:00:34; Nov 4: North and East, and Central until 6:45 PM), which explains the lower Central and North
+  counts in those evenings; in every alert the evening ends at 00:00:34, when the buses leave (item 5).
+
+**8. Everything else checked: normal.**
+- Feed: no duplicate vehicle entry in any poll, no two buses at identical coordinates, no report older than 5 min while
+  its bus stayed in the feed, every route id in the timetable.
+- Runs since Nov 2 (131): all succeeded; 125 logger runs with 0 processing errors, at most 2 of 840 feed reads failed in
+  a run, 0 alert polls failed; the 9 runs with under 30 rows all started between 11:59 PM and 1:18 AM or at 3:28 to
+  4:15 AM, none while buses were in service. One more dispatch error: an idle run's start of the 4:15 AM collect run got HTTP 500 on Wed Nov 4
+  and went through on its second try two minutes later (the old 3-try limit held that time).
+- Data: 0 duplicates, 0 rows missing ids, 13 lines and 92 stations each weekday; per line and hour against the week
+  before, the hours under half are the Nov 5 gap, the 30-minute NightRide evenings, single buses that drove away from
+  their route (Mon Nov 2 South 10 to 11 PM: its bus 12644 was 4.7 km from the route; Regents Express 9 arrivals that
+  day), and item 6; in the other hours checked the stops the buses' tracks passed match the rows logged.
+- Bus count changes: 40 to 53 adds and 33 to 50 lasting drops a weekday (Nov 2 to 5), in line with the first week
+  (DC-020). Alerts: 6 new versions (the NightRide notices, "Central Night Ride route modified", "Goldblatt Pavilion
+  boarding" Nov 5 6:55 AM to 2:15 PM). Timetable 708be9d370e2 unchanged since Nov 1 (the live site rebuilt it Nov 5 1:16 PM).
+- Archive: every file for Nov 1 to 4; Nov 5 archived at 3:58 AM Nov 6 by hand (101,849 prediction updates, 76,339
+  position reports, 207,478 forecast rows) since the scheduled run fires 6 to 10 h late. Weather context daily. Collector
+  tests green on both fix pushes.
+
 ### DC-022 Two false alarms on the health alerts' first day (fixed 2026-11-02)
 - Found in the 2026-11-02 checkup; both issues had opened and closed by themselves.
 - **Data repo watchdog, Sun Nov 1 4:00 to 4:51 PM ("stale"):** the rule "buses running and a collect run active, but no
