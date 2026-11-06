@@ -209,8 +209,12 @@ def archive(day, repo, arts, work, arrivals, gtfs=None, local=False, upload=True
                       f"({sum(1 for c in changes if c['kind'] == 'drop' and str(c['lasting']) == '1')} lasting)")
     except Exception as ex:
         changes, change_file, change_msg = [], None, f", bus changes skipped ({type(ex).__name__}: {ex})"
+    try:                                      # E29 leave windows (data/labeled/transitions/leave_windows.csv): optional
+        windows = B.load_leave_windows() or None
+    except Exception:
+        windows = None
     rows = B.build(day, B.load_arrivals(arrivals, t0, t1 + B.HORIZON_S), B.load_pred_updates([paths[0]], t0, t1 + B.HORIZON_S),
-                   B.load_raw([paths[1]], t0, t1), B.load_timetable(gtfs), st, cal=cal, changes=changes)
+                   B.load_raw([paths[1]], t0, t1), B.load_timetable(gtfs), st, cal=cal, changes=changes, windows=windows)
     B.write_rows(rows, paths[2])
     summ = B.summary(rows, day)
     B.merge_summary(work / f"summary-{day}.csv", summ)

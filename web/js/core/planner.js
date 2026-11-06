@@ -16,7 +16,8 @@
  *    hours when you reach the stop (data.service; no schedule data = allowed): a bus past its route's end of service
  *    is offered only for its own live times (owner 2026-11-06, RouteKnower E28); route skipped if neither.
  *    Buses that are idle and not in service (core/idle.js) or long off their route (core/offroute.js) never reach
- *    the planner: data/live.js drops them and their trip updates.
+ *    the planner: data/live.js drops them and their trip updates; so does a bus gone from the feed for 15 min while
+ *    Passio still predicts it (core/transition.js: it left for a break, its shift end or another route).
  *    A transfer's second wait starts after the transfer walk.
  *  - total/arrive = walk + wait + ride (+ transfer walk + wait + ride) + walk to the destination.
  *  - direct trips: per route, the best boarding/alighting pair for EACH ranking criterion (least

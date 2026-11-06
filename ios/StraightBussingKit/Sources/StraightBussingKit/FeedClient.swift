@@ -46,6 +46,10 @@ public struct LiveState: Sendable, Equatable {
     /// service): left out of `buses`, and their trip updates out of `trips`.
     public var idleTracks: [String: Idle.Track] = [:]
     public var idleHidden: [String] = []
+    /// `Transition` latest report times between polls (web data/live.js goneSeen) and the buses that left the feed 15 min
+    /// ago or more while Passio still predicts them: their trip updates are left out of `trips`.
+    public var goneSeen: [String: Transition.Seen] = [:]
+    public var goneIds: [String] = []
     public init() {}
 
     public func staleLevel(now: Double) -> StaleLevel {
@@ -69,7 +73,7 @@ extension LiveState {
     /// alone is tolerated; failure keeps the last good data and sets `failed`; each feed that did succeed
     /// is still applied; ONE empty vehicle answer in service keeps the last list (`emptyHoldS`); buses are
     /// filtered to operating vehicles, then buses long off their route (`OffRoute`) and buses idle and not in service
-    /// (`Idle`) are dropped with their trip updates.
+    /// (`Idle`) are dropped with their trip updates, and the trip updates of buses gone from the feed (`Transition`).
     public func applying(_ poll: FeedPoll, staticData: StaticData?, now: Double) -> LiveState {
         var s = self
         s.loaded = true
@@ -97,6 +101,9 @@ extension LiveState {
         }
         if case .success(let f) = poll.alerts { s.alerts = f.entities }
         if let newBuses {
+            let g = Transition.step(s.goneSeen, vehicles: newBuses, trips: s.trips, now: now, feedTs: s.feedTs)
+            s.goneSeen = g.seen
+            s.goneIds = g.gone
             let ctx = Operating.Context(routes: staticData?.routes ?? [:], service: staticData?.service ?? ServiceData(),
                                         trips: s.trips, feedTs: s.feedTs, now: now, staticLoaded: !(staticData?.isEmpty ?? true))
             s.buses = Operating.operatingBuses(newBuses, ctx)
@@ -109,7 +116,7 @@ extension LiveState {
             s.idleTracks = idle.tracks
             s.idleHidden = idle.hidden
         }
-        let hiddenNow = s.idleHidden.isEmpty ? s.offHidden : s.offHidden + s.idleHidden
+        let hiddenNow = s.offHidden + s.idleHidden + s.goneIds
         if !hiddenNow.isEmpty && (newBuses != nil || tuOK) {
             let d = OffRoute.dropHidden(buses: s.buses, trips: s.trips, hidden: hiddenNow)
             s.buses = d.buses

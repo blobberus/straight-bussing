@@ -9,6 +9,7 @@ predictions and train our own (`tools/model_*.py`, `docs/ALGORITHMS.md`). Unoffi
 | `data/ground_truth/predictions.csv` | `data` branch | since 2026-10-12: Passio's prediction 1, 2, 3, 5, 10, 15, 20 and 30 min before each arrival (one row per arrival and lead; schema below), for the owner's "10% rule" |
 | `data/ground_truth/alerts.csv` | `data` branch | since 2026-10-14: the operator's service alerts (Passio `serviceAlerts`), one row per alert version with when our collector first and last saw it (schema below); context for odd days (detours, reduced service), not ground truth about buses |
 | `data/ground_truth/bus_changes.csv` | `data` branch | since 2026-10-30: bus count changes per route (a bus leaves while the route keeps running, or a bus joins), each drop classified as lasting or a layover (schema below; owner: the 2 to 1 bus transitions) |
+| `data/labeled/transitions/` | main | since 2026-11-06 (RouteKnower E29): every bus count transition Oct 10 to Nov 5 labeled (which bus left or joined a line, where, where it went or came from, whether Passio kept predicting it): `transitions.csv` (one row per event), `transition_spots.csv`, `transition_summary.csv`, `leave_windows.csv` (the learned leave windows the forecast table uses); columns and label rules in its README; rebuilt by `experiments/routeknower/E29-scripts/transitions.py` |
 | `data/ground_truth/archive/*.csv` | `data` branch | same schemas, rotated when a live file passes 40 MB (arrivals, predictions; alerts.csv never rotates) |
 | CI artifacts `raw-polls-<run>`, `pred-updates-<run>` | GitHub Actions, 90 days | every position poll (E03) and every Passio prediction update `[veh, trip, stop_id, made, predicted, seq, seen, last]` (repeated about once a minute while it stays on display) per run (`tools/raw_fetch.py --list`) |
 | Release `data-archive-YYYY-MM` assets | GitHub Releases (prerelease), kept | from service day 2026-10-12 on (Oct 10-11: positions only), one set per service day, uploaded the morning after: `pred-updates-<day>.jsonl.gz`, `raw-polls-<day>.jsonl.gz` (the two artifacts merged and deduped), `eta-<day>.csv.gz` (forecast snapshots, below), `gtfs-<day>.zip`, and from the first day alerts were collected `alerts-<day>.csv.gz` (the alerts.csv versions in the feed at some poll of that service day; header only = none seen); about 5.5 MB a day, no growth of the git history (`.github/workflows/archive.yml`, `tools/archive_day.py`) |
@@ -200,7 +201,20 @@ late, the bus came early**) and `_rel` = err / lead_s, so **the 10% rule is |rel
 on headway trips, the Downtown Campus Connector) `tt_err_s` `tt_rel`; `ttd_epoch` (timetable + the bus's current
 delay) `ttd_err_s` `ttd_rel` · since 2026-10-30 `bus_change_min` (minutes from the nearest lasting drop on the row's route to the query
 time, negative = the drop is still ahead; blank if none within 45 min; bus_changes.py) and `leaving_bus` (1 if the
-row's bus is the one that leaves in that drop, 0 if it stays, blank with no drop). Passio at t uses the collector's rules (this bus, loop stop_sequence, first seen by t
+row's bus is the one that leaves in that drop, 0 if it stays, blank with no drop) · since 2026-11-06 (RouteKnower E29,
+owner: "add it to the bus prediction details so that the algorithm can be tested against it") the TRANSITION columns:
+ground truth `transition_min` (minutes from the nearest transition on the row's route, a lasting drop or an add that is
+not a layover's end, to the query time; negative = still ahead; blank if none within 45 min) `transition_kind` (leave /
+add) `bus_leaves_min` (minutes until this bus's own lasting drop from the row's route, 0 to 45; blank if none)
+`bus_leaves_within` (10 / 20 / 30, the smallest that holds it; 0 = not within 30); known live `added_recently`
+(minutes since this bus joined the route, if within 30) `break_window` (1 = the query's service-day clock is inside a
+learned leave window of the route for its day type, `data/labeled/transitions/leave_windows.csv`) `leave_spot_dist_m`
+(metres from the bus's latest position, a report at most 300 s old, to the nearest leave stop of those windows)
+`absent_s` (seconds since the bus's latest report on any route) `gone_rule` (1 = the app drops this bus's times:
+web/js/core/transition.js, silent 15 min or more while the feed is alive and its last two reports were at most 120 s
+apart). The windows are learned on Oct 10 to Nov 5, so on those days `break_window` / `leave_spot_dist_m` are
+in-sample; tables archived before 2026-11-06 lack the columns (the data repo's `algorithm-test/transitions.py` joins
+the ground-truth ones from transitions.csv). Passio at t uses the collector's rules (this bus, loop stop_sequence, first seen by t
 and still shown within 90 s, only for its next visit; an update made before the previous visit on the same trip =
 previous_lap; since 2026-10-16 (DC-010) a minute the own trip id left empty, after one it filled for the same arrival,
 takes the bus's prediction under a trip id Passio re-matched it to, by the detector's own rule, as in

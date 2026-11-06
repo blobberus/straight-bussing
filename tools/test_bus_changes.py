@@ -214,7 +214,8 @@ def forecast_rows_are_flagged_near_a_lasting_drop_only():
     assert (rows[0]["bus_change_min"], rows[0]["leaving_bus"]) == (-10.0, 1), rows[0]
     assert (rows[1]["bus_change_min"], rows[1]["leaving_bus"]) == (20.0, 0), rows[1]
     assert "bus_change_min" not in rows[2] and "bus_change_min" not in rows[3], rows
-    assert B.COLUMNS[-2:] == ["bus_change_min", "leaving_bus"]
+    i = B.COLUMNS.index("bus_change_min")
+    assert B.COLUMNS[i:i + 3] == ["bus_change_min", "leaving_bus", "transition_min"]   # the E29 columns follow (2026-11-06)
 
 
 @test

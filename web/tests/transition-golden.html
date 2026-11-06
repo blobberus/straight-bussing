@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>transition golden (running)</title></head>
+<body>
+<!-- Not a test page (the suite runs *.test.html): experiments/routeknower/E29-scripts/make_golden.py --expect opens it in
+     headless Edge to store web/js/core/transition.js's answers on the real polls of fixtures/transition_golden.json (the
+     web test core-transition.js and the iOS Kit TransitionTests check against them). -->
+<pre id="result">running...</pre>
+<script type="module">
+import { goneStep } from "../js/core/transition.js";
+const fx = await (await fetch("fixtures/transition_golden.json", { cache: "no-store" })).json();
+const out = {};
+for (const c of fx.cases) {
+  let seen = {};
+  const expect = [];
+  for (const p of c.polls) {
+    const vehicles = p.v.map(([veh, vt]) => ({ vehicle: { id: veh }, timestamp: vt }));
+    const trips = p.p.map((veh) => ({ trip: { trip_id: "t" + veh }, vehicle: { id: veh }, stop_time_update: [] }));
+    const r = goneStep(seen, vehicles, trips, { feedTs: p.h, nowS: p.h });
+    seen = r.seen;
+    expect.push(r.gone);
+  }
+  out[c.name] = { expect };
+}
+document.getElementById("result").textContent = JSON.stringify(out);
+document.title = "TESTS pass=1 fail=0";
+</script>
+</body>
+</html>
