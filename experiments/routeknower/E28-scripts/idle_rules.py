@@ -53,11 +53,8 @@ def hours_sig(rid, day):
         d = date.fromisoformat(day)
         r = ((SIG.get("_service", {}).get(day) or {}).get("routes") or {}).get(rid) or {}
         exc = next((x for x in r.get("exceptions") or [] if x.get("date") == day), None)
-        if exc is not None:
-            spans = (exc.get("hours") or {}).get("spans") or []
-        else:
-            dd = (r.get("days") or {}).get(DAY_KINDS[d.weekday()]) or {}
-            spans = dd.get("spans") or ([[dd["first"], dd["last"]]] if dd.get("first") and dd.get("last") else [])
+        dd = (exc.get("hours") or {}) if exc is not None else ((r.get("days") or {}).get(DAY_KINDS[d.weekday()]) or {})
+        spans = dd.get("spans") or ([[dd["first"], dd["last"]]] if dd.get("first") and dd.get("last") else [])
         SIG[k] = ",".join(f"{a}-{b}" for a, b in spans)
     return SIG[k]
 
