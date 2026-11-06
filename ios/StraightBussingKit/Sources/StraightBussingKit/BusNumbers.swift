@@ -97,17 +97,51 @@ extension Rank {
     /// Walking the whole way is suggested as the first option when it takes this many minutes or fewer.
     public static let walkFirstMaxMin = 10.0
 
-    /// Walk first (owner 2026-10-30: "if the distance is very close, it is ok to just suggest the user to walk on their
-    /// first travel option"): there are bus options, and walking the whole way takes 10 minutes or less, or arrives no
-    /// later than the best bus option. Otherwise the ranked bus options keep their order.
-    public static func walkFirst(_ r: PlanResult) -> Bool {
-        guard !r.options.isEmpty, r.walkOnlyMin > 0, r.walkOnlyMin.isFinite else { return false }
-        if r.walkOnlyMin <= walkFirstMaxMin { return true }
-        let best = r.options.map(\.arrive).min() ?? .infinity
-        return r.now + r.walkOnlyMin * 60 <= best
+    /// Where the walk card goes among the ranked bus options (web core/rank.js walkPlace) and why: `at` 0 = first, 1 =
+    /// second (under the top bus option); `why` picks its caption.
+    public struct WalkPlace: Hashable, Sendable {
+        public enum Why: String, Hashable, Sendable { case close, faster }
+        public var at: Int
+        public var why: Why
+        public init(at: Int, why: Why) { self.at = at; self.why = why }
+        /// The walk card's line on top (web WALK_CAPTION).
+        public var caption: String { why == .close ? "Close enough to walk" : "Faster to walk" }
     }
 
-    /// A bus option's criteria once walking the whole way is listed above it (web core/rank.js besideWalk): it keeps
+    /// Added to the line of an option that walks least but arrives later than walking the whole way (web SLOWER_NOTE).
+    public static let slowerNote = "walking is faster"
+
+    /// Where walking the whole way is listed (owner 2026-10-30 walk first: "if the distance is very close, it is ok to just
+    /// suggest the user to walk on their first travel option"; 2026-11-06 the long way around), web core/rank.js walkPlace:
+    ///  - 10 minutes or less: first, "Close enough to walk";
+    ///  - else a bus arrives before walking would: not listed (the "Walking the whole way" footnote);
+    ///  - else the top bus option (least walking) saves walking (`savesWalking`): second, "Faster to walk", when walking
+    ///    arrives more than the arrival tolerance (1 min) earlier; about as fast: not listed;
+    ///  - else first ("Faster to walk" when more than 1 min earlier, else "Close enough to walk").
+    public static func walkPlace(_ r: PlanResult) -> WalkPlace? {
+        guard let top = r.options.first, r.walkOnlyMin > 0, r.walkOnlyMin.isFinite else { return nil }
+        if r.walkOnlyMin <= walkFirstMaxMin + eps { return WalkPlace(at: 0, why: .close) }
+        let arrive = r.now + r.walkOnlyMin * 60
+        let best = r.options.map(\.arrive).min() ?? .infinity
+        if arrive > best + eps { return nil }
+        let faster = arrive < best - Criterion.arrive.tol * 60 - eps
+        if savesWalking(optionStats(top).walk, r.walkOnlyMin) { return faster ? WalkPlace(at: 1, why: .faster) : nil }
+        return WalkPlace(at: 0, why: faster ? .faster : .close)
+    }
+
+    /// The walk card leads the list (`walkPlace` at 0).
+    public static func walkFirst(_ r: PlanResult) -> Bool { walkPlace(r)?.at == 0 }
+
+    /// The small "what it minimizes" line of a bus option (web core/rank.js criteriaLine): `criteriaText`, plus
+    /// " · walking is faster" when it walks least but arrives more than the arrival tolerance (1 min) after walking the
+    /// whole way would (the long way around). nil `walkArrive`: no note.
+    public static func criteriaLine(_ o: TripOption, walkArrive: Double?) -> String {
+        let t = criteriaText(o.meets)
+        guard !t.isEmpty, o.meets.contains(.walk), let w = walkArrive, w > 0 else { return t }
+        return o.arrive > w + Criterion.arrive.tol * 60 + eps ? t + " \u{00B7} " + slowerNote : t
+    }
+
+    /// A bus option's criteria once walking the whole way is listed beside it (web core/rank.js besideWalk): it keeps
     /// "Least walking", "Earliest arrival" or "Shortest wait" only if it also beats the walk (`walkMin` minutes,
     /// arriving at `walkArrive`, no wait) within the same tolerance, so the list never claims what the option right
     /// above disproves (QA 2026-11-05: a trip that walked 12 min and arrived 7 min after a 7 min walk said "Least
@@ -127,10 +161,10 @@ extension Rank {
         return copy
     }
 
-    /// The bus options as listed (web walkFirst): under a walk-first card each goes through `besideWalk`; otherwise
-    /// `r.options` unchanged.
+    /// The bus options as listed (web walkFirst): with the walk card listed (first or second, `walkPlace`) each goes
+    /// through `besideWalk`; otherwise `r.options` unchanged.
     public static func listedOptions(_ r: PlanResult) -> [TripOption] {
-        guard walkFirst(r) else { return r.options }
+        guard walkPlace(r) != nil else { return r.options }
         let arrive = r.now + r.walkOnlyMin * 60
         return r.options.map { besideWalk($0, walkMin: r.walkOnlyMin, walkArrive: arrive) }
     }

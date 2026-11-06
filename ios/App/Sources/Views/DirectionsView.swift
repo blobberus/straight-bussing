@@ -235,20 +235,24 @@ struct DirectionsView: View {
                 walkOnlyCard(r)
                 refiningNote
             } else {
-                // very close (owner 2026-10-30): walking the whole way is the first option when it takes 10 min or less
-                // or arrives no later than the best bus (Kit Rank.walkFirst)
-                let walkFirst = Rank.walkFirst(r)
-                // under the walk card a bus option never claims what the walk disproves (Kit Rank.listedOptions)
+                // walking the whole way (Kit Rank.walkPlace, web core/rank.js walkPlace): first when it takes 10 min or less
+                // (owner 2026-10-30) or arrives no later than the best bus that does not save walking; second, under the
+                // top option, when that option walks much less the long way around but walking is faster (owner 2026-11-06)
+                let place = Rank.walkPlace(r)
+                // beside the walk card a bus option never claims what the walk disproves (Kit Rank.listedOptions)
                 let listed = Rank.listedOptions(r)
-                if walkFirst {
-                    walkOnlyCard(r, caption: "Close enough to walk").accessibilityIdentifier("dirWalkFirst")
+                if let place, place.at == 0 {
+                    walkOnlyCard(r, caption: place.caption).accessibilityIdentifier("dirWalkFirst")
                 }
                 // the walk counts as one of the (at most 4) options, like the web list (also when saying what each minimizes)
-                ForEach(Array(listed.prefix(Planner.maxOpts - (walkFirst ? 1 : 0)).enumerated()), id: \.element.key) { item in
-                    OptionCard(option: item.element, index: item.offset, showCriteria: listed.count + (walkFirst ? 1 : 0) > 1,
-                               selected: item.offset == model.dir.selected)
+                ForEach(Array(listed.prefix(Planner.maxOpts - (place == nil ? 0 : 1)).enumerated()), id: \.element.key) { item in
+                    OptionCard(option: item.element, index: item.offset, showCriteria: listed.count + (place == nil ? 0 : 1) > 1,
+                               walkArrive: item.element.t0 + r.walkOnlyMin * 60, selected: item.offset == model.dir.selected)
+                    if let place, place.at == 1, item.offset == 0 {
+                        walkOnlyCard(r, caption: place.caption).accessibilityIdentifier("dirWalkSecond")
+                    }
                 }
-                if !walkFirst {
+                if place == nil {
                     Text("Walking the whole way: \(TripInfo.mins(r.walkOnlyMin)) min (\(r.walkOnlyM) m), \(walkSourceText(r))")
                         .font(.footnote).foregroundStyle(Palette.text2)
                 }
@@ -294,7 +298,7 @@ struct DirectionsView: View {
     }
 
     /// Walk-only fallback (directions.js): minutes + source tag, arrival clock, "Walk the whole way", meters. `caption`:
-    /// the walk-first card's line on top ("Close enough to walk", web walkOptionHTML).
+    /// the walk card's line on top ("Close enough to walk" / "Faster to walk", Kit Rank.WalkPlace.caption, web walkOptionHTML).
     func walkOnlyCard(_ r: PlanResult, caption: String? = nil) -> some View {
         Card {
             VStack(alignment: .leading, spacing: 4) {
@@ -366,10 +370,12 @@ struct OptionCard: View {
     let option: TripOption
     let index: Int
     let showCriteria: Bool
+    /// When walking the whole way would arrive (unix s): the least walking the long way around says "walking is faster".
+    var walkArrive: Double? = nil
     let selected: Bool
 
     var body: some View {
-        let crit = showCriteria ? Rank.criteriaText(option.meets) : ""
+        let crit = showCriteria ? Rank.criteriaLine(option, walkArrive: walkArrive) : ""
         let lines = TripInfo.optionLines(option, now: model.now, level: model.staleLevel)
         VStack(alignment: .leading, spacing: 6) {
             Button { model.selectOption(index) } label: {

@@ -27,7 +27,7 @@ import { staleLevel, staleNote, liveUnknown } from "../../core/arrivals.js";
 import { silentService, scheduledRoutes, silentText } from "../../core/operating.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { plan, refineWalking, PLANNER } from "../../core/planner.js";
-import { rankOptions, criteriaText, walkFirst, uniqueOptions } from "../../core/rank.js";
+import { rankOptions, criteriaLine, walkFirst, uniqueOptions, WALK_CAPTION } from "../../core/rank.js";
 import { walkRoute } from "../../core/walk.js";
 import { createThrottle } from "../../core/throttle.js";
 import { predict } from "../../core/predict.js";
@@ -143,8 +143,10 @@ const minutesWords = (n) => (String(n) === "<1" ? "under 1 minute" : String(n) =
 function optionHTML(o, i, now, state) {
   const on = i === D.sel;
   const lines = optionLines(o, now, staleLevel(state, now)), wt = walkTotal(o);
-  // what this option minimizes (core/rank.js), only when there is something to compare against
-  const crit = (D.result?.options?.length || 0) > 1 ? criteriaText(o.meets) : "";
+  // what this option minimizes (core/rank.js), only when there is something to compare against; the least walking the long
+  // way around also says that walking the whole way is faster (criteriaLine, owner 2026-11-06)
+  const wo = D.result?.walkOnly?.min, walkArrive = wo > 0 ? (typeof o.t0 === "number" ? o.t0 : now) + wo * 60 : 0;
+  const crit = (D.result?.options?.length || 0) > 1 ? criteriaLine(o, walkArrive) : "";
   const critHTML = crit ? `<span class="j-crit">${esc(crit)}</span>` : "";
   const routesTxt = o.legs.filter((l) => l.type === "bus").map((l) => state.routes?.[l.rid]?.short || l.rid).join(" then ");
   const aria = `Option ${i + 1}${crit ? " (" + crit + ")" : ""}: about ${minutesWords(o.totalMin)} including ${wt > 0 ? minutesWords(walkMins(wt)) + " walking" : "no walking"}, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. ${lines.text} Estimate.`.replace(/<1 min/g, "under 1 min");
@@ -156,13 +158,15 @@ function optionHTML(o, i, now, state) {
 /**
  * The walk option (core/rank.js walkFirst, owner 2026-10-30: very close = walk first; spec 10.15): the walk icon in a
  * tinted circle, the walking time, the arrival, the distance, and when selected the step and Start (a trip with no bus).
+ * Its line on top: "Close enough to walk" (10 min or less) or "Faster to walk" (WALK_CAPTION; second under a bus option
+ * that walks much less, the long way around, owner 2026-11-06).
  */
 function walkOptionHTML(o, i, now, state) {
-  const on = i === D.sel, l = o.legs[0] || {};
-  const aria = `Option ${i + 1}: walk the whole way, ${minutesWords(walkMins(o.walkMin))}, ${Math.round(o.walkM || 0)} meters, arrive ${clock(o.arrive)}. Close enough to walk.`;
+  const on = i === D.sel, l = o.legs[0] || {}, cap = WALK_CAPTION[o.why] || WALK_CAPTION.close;
+  const aria = `Option ${i + 1}: walk the whole way, ${minutesWords(walkMins(o.walkMin))}, ${Math.round(o.walkM || 0)} meters, arrive ${clock(o.arrive)}. ${cap}.`;
   const start = on && !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Follow your walk in Current trip.</p>' : "";
   return `<div class="v-opt v-opt--walk${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}">`
-    + `<span class="j-crit">Close enough to walk</span><span class="v-otop"><span class="j-walkic" aria-hidden="true">${svg("walk", 20)}</span><span class="v-otot">${esc(walkMins(o.walkMin))}<small> min walk</small></span><span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span>`
+    + `<span class="j-crit">${esc(cap)}</span><span class="v-otop"><span class="j-walkic" aria-hidden="true">${svg("walk", 20)}</span><span class="v-otot">${esc(walkMins(o.walkMin))}<small> min walk</small></span><span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span>`
     + `<span class="v-sec j-oline">${esc(walkDetail(o.walkM, l.source))}</span></button>${on ? stepsHTML(o, now, state) + start : ""}</div>`;
 }
 
@@ -217,7 +221,7 @@ export function resHTML(state, now = nowS()) {
   }
   h += r.options.slice(0, PLANNER.MAX_OPTS).map((o, i) => (o.walkOnly ? walkOptionHTML(o, i, now, state) : optionHTML(o, i, now, state))).join("");
   if (D.optsChanged) h += `<p class="v-foot" role="status">${esc(OPTS_CHANGED)}</p>`;   // the selected option went away in a live re-plan (spec 13.8)
-  if (!r.options[0]?.walkOnly) h += `<p class="v-foot">Walking the whole way: ${mins(w.min)} min (${Math.round(w.m || 0)} m), ${w.source === "router" ? "sidewalk route" : "estimate"}</p>`;
+  if (!r.options.some((o) => o.walkOnly)) h += `<p class="v-foot">Walking the whole way: ${mins(w.min)} min (${Math.round(w.m || 0)} m), ${w.source === "router" ? "sidewalk route" : "estimate"}</p>`;
   if (D.refining) h += '<p class="v-foot" role="status">Checking sidewalk routes&hellip;</p>';
   return h + `<p class="v-foot v-estnote">${esc(NOTE)}</p>`;
 }

@@ -1,7 +1,8 @@
 // Tests for core/rank.js (trip option ranking: least walking, then earliest arrival, then shortest
 // wait, then how many criteria an option meets) and its use by core/planner.js.
 import { test, eq, ok } from "./lib.js";
-import { CRITERIA, optionStats, rankOptions, criteriaText, pickOptions, walkTotals, walkFirst, WALK_FIRST_MIN, besideWalk, uniqueOptions } from "../js/core/rank.js";
+import { CRITERIA, optionStats, rankOptions, criteriaText, pickOptions, walkTotals, walkFirst, WALK_FIRST_MIN, besideWalk, uniqueOptions,
+  LONG_WAY, savesWalking, walkPlace, criteriaLine, WALK_CAPTION, SLOWER_NOTE } from "../js/core/rank.js";
 import { plan } from "../js/core/planner.js";
 
 const T = 1_800_000_000;
@@ -108,9 +109,13 @@ test("walk first: 10 min or less puts a walk option first, bus options keep thei
 
 test("walk first: longer walks lead only when they arrive no later than the best bus", () => {
   const walk = { m: 1000, min: 12.5 };
-  eq(walkFirst([busOpt("a", 12)], walk, { from: FROM, to: TO, t0: T0 }).map((o) => o.key), ["a"], "12.5 min walk vs a 12 min bus: bus only");
-  eq(walkFirst([busOpt("a", 13)], walk, { from: FROM, to: TO, t0: T0 }).map((o) => o.key), ["walk", "a"], "walking arrives first");
-  eq(walkFirst([busOpt("a", 12.5)], walk, { from: FROM, to: TO, t0: T0 }).map((o) => o.key), ["walk", "a"], "a tie: walk first");
+  // the bus walks 9 of the 12.5 min (saves 3.5 min: not "saves walking", LONG_WAY), so walking leads when it is no slower
+  const busW = (key, arriveMin) => ({ ...busOpt(key, arriveMin), legs: [{ type: "walk", min: 9 }, { type: "bus", rid: "R", wait: 1 }] });
+  eq(walkFirst([busW("a", 12)], walk, { from: FROM, to: TO, t0: T0 }).map((o) => o.key), ["a"], "12.5 min walk vs a 12 min bus: bus only");
+  eq(walkFirst([busW("a", 13)], walk, { from: FROM, to: TO, t0: T0 }).map((o) => o.key), ["walk", "a"], "walking arrives first");
+  eq(walkFirst([busW("a", 12.5)], walk, { from: FROM, to: TO, t0: T0 }).map((o) => o.key), ["walk", "a"], "a tie: walk first");
+  eq(walkFirst([busW("a", 13)], walk, { from: FROM, to: TO, t0: T0 })[0].why, "close", "half a minute sooner: not called faster");
+  eq(walkFirst([busW("a", 20)], walk, { from: FROM, to: TO, t0: T0 })[0].why, "faster", "7.5 min sooner: Faster to walk");
 });
 
 test("walk first: never without a bus option (the no-route screen keeps its help), capped, one walk option", () => {
@@ -141,6 +146,81 @@ test("walk first: a bus option never claims what the walk above it disproves (QA
   eq(slow.meets, ["walk"], "less walking than the walk, but later and with a 4 min wait");
   const same = { ...bus("y", 5, 1, 0), meets: ["walk"] };
   ok(besideWalk(same, 8, T0 + 8 * 60) === same, "unchanged options are not copied");
+});
+
+/* ---------- the long way around (owner 2026-11-06) ---------- */
+// "Fix the route recommendation to approve of taking the long way around routes to reach a location given that it is the
+// least amount of walking and long wait is ok. For instance, ... taking 53rd from regenstein to vue53"
+
+test("long way: savesWalking = at least 5 min less AND at most half of the walking", () => {
+  eq([LONG_WAY.SAVE_MIN, LONG_WAY.SAVE_FRAC, LONG_WAY.MAX_MIN], [5, 0.5, 60]);
+  ok(savesWalking(3.6, 15), "Regenstein to Vue53: 3.6 of 15 min");
+  ok(savesWalking(5, 10), "exactly 5 min and exactly half");
+  ok(!savesWalking(10, 15), "5 min less but two thirds of the walk");
+  ok(!savesWalking(2, 6.5), "half, but only 4.5 min less");
+  ok(!savesWalking(0, 0) && !savesWalking(NaN, 15) && !savesWalking(3, null), "bad input: no");
+});
+
+test("long way: pickOptions keeps the least-walking option slower than walking, up to 60 min door to door", () => {
+  const leg = (rid, boardT) => ({ type: "bus", rid, wait: 9, board: { id: rid + "b" }, alight: { id: rid + "a" }, boardT });
+  const c = (key, arrMin, w, xfer = false) => ({ key, arr: T + arrMin * 60, legs: [walk(w / 2), leg(key, T + arrMin), walk(w / 2)], xfer });
+  // walking the whole way: 15 min -> the usual limit max(2 x 15, 15 + 15) = 30 min
+  const out = pickOptions([
+    c("53RD", 32, 3.6),     // 12 stops around the loop: slower than the limit, walks least -> kept
+    c("FCM", 25, 13.6),     // within the limit
+    c("53RD:b", 35, 6),     // saves walking too, but 2.4 min more than the least -> dropped
+    c("SLOW", 61, 0.5),     // over an hour door to door -> dropped
+  ], { t0: T, walkOnlyMin: 15 });
+  eq(keys(out), ["53RD", "FCM"], "the long way around first (least walking), the usual option after it");
+  ok(out[0].meets.includes("walk") && !out[0].meets.includes("arrive"), "it says Least walking, not Earliest arrival: " + out[0].meets);
+  ok(out[0].total > Math.max(2 * 15, 15 + 15), "slower than the old limit (it was dropped before 2026-11-06)");
+  // a long wait is fine: 3.6 walk + 36 wait + 19 ride = 58.6 min
+  eq(keys(pickOptions([c("53RD", 58.6, 3.6)], { t0: T, walkOnlyMin: 15 })), ["53RD"], "58.6 min with a long wait: kept");
+  eq(keys(pickOptions([c("53RD", 60.5, 3.6)], { t0: T, walkOnlyMin: 15 })), [], "60.5 min: too long");
+  // DCC-like: the slow option walks 4 min less than a usual option that already walks little -> not worth 22 more minutes
+  eq(keys(pickOptions([c("DCC", 47, 0.7), c("53RD", 25, 4.7)], { t0: T, walkOnlyMin: 22 })), ["53RD"], "saves under 5 min over the usual options: dropped");
+  // a slow option that only saves a little over walking the whole way stays dropped (the old rule)
+  eq(keys(pickOptions([c("X", 31, 11)], { t0: T, walkOnlyMin: 15 })), [], "walks 11 of 15 min: no long way");
+  // a transfer that is not worth it does not count as the least walking
+  const x = { key: "A>B", arr: T + 40 * 60, legs: [walk(0.3), leg("A", T + 60), walk(0.1), leg("B", T + 600), walk(0.2)], xfer: true };
+  eq(keys(pickOptions([c("53RD", 32, 3.6), c("FCM", 25, 13.6), x], { t0: T, walkOnlyMin: 15 })), ["53RD", "FCM"], "the dropped transfer walks less, the 53rd is still kept");
+});
+
+test("long way: walkPlace puts walking second under a bus option that saves walking, first when it is short", () => {
+  const o = (key, arriveMin, w) => ({ key, arrive: T0 + arriveMin * 60, legs: [{ type: "walk", min: w }, { type: "bus", rid: "R", wait: 9 }] });
+  const long = o("53RD", 32, 3.6), usual = o("FCM", 25, 13.6);
+  eq(walkPlace([long, usual], { min: 15 }, T0), { at: 1, why: "faster" }, "15 min walk, the 53rd walks 3.6: bus first, walking second");
+  eq(walkPlace([long], { min: 8 }, T0), { at: 0, why: "close" }, "8 min walk: walking first however much the bus saves");
+  eq(walkPlace([o("53RD", 15.5, 3.6)], { min: 15 }, T0), null, "the bus is about as fast and walks much less: no walk card");
+  eq(walkPlace([usual], { min: 15 }, T0), { at: 0, why: "faster" }, "no bus saves walking: walking first");
+  eq(walkPlace([o("A", 14, 3)], { min: 15 }, T0), null, "a bus arrives first: no walk card");
+  eq(walkPlace([], { min: 15 }, T0), null);
+  eq(walkPlace([long], null, T0), null);
+});
+
+test("long way: walkFirst lists the 53rd, then Faster to walk, then the rest; each claims only what it beats", () => {
+  const o = (key, arriveMin, w, wait) => ({ key, arrive: T0 + arriveMin * 60, total: arriveMin, totalMin: arriveMin, legs: [{ type: "walk", min: w }, { type: "bus", rid: "R", wait }] });
+  const ranked = rankOptions([o("53RD", 32, 3.6, 9), o("FCM", 25, 13.6, 0.5)]);
+  const r = walkFirst(ranked, { m: 1197, min: 15 }, { from: FROM, to: TO, t0: T0 });
+  eq(r.map((x) => x.key), ["53RD", "walk", "FCM"]);
+  eq(r[1].why, "faster");
+  eq(WALK_CAPTION[r[1].why], "Faster to walk");
+  eq(r[0].meets, ["walk"], "least walking; not the earliest arrival (walking is) nor the shortest wait");
+  eq(r[2].meets, ["wait"], "the half-minute wait still counts as no wait next to the walk");
+  eq(walkFirst(ranked, { m: 640, min: 8 }, { from: FROM, to: TO, t0: T0 }).map((x) => x.key), ["walk", "53RD", "FCM"], "a short walk still leads");
+  eq(walkFirst(walkFirst(ranked, { m: 1197, min: 15 }, { from: FROM, to: TO, t0: T0 }), { m: 1197, min: 15 }, { from: FROM, to: TO, t0: T0 }).filter((x) => x.walkOnly).length, 1, "never doubled");
+});
+
+test("long way: criteriaLine states the trade-off on the least-walking option slower than walking", () => {
+  const walkArrive = T0 + 15 * 60;
+  eq(SLOWER_NOTE, "walking is faster");
+  eq(criteriaLine({ meets: ["walk"], arrive: T0 + 32 * 60 }, walkArrive), "Least walking \u00b7 walking is faster");
+  eq(criteriaLine({ meets: ["walk", "wait"], arrive: T0 + 32 * 60 }, walkArrive), "Least walking, shortest wait \u00b7 walking is faster", "one middle dot");
+  eq(criteriaLine({ meets: ["walk"], arrive: T0 + 15.9 * 60 }, walkArrive), "Least walking", "within the 1 min arrival tolerance");
+  eq(criteriaLine({ meets: ["wait"], arrive: T0 + 32 * 60 }, walkArrive), "Shortest wait", "only next to a least-walking claim");
+  eq(criteriaLine({ meets: ["walk"], arrive: T0 + 32 * 60 }), "Least walking", "no walk to compare with");
+  eq(criteriaLine({ meets: [], arrive: T0 + 32 * 60 }, walkArrive), "");
+  ok(!/[\u2013\u2014]/.test(criteriaLine({ meets: ["walk"], arrive: T0 + 32 * 60 }, walkArrive)), "no dash characters");
 });
 
 test("uniqueOptions: two options refined onto the same bus are listed once, the first kept (QA 2026-11-05)", () => {

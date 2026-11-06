@@ -152,7 +152,7 @@ export async function refineWalking(option, {walkRoute, now, data, from, to, pre
 // WalkLeg = {type:'walk', from:{lat,lon,name}, to:{lat,lon,name}, m, min, coords?:[[lat,lon]], source?:'router'|'estimate'}
 // BusLeg  = {type:'bus', rid, board:{id,name,lat,lon}, alight:{id,name,lat,lon}, path:[{lat,lon}], stopsPassed, wait, waitLive, ride, source:'live'|'learned'|'schedule'|'estimate', conf, boardT, alightT, tripId}   // tripId: live trip update's trip_id, null for a headway guess
 ```
-Planner rules (port from v1, keep behaviors): walk 80 m/min x1.2 detour estimate (WALK_M_PER_MIN, WALK_DETOUR in core/geo.js), max walk 800 m each end, widened to 1600 m (MAX_WALK_FAR) when no option exists within 800 m; every walk costs m/80 min however short (only walks under 1 m get no step); wait counts from when you reach the stop (t0 + walk), and for the second bus from after the transfer walk; direct + one transfer (transfer walk <= 150 m), loop routes wrap, ride time prefers same-trip live prediction (tripUpdates at alight stop minus at board stop), then `predict.rideMinutes`, then distance/18 km/h; wait = live next arrival at board stop after you arrive, else headway estimate; discard options absurdly longer than walking; direct trips contribute, per route, the best (board, alight) pair for EACH criterion below; ranked by `core/rank.js`; max 4 options (`PLANNER.MAX_OPTS`); every number is an estimate.
+Planner rules (port from v1, keep behaviors): walk 80 m/min x1.2 detour estimate (WALK_M_PER_MIN, WALK_DETOUR in core/geo.js), max walk 800 m each end, widened to 1600 m (MAX_WALK_FAR) when no option exists within 800 m; every walk costs m/80 min however short (only walks under 1 m get no step); wait counts from when you reach the stop (t0 + walk), and for the second bus from after the transfer walk; direct + one transfer (transfer walk <= 150 m), loop routes wrap, ride time prefers same-trip live prediction (tripUpdates at alight stop minus at board stop), then `predict.rideMinutes`, then distance/18 km/h; wait = live next arrival at board stop after you arrive, else headway estimate; discard options absurdly longer than walking (max(2 x walking, walking + 15 min)) except the least-walking long way around ("The long way around" below); direct trips contribute, per route, the best (board, alight) pair for EACH criterion below; ranked by `core/rank.js`; max 4 options (`PLANNER.MAX_OPTS`); every number is an estimate.
 
 Ranking (`core/rank.js`, owner rule 2026-10-08): criteria in priority order **1. least walking** (sum of walk-leg minutes), **2. earliest arrival**, **3. shortest wait** (sum of bus-leg waits). An option *meets* a criterion when within a tolerance of the best (walk 0.5 min, arrival 1 min, wait 1 min). Sort: highest-priority criterion met (none = last), then more criteria met, then walk, arrive, wait. Options carry `meets:[ids]`; Directions re-ranks after `refineWalking` and shows `criteriaText(meets)` as a small line on each card ("Least walking, earliest arrival") when there are 2+ options.
 ```js
@@ -162,7 +162,13 @@ export function walkTotals(legs): {walkMin, walkM}
 export function optionStats(option): {walk:min, arrive:unixS, wait:min}
 export function rankOptions(options): Option[]   // copies with meets, best first
 export function criteriaText(meets): string
-export function pickOptions(cands, {t0, walkOnlyMin, max=4, xferGainMin=2}): Option[]   // filter + dedupe + rank + cap (used by plan)
+export function pickOptions(cands, {t0, walkOnlyMin, max=4, xferGainMin=2}): Option[]   // filter + dedupe + rank + cap (used by plan); keeps the least-walking long way around
+export const LONG_WAY   // {SAVE_MIN:5, SAVE_FRAC:0.5, MAX_MIN:60} (2026-11-06)
+export function savesWalking(walkMin, walkOnlyMin): boolean   // at least 5 min less AND at most half
+export function walkPlace(busOptions, walk, t0): {at:0|1, why:'close'|'faster'}|null   // where walking the whole way is listed
+export function walkFirst(busOptions, walk, {from, to, t0, max}): Option[]   // inserts the walk option at walkPlace; besideWalk on every bus option
+export const WALK_CAPTION   // {close:"Close enough to walk", faster:"Faster to walk"}
+export function criteriaLine(option, walkArrive?): string   // criteriaText + " · walking is faster" on the least walking slower than walking
 ```
 
 ## Map layer (C)
@@ -962,6 +968,49 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   says "Walking the whole way, no bus"; Current trip shows "Trip to X", "Walk N min to X", "No bus needed: it is close
   enough to walk.", End trip, Trip steps (core/tripprogress.js `walkTrip` / `walkLeft`); no notification prompt.
 - Tests: tests/trip-arriving.js (8), core-rank.js walk first (3), views-flows.js walk option. sw sb-v2-74.
+- 2026-11-06: where the walk option goes is `walkPlace` (it can also come second, "Faster to walk"), see "The long way
+  around" below.
+
+## The long way around (2026-11-06, owner: "Fix the route recommendation to approve of taking the long way around routes to reach a location given that it is the least amount of walking and long wait is ok. For instance, for right now, the route is not recommending taking 53rd from regenstein to vue53 for some reason.")
+- Cause: `pickOptions` dropped every option slower than max(2 x walking, walking + 15 min), 30 min for the 15 min walk
+  from Regenstein to Vue53. The 53rd Street Express runs a one-way loop (west on 53rd, south on Ellis, east on 60th,
+  north on Stony Island / Lake Park, Harper Court, then 53rd St & Kenwood), so from Ellis Ave & 57th St it rides 12
+  stops around the loop: 3.6 min walking + 19 min ride (timetable) + the wait. With one bus every ~25 min at midday the
+  wait was over 7.4 min most of the time, so the 53rd was dropped (it flickered in only right before a bus came). The
+  loop handling itself was right (`pathIdx` wraps past the end of route_stops). Side effect seen in `?demo=1`: with
+  everything inside 800 m dropped, the 1600 m fallback offered options walking more than walking the whole way.
+- Rule (core/rank.js `LONG_WAY`, `savesWalking`, `pickOptions`): an option slower than the usual limit is kept when
+  (1) it walks least of all candidates (0.5 min walking tolerance, transfers not worth taking left out), (2) it saves
+  walking compared with the least walking of the options within the usual limit, or walking the whole way if that is
+  less: at least 5 min less AND at most half, and (3) it takes at most 60 min door to door, a long wait included. Only
+  that one long way (or ties) is added, so a second boarding stop of the same loop that walks more is not listed, and a
+  slow option that saves only a few minutes over a usual one (a 47 min DCC walking 0.7 min vs a 25 min 53rd walking
+  4.7) is not. A ride never goes a full loop: `pathIdx` stops before the boarding stop comes round again, and no stop
+  repeats inside one loop in today's data. The idle, off-route and left-the-route filters apply as before
+  (core/idle.js, core/offroute.js, core/transition.js: the planner never sees those buses or their times), and a headway
+  guess is never used for a route past its listed hours.
+- Ranking is unchanged (least walking first), so the long way around leads when it walks least. Walking the whole way
+  (`walkPlace`): first when it takes 10 min or less (owner 2026-10-30, "Close enough to walk"); not listed when a bus
+  arrives before it (the "Walking the whole way" footnote); otherwise, when the top option saves walking
+  (`savesWalking` against walking the whole way), second under it with "Faster to walk" if walking arrives more than
+  1 min earlier, and not listed if it is about as fast; when the top option does not save walking, first ("Faster to
+  walk" when more than 1 min earlier, else "Close enough to walk"). With the walk option listed (first or second) every
+  bus option goes through `besideWalk`, so the long way around says "Least walking" and never "Earliest arrival".
+- The card says the trade-off (`criteriaLine`): "Least walking · walking is faster" on the option that walks least but
+  arrives more than 1 min after walking would. Its steps already say "Wait ~18 min, then ride ~19 min (12 stops) ...
+  from schedule, est." and the total "40 min est." (live wait, timetable ride).
+- Network sweep (scratch harness, every pair of stops 5 to 40 min apart on foot, Wed 2026-11-04 noon, one bus per
+  scheduled route, headway waits): 5,864 pairs, the long way around leads in 209 and is listed in 282; walking moved
+  from first to second in 2,081 (a bus saves walking but walking is faster); the walk card gives way to the footnote in
+  333 (a bus about as fast that walks much less). At 5 PM (more lines): the long way leads in 26 pairs.
+- Live, 2026-11-06 12:47 PM, Regenstein to Vue53: before = "Close enough to walk" 18 min, DCC 20 min (walks 14), DCC
+  20 min (walks 17); after = 53rd 40 min est. (walks 3, live bus at Ellis Ave & 57th St in 18 min, 12 stops)
+  "Least walking · walking is faster", "Faster to walk" 18 min, DCC 21 min, DCC 21 min.
+- iOS: Kit `Rank.longWaySaveMin` / `longWaySaveFrac` / `longWayMaxMin`, `savesWalking`, `pickOptions`, `walkPlace`
+  (`WalkPlace.caption`), `walkFirst` (= placed first), `listedOptions` (besideWalk whenever the walk card is listed),
+  `criteriaLine`; DirectionsView puts the walk card first or after the first option (`dirWalkSecond`) and OptionCard
+  shows `criteriaLine`. Tests: web core-rank.js "long way" (5), core-planner.js "long way" (3, the real 53rd loop and
+  timetable), views-flows.js (the cards); Kit LongWayTests (the same cases), BusNumbersTests walk first.
 
 ## Line replaces line: Back after a line opened from a line (2026-11-02, owner: "Pressing back after selecting a specific line to view should not shift to the previous line but rather go to the previous menu view entirely")
 - `ui/router.js navigate`: a view registered with `replaceSelf: true` (only `route`, ui/views/route.js) that is opened

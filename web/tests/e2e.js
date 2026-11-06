@@ -456,10 +456,10 @@ test("directions: place + station, stubbed sidewalk walking, option drawn on the
   ok(T.walkCalls > 0, "walkRoute stub used");
   const opts = $$("#content [data-action='dir:opt']");
   ok(opts.length >= 1 && opts.length <= 4, "1..4 option cards, got " + opts.length);
-  // the first card says what it minimizes; walk first (core/rank.js walkFirst) leads when walking arrives no later than
-  // the best bus, which depends on the time of day the suite runs
-  if (opts.length > 1) ok(/Least walking|Earliest arrival|Shortest wait|Close enough to walk/.test(txt($("#content .v-opt .j-crit"))), "first card says what it minimizes: " + txt($("#content .v-opt .j-crit")));
-  click(opts.find((o) => !o.closest(".v-opt--walk")) || opts[0], "first bus option");   // the walk-first card has no bus leg
+  // the first card says what it minimizes; a walk card (core/rank.js walkPlace) leads at some hours of the suite run and says
+  // why instead ("Close enough to walk" / "Faster to walk")
+  if (opts.length > 1) ok(/Least walking|Earliest arrival|Shortest wait|Close enough to walk|Faster to walk/.test(txt($("#content .v-opt .j-crit"))), "first card says what it minimizes: " + txt($("#content .v-opt .j-crit")));
+  click(opts.find((o) => !o.closest(".v-opt--walk")) || opts[0], "first bus option");   // the walk card has no bus leg
   await waitFor(() => $("#content .v-opt.is-on .v-steps"), "steps of the selected option");
   const steps = txt($("#content .v-opt.is-on .v-steps"));
   ok(/Bus arrives at .+ \d{1,2}:\d{2}/.test(steps), "bus step with clock: " + steps);

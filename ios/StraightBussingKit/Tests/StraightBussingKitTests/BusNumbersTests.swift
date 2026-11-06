@@ -124,9 +124,11 @@ final class BusNumbersTests: XCTestCase {
 
     // MARK: walk first
 
+    /// A bus option walking 9 min (with a 12 min walk it saves 3 min: not "saves walking", Rank.savesWalking).
     func option(arrive: Double) -> TripOption {
-        TripOption(key: "o\(Int(arrive))", total: (arrive - NOW) / 60, totalMin: Int((arrive - NOW) / 60), arrive: arrive, t0: NOW,
-                   walkMin: 2, walkM: 160, meets: [], legs: [])
+        let p = Place(name: "x", lat: 0, lon: 0)
+        return TripOption(key: "o\(Int(arrive))", total: (arrive - NOW) / 60, totalMin: Int((arrive - NOW) / 60), arrive: arrive, t0: NOW,
+                          walkMin: 9, walkM: 720, meets: [], legs: [.walk(WalkLeg(from: p, to: p, m: 720, min: 9))])
     }
 
     func testWalkFirstWhenVeryCloseOrNoSlowerThanTheBus() {
@@ -135,6 +137,10 @@ final class BusNumbersTests: XCTestCase {
         XCTAssertTrue(Rank.walkFirst(PlanResult(now: NOW, options: bus, walkOnlyM: 800, walkOnlyMin: 10)), "10 min or less counts")
         XCTAssertTrue(Rank.walkFirst(PlanResult(now: NOW, options: [option(arrive: NOW + 900)], walkOnlyM: 960, walkOnlyMin: 12)),
                       "12 min walk arrives before the 15 min bus trip")
+        XCTAssertEqual(Rank.walkPlace(PlanResult(now: NOW, options: [option(arrive: NOW + 900)], walkOnlyM: 960, walkOnlyMin: 12))?.why,
+                       .faster, "3 min sooner: Faster to walk")
+        XCTAssertEqual(Rank.walkPlace(PlanResult(now: NOW, options: [option(arrive: NOW + 750)], walkOnlyM: 960, walkOnlyMin: 12))?.why,
+                       .close, "half a minute sooner: not called faster")
         XCTAssertFalse(Rank.walkFirst(PlanResult(now: NOW, options: bus, walkOnlyM: 960, walkOnlyMin: 12)), "12 min walk, 10 min bus: buses first")
         XCTAssertFalse(Rank.walkFirst(PlanResult(now: NOW, options: [], walkOnlyM: 300, walkOnlyMin: 4)), "no bus options: the walk card shows anyway")
     }

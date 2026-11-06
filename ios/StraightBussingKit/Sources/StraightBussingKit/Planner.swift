@@ -10,7 +10,10 @@ import Foundation
 ///  - wait: next live arrival at the board stop after you WALK there (15 s grace), else headway estimate
 ///    (cycle minutes / buses running / 2, clamped to [1, 30]) only while the route is inside its listed hours when
 ///    you reach the stop (`PlannerData.service`; owner 2026-11-06, RouteKnower E28); route skipped if neither.
-///  - direct trips contribute, per route, the best (board, alight) pair for each ranking criterion.
+///  - direct trips contribute, per route, the best (board, alight) pair for each ranking criterion; a loop ride may go the
+///    long way around (past the end of the list), never a full loop (`pathIdx`).
+///  - options slower than max(2 x walking, walking + 15 min) are dropped, except the least-walking long way around
+///    (`Rank.longWay*`, owner 2026-11-06), kept up to 60 min door to door.
 ///  - ranked by `Rank` (least walking > earliest arrival > shortest wait > criteria met); max 4.
 public enum Planner {
     public static let maxWalk = 800.0

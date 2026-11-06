@@ -8,7 +8,9 @@
  *    at most 800 m to the boarding stop and from the alighting stop, widened to 1600 m when no
  *    option exists within 800 m; transfer walk <= 150 m. Every walk costs time, however short;
  *    only walks under 1 m (same point) get no step in the list.
- *  - route_stops lists one representative trip; first == last means a loop that wraps.
+ *  - route_stops lists one representative trip; first == last means a loop that wraps: a ride may go the long way around
+ *    (board at the nearest stop even when the bus heads away first, past the end of the list and on), never a full
+ *    loop (pathIdx stops before the boarding stop comes round again).
  *  - ride time: same-trip live prediction (trip update at alight minus at board), else
  *    predict.rideMinutes, else path distance at 18 km/h.
  *  - wait: next live arrival at the board stop after you WALK there (15 s grace), else headway
@@ -22,11 +24,14 @@
  *  - total/arrive = walk + wait + ride (+ transfer walk + wait + ride) + walk to the destination.
  *  - direct trips: per route, the best boarding/alighting pair for EACH ranking criterion (least
  *    walking, earliest arrival, shortest wait) is a candidate; identical pairs are kept once.
- *  - options slower than max(2 x walking, walking + 15 min) are dropped; transfers must beat the
- *    best direct option by 2 min; ranked by core/rank.js (least walking, then earliest arrival,
- *    then shortest wait, then how many of those an option meets); max 4. Options carry `meets`.
- *  - walk first (owner 2026-10-30, core/rank.js walkFirst): when walking the whole way takes 10 min or less, or
- *    arrives no later than the best bus, a walk option {key:'walk', walkOnly:true, legs:[walk]} leads the list.
+ *  - options slower than max(2 x walking, walking + 15 min) are dropped, except the long way around (owner 2026-11-06,
+ *    core/rank.js LONG_WAY): the least-walking option that saves at least 5 min and half of the walking stays up to
+ *    60 min door to door; transfers must beat the best direct option by 2 min; ranked by core/rank.js (least walking,
+ *    then earliest arrival, then shortest wait, then how many of those an option meets); max 4. Options carry `meets`.
+ *  - walk first (owner 2026-10-30, core/rank.js walkFirst / walkPlace): a walk option {key:'walk', walkOnly:true,
+ *    why, legs:[walk]} leads when walking the whole way takes 10 min or less, or arrives no later than the best bus and
+ *    the top bus option does not save walking; it comes second, under that bus option, when walking is faster by more
+ *    than a minute but the bus saves walking.
  */
 import { hav, WALK_M_PER_MIN as WALK_M_MIN, WALK_DETOUR as DETOUR } from "./geo.js";
 import { nowS } from "./time.js";

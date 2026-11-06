@@ -4,8 +4,28 @@ import Foundation
 /// Criteria in priority order: 1. least walking, 2. earliest arrival, 3. shortest wait. An option "meets" a
 /// criterion when within a tolerance of the best. Order: highest-priority criterion met (none = last), then
 /// more criteria met, then fewer walking minutes, earlier arrival, shorter wait.
+/// The long way around (owner 2026-11-06, `longWay*`): the least-walking option may be slower than walking; `pickOptions`
+/// keeps it, `walkPlace` puts walking the whole way under it ("Faster to walk") and `criteriaLine` states the trade-off.
 public enum Rank {
     static let eps = 1e-9
+
+    /// The long way around (web core/rank.js LONG_WAY; owner 2026-11-06: "approve of taking the long way around routes to
+    /// reach a location given that it is the least amount of walking and long wait is ok"; Regenstein to Vue53 on the 53rd
+    /// Street Express rides 12 stops around the loop). An option "saves walking" when it walks at least `longWaySaveMin`
+    /// less than the walking to beat AND at most half of it; `pickOptions` keeps an option slower than the usual limit
+    /// (max(2 x walking, walking + 15 min)) when it walks least of all candidates (0.5 min tolerance), saves walking
+    /// compared with the least walking within the usual limit (or walking the whole way, if less), and takes at most
+    /// `longWayMaxMin` door to door, a long wait included. A ride never goes a full loop (`Planner.pathIdx`).
+    public static let longWaySaveMin = 5.0
+    public static let longWaySaveFrac = 0.5
+    public static let longWayMaxMin = 60.0
+
+    /// Whether walking `walkMin` minutes saves enough over walking `walkOnlyMin` (at least 5 min less and at most half;
+    /// web core/rank.js savesWalking).
+    public static func savesWalking(_ walkMin: Double, _ walkOnlyMin: Double) -> Bool {
+        guard walkMin.isFinite, walkOnlyMin.isFinite, walkOnlyMin > 0 else { return false }
+        return walkOnlyMin - walkMin >= longWaySaveMin - eps && walkMin <= walkOnlyMin * (1 - longWaySaveFrac) + eps
+    }
 
     /// Total walking over legs: float minutes, whole meters.
     public static func walkTotals(_ legs: [Leg]) -> (walkMin: Double, walkM: Int) {
@@ -85,22 +105,29 @@ public enum Rank {
         }
     }
 
-    /// Candidates -> ranked options: drop ones absurdly slower than walking and transfers that do not beat
-    /// the best direct trip by `xferGainMin`, merge duplicates, rank, cap.
+    /// Candidates -> ranked options: drop ones absurdly slower than walking (unless they are the least-walking long way
+    /// around, `longWay*`) and transfers that do not beat the best direct trip by `xferGainMin`, merge duplicates, rank, cap.
     public static func pickOptions(_ cands: [PlanCandidate], t0: Double, walkOnlyMin: Double, max: Int = 4,
                                    xferGainMin: Double = 2) -> [TripOption] {
         let limit = Swift.max(2 * walkOnlyMin, walkOnlyMin + 15)
+        let longLimit = Swift.max(limit, longWayMaxMin)   // the long way around: slower is fine when it walks least
         let bestDirect = cands.filter { !$0.xfer }.map(\.arr).min() ?? .infinity
+        let viable = cands.filter { !($0.xfer && $0.arr > bestDirect - xferGainMin * 60) }   // transfer not worth it
+        func totalOf(_ c: PlanCandidate) -> Double { (c.arr - t0) / 60 }
+        func walkOf(_ c: PlanCandidate) -> Double { walkTotals(c.legs).walkMin }
+        // the walking to beat: walking the whole way or the least-walking option within the usual limit
+        let usualWalk = Swift.min(walkOnlyMin, viable.filter { totalOf($0) <= limit }.map(walkOf).min() ?? .infinity)
+        let leastWalk = viable.filter { totalOf($0) <= longLimit }.map(walkOf).min() ?? .infinity
         var seen = Set<String>()
         var out: [TripOption] = []
-        for c in cands.stableSorted(by: { $0.arr < $1.arr || ($0.arr == $1.arr && $0.legs.count < $1.legs.count) }) {
-            let total = (c.arr - t0) / 60
-            if total > limit { continue }
-            if c.xfer && c.arr > bestDirect - xferGainMin * 60 { continue }
+        for c in viable.stableSorted(by: { $0.arr < $1.arr || ($0.arr == $1.arr && $0.legs.count < $1.legs.count) }) {
+            let total = totalOf(c)
+            let wt = walkTotals(c.legs)
+            let longWay = total <= longLimit && savesWalking(wt.walkMin, usualWalk) && wt.walkMin <= leastWalk + Criterion.walk.tol + eps
+            if total > limit && !longWay { continue }   // absurdly longer than walking, and not the least-walking long way around
             let sig = legSig(c.legs)
             if seen.contains(sig) { continue }
             seen.insert(sig)
-            let wt = walkTotals(c.legs)
             out.append(TripOption(key: c.key, total: total, totalMin: Swift.max(1, Int(JS.round(total))), arrive: c.arr, t0: t0,
                                   walkMin: wt.walkMin, walkM: wt.walkM, meets: [], legs: c.legs))
         }

@@ -3,6 +3,8 @@ import { test, eq, ok, near } from "./lib.js";
 import { plan, refineWalking, PLANNER } from "../js/core/planner.js";
 import { hav } from "../js/core/geo.js";
 import { walkEstimate } from "../js/core/walk.js";
+import { createPredict } from "../js/core/predict.js";
+import { criteriaLine, WALK_CAPTION } from "../js/core/rank.js";
 
 const T = 1_800_000_000;
 // Loop LOOP: L0 -> L1 -> L2 -> L3 -> L0 (rectangle ~830 m x 1110 m).
@@ -127,11 +129,84 @@ test("absurdly slow bus options are dropped (vs walking)", () => {
   const args = { from: near_("L1"), to: near_("L0"), now: T, data: data() };
   const r0 = plan(args), bus0 = r0.options.filter((o) => !o.walkOnly);
   ok(bus0.length === 1, "long way round still reasonable without predict");
-  eq(!!r0.options[0].walkOnly, r0.walkOnly.min <= 10 || T + r0.walkOnly.min * 60 <= bus0[0].arrive, "walk option first only when close or no later than the bus");
+  eq(r0.options.map((o) => o.key), ["LOOP", "walk"], "the bus walks least; walking (12 min) is faster, so it comes second");
   const slow = plan({ ...args, predict: { rideMinutes: () => ({ min: 60, source: "schedule", conf: 0.4 }) } });
-  eq(slow.options.length, 0);
+  eq(slow.options.length, 0, "a 60 min ride: over an hour door to door even the long way around");
   ok(slow.walkOnly.min > 10);
 });
+
+/* ---------- the long way around (owner 2026-11-06: "the route is not recommending taking 53rd from regenstein to vue53") ---------- */
+// The 53rd Street Express loop as in web/data (2026-11-06): west on 53rd, south on Ellis (Ellis Ave & 57th St is by
+// Regenstein), east on 60th, north on Stony Island / Lake Park, back to Harper Court, then 53rd St & Kenwood (by Vue53).
+const S53 = [
+  ["8596", "Harper Court (NE Corner)", 41.79965, -87.588], ["8811", "53rd St & Kenwood", 41.79955, -87.59251],
+  ["8628", "Kimbark Plaza (NE Corner)", 41.79953, -87.5965], ["8595", "Ellis & 53rd St.", 41.79912, -87.60138],
+  ["8629", "Ellis Garage & Ratner Athletic (West)", 41.79463, -87.60148], ["138837", "Ellis Ave & 57th St", 41.79145, -87.60134],
+  ["8630", "Levi Hall (W)", 41.78966, -87.6013], ["8612", "Goldblatt Pavilion", 41.78774, -87.60361],
+  ["8589", "Logan Center", 41.78585, -87.60376], ["8631", "60th St. & Ellis (SE Corner)", 41.78583, -87.60109],
+  ["8632", "60th St. & Woodlawn Ave (SE Corner)", 41.78594, -87.59653], ["161844", "Keller Center EB", 41.78598, -87.59403],
+  ["8594", "Press Building", 41.78604, -87.59018], ["8624", "Stony Island Parking Lot", 41.78633, -87.58739],
+  ["8599", "57th St. & Metra (NB)", 41.79139, -87.58659], ["8626", "Lake Park & 55th St. (SE Corner)", 41.79506, -87.58745],
+];
+const STOPS53 = Object.fromEntries(S53.map(([id, name, lat, lon]) => [id, { name, lat, lon }]));
+const RS53 = { 4346: [...S53.map((x) => x[0]), "8596"] };
+const SEG53 = { v: 1, routes: { 4346: { seg: [60, 60, 120, 120, 60, 60, 120, 120, 60, 60, 60, 60, 60, 120, 120, 240], dwell: 0 } } };
+const REG = { lat: 41.79216, lon: -87.59994 }, VUE53 = { lat: 41.79981, lon: -87.59366 };   // places.json: Regenstein, Vue53 Apartments
+const data53 = (extra = {}) => ({ stops: STOPS53, routes: {}, routeStops: RS53, trips: [], buses: [bus("4346")], ...extra });
+const predict53 = createPredict({ segments: SEG53, routeStops: RS53 });
+
+test("long way: Regenstein to Vue53 offers the 53rd around the loop first (least walking), walking second", () => {
+  const r = plan({ from: REG, to: VUE53, now: T, data: data53(), predict: predict53 });
+  const w = r.walkOnly.min;
+  ok(w > 14 && w < 16, "walking the whole way about 15 min: " + w);
+  eq(r.options.map((o) => o.key), ["4346", "walk"], "the 53rd, then walking");
+  const o = r.options[0], [b] = busLegs(o);
+  eq([b.board.id, b.alight.id], ["138837", "8811"], "board at Ellis Ave & 57th St, get off at 53rd St & Kenwood");
+  eq(b.stopsPassed, 12, "12 stops the long way around");
+  near(b.ride, 19, 0.01, "the timetable's 19 min");
+  eq(b.source, "schedule");
+  eq(b.waitLive, false, "a headway estimate");
+  ok(o.walkMin < 4, "walks " + o.walkMin.toFixed(1) + " min");
+  ok(o.total > Math.max(2 * w, w + 15), "slower than the old limit (" + o.total.toFixed(1) + " min), so it used to be dropped");
+  ok(o.total <= 60, "under an hour door to door");
+  eq(o.meets, ["walk"], "Least walking (walking is the earliest arrival)");
+  eq(criteriaLine(o, T + w * 60), "Least walking \u00b7 walking is faster", "the trade-off is said on the card");
+  eq(r.options[1].walkOnly, true);
+  eq(WALK_CAPTION[r.options[1].why], "Faster to walk");
+  // the ride wraps past the end of route_stops (Lake Park & 55th, Harper Court, then 53rd & Kenwood)
+  const last3 = b.path.slice(-3).map((p) => S53.find((x) => x[2] === p.lat && x[3] === p.lon)[0]);
+  eq(last3, ["8626", "8596", "8811"], "wraps around the loop's end");
+});
+
+test("long way: a live bus heading away first and a long wait are fine; never a full loop; over an hour is too long", () => {
+  // the bus reaches Ellis Ave & 57th St in 20 min heading south; its trip update ends before the loop comes round
+  const tu = trip("680994", "4346", [["138837", T + 1200], ["8630", T + 1250], ["8612", T + 1290]]);
+  const r = plan({ from: REG, to: VUE53, now: T, data: data53({ trips: [tu] }), predict: predict53 });
+  const o = r.options[0], [b] = busLegs(o);
+  ok(o.key.startsWith("4346"), o.key);
+  eq([b.board.id, b.waitLive, b.boardT, b.tripId], ["138837", true, T + 1200, "680994"], "boards the live bus at the nearest stop");
+  eq(b.source, "schedule", "its trip update does not reach 53rd & Kenwood: the timetable ride");
+  ok(o.total > 40 && o.total < 45, "a long wait included: " + o.total.toFixed(1));
+  // never a full loop: from just past a stop to just before it rides 15 of 16 stops, each once
+  const loop = plan({ from: { lat: 41.7916, lon: -87.6012 }, to: { lat: 41.7948, lon: -87.6016 }, now: T, data: data53(), predict: { rideMinutes: () => null } });
+  for (const x of loop.options.filter((y) => !y.walkOnly)) {
+    for (const l of busLegs(x)) {
+      ok(l.stopsPassed < S53.length, "less than one loop: " + l.stopsPassed);
+      eq(new Set(l.path.map((p) => p.lat + "," + p.lon)).size, l.path.length, "no stop twice");
+    }
+  }
+  // a 50 min ride: over an hour door to door, so walking only
+  const slow = plan({ from: REG, to: VUE53, now: T, data: data53(), predict: { rideMinutes: () => ({ min: 50, source: "schedule", conf: 0.4 }) } });
+  eq(slow.options, [], "over an hour: no bus option");
+});
+
+test("long way: a short trip gets no long way around (it would save under 5 min of walking)", () => {
+  // Regenstein to Ellis Garage (about 4 min on foot): the 53rd would ride 15 stops around the loop
+  const r = plan({ from: REG, to: { lat: 41.79463, lon: -87.6012 }, now: T, data: data53(), predict: predict53 });
+  ok(r.walkOnly.min < 5, "a short walk: " + r.walkOnly.min);
+  eq(r.options, [], "no bus option: the no-route screen with the walk (unchanged)");
+});
+
 
 test("same walking for all: earliest arrival decides the order; max 4 options; meets labels", () => {
   const rs = { P1: ["X", "Y"], P2: ["X", "Y"], P3: ["X", "Y"], P4: ["X", "Y"] };

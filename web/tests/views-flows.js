@@ -242,6 +242,32 @@ test("directions: a very close destination puts Walk first (owner 2026-10-30), s
   ctx.store.set({ journey: null });
 });
 
+test("directions: the long way around walks least and comes first, Faster to walk second (owner 2026-11-06)", async () => {
+  resetDir();
+  // Regenstein to Vue53: the 53rd rides 12 stops around the loop (32 min, 0.7 min walking); another line walks 13 min
+  const walky = (o, min) => ({ ...o, legs: o.legs.map((l, i) => (i === 0 ? { ...l, min, m: Math.round(min * 80) } : l)) });
+  const opts = () => [fakeOption("53", 32, "R1"), walky(fakeOption("other", 25, "R3"), 12.6)];
+  stubDeps(() => ({ now: NOW, options: walkFirst(opts(), { m: 1197, min: 15 }, { from: D.from, to: D.to, t0: NOW }), walkOnly: { m: 1197, min: 15 } }));
+  const ctx = makeCtx({ view: "directions" });
+  D.from = { lat: 41.79216, lon: -87.59994, label: "Joseph Regenstein Library" }; D.to = { lat: 41.79981, lon: -87.59366, label: "Vue53 Apartments" };
+  const el = mountWith(ctx, renderDirections, mountDirections);
+  await tick(10);
+  const cards = [...el.querySelectorAll(".v-opt")];
+  eq(cards.length, 3, "the 53rd, walking, the other line");
+  ok(!cards[0].classList.contains("v-opt--walk") && cards[0].classList.contains("is-on"), "the least walking is first and selected");
+  eq(cards[0].querySelector(".j-crit").textContent, "Least walking \u00b7 walking is faster", "the trade-off on the card");
+  ok(/Least walking \u00b7 walking is faster/.test(cards[0].querySelector(".v-optmain").getAttribute("aria-label")), "said to screen readers too");
+  ok(cards[0].querySelector(".v-otot").textContent.includes("est."), "its total is an estimate");
+  ok(cards[1].classList.contains("v-opt--walk"), "walking second");
+  eq(cards[1].querySelector(".j-crit").textContent, "Faster to walk");
+  ok(/Faster to walk\.$/.test(cards[1].querySelector(".v-optmain").getAttribute("aria-label")), "its caption read out");
+  ok(cards[1].querySelector(".v-otot").textContent.startsWith("16"), "the sidewalk walking time");
+  ok(!el.textContent.includes("Walking the whole way:"), "no footnote while the walk card is listed");
+  ok(el.querySelector(".j-start"), "Start for the selected bus option");
+  ok(el.textContent.split("\u00b7").length - 1 <= cards.length, "at most one middle dot per line");
+  unmountDirections(); el.remove();
+});
+
 test("directions: missed bus after refine drops the option", async () => {
   resetDir();
   stubDeps(() => ({ now: NOW, options: [fakeOption("a", 12, "R1")], walkOnly: { m: 800, min: 10 } }), async () => null);
