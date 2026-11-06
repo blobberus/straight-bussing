@@ -1,0 +1,151 @@
+{
+ "note": "Where and from what time buses of a route linger at the end of their shift (RouteKnower E28, experiments/routeknower/E28-scripts/idle_rules.py --write-idle). A bus still for 3 min at a spot of its route after `after` (service-day clock, may pass 24:00) never served riders again in the data; used only while today's listed hours of the route are one of `hours` and before valid_until.",
+ "from": "2026-10-10",
+ "to": "2026-11-05",
+ "valid_until": "2026-12-20",
+ "linger": [
+  {
+   "route": "1075",
+   "spot": "Reynolds Club",
+   "lat": 41.79106,
+   "lon": -87.59805,
+   "r": 120,
+   "after": "23:33",
+   "days": "sat",
+   "hours": [
+    "16:00-28:29"
+   ],
+   "seen": 4
+  },
+  {
+   "route": "1075",
+   "spot": "Reynolds Club",
+   "lat": 41.79119,
+   "lon": -87.59805,
+   "r": 120,
+   "after": "23:34",
+   "days": "sun",
+   "hours": [
+    "16:00-28:29"
+   ],
+   "seen": 4
+  },
+  {
+   "route": "1075",
+   "spot": "Reynolds Club",
+   "lat": 41.7912,
+   "lon": -87.59809,
+   "r": 120,
+   "after": "23:33",
+   "days": "weekday",
+   "hours": [
+    "16:00-28:29"
+   ],
+   "seen": 14
+  },
+  {
+   "route": "1076",
+   "spot": "Burton-Judson Courts (NE Corner)",
+   "lat": 41.78612,
+   "lon": -87.60124,
+   "r": 120,
+   "after": "23:35",
+   "days": "weekday",
+   "hours": [
+    "16:00-28:25"
+   ],
+   "seen": 5
+  },
+  {
+   "route": "1076",
+   "spot": "Reynolds Club",
+   "lat": 41.79114,
+   "lon": -87.59829,
+   "r": 120,
+   "after": "23:02",
+   "days": "weekday",
+   "hours": [
+    "16:00-28:25"
+   ],
+   "seen": 12
+  },
+  {
+   "route": "1077",
+   "spot": "Reynolds Club",
+   "lat": 41.79119,
+   "lon": -87.59804,
+   "r": 120,
+   "after": "23:33",
+   "days": "sat",
+   "hours": [
+    "16:00-28:29"
+   ],
+   "seen": 3
+  },
+  {
+   "route": "1078",
+   "spot": "Reynolds Club",
+   "lat": 41.79106,
+   "lon": -87.59805,
+   "r": 120,
+   "after": "23:32",
+   "days": "sat",
+   "hours": [
+    "16:00-23:14"
+   ],
+   "seen": 4
+  },
+  {
+   "route": "1078",
+   "spot": "Reynolds Club",
+   "lat": 41.79113,
+   "lon": -87.59809,
+   "r": 120,
+   "after": "23:34",
+   "days": "weekday",
+   "hours": [
+    "16:00-23:14"
+   ],
+   "seen": 16
+  },
+  {
+   "route": "5704",
+   "spot": "Gleacher Center",
+   "lat": 41.88928,
+   "lon": -87.62148,
+   "r": 120,
+   "after": "22:06",
+   "days": "weekday",
+   "hours": [
+    "06:30-24:25"
+   ],
+   "seen": 3
+  },
+  {
+   "route": "5716",
+   "spot": "Reynolds Club",
+   "lat": 41.79126,
+   "lon": -87.59805,
+   "r": 120,
+   "after": "24:03",
+   "days": "weekday",
+   "hours": [
+    "18:00-24:55"
+   ],
+   "seen": 3
+  },
+  {
+   "route": "6126",
+   "spot": "Goldblatt Pavilion",
+   "lat": 41.7877,
+   "lon": -87.60369,
+   "r": 120,
+   "after": "23:53",
+   "days": "weekday",
+   "hours": [
+    "10:00-24:55"
+   ],
+   "seen": 28
+  }
+ ]
+}

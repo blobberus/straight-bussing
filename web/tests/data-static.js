@@ -13,6 +13,12 @@ const FILES = {
     r1: { days: { mon: { first: '07:00', last: '19:00', trips: 3, buses: [] }, sat: 'bad' }, exceptions: [{ date: '2026-11-26', type: 'removed', hours: null }, 5] },
     r2: 'bad' } },
   'landmarks.json': { v: 1, l: [['Regenstein Library', 41.792, -87.6, 1, 'library', 'Joseph Regenstein Library'], ['bad', 'x', 1, 1], ['No tier', 41.79, -87.6, 7]] },
+  'idle.json': { note: 'x', from: '2026-10-10', to: '2026-11-05', valid_until: '2026-12-20', linger: [
+    { route: 'r1', spot: 'One', lat: 41.79, lon: -87.6, r: 120, after: '23:33', days: 'weekday', hours: ['07:00-19:00'], seen: 14 },
+    { route: 'r1', lat: 41.79, lon: -87.6, after: '23:33', days: 'weekday', hours: [] },
+    { route: 'r1', lat: 'x', lon: -87.6, after: '23:33', days: 'weekday', hours: ['07:00-19:00'] },
+    { route: 'r1', lat: 41.79, lon: -87.6, after: 'late', days: 'weekday', hours: ['07:00-19:00'] },
+    { route: 'r1', lat: 41.79, lon: -87.6, after: '23:33', days: 'holidays', hours: ['07:00-19:00'] }, 'junk'] },
 };
 const fileOf = (url) => url.split('/').pop();
 const okFetch = (overrides = {}) => stubFetch((url) => {
@@ -100,10 +106,11 @@ test('static: bad JSON, thrown fetch and non-object bodies never reject', async 
 test('static: everything failing still sets staticLoaded with empty slices', async () => {
   const store = createStore({});
   const out = await loadStatic(store, { fetch: async () => { throw new TypeError('offline'); } });
-  eq(out.failed.length, 7);
+  eq(out.failed.length, 8);
   const s = store.get();
   eq([s.routes, s.stops, s.shapes, s.routeStops, s.stopRoutes, s.addresses, s.service], [{}, {}, {}, {}, {}, {}, {}]);
   eq(s.landmarks, [], 'map labels: an empty list');
+  eq(s.idle, {}, 'learned linger spots: none');
   eq(s.staticLoaded, true);
 });
 
@@ -119,6 +126,16 @@ test('static: landmarks (map labels) load as a list, bad rows dropped', async ()
   eq(eg.map((x) => [x.name, x.egg, x.eggZ]), [['Reg', 'The Reg', 17.5], ['Cobb', undefined, undefined]]);
   eq(cleanLandmarks({ l: [['Reg', 41.8, -87.6, 1]], eggs: [[0, 'The Reg']] })[0].egg, undefined, 'no egg_zoom: no nicknames');
   eq(cleanLandmarks({ l: [['Reg', 41.8, -87.6, 1]], eggs: 'x', egg_zoom: 17 })[0].egg, undefined);
+});
+
+test('static: idle.json (learned linger spots, RouteKnower E28) keeps only entries the app can check', async () => {
+  const store = createStore({});
+  await loadStatic(store, { base: 'data/', fetch: okFetch() });
+  const s = store.get();
+  eq(s.idle.valid_until, '2026-12-20');
+  eq(s.idle.linger, [{ route: 'r1', spot: 'One', lat: 41.79, lon: -87.6, r: 120, after: '23:33', days: 'weekday', hours: ['07:00-19:00'], seen: 14 }],
+    'no hours, a bad position, a bad time, an unknown day group and junk are dropped');
+  eq(cleanSlice('idle', { linger: 'x' }).linger, []);
 });
 
 test('static: deriveStopRoutes / cleanSlice edge cases', () => {
@@ -143,4 +160,6 @@ test('static: real web/data files load and cross-reference', async () => {
   ok(Object.keys(s.service.routes || {}).length > 0, 'service.json routes');
   for (const rid of Object.keys(s.service.routes)) ok(s.routes[rid], 'service route exists: ' + rid);
   for (const [rid, ids] of Object.entries(s.routeStops)) for (const id of ids) ok(s.stopRoutes[id].includes(rid), 'stopRoutes covers ' + id);
+  ok(s.idle.linger.length > 0, 'idle.json linger spots');
+  for (const e of s.idle.linger) ok(s.routes[e.route], 'linger spot route exists: ' + e.route);
 });

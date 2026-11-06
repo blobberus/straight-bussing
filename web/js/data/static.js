@@ -11,6 +11,7 @@ export const STATIC_FILES = Object.freeze([
   ['addresses', 'stop_addresses.json', false],
   ['service', 'service.json', false],
   ['landmarks', 'landmarks.json', false],   // map labels (tools/build_landmarks.py): an array, see cleanLandmarks
+  ['idle', 'idle.json', false],             // learned linger spots (RouteKnower E28; core/idle.js): see cleanIdle
 ]);
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -68,7 +69,32 @@ export function cleanSlice(key, v) {
     } else if (key === 'service') {
       if (id === 'routes') out.routes = cleanServiceRoutes(x);
       else if (id === 'feed' || id === 'generated') out[id] = x;
+    } else if (key === 'idle') {
+      if (id === 'linger') out.linger = cleanLinger(x);
+      else if (id === 'valid_until' || id === 'from' || id === 'to') out[id] = String(x);
     } else out[id] = x;
+  }
+  return out;
+}
+
+/**
+ * Keep only well-formed linger entries of idle.json ({route, lat, lon, r?, after:'HH:MM', days:'weekday'|'sat'|'sun'|
+ * 'daily', hours:['HH:MM-HH:MM,...'], spot?, seen?}); core/idle.js lingerAt uses them.
+ * @param {any} v idle.linger
+ * @returns {Array<object>}
+ */
+function cleanLinger(v) {
+  if (!Array.isArray(v)) return [];
+  const out = [];
+  for (const e of v) {
+    if (!isObj(e) || e.route == null || e.route === '') continue;
+    const lat = num(e.lat), lon = num(e.lon), r = num(e.r);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || !/^\d{1,2}:\d{2}$/.test(String(e.after ?? ''))) continue;
+    if (!['weekday', 'sat', 'sun', 'daily'].includes(e.days) || !Array.isArray(e.hours)) continue;
+    const hours = e.hours.filter((h) => typeof h === 'string' && h);
+    if (!hours.length) continue;
+    out.push({ route: String(e.route), spot: String(e.spot ?? ''), lat, lon, r: Number.isFinite(r) && r > 0 ? r : 120,
+      after: String(e.after), days: e.days, hours, seen: Number.isFinite(num(e.seen)) ? num(e.seen) : 0 });
   }
   return out;
 }
