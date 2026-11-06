@@ -64,6 +64,68 @@ public enum BusNumbers {
         guard let vehicleId else { return nil }
         return arrivals.first { $0.vehicleId == vehicleId }
     }
+
+    // MARK: arrivals name their bus (owner 2026-11-06: "When showing which bus is about to arrive at station, it should
+    // state which bus number displayed on the route is about to arrive if there is more than 1 bus")
+    //
+    // One source: the app's `busNumbers` (route id -> bus key -> number), from the buses the map draws, so a bus missing
+    // from one poll keeps its number (and the others theirs) for 45 s, like its badge (web store.busNums, busnum.js
+    // numberStep). An arrival is tied to a bus by the vehicle id on its trip update (else its label, as `key`) and gets
+    // that bus's number only when the bus is numbered on the arrival's own route; otherwise no number, never a guess.
+
+    /// The number the map shows on bus `key` of route `rid` (busnum.js busNumber); nil when the route has one bus or
+    /// that bus is not on it.
+    public static func number(_ numbers: [String: [String: Int]], rid: String?, key: String?) -> Int? {
+        guard let rid, let key, !key.isEmpty else { return nil }
+        return numbers[rid]?[key]
+    }
+
+    /// The bus an arrival comes from (busnum.js arrivalKey): its trip update's vehicle id, else its label.
+    public static func arrivalKey(_ a: Arrival) -> String? {
+        if let v = a.vehicleId, !v.isEmpty { return v }
+        if let l = a.bus, !l.isEmpty { return l }
+        return nil
+    }
+
+    /// The key of a followed trip vehicle: its vehicle id, else its label (`key` for a live bus).
+    public static func vehicleKey(_ v: TripFollow.Vehicle) -> String? {
+        if let id = v.id, !id.isEmpty { return id }
+        return v.label.isEmpty ? nil : v.label
+    }
+
+    /// "Bus 2" for a number, "" for none (busnum.js numberName).
+    public static func numberName(_ n: Int?) -> String {
+        guard let n, n > 0 else { return "" }
+        return "Bus \(n)"
+    }
+
+    /// Which numbered bus makes an arrival (busnum.js arrivalBusName): "Bus 2" when the arrival's route shows two or more
+    /// buses and its vehicle is one of them, else "" (one bus on the line, no vehicle on the trip update, a bus the
+    /// map does not draw, a bus numbered on another route).
+    public static func arrivalName(_ a: Arrival, numbers: [String: [String: Int]]) -> String {
+        numberName(number(numbers, rid: a.rid, key: arrivalKey(a)))
+    }
+
+    /// The numbered bus a planned bus leg boards (busnum.js legBusName): only a live boarding time comes from a known
+    /// vehicle (the planner sets `vehicleId` from that trip update); a scheduled or estimated time names no bus.
+    public static func legName(_ leg: BusLeg, numbers: [String: [String: Int]]) -> String {
+        guard leg.waitLive, let vid = leg.vehicleId else { return "" }
+        return numberName(number(numbers, rid: leg.rid, key: vid))
+    }
+
+    /// The arrival row's text after the live label (web ui/components.js arrivalRow): numbered " · Bus 2", with walking
+    /// guidance " · Bus 2, leave in 3 min, est." (one middle dot per line); otherwise the guidance " · Leave in 3 min,
+    /// est.", else the fleet label " · Bus 1647", else "".
+    public static func rowExtra(number: String, sub: String?, label: String?) -> String {
+        let s = sub ?? ""
+        if !number.isEmpty {
+            let guide: String = s.isEmpty ? "" : ", " + s.prefix(1).lowercased() + String(s.dropFirst())
+            return " · " + number + guide
+        }
+        if !s.isEmpty { return " · " + s }
+        if let label, !label.isEmpty { return " · Bus \(label)" }
+        return ""
+    }
 }
 
 extension TripText {

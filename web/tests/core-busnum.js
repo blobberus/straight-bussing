@@ -1,6 +1,7 @@
 // core/busnum.js (core.test.html): bus numbers on a line, the picked bus, its own times (owner 2026-10-30).
 import { test, eq, ok } from "./lib.js";
-import { busKey, compareIds, busNumbers, busName, selectedBus, busArrival, pickCheck, PICK_HOLD_S } from "../js/core/busnum.js";
+import { busKey, compareIds, busNumbers, busName, selectedBus, busArrival, pickCheck, PICK_HOLD_S,
+  numberRoutes, numberStep, NUM_HOLD_S, routeNumbers, numberMap, busNumber, arrivalKey, arrivalBusName, legBusName } from "../js/core/busnum.js";
 
 const bus = (id, rid, label) => ({ vehicle: { id, label }, trip: { route_id: rid }, position: { latitude: 41.79, longitude: -87.6 } });
 
@@ -67,4 +68,70 @@ test("busnum: a picked bus left out of a poll keeps its pick for PICK_HOLD_S; le
   eq(pickCheck(gone, 1000, 1000 + PICK_HOLD_S).clear, true, "missing for the whole hold: let go");
   eq(pickCheck({ ...on, view: "nearby" }, 0, 1000).clear, true, "left the route page: let go at once");
   eq(pickCheck({ view: "route", busId: null }, 0, 1000), { clear: false, goneSince: 0 });
+});
+
+// ---- arrivals name their bus (owner 2026-11-06: "it should state which bus number displayed on the route is about to
+// arrive if there is more than 1 bus") and the numbers hold through a feed gap
+
+test("busnum: numberRoutes groups by route; a route with one bus gets none", () => {
+  eq(numberRoutes([["4325", "A"], ["4320", "A"], ["9", "B"], [null, "A"], ["x", ""]]), { A: { 4320: 1, 4325: 2 } });
+  eq(numberRoutes([]), {});
+});
+
+test("busnum: numberStep keeps a bus left out of a poll in its place for NUM_HOLD_S, then renumbers", () => {
+  const all = [bus("4320", "A"), bus("4325", "A"), bus("4330", "A")];
+  let r = numberStep(null, all, { nowS: 1000 });
+  eq(r.routes, { A: { 4320: 1, 4325: 2, 4330: 3 } });
+  r = numberStep(r.seen, all.slice(1), { nowS: 1010 });
+  eq(r.routes.A, { 4320: 1, 4325: 2, 4330: 3 }, "4320 missing from one poll: everyone keeps their number");
+  r = numberStep(r.seen, all.slice(1), { nowS: 1010 + NUM_HOLD_S });
+  eq(r.routes.A["4325"], 2, "still within the hold (counted from the first poll without it)");
+  r = numberStep(r.seen, all.slice(1), { nowS: 1011 + NUM_HOLD_S });
+  eq(r.routes.A, { 4325: 1, 4330: 2 }, "gone longer: the line renumbers in vehicle id order");
+  r = numberStep(r.seen, all, { nowS: 1100 });
+  eq(r.routes.A, { 4320: 1, 4325: 2, 4330: 3 }, "it joins again: vehicle id order, the same numbers on every phone");
+});
+
+test("busnum: numberStep lets a bus more than a block off its route go at once; an empty poll lets every bus go", () => {
+  const two = [bus("1", "A"), bus("2", "A")];
+  let r = numberStep(null, two, { nowS: 0 });
+  eq(numberStep(r.seen, two.slice(1), { nowS: 10, away: [two[0]] }).routes, {}, "away (core/offroute.js): no hold, one bus left = no number");
+  eq(numberStep(r.seen, two.slice(1), { nowS: 10, away: ["1"] }).routes, {}, "away as keys too");
+  eq(numberStep(r.seen, [], { nowS: 10 }).routes, {}, "no bus at all: nothing held");
+  r = numberStep(r.seen, two.slice(1), { nowS: 10 });
+  eq(r.routes, { A: { 1: 1, 2: 2 } }, "a plain drop-out is held");
+  eq(numberStep(r.seen, [bus("1", "B"), bus("2", "A")], { nowS: 20 }).routes, {}, "back on another route: it counts there, not twice");
+});
+
+test("busnum: routeNumbers reads store.busNums while it belongs to the shown buses, else numbers store.buses", () => {
+  const buses = [bus("v1", "A"), bus("v2", "A")];
+  const held = { of: buses, routes: { A: { v0: 1, v1: 2, v2: 3 } } };
+  eq(routeNumbers({ buses, busNums: held }), held.routes, "data/live.js numbers (with a held bus)");
+  eq(routeNumbers({ buses: buses.slice(), busNums: held }), { A: { v1: 1, v2: 2 } }, "a list built elsewhere: numbered from it");
+  eq(routeNumbers({ buses }), { A: { v1: 1, v2: 2 } });
+  eq(routeNumbers(null), {});
+  eq([...numberMap({ buses, busNums: held })].sort(), [["v0", 1], ["v1", 2], ["v2", 3]]);
+  eq([busNumber({ buses }, "A", "v2"), busNumber({ buses }, "B", "v2"), busNumber({ buses }, "A", null)], [2, 0, 0], "the number is the route's own");
+});
+
+test("busnum: an arrival names the numbered bus that makes it, else nothing (never a guess)", () => {
+  const S = { buses: [bus("v1", "A", "101"), bus("v2", "A", "202"), bus("v9", "B", "909")] };
+  eq(arrivalBusName(S, { rid: "A", vehicleId: "v2", bus: "202" }), "Bus 2");
+  eq(arrivalBusName(S, { rid: "A", vehicleId: "v1", bus: "101" }), "Bus 1");
+  eq(arrivalBusName(S, { rid: "B", vehicleId: "v9", bus: "909" }), "", "one bus on the line: no number");
+  eq(arrivalBusName(S, { rid: "A", vehicleId: null, bus: null }), "", "no vehicle on the trip update");
+  eq(arrivalBusName(S, { rid: "A", vehicleId: "v7", bus: "707" }), "", "a vehicle the app does not show");
+  eq(arrivalBusName(S, { rid: "B", vehicleId: "v2", bus: "202" }), "", "Bus 2 of route A predicted on route B: not this route's number");
+  eq(arrivalBusName({ buses: [{ vehicle: { label: "L1" }, trip: { route_id: "A" } }, { vehicle: { label: "L2" }, trip: { route_id: "A" } }] },
+    { rid: "A", vehicleId: null, bus: "L2" }), "Bus 2", "no vehicle ids anywhere: the label is the key, as on the map");
+  eq([arrivalKey({ vehicleId: "v1", bus: "101" }), arrivalKey({ vehicleId: "", bus: "101" }), arrivalKey({})], ["v1", "101", null]);
+  eq(arrivalBusName(S, null), "");
+});
+
+test("busnum: a planned bus leg names its bus only with a live boarding time", () => {
+  const S = { buses: [bus("v1", "A"), bus("v2", "A")] };
+  eq(legBusName(S, { type: "bus", rid: "A", vehicleId: "v2", waitLive: true }), "Bus 2");
+  eq(legBusName(S, { type: "bus", rid: "A", vehicleId: "v2", waitLive: false }), "", "schedule time: no bus");
+  eq(legBusName(S, { type: "bus", rid: "A", vehicleId: null, waitLive: true }), "");
+  eq(legBusName(S, { type: "walk" }), "");
 });

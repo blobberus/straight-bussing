@@ -584,7 +584,7 @@ export function createBusLayer(map, cb, opt = {}) {
     const now = o.nowS ?? Date.now() / 1000;
     const hidden = new Set((o.hidden || []).map(String)), focus = focusSet(o.focus);
     const plan = Array.isArray(o.plan) ? o.plan : null;
-    const nums = busNumbers(buses), sel = o.selected != null ? String(o.selected) : null;
+    const nums = o.numbers instanceof Map ? o.numbers : busNumbers(buses), sel = o.selected != null ? String(o.selected) : null;   // store.busNums: the numbers every view uses
     const away = new Set((o.away || []).filter((k) => k != null).map(String));   // more than a block off its route: gone at once
     const seen = new Set(), listed = new Set();
     let changed = 0;

@@ -131,6 +131,9 @@ public struct TripFollow: Hashable, Sendable {
         /// Report time (0 = unknown).
         public var seen: Double
         public var stale: Bool
+        /// "Bus 2": its map badge's number when its line shows two or more buses (web core/tripprogress.js vehicle.num,
+        /// owner 2026-11-06); nil = one bus on the line (the fleet label then).
+        public var number: Int? = nil
     }
 
     public struct StopRow: Hashable, Sendable, Identifiable {
@@ -548,8 +551,10 @@ public struct TripFollow: Hashable, Sendable {
 
     // MARK: - Compute
 
-    /// Progress of a started trip (nil when the journey has no bus leg).
-    public static func compute(_ J: TripJourney, staticData S: StaticData, live L: LiveState, user: LatLon?, now: Double) -> TripFollow? {
+    /// Progress of a started trip (nil when the journey has no bus leg). `numbers`: the app's bus numbers (route id ->
+    /// bus key -> number, `BusNumbers`), so a followed bus is named "Bus 2" as on its map badge (web vehicle.num).
+    public static func compute(_ J: TripJourney, staticData S: StaticData, live L: LiveState, user: LatLon?, now: Double,
+                               numbers: [String: [String: Int]] = [:]) -> TripFollow? {
         guard J.legs.contains(where: { if case .bus = $0 { return true }; return false }) else { return nil }
         let src = J.legs
         var legs: [Step] = []
@@ -562,7 +567,8 @@ public struct TripFollow: Hashable, Sendable {
                 var prevWalk: Double? = nil
                 if i > 0, case .walk(let m, _) = src[i - 1] { prevWalk = m }
                 if !allDone { readyT += (prevWalk ?? 0) * 60 }
-                let r = evalBus(b, S, L, user, now, Ctx(active: allDone, prevWalk: prevWalk, walkStart: walkStart, readyT: readyT))
+                var r = evalBus(b, S, L, user, now, Ctx(active: allDone, prevWalk: prevWalk, walkStart: walkStart, readyT: readyT))
+                if let v = r.vehicle { r.vehicle?.number = BusNumbers.number(numbers, rid: r.rid, key: BusNumbers.vehicleKey(v)) }
                 legs.append(.bus(r))
                 if r.state == .done {
                     walkStart = r.doneT

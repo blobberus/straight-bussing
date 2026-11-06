@@ -395,14 +395,15 @@ struct SettingsView: View {
                 .font(.caption).foregroundStyle(Palette.warn)
         } else if let first = Notify.stopsAway(staticData: model.staticData, live: model.live, stopId: stopId,
                                                 rids: Notify.watchedRoutes(model.notify, staticData: model.staticData, hidden: model.hidden),
-                                                now: model.now).first {
+                                                now: model.now, numbers: model.busNumbers).first {
             let away = first.stopsAway == 0 ? "Your stop is next" : "\(first.stopsAway) stop\(first.stopsAway == 1 ? "" : "s") away"
             let when = Notify.minutesText(first.etaS, now: model.now)
+            let nm = BusNumbers.numberName(first.number)   // "Bus 2" on a line with several buses (owner 2026-11-06)
             HStack(spacing: 8) {
                 RouteChip(route: model.route(first.rid), rid: first.rid)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(away + (when.isEmpty ? "" : " \u{00B7} " + when)).font(.subheadline.weight(.semibold))
-                    Text("Next stop: \(first.nextStopName). From live predictions.").font(.caption).foregroundStyle(Palette.text2)
+                    Text((nm.isEmpty ? "" : nm + ". ") + "Next stop: \(first.nextStopName). From live predictions.").font(.caption).foregroundStyle(Palette.text2)
                 }
             }
             .accessibilityElement(children: .combine)

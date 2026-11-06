@@ -666,7 +666,8 @@ extension AppModel {
     func refreshTrip(forceActivity: Bool = false) {
         guard let trip = activeTrip else { return }
         let t = now
-        let p = TripFollow.compute(trip.journey, staticData: staticData, live: liveState, user: user, now: t)
+        // the followed bus is named as on its map badge ("Bus 2"), from the same numbers the map draws (Kit BusNumbers)
+        let p = TripFollow.compute(trip.journey, staticData: staticData, live: liveState, user: user, now: t, numbers: busNumbers)
         if tripFollow != p { tripFollow = p }
         tripFollowNow = t
         let y = TripYou.compute(p, user: user, accuracy: userAccuracy, staticData: staticData, dest: trip.dest)

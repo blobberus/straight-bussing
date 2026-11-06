@@ -133,6 +133,7 @@
 .v-tlbus { align-self: flex-start; margin-top: 2px; padding: 0 var(--s-2); border-radius: var(--r-tag); font: var(--t-badge-sm); line-height: 20px; }
 .v-tleta { flex: none; min-width: 52px; text-align: right; font: var(--t-row-title); font-variant-numeric: tabular-nums; color: var(--label); white-space: nowrap; }
 .v-tleta.is-now { color: var(--live); }
+.v-tlwho { display: block; font: var(--t-footnote); color: var(--label-2); }   /* "Bus 2" under the time: which bus comes next (owner 2026-11-06) */
 
 /* ---------- Alerts (10.18): one card per alert; title rowTitle, the operator's text verbatim, "Until ..." footnote ---------- */
 .v-alertlist { list-style: none; margin: 0; padding: 0; }

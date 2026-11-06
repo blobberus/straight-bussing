@@ -17,7 +17,21 @@ const two = (over = {}) => {
 const etaOf = (h, name) => {
   const d = document.createElement("div"); d.innerHTML = h;
   const btn = [...d.querySelectorAll(".v-tlbtn")].find((b) => b.querySelector(".v-prim").textContent === name);
-  return btn ? btn.querySelector(".v-tleta").textContent : null;
+  if (!btn) return null;
+  const e = btn.querySelector(".v-tleta").cloneNode(true);
+  e.querySelector(".v-tlwho")?.remove();
+  return e.textContent;
+};
+/** The bus named under a station's time ("Bus 2"), '' for none. */
+const whoOf = (h, name) => {
+  const d = document.createElement("div"); d.innerHTML = h;
+  const btn = [...d.querySelectorAll(".v-tlbtn")].find((b) => b.querySelector(".v-prim").textContent === name);
+  return btn ? btn.querySelector(".v-tlwho")?.textContent || "" : null;
+};
+const labelOf = (h, name) => {
+  const d = document.createElement("div"); d.innerHTML = h;
+  const btn = [...d.querySelectorAll(".v-tlbtn")].find((b) => b.querySelector(".v-prim").textContent === name);
+  return btn ? btn.getAttribute("aria-label") : null;
 };
 
 test("route busnum: two buses on a line are Bus 1 and Bus 2; each row is a 44 px button", () => {
@@ -39,10 +53,14 @@ test("route busnum: one bus on a line keeps its fleet label, no number", () => {
 test("route busnum: a picked bus shows its own time at each station, none where it has no prediction", () => {
   const plain = renderRoute(two(), NOW);
   eq([etaOf(plain, "Main & 1st"), etaOf(plain, "Library"), etaOf(plain, "Hospital")], ["2 min", "5 min", "10 min"], "next bus at each stop");
+  // owner 2026-11-06: which bus comes next, as numbered on the map (v1 = Bus 1 makes every first arrival here)
+  eq([whoOf(plain, "Main & 1st"), whoOf(plain, "Library"), whoOf(plain, "Hospital")], ["Bus 1", "Bus 1", "Bus 1"], "each time names its bus");
+  eq(labelOf(plain, "Main & 1st").startsWith("Main & 1st, Bus 1 in 2 min"), true, labelOf(plain, "Main & 1st"));
   const h = renderRoute(two({ busId: "v3" }), NOW);
   ok(h.includes("Showing Bus 2&#39;s times") || h.includes("Showing Bus 2's times"), "the note names the bus");
   ok(h.includes('data-action="route:allbuses"') && h.includes("Show the next bus at each stop"));
   eq([etaOf(h, "Main & 1st"), etaOf(h, "Library"), etaOf(h, "Hospital")], ["25 min", "", ""], "Bus 2 (v3) predicts only Main & 1st, at +25 min");
+  eq([whoOf(h, "Main & 1st"), whoOf(h, "Library")], ["", ""], "picked: the note names the bus, the rows do not repeat it");
   ok(h.includes('data-id="v3" aria-pressed="true"'), "its row is pressed");
   ok(h.includes("no prediction for Bus 2"), "screen reader: no prediction for that bus");
   const h1 = renderRoute(two({ busId: "v1" }), NOW);
@@ -78,4 +96,20 @@ test("route busnum: a picked bus that is no longer shown quietly gives the next 
   const h = renderRoute(s, NOW);
   ok(!h.includes("Showing Bus"), "no note");
   eq(etaOf(h, "Main & 1st"), "2 min");
+  eq(whoOf(h, "Main & 1st"), "", "one bus left on the line: no number");
+});
+
+test("route busnum: the next time at a station names the bus that makes it, never a guess", () => {
+  const s = two();
+  // v3 now predicts Main & 1st first (+1 min): that row names Bus 2, the others stay Bus 1
+  s.trips = s.trips.map((t) => (t.vehicle?.id === "v3" ? { ...t, stop_time_update: [{ stop_id: "S1", arrival: { time: NOW + 60 } }] } : t));
+  const h = renderRoute(s, NOW);
+  eq([whoOf(h, "Main & 1st"), whoOf(h, "Library")], ["Bus 2", "Bus 1"]);
+  // a trip update naming no vehicle: its time shows, with no bus named
+  s.trips = s.trips.map((t) => (t.vehicle?.id === "v3" ? { ...t, vehicle: undefined } : t));
+  const h2 = renderRoute(s, NOW);
+  eq([etaOf(h2, "Main & 1st"), whoOf(h2, "Main & 1st")], ["1 min", ""], "no vehicle on the prediction: no number");
+  // a vehicle the app does not show (not in store.buses): no number
+  s.trips = s.trips.map((t) => (t.trip.trip_id === "t3" ? { ...t, vehicle: { id: "v9", label: "109" } } : t));
+  eq(whoOf(renderRoute(s, NOW), "Main & 1st"), "", "unknown vehicle: no number");
 });

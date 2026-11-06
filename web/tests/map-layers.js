@@ -180,6 +180,11 @@ test('bus layer: numbered buses (2 or more on a line), their names, the picked b
   ok(!el12.querySelector('.sb-bus').classList.contains('is-picked'));
   el12.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   eq(taps[0]?.id, '12', 'the tap carries the bus key');
+  // store.busNums (core/busnum.js numberStep) passed as o.numbers: a bus missing from one poll keeps its place, so the
+  // bus still listed keeps "2" (the arrival rows read the same numbers; owner 2026-11-06)
+  layer.draw([bus(12, 'r1', 1, 1), bus(7, 'r2', 3, -2)], { ...o, numbers: new Map([['4', 1], ['12', 2]]) });
+  eq(el12.querySelector('.sb-bus-num')?.textContent, '2', 'the held numbering is drawn');
+  eq(el12.getAttribute('aria-label'), 'Bus 2, Central');
   m.remove();
 });
 

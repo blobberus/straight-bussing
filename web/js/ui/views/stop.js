@@ -20,6 +20,7 @@ import { noBusHelpHTML } from "./alerts.js";
 import { isStale, nameOf } from "./nearby-cards.js";
 import { minsUntil } from "../../core/time.js";
 import { pair, svg } from "../icons.js";
+import { arrivalBusName } from "../../core/busnum.js";
 
 /** The collapsed sheet's one-line summary at a stop (owner 2026-10-12: a map tap keeps the sheet collapsed): its next bus. */
 /**
@@ -33,9 +34,9 @@ export function metaStopHTML(state, now = nowS()) {
   if (!id || !state.staticLoaded || !state.liveLoaded) return "";
   const a = arrivalsFor(state, id, { hidden: effectiveHidden(state), nowS: now })[0];
   if (!a) return "";
-  const stale = isStale(state, now), m = minsUntil(a.t, now);
-  const say = `Next bus: ${state.routes?.[a.rid]?.long || nameOf(state, a.rid)}, ${m < 1 ? "now" : (stale ? "about " : "in ") + m + " minute" + (m === 1 ? "" : "s")}`;
-  return `<span class="hm" role="text" aria-label="${esc(say)}"><span class="hm-row" aria-hidden="true">${routeChip(a.rid, state.routes, { small: true })}${etaBlock(a.t, { stale, now })}${stale ? "" : '<span class="dot-live"></span>'}</span></span>`;
+  const stale = isStale(state, now), m = minsUntil(a.t, now), num = arrivalBusName(state, a);   // "Bus 2" (owner 2026-11-06)
+  const say = `Next bus: ${state.routes?.[a.rid]?.long || nameOf(state, a.rid)}, ${num ? num + ", " : ""}${m < 1 ? "now" : (stale ? "about " : "in ") + m + " minute" + (m === 1 ? "" : "s")}`;
+  return `<span class="hm" role="text" aria-label="${esc(say)}"><span class="hm-row" aria-hidden="true">${routeChip(a.rid, state.routes, { small: true })}${num ? `<span class="hm-bus">${esc(num)}</span>` : ""}${etaBlock(a.t, { stale, now })}${stale ? "" : '<span class="dot-live"></span>'}</span></span>`;
 }
 
 export function metaStop(state, now = nowS()) {
@@ -43,8 +44,8 @@ export function metaStop(state, now = nowS()) {
   if (!id || !state.staticLoaded || !state.liveLoaded) return "";
   const a = arrivalsFor(state, id, { hidden: effectiveHidden(state), nowS: now })[0];
   if (!a) return "";
-  const m = minsUntil(a.t, now);
-  return nameOf(state, a.rid) + " · " + (m < 1 ? "Now" : (isStale(state, now) ? "~" : "") + m + " min");
+  const m = minsUntil(a.t, now), num = arrivalBusName(state, a);
+  return nameOf(state, a.rid) + (num ? ", " + num : "") + " · " + (m < 1 ? "Now" : (isStale(state, now) ? "~" : "") + m + " min");
 }
 
 /** Max arrivals listed on the stop screen. */

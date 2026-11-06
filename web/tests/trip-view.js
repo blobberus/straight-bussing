@@ -93,7 +93,8 @@ test("trip view: stale feed banner, stale chip and its age; missed bus note", ()
   // DESIGN-SPEC 13.8 (O8): a warning banner at the top of the next-step card, "You missed the 3:11 PM bus. Following the next one, 3:21 PM, est."
   // DESIGN-SPEC 13.8: a warning banner at the top of the next-step card, with the words the iPhone app shares (Kit)
   const MISSED = /class="tp-missed" role="status">.*?Your planned bus has left\. Showing the next one\./;
-  ok(MISSED.test(mi) && mi.includes("Bus 102 is 3 stops away"), mi.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 300));
+  // two buses on the line: the next one is named as on its map badge, Bus 2 (owner 2026-11-06; ids v101 < v102)
+  ok(MISSED.test(mi) && mi.includes("Bus 2 is 3 stops away"), mi.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 300));
   // no next bus: never promise one; on the walk to the stop the note shows too (iOS TripText.missedNote, 2026-10-11)
   const none = scene("missed");
   none.buses = none.buses.slice(0, 1); none.trips = none.trips.slice(0, 1);

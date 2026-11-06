@@ -676,13 +676,14 @@ final class AppModel {
     /// Long route name (web longName: long, else short, else id).
     func longName(_ rid: String) -> String { route(rid)?.displayName ?? rid }
 
-    /// Header text right of "Current trip": the next bus at the nearest stop ("53RD · 4 min"; web metaNearby).
+    /// Header text right of "Current trip": the next bus at the nearest stop ("53RD · 4 min"; web metaNearby); on a line
+    /// with several buses it names the bus as on its map badge, "53RD, Bus 2 · 4 min" (owner 2026-11-06, web metaStop).
     var nearbyMeta: String {
         guard liveLoaded, let p = user ?? nearAnchor?.coord,
               let s = StationSearch.near(staticData, p, maxM: 5000, max: 1, hidden: Set(hidden)).first,
               let a = arrivals(at: s.id).first else { return "" }
-        let m = TimeFmt.minsUntil(a.t, from: now)
-        return shortName(a.rid) + " · " + (m < 1 ? "Now" : (isStale ? "~" : "") + "\(m) min")
+        let m = TimeFmt.minsUntil(a.t, from: now), num = BusNumbers.arrivalName(a, numbers: busNumbers)
+        return shortName(a.rid) + (num.isEmpty ? "" : ", " + num) + " · " + (m < 1 ? "Now" : (isStale ? "~" : "") + "\(m) min")
     }
 
     /// The merged live state for Kit functions called from views (built from the observed slices, so the

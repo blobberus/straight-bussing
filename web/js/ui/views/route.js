@@ -11,7 +11,9 @@
  * Bus numbers (owner 2026-10-30, core/busnum.js): a route with 2 or more buses names them "Bus 1", "Bus 2"; a bus
  * tapped on the map (main.js onBusTap) or in "Where the buses are" is picked (store.busId): every station then shows
  * THAT bus's own next live time (none where it has no prediction), under "Showing Bus 2's times" with "Show the next
- * bus at each stop". Leaving the page or the bus going away clears it (main.js).
+ * bus at each stop". Leaving the page or the bus going away clears it (main.js). Not picked, each station's next time
+ * names its bus on a line with several ("3 min" over "Bus 2", spoken "Bus 2 in 3 min"; owner 2026-11-06,
+ * core/busnum.js arrivalBusName); one bus on the line: no name.
  * Line replaces line (owner 2026-11-02, ui/router.js replaceSelf): another route opened from this page (a map line or bus
  * tap) takes this page's place in the back stack, so Back returns to the menu the first route page was opened from.
  */
@@ -27,7 +29,7 @@ import { emptyState, skeleton, OFFICIAL_PHONE, liveDotHTML } from "../components
 import { noLiveStatus, scheduledNoLive } from "../../core/operating.js";
 import { awayCount, awayText } from "../../core/offroute.js";
 import { noBusHelpHTML } from "./alerts.js";
-import { busKey, busNumbers, busName, selectedBus, busArrival } from "../../core/busnum.js";
+import { busKey, numberMap, busName, selectedBus, busArrival, arrivalBusName } from "../../core/busnum.js";
 
 const STALE_BUS_S = 60;
 const DAY_NAME = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
@@ -69,7 +71,7 @@ export function busPositions(state, rid, now) {
   const list = state.routeStops?.[rid] || [], ids = stopOrder(list);
   const loop = list.length > 2 && list[0] === list[list.length - 1];
   const name = (i) => state.stops?.[ids[i]]?.name || ids[i];
-  const out = [], nums = busNumbers(state.buses);
+  const out = [], nums = numberMap(state);   // the map badges' numbers (store.busNums: a bus missing from a poll keeps its place)
   for (const b of state.buses || []) {
     if (b?.trip?.route_id !== rid || !b.stop_id) continue;
     const next = ids.indexOf(b.stop_id);
@@ -237,7 +239,7 @@ export function renderRoute(state, now = nowS()) {
     if (!railAt.has(host)) railAt.set(host, []);
     railAt.get(host).push(b);
   }
-  const picked = selectedBus(state), pk = busKey(picked), pname = picked ? busName(picked, busNumbers(state.buses)) : "";
+  const picked = selectedBus(state), pk = busKey(picked), pname = picked ? busName(picked, numberMap(state)) : "";
   if (picked) h += `<div class="v-note r-busnote" role="status"><span class="v-grow v-sec">${esc(`Showing ${pname}'s times`)}</span><button type="button" class="v-btn v-btn--quiet" data-action="route:allbuses">Show the next bus at each stop</button></div>`;
   if (pos.length) h += `<ul class="r-buslist" aria-label="Where the buses are">${pos.map((b) => `<li${b.stale ? ' class="is-stale"' : ""}><button type="button" class="r-busbtn${b.key === pk ? " is-picked" : ""}" data-action="route:bus" data-id="${esc(b.key)}" aria-pressed="${b.key === pk}" aria-label="${esc(`${b.text}. ${b.key === pk ? "Showing its times" : "Show its times"}`)}"><span class="r-dot" style="background:${color}" aria-hidden="true"></span><span class="v-grow">${esc(b.text)}</span></button></li>`).join("")}</ul>`;
   h += `<ol class="v-tl r-tl" style="--rc:${color}" aria-label="Stops on ${esc(r.long || r.short || "route")}, in travel order">`;
@@ -245,10 +247,11 @@ export function renderRoute(state, now = nowS()) {
     const all = state.liveLoaded ? arrivalsFor(state, sid, { routeId: rid, nowS: now }) : [];
     const a = picked ? busArrival(all, pk) : all[0];   // a picked bus: its own time only, never another bus's
     const eta = etaLabel(a?.t, now, stale), name = state.stops?.[sid]?.name || sid;
+    const num = !picked && eta ? arrivalBusName(state, a) : "";   // which bus comes next, on a line with several (picked: the note says)
     const here = busAt.get(i) || [];
     const pill = here.map((b) => `<span class="v-tlbus${b.stale ? " is-stale" : ""}${b.key === pk ? " is-picked" : ""}" style="background:${color};color:${fg}">${esc(b.name)} heading here${b.stale ? ` &middot; seen ${esc(ago(b.seen, now))}` : ""}</span>`).join("");
     // one element for screen readers (iOS RouteDetailView): name, "next bus in N min" / "no prediction", the bus heading here
-    const who = picked ? pname : "next bus";
+    const who = picked ? pname : num || "next bus";
     const old = here.find((b) => b.stale), label = `${name}${eta ? `, ${who} ` + (eta === "Now" ? "now" : "in " + eta.replace("~", "about ")) : picked ? `, no prediction for ${pname}` : ", no prediction"}${here.length ? ", a bus is heading here" + (old ? `, seen ${ago(old.seen, now)}` : "") : ""}`;
     const last = i === ids.length - 1;
     let rail = last && !loop ? "" : `<span class="r-seg" aria-hidden="true">${CHEVRON}</span>`;
@@ -256,7 +259,7 @@ export function renderRoute(state, now = nowS()) {
       const top = b.prev === null ? "18%" : last ? `calc(50% + ${Math.round(b.frac * 50)}%)` : `calc(50% + ${Math.round(b.frac * 100)}%)`;
       rail += busMarker(b, color, fg, top, b.key === pk);
     }
-    h += `<li class="v-tlstop${here.length ? " has-bus" : ""}${last && loop ? " is-loopend" : ""}">${rail}<button type="button" class="v-tlbtn" data-action="stop:open" data-id="${esc(sid)}" aria-label="${esc(label)}"><span class="v-grow"><span class="v-prim">${esc(name)}</span>${pill}</span><span class="v-tleta${eta === "Now" ? " is-now" : ""}">${esc(eta)}</span></button></li>`;
+    h += `<li class="v-tlstop${here.length ? " has-bus" : ""}${last && loop ? " is-loopend" : ""}">${rail}<button type="button" class="v-tlbtn" data-action="stop:open" data-id="${esc(sid)}" aria-label="${esc(label)}"><span class="v-grow"><span class="v-prim">${esc(name)}</span>${pill}</span><span class="v-tleta${eta === "Now" ? " is-now" : ""}">${esc(eta)}${num ? `<span class="v-tlwho">${esc(num)}</span>` : ""}</span></button></li>`;
   });
   h += "</ol>";
   if (loop) h += `<p class="v-sec r-loop"><span aria-hidden="true">↻ </span>Loop: continues to ${esc(state.stops?.[ids[0]]?.name || ids[0])}</p>`;

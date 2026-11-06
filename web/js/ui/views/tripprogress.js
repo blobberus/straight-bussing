@@ -274,7 +274,7 @@ function busHTML(leg, li, p, state, now) {
     const vpos = Math.round((lead ? (v.idx < 0 ? 0 : v.pos + 1) : v.pos) * 5) / 5;
     const top = `${(((vpos + 0.5) / n) * 100).toFixed(2)}%`;
     const from = slideFrom(`${li}|${leg.rid}|${leg.board.id}>${leg.alight.id}|${v.id || v.label}`, top, now);
-    const label = String(v.label || "Bus");
+    const label = v.num > 0 ? busName(v) : String(v.label || "Bus");   // "Bus 2" as on the map badge, else the fleet label
     h += `<span class="tp-track${from ? " is-moving" : ""}" style="--to:${top}${from ? `;--from:${from}` : ""}" aria-hidden="true">`
       + `<span class="tp-veh${v.stale ? " is-stale" : ""}" style="--vc:${color};background:${color};color:${fg}">${esc(label.length > 5 ? label.slice(-5) : label)}</span></span>`;
   }

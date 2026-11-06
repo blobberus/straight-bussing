@@ -382,18 +382,19 @@ struct SoonRow: View {
     let a: Arrival
     var body: some View {
         let m = Swift.max(0, TimeFmt.minsUntil(a.t, from: model.now))
+        let num = BusNumbers.arrivalName(a, numbers: model.busNumbers)   // "Bus 2" on a line with several buses (owner 2026-11-06)
         HStack(spacing: 10) {
             RouteChip(route: model.route(a.rid), rid: a.rid)
             VStack(alignment: .leading, spacing: 1) {
                 Text(stopName).font(.subheadline.weight(.medium)).foregroundStyle(Palette.text).lineLimit(2)   // wrap, never cut a stop name
-                Text(model.route(a.rid)?.long ?? "").font(.caption).foregroundStyle(Palette.text2).lineLimit(1)
+                Text((model.route(a.rid)?.long ?? "") + (num.isEmpty ? "" : " · " + num)).font(.caption).foregroundStyle(Palette.text2).lineLimit(1)
             }
             Spacer()
             EtaText(t: a.t, now: model.now, stale: model.isStale)
         }
         .frame(minHeight: 48).contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Route \(model.shortName(a.rid)) at \(stopName), \(m < 1 ? "arriving now" : "in \(m) minutes")\(model.isStale ? ", estimate" : "")")
+        .accessibilityLabel("Route \(model.shortName(a.rid))\(num.isEmpty ? "" : ", " + num + ",") at \(stopName), \(m < 1 ? "arriving now" : "in \(m) minutes")\(model.isStale ? ", estimate" : "")")
     }
 }
 
@@ -424,7 +425,8 @@ struct FavoritesCard: View {
         let a = model.liveLoaded ? model.arrivals(at: id).first : nil
         let unknown = model.liveOutage || model.silentService
         let m = a.map { Swift.max(0, TimeFmt.minsUntil($0.t, from: model.now)) } ?? 0
-        let label = a.map { "Favorite \(name): route \(model.shortName($0.rid)) \(m < 1 ? "arriving now" : "in \(m) minutes")\(model.isStale ? ", estimate" : "")" }
+        let num = a.map { BusNumbers.arrivalName($0, numbers: model.busNumbers) } ?? ""   // "Bus 2" (owner 2026-11-06)
+        let label = a.map { "Favorite \(name): route \(model.shortName($0.rid))\(num.isEmpty ? "" : ", " + num + ",") \(m < 1 ? "arriving now" : "in \(m) minutes")\(model.isStale ? ", estimate" : "")" }
             ?? "Favorite \(name): \(unknown ? "live times unavailable" : model.liveLoaded ? "no upcoming arrivals" : "loading")"
         return Button { model.push(.stop(id)) } label: {
             HStack(spacing: 10) {
@@ -432,7 +434,7 @@ struct FavoritesCard: View {
                 else { FavoriteStar().frame(width: 24).accessibilityHidden(true) }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(name).font(.subheadline.weight(.medium)).foregroundStyle(Palette.text).lineLimit(1)
-                    if let a { Text(model.route(a.rid)?.long ?? "").font(.caption).foregroundStyle(Palette.text2).lineLimit(1) }
+                    if let a { Text((model.route(a.rid)?.long ?? "") + (num.isEmpty ? "" : " · " + num)).font(.caption).foregroundStyle(Palette.text2).lineLimit(1) }
                 }
                 Spacer()
                 if let a { EtaText(t: a.t, now: model.now, stale: model.isStale) }

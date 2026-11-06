@@ -223,7 +223,8 @@ struct TripBusLeg: View {
                     let raw = lead != nil ? (v.idx < 0 ? 0 : v.pos + 1) : v.pos
                     let vpos = (raw * 5).rounded() / 5
                     let y = CGFloat(min(max(vpos, -0.4), n - 0.6) + 0.5) * rowH
-                    BusChip(label: v.label, color: color, textColor: Color.textOn(hex: r?.color), stale: v.stale)
+                    // "Bus 2" as on the map badge on a line with several buses (owner 2026-11-06), else the fleet label
+                    BusChip(label: (v.number ?? 0) > 0 ? TripText.busName(v) : v.label, color: color, textColor: Color.textOn(hex: r?.color), stale: v.stale)
                         .offset(x: Self.railW / 2 - BusChip.w / 2, y: y - BusChip.h / 2)
                         .animation(reduceMotion ? nil : .easeInOut(duration: 0.8), value: y)
                         .accessibilityHidden(true)   // the head line and the row labels say where the bus is
