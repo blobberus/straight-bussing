@@ -19,6 +19,8 @@ import StraightBussingKit
 struct MapScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var typeSize
+    /// The dark map draws the route colors of Kit `RouteColor.mapColor` (dark routes lifted, owner 2026-11-06).
+    @Environment(\.colorScheme) private var scheme
 
     /// The trip drawn on the map: the started one, else the selected Directions option (`AppModel.mapPlan`).
     var plan: TripOption? { model.mapPlan }
@@ -42,6 +44,7 @@ struct MapScreen: View {
         let buses = shown.filter { faded.contains($0.id) } + shown.filter { !faded.contains($0.id) }
         let youOnDrawnBus = youBus != nil && buses.contains { $0.id == youBus }
         let lineScale = camera.lineScale
+        let dark = scheme == .dark
         let labels = you?.stopLabels ?? []
         // a marker of its own: the boarding stop as a guess (no GPS), or the bus you ride when its marker is not drawn
         let youMark: (at: LatLon, guess: Bool)? = you.flatMap { y in
@@ -72,7 +75,7 @@ struct MapScreen: View {
             // thinner when the camera is far out (owner 2026-11-04), a focused route at its full width
             ForEach(layers.lines) { l in
                 MapPolyline(coordinates: l.coords)
-                    .stroke(l.color, style: StrokeStyle(lineWidth: l.focused ? l.width : l.width * lineScale, lineCap: .round, lineJoin: .round))
+                    .stroke(dark ? l.darkColor : l.color, style: StrokeStyle(lineWidth: l.focused ? l.width : l.width * lineScale, lineCap: .round, lineJoin: .round))
             }
             if let o = drawn {
                 ForEach(Array(o.walkLegs.enumerated()), id: \.offset) { item in
@@ -82,7 +85,7 @@ struct MapScreen: View {
                 // bus legs along the route's road shape between the stops (Kit Geometry.alongShape), cached
                 ForEach(Array(o.busLegs.enumerated()), id: \.offset) { item in
                     MapPolyline(coordinates: model.roadPath(item.element).map(\.cl))
-                        .stroke(Color(hex: model.route(item.element.rid)?.color), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+                        .stroke(Color(hex: RouteColor.mapColor(model.route(item.element.rid)?.color, dark: dark)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                 }
                 if let last = o.legs.last {
                     let end = last.walk?.to.coord ?? last.bus?.alight.coord ?? LatLon(lat: 0, lon: 0)
@@ -101,7 +104,7 @@ struct MapScreen: View {
                         .font(.system(size: 9, weight: .black))
                         .foregroundStyle(.white)
                         .padding(2)
-                        .background(c.color, in: Circle())
+                        .background(dark ? c.darkColor : c.color, in: Circle())
                         .rotationEffect(.degrees(c.bearing))
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -447,6 +450,9 @@ struct StopDot: View, Equatable {
 /// you ride on a started trip (`youText` set, TripYou.text) gets an accent ring and a "You" pill: it moves with the
 /// bus, glide included; VoiceOver reads the trip sentence ("You are on Bus 101. Get off in 2 stops: X").
 struct BusMarker: View {
+    /// The dark map: the badge and its heading triangle in Kit `RouteColor.mapColor` (a dark route lifted, owner
+    /// 2026-11-06), the text in `RouteColor.textOn` of that fill (AA: the lifted fills take dark text).
+    @Environment(\.colorScheme) private var scheme
     let route: Route?
     let bearing: Double?
     var stale = false
@@ -459,6 +465,9 @@ struct BusMarker: View {
     /// the other buses and not tappable (MapScreen). Label, heading and number stay; a stale faded bus is fainter still.
     var faded = false
     var body: some View {
+        let dark = scheme == .dark
+        let fill = RouteColor.mapColor(route?.color, dark: dark)
+        let text = dark ? Color(hex: RouteColor.textOn(fill)) : Color.textOn(hex: route?.color)
         ZStack {
             if youText != nil {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -475,7 +484,7 @@ struct BusMarker: View {
             if let bearing {
                 Image(systemName: "triangle.fill")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Color(hex: route?.color))
+                    .foregroundStyle(Color(hex: fill))
                     .offset(y: -19)
                     .rotationEffect(.degrees(bearing))
             }
@@ -483,9 +492,9 @@ struct BusMarker: View {
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-                .foregroundStyle(Color.textOn(hex: route?.color))
+                .foregroundStyle(text)
                 .frame(width: 30, height: 24)
-                .background(Color(hex: route?.color), in: RoundedRectangle(cornerRadius: Radius.badge, style: .continuous))
+                .background(Color(hex: fill), in: RoundedRectangle(cornerRadius: Radius.badge, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: Radius.badge, style: .continuous).stroke(.white, lineWidth: 2))
                 .shadow(color: Palette.shadow.opacity(0.3), radius: 2, y: 1)
             if let number {

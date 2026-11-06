@@ -71,6 +71,8 @@ struct MapChevron: Identifiable {
     let coord: CLLocationCoordinate2D
     let bearing: Double
     let color: Color
+    /// The color on the dark map (Kit `RouteColor.mapColor`: a dark route lifted, owner 2026-11-06).
+    let darkColor: Color
 }
 
 /// The map camera in its own observable: fits and user pans only redraw the Map, never views reading AppModel.
@@ -101,20 +103,23 @@ final class MapCameraModel {
 /// A route polyline ready for MapKit (coordinates converted and color parsed once per visibility change). `rid` and
 /// the bounding box serve a tap on the line (MapScreen `lineHit`, Kit `LineTap`). `width` is the full width (street level,
 /// and the tap reach); MapScreen draws a line that is not `focused` thinner when the camera is far out (`lineScale`).
+/// `darkColor` is drawn on the dark map (Kit `RouteColor.mapColor`: a dark route lifted in its own hue, owner 2026-11-06).
 struct MapLine: Identifiable {
     let id: String
     let rid: String
     let coords: [CLLocationCoordinate2D]
     let color: Color
+    let darkColor: Color
     let width: CGFloat
     let focused: Bool
     let minLat: Double, maxLat: Double, minLon: Double, maxLon: Double
 
-    init(id: String, rid: String, coords: [CLLocationCoordinate2D], color: Color, width: CGFloat, focused: Bool = false) {
+    init(id: String, rid: String, coords: [CLLocationCoordinate2D], color: Color, darkColor: Color? = nil, width: CGFloat, focused: Bool = false) {
         self.id = id
         self.rid = rid
         self.coords = coords
         self.color = color
+        self.darkColor = darkColor ?? color
         self.width = width
         self.focused = focused
         minLat = coords.map(\.latitude).min() ?? 0
@@ -563,8 +568,10 @@ final class AppModel {
             let focused = focus?.contains(rid) == true
             let dim = planDim || (focus != nil && !focused)
             let color = dim ? Color.dimmed(hex: r.color) : Color(hex: r.color)
+            let dark = RouteColor.mapColor(r.color, dark: true)   // a dark route lifted for the dark map (owner 2026-11-06)
+            let darkColor = dim ? Color.dimmed(hex: dark) : Color(hex: dark)
             for (i, line) in (S.shapes[rid] ?? []).enumerated() {
-                lines.append(MapLine(id: "\(rid)-\(i)", rid: rid, coords: line.map(\.cl), color: color, width: dim ? 3 : 5, focused: focused))
+                lines.append(MapLine(id: "\(rid)-\(i)", rid: rid, coords: line.map(\.cl), color: color, darkColor: darkColor, width: dim ? 3 : 5, focused: focused))
             }
         }
         var ids = Set<String>()
@@ -576,12 +583,13 @@ final class AppModel {
         if !planDim, let f = vis.focus, (1...3).contains(f.count) {
             for rid in f {
                 let color = Color(hex: S.routes[rid]?.color)
+                let darkColor = Color(hex: RouteColor.mapColor(S.routes[rid]?.color, dark: true))
                 for (li, line) in (S.shapes[rid] ?? []).enumerated() {
                     // every 320 m like the web, but at most `maxChevrons` per line: each one is a SwiftUI
                     // annotation view, and the longest routes (33 km) would otherwise add 100 each
                     let spacing = max(320, Geometry.pathLength(line) / Double(maxChevrons))
                     for (k, c) in chevronPoints(line, spacingM: spacing).enumerated() {
-                        chevrons.append(MapChevron(id: "\(rid)-\(li)-\(k)", coord: c.at.cl, bearing: c.bearing, color: color))
+                        chevrons.append(MapChevron(id: "\(rid)-\(li)-\(k)", coord: c.at.cl, bearing: c.bearing, color: color, darkColor: darkColor))
                     }
                 }
             }

@@ -1074,7 +1074,8 @@ is part of `chromeH`, so the expanded sheet stops below it the same way.
 - **No outlines.** Route lines, planned bus legs and the walking dots are drawn without the white (light) / dark gray
   (dark) casing (`sb-casing`, `sb-plan-casing`, `sb-walk-casing` and their panes are gone; the planned bus leg is
   `sb-plan-bus`). The dashed walk stays legible on both basemaps. Weakest without an edge: the yellow 53rd Street
-  Express on the light basemap and the dark blue line on the dark one (for the owner; no edge added back).
+  Express on the light basemap and the dark blue line on the dark one (for the owner; no edge added back). The dark map's
+  dark lines are drawn lighter since 2026-11-06: "Route colors on the dark map" below.
 - **Thinner zoomed out.** `layers.js lineWeight(z, focused)`: 30% thinner up to zoom 15 (3.5 px at the campus view, was
   5; 2.8 at z13), 15% at z16, unchanged from z17 (6 / 6.5 px); a focused route keeps the full weight so it reads above the
   rest and its chevrons fit. `lineTapWidth(z)` keeps the line tap reach as it was.
@@ -1089,6 +1090,41 @@ is part of `chromeH`, so the expanded sheet stops below it the same way.
 - Tests: core-custom.js (trip-only lines, walk, busFaded), map-layers.js (no outline, weights, faded buses, taps, plan,
   stale + faded, the bus you ride), map-direction.js, map-trip.js, e2e.js (the Directions preview fades the other buses;
   a started trip draws only its lines and buses; all come back after End trip). sw `sb-v2-88`.
+
+## Route colors on the dark map (2026-11-06, owner: "Outline or change coloring of the dark shuttles to make them more noticable.")
+- **One rule, core/routecolor.js.** `darkRouteColor(color)`: a route color with 3:1 against the dark land (`DARK_LAND`
+  #202124 = style.js `PALETTE.dark.bg`) is drawn as published; a darker one is lifted by `liftForDark(color, bg, min)`:
+  OKLab lightness up in 0.005 steps, hue and chroma kept (chroma only cut where sRGB cannot show it), until it has 3:1
+  against the land AND the street fill (`DARK_STREET` #3A3B40 = `PALETTE.dark.minor`) and a badge in it carries AA text
+  (`badgeTextOk`, core/esc.js textOn). `mapColor(color, dark)` (cached) = the published color on the light map,
+  `darkRouteColor` on the dark one. The light map never changes.
+- **What it draws.** map/layers.js: lines (focused ones too), one-route stop rings, chevrons (their color is textOn of the
+  drawn line color) and bus badges (`--c`, `--t`; the heading notch follows `--c`); map/map.js renderPlan: planned bus
+  legs and their board / alight rings. `MapApi.setTheme` recolors in place (network `setDark`: setStyle on the same paths;
+  bus layer `setDark`: the badge's CSS variables; a drawn plan is redrawn), and `createMap(id, {dark})` starts in it.
+  The sheet's route chips keep the published colors (they have their own ring rule against the card, spec 4.3).
+- **The numbers (dark map, contrast against land / street fill, badge text).** Downtown Campus Connector #0E5700 1.83 /
+  1.27 -> #509446 4.34 / 3.01; Regents Express #393B79 1.59 / 1.10 -> #7A80C5 4.39 / 3.04; Apostolic #0000FF 1.87 / 1.30 ->
+  #487FFF 4.41 / 3.06; Friend Center/Metra #8C4600 2.29 / 1.59 -> #BE743D 4.41 / 3.06; Move In Charter #843C39 2.06 / 1.43
+  -> #BD6F6A 4.33 / 3.00. Their badge text turns from white to #111114 (5.0 to 5.2:1; white would be 3.6:1). The other ten
+  are 3.2:1 (Red Line/Arts Block) to 12.9:1 on the land and unchanged.
+- **Why not more.** 3:1 against the main roads' lighter fill (#4D4E55, about 1 px each side of a line at zoom 15 to 17)
+  needs luminance 0.325: ten of the fifteen colors in one light band (Red Line salmon; Friend Center/Metra 0.047 from
+  Apostolic/Drexel in OKLab, closer than the closest published pair, 0.064). The lifted five stay at 0.060 or more from
+  every other route (tests). **No edge:** a 1 px light edge on a 3 px line washes it toward gray and brings back the outline
+  the owner removed on 2026-11-04.
+- **Light map (not changed, for the owner):** under 3:1 against the light land #F5F3EE: 53rd Street Express 1.12, South
+  Loop Shuttle 1.77, Central 1.93, East 2.19, Apostolic/Drexel 2.58, Drexel 2.91, North 2.95.
+- iOS: Kit `RouteColor` (the same functions, bit for bit: RouteColorTests on the shared golden
+  `web/tests/fixtures/routecolor_golden.json`); AppModel `buildLayers` gives each `MapLine` / `MapChevron` a `darkColor`,
+  MapScreen picks it by `colorScheme`, planned bus legs and `BusMarker` (fill, heading triangle; text `RouteColor.textOn`
+  in dark) use `RouteColor.mapColor`. The bus number chip keeps the published color (it sits on white). MapKit's dark map
+  is lighter and bluer than the web's (land #384A61 in the CI simulator shots, run 42269968432): there the five go
+  from 1.03 to 1.29:1 to 2.43 to 2.48:1, level with the mid-tone routes (Red Line 1.80, Midway Metra 1.90, South 2.32,
+  North 2.77, Drexel 2.80) but under 3:1; 3:1 on that land would put Friend Center/Metra 0.049 from Apostolic/Drexel.
+  The badges there also carry a white 2 pt ring.
+- Tests: core-routecolor.js (golden, every real route, hue kept, routes kept apart), map-layers.js (lines, stop rings,
+  chevrons, badges, plan legs, theme switch in place, dark launch), map-style.js (the palette link). sw `sb-v2-139`.
 
 ## Redesign: layout and shell contracts (2026-11-03, docs/DESIGN-SPEC.md; owner brief "Straight Bussing New Version.txt")
 The navigation structure is unchanged (search bar with clock and gear, three sections in the bottom bar, sheet with two

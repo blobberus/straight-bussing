@@ -270,3 +270,9 @@ test('basemap theme (QA 2026-11-05): a dark start builds the dark land first; wi
     el.remove();
   }
 });
+
+test('route colors on the dark map are measured against this palette (core/routecolor.js DARK_LAND / DARK_STREET)', async () => {
+  const rc = await import('../js/core/routecolor.js');
+  eq(rc.DARK_LAND.toLowerCase(), PALETTE.dark.bg, 'land');
+  eq(rc.DARK_STREET.toLowerCase(), PALETTE.dark.minor, 'street fill');
+});

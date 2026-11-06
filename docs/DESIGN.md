@@ -205,7 +205,11 @@ The audit that led to the redesign: [`docs/REDESIGN-AUDIT.md`](REDESIGN-AUDIT.md
 Map lines on the web (owner 2026-11-04 on the experimental build, now live): no outlines, thinner at every zoom
 (z13 2 px to z18 6 px, a focused line 2 px wider); favorite stars yellow (#FFCC00 / #FFD60A with a dark star, owner
 2026-11-05). The iPhone app's lines (30% thinner zoomed out only) and its stars (yellow too, 2026-11-05) are in
-`ios/README.md`.
+`ios/README.md`. Dark map, web and iPhone (owner 2026-11-06: "Outline or change coloring of the dark shuttles to make them
+more noticable"): a route color under 3:1 against the dark land is drawn lighter in its own hue, to 3:1 against the land
+and the street fill with AA badge text (lines, stop rings, buses, planned legs; core/routecolor.js = Kit RouteColor;
+numbers in ARCHITECTURE "Route colors on the dark map"). Never an outline; the light map and the sheet's chips keep the
+published colors.
 
 ### Layers (z-index tokens in `css/tokens.css`, unchanged by the redesign)
 

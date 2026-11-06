@@ -2,6 +2,7 @@
 import { test, eq, ok, near } from './lib.js';
 import { idOf, sig, focusSet, networkSig, busSig, lineWeight, lineTapWidth, FOCUS_EXTRA, routeLabel, createNetworkLayer, createBusLayer, notchRadius } from '../js/map/layers.js';
 import { createMap } from '../js/map/map.js';
+import { mapColor } from '../js/core/routecolor.js';
 import { P, squareLoop, stop } from './map-fixtures.js';
 
 const routes = { r1: { short: 'CEN', long: 'Central', color: '#FF9900' }, r2: { short: '', long: 'North', color: '#0099CC' },
@@ -243,4 +244,62 @@ test('MapApi: theme, network diff, plan, highlights, flyTo offset by inset', asy
   m.fire('dragstart');
   eq(moves.length, 1, 'user drag reported');
   m.remove();
+});
+
+test('dark map: a dark route is drawn lighter in its own hue (lines, stop rings, buses, plan legs); a theme switch recolors in place (owner 2026-11-06)', () => {
+  const RE = '#393B79', lifted = mapColor(RE, true);
+  ok(lifted !== RE, 'Regents Express navy is lifted on the dark map');
+  const dk = { ...routes, r2: { short: 'RE', long: 'Regents Express', color: RE } };
+  const m = bareMap('t-dark');
+  const layer = createNetworkLayer(m, { onStopTap: () => {} });
+  layer.draw({ ...net(), routes: dk, focus: ['r2'] });
+  const el = m.getContainer(), before = paths(el);
+  const stroke = (sel) => [...el.querySelectorAll(sel)].map((p) => p.getAttribute('stroke').toUpperCase());
+  const reLine = () => m.getPane('sbFocusLines').querySelector('path.sb-route').getAttribute('stroke').toUpperCase();
+  eq(reLine(), RE, 'light map: the published color');
+  const chev0 = el.querySelector('path.sb-chev')?.getAttribute('stroke');
+  layer.setDark(true);
+  eq(reLine(), lifted, 'dark map: lifted');
+  ok(stroke('path.sb-stop:not(.sb-stop-multi)').includes(lifted), 'its stop rings too');
+  ok(stroke('path.sb-route').includes('#FF9900') && stroke('path.sb-route').includes('#D62728'), 'colors already 3:1 on the land stay');
+  ok(paths(el).filter((p) => !p.classList.contains('sb-chev')).every((p, i) => p === before.filter((q) => !q.classList.contains('sb-chev'))[i]), 'no rebuild');
+  const chev1 = el.querySelector('path.sb-chev')?.getAttribute('stroke');
+  ok(chev0 && chev1 && chev1 !== chev0, `chevrons in the lifted line's text color (${chev0} -> ${chev1})`);
+  layer.draw({ ...net(), routes: dk, focus: null });
+  ok(stroke('path.sb-route').includes(lifted), 'a redraw while dark keeps the dark colors');
+  layer.setDark(false);
+  ok(stroke('path.sb-route').includes(RE) && !stroke('path.sb-route').includes(lifted), 'back to the published color');
+
+  const buses = createBusLayer(m, { onBusTap: () => {} });
+  buses.setDark(true);
+  buses.draw([bus(1, 'r2', 1, -2), bus(2, 'r1', 2, 0)], { routes: dk, hidden: [], focus: null, nowS: 1010 });
+  const badge = (t) => [...el.querySelectorAll('.sb-bus')].find((b) => b.querySelector('.sb-bus-tx').textContent === t);
+  const re = badge('RE');
+  eq(re.style.getPropertyValue('--c').toUpperCase(), lifted, 'the bus badge in the lifted color');
+  eq(re.style.getPropertyValue('--t'), '#111114', 'its text flips to dark (AA on the lighter fill)');
+  eq(badge('CEN').style.getPropertyValue('--c').toUpperCase(), '#FF9900', 'a bright route keeps its badge');
+  buses.setDark(false);
+  ok(badge('RE') === re, 'theme switch: the same badge');
+  eq(re.style.getPropertyValue('--c').toUpperCase(), RE, 'back to navy');
+  eq(re.style.getPropertyValue('--t'), '#ffffff', 'white text on navy');
+  const poll = () => buses.draw([bus(1, 'r2', 1, -2), bus(2, 'r1', 2, 0)], { routes: dk, hidden: [], focus: null, nowS: 1010 });
+  poll();
+  ok(badge('RE') === re && re.style.getPropertyValue('--c').toUpperCase() === RE, 'the next poll keeps the badge and its color');
+  eq(poll(), 0, 'and the one after touches nothing');
+  m.remove();
+
+  box('t-dark-api');
+  const api = createMap('t-dark-api', { dark: true });
+  const ael = api.leaflet.getContainer();
+  api.drawNetwork({ ...net(), routes: dk });
+  ok([...ael.querySelectorAll('path.sb-route')].some((p) => p.getAttribute('stroke').toUpperCase() === lifted), 'a dark launch draws the lifted color at once');
+  const leg = { type: 'bus', rid: 'r2', board: { ...stop('E', 0, -2), name: 'E' }, alight: { ...stop('F', 6, -2), name: 'F' }, path: [stop('E', 0, -2), stop('F', 6, -2)] };
+  api.drawPlan({ key: 'p', legs: [leg] }, { routes: dk, shapes, routeStops });
+  const planLeg = () => ael.querySelector('path.sb-plan-bus').getAttribute('stroke').toUpperCase();
+  eq(planLeg(), lifted, 'the planned bus leg too');
+  ok([...ael.querySelectorAll('path.sb-plan-stop')].every((p) => p.getAttribute('stroke').toUpperCase() === lifted), 'and its board / alight rings');
+  api.setTheme(false);
+  eq(planLeg(), RE, 'light theme: the plan redraws in the published color');
+  ok([...ael.querySelectorAll('path.sb-route')].some((p) => p.getAttribute('stroke').toUpperCase() === RE), 'and the network');
+  api.leaflet.remove();
 });
