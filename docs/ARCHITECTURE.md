@@ -70,7 +70,7 @@ export function createStore(initial): { get(), set(patch), subscribe(fn)->off } 
   routeStops:{rid:[stopId,...]}  /* first==last means loop */, stopRoutes:{stopId:[rid]}, addresses:{stopId:{address}},
   staticLoaded:false,
   // live (data/live.js fills every 10 s)
-  buses:[{vehicle:{id,label}, position:{latitude,longitude,bearing,speed}, trip:{trip_id,route_id}, timestamp, stop_id, current_stop_sequence}],   // OPERATING vehicles only (core/operating.js), minus buses long off their route (core/offroute.js); both applied in data/live.js
+  buses:[{vehicle:{id,label}, position:{latitude,longitude,bearing,speed}, trip:{trip_id,route_id}, timestamp, stop_id, current_stop_sequence}],   // OPERATING vehicles only (core/operating.js), minus buses long off their route (core/offroute.js) and buses idle and not in service (core/idle.js); all applied in data/live.js
   trips:[{trip:{trip_id,route_id}, vehicle:{id,label}, stop_time_update:[{stop_id, arrival:{time}, departure:{time}}]}],   // minus the trip updates of buses core/offroute.js hides
   alerts:[{header_text, description_text, active_period, informed_entity}],
   feedTs:0, lastOk:0, failed:false, liveLoaded:false,
@@ -125,6 +125,10 @@ export const OFF_M = 300, HIDE_IN_S = 900, HIDE_OUT_S = 300, HOURS_PAD_S = 1800,
 export function offRouteStep(tracks, buses, {shapes, service, alerts, routes, nowS, feedTs}): {tracks, hidden: vehicleId[]}   // pure; tracks = {} at start, kept by the caller between polls (data/live.js), never modified
 export function dropHidden(buses, trips, hidden): {buses, trips}   // trip updates matched by vehicle id only (shared trip ids)
 export function closestOnLine(lines, lat, lon): {d, lat, lon}|null; inListedHours(service, rid, t, padS?): boolean|null; detourAlert(alerts, routes, rid, t): boolean
+// core/idle.js (2026-11-06, owner): buses idle and not in service are hidden (section "Idle buses that are not in service")
+export const STILL_M = 80, IDLE_S = 1800, PARKED_S = 5400, LINGER_S = 180, PAST_PAD_S = 3600, FUTURE_S = 120, GAP_S = 600, SPOT_R = 120
+export function idleStep(tracks, buses, {trips, service, idle, nowS, feedTs}): {tracks, hidden: vehicleId[], why: {id: 'parked'|'idle'|'past'|'linger'}}   // pure; tracks kept by data/live.js
+export function lingerAt(idle, service, rid, lat, lon, t): entry|null; predictsAhead(trips, id, t): boolean; serviceClock(t): {min, iso, day, group}; hoursKey(service, rid, iso, day): string|null
 ```
 ```js
 // core/arrivals.js  (pure, takes state slices)
@@ -729,6 +733,52 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   `experiments/routeknower/E27-scripts/make_golden.py`, answers from `web/tests/offroute-golden.html` in headless Edge).
 - Experimental build: port `web/js/core/offroute.js` as is, the `data/live.js` lines that call it, `web/tests/core-offroute.js`
   + the fixture; sw cache bump.
+
+## Idle buses that are not in service (2026-11-06, owner: buses parked "in front of Regenstein library" at 11:50 still showed "as traveling buses"; "avoid showing buses that are not active yet are idle", and "the app doesn't suggest these trips")
+- Measured first (RouteKnower.md E28, `experiments/routeknower/E28-scripts/`, labeled data `data/labeled/end_of_service/`):
+  27 days of archived raw polls (Oct 10 to Nov 5, 7,982 dwell episodes: a bus within 80 m of where it stopped for 3 min
+  or more), each labeled from what the bus did next (layover 6,756, break 504, end_of_shift 448, garage_return 94,
+  parked_never_served 180). The owner's 11:50 PM buses were the NightRide buses at the Reynolds Club stop on 57th Street
+  beside Regenstein (North 4328, East 4325, Central 4313), South at Burton-Judson and two Apostolic/Drexel buses at
+  Goldblatt: every night their last layover before midnight looks exactly like the ones every 30 min before it (same
+  spot, same Passio predictions for the next trip), then they drive to the garage and the feed drops them at about
+  12:05 AM (DC-023 item 5). Passio keeps predicting parked buses (113 of 116 Downtown Campus Connector shift ends), so
+  predictions alone cannot tell; normal layovers last up to about 25 min (p99), some without any prediction.
+- `core/idle.js` (pure; tests `web/tests/core-idle.js`, real polls `web/tests/fixtures/idle_golden.json` from
+  `experiments/routeknower/E28-scripts/make_golden.py`): STILL = the bus's reports stay within `STILL_M` (80 m) of its
+  first report there (parked GPS jitter is up to about 16 m); the clock restarts farther away, on a route change, or after
+  `GAP_S` (10 min) without a report. A still bus is HIDDEN when: PARKED still `PARKED_S` (90 min) whatever Passio
+  predicts; IDLE still `IDLE_S` (30 min) with no Passio prediction `FUTURE_S` (2 min) or more after its report; PAST still
+  `LINGER_S` (3 min) and more than `PAST_PAD_S` (60 min) outside its route's listed hours (core/offroute.js
+  inListedHours); LINGER still `LINGER_S` at a learned linger spot of its route after that spot's time
+  (`web/data/idle.json`, 11 route + spot cutoffs: the latest time a still bus of that route there ever served again, +
+  2 min, kept only with at least 3 later shift ends; e.g. North at Reynolds Club from 23:33 on weekdays, Apostolic/
+  Drexel at Goldblatt from 23:53), used only while today's listed hours of the route equal the ones it was learned
+  under (`hours`) and before `valid_until` (45 days after the last learned day), so a new timetable switches it off.
+  Clocks and the time of day run on the buses' own report times. A hidden bus shows again at once when it moves more
+  than 80 m (or, for IDLE, gets a time ahead). Nothing in the UI claims a shift ended: the bus is just not shown.
+- Applied in `data/live.js` next to core/offroute.js (`idleStep` once per vehicle poll on the operating buses, clocks in
+  `idleTracks`), and `dropHidden` takes the hidden buses and their trip updates out of the store, so the map, route
+  pages, arrivals, counts, bus alerts, Directions, Nearby and the trip view agree. `data/static.js` loads idle.json
+  (optional, cleaned; a missing file only switches LINGER off). Planner (`core/planner.js`, recommendations): the
+  headway estimate (cycle / buses / 2, shown "est.") is used only while the route is inside its listed hours when the
+  rider reaches the stop (`data.service`); past them a route is offered only for its own live times.
+- Numbers (27 days, replayed poll by poll, `idle_rules.py`): 1,799 bus-min hidden (67 a day): breaks 748, end_of_shift
+  532, parked_never_served 485, layovers 25 (the still clock spanning two short waits), moving 10. Near-misses: 146.8
+  bus-min hidden in the 10 min before the bus served again, all from IDLE (the last minutes of breaks of 30+ min with
+  no Passio time); 4.9 bus-min within 2 min of an arrival away from where the bus stood. By part: LINGER 465 bus-min, 0
+  near-misses (cutoffs learned on Oct 10 to 28 and tested on Oct 29 to Nov 5: 134 bus-min, 0 near-misses); PAST 83, 0;
+  PARKED 553, 6.7; IDLE 698, 140. Nov 5 (real polls through the JavaScript): South 4538 hidden from 23:49:46, North 4328
+  from 23:50:16, Apostolic/Drexel 4318 23:53:10, Central 4313 23:53:56, Apostolic/Drexel 12645 23:58:06; their 23:15 to
+  23:30 layovers never; East 4325 never: the last East bus leaves Reynolds Club along its route and logs the first
+  campus stops of the midnight trip (Max Palevsky, Ratner) before it turns off, and on 2 of 27 nights it went on past
+  campus, so a rider could board it and no East weekday cutoff was learned. Shown again from 23:57 as they drove off (moving), until the feed
+  dropped them at 12:05 AM.
+- iOS: Kit `Idle.swift` (same rules and numbers, `IdleData`), `StaticLoader` loads idle.json (`StaticData.idle`, also
+  refreshed by the daily schedule check), `LiveState.applying` (`idleTracks`, `idleHidden`), `PlannerData.service`;
+  `IdleTests` incl. the web's answers on the real polls (`Fixtures/idle_golden.json` = `web/tests/fixtures/idle_golden.json`).
+- Refresh the learned cutoffs (monthly, or after a timetable change): `fetch.py` then `endofservice.py --cache` then
+  `idle_rules.py --write-idle web/data/idle.json` (RouteKnower.md E28 has the commands); sw cache bump.
 
 ## Minutes to every station on the Current trip (2026-10-20, owner: "the distance in minutes away is shown on the right side of the station name")
 - Passio splits one bus's predictions over its trip updates (the trip it is on, often 1 to 4 stops left, and its next trip), so
