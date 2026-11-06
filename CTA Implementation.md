@@ -142,3 +142,80 @@ Christmas. The GTFS already encodes this (Thanksgiving 2026 uses Sunday trips), 
 - Attribution is optional ("the option, but not the obligation, to credit CTA"). We should credit anyway, in the
   words CTA suggests: "Data provided by CTA", plus "Straight Bussing is not made or endorsed by the CTA."
 - Official 'L' line colors may be used; there are no official bus route colors to borrow.
+
+## 4. Architecture options and trade-offs
+
+The app is a static site with no build step and no server (ship checklist 7), and the iPhone app is a native port of
+the same logic. CTA data needs two things the app does not have for Passio: a conversion step for a schedule file the
+browser cannot download (the repo already has one, as a GitHub Action) and a place to keep a secret key for live data
+(new).
+
+### 4.1 Schedule (stops, shapes, timetables)
+
+| Option | How | Verdict |
+|---|---|---|
+| A. Build-time conversion | A daily GitHub Action runs `tools/build_cta.py`: download the zip (skip when `Last-Modified` / `ETag` did not change), stream `stop_times.txt` once, keep only the chosen routes, write small `web/data/cta/*.json`, commit, deploy with Pages. Same pattern as `tools/build_gtfs.py` and `pages.yml` | **Recommended.** No key, no server, works offline (service worker precache), the iPhone app gets the same files |
+| B. Bus Tracker `getpatterns` / `getstops` at build time | Same Action, key stored as a repository secret | Gives shapes and stops but no timetable, and spends key quota. Use GTFS instead |
+| C. Browser downloads the zip | | Impossible: no CORS, 69 MB |
+
+Keep the output small, because Hyde Park routes are long (route 4 runs from downtown to 115th Street, 122 stops). Store
+each distinct stop pattern once (stop ids plus minutes from the first stop) and each trip as `[pattern, start minute,
+service]`. Rough size for the 14 routes: well under 200 KB uncompressed, loaded after first paint, never blocking it
+(ship checklist 3).
+
+### 4.2 Live buses, predictions and alerts
+
+| Option | How | Verdict |
+|---|---|---|
+| A. Direct calls from the page or the app | The page fetches `ctabustracker.com/bustime/api/v3/...?key=...` itself | **Not possible.** No CORS header, so browsers refuse to read the answer. The key would be public (anyone could copy it from the site or the app binary, burn the daily quota or get it revoked). Each rider would spend quota on their own (section 6.9) |
+| B. Scheduled GitHub Action snapshot | An Action polls CTA and commits a JSON file that Pages serves | **Too slow for live.** Cron runs at most every 5 minutes and GitHub often fires it late (this repo saw 4 to 5 hour gaps, DC-013); Pages adds a deploy delay. Times would be minutes old and the stale pill would show "late" or "old" most of the time. Fine for the schedule, not for buses |
+| C. Tiny proxy that holds the key | A Cloudflare Worker (or similar) with the key as a secret. One public read-only endpoint, for example `GET /cta/v1/live.json`, answers every rider from a 25 s cache; on a miss it makes the CTA calls for the whole Hyde Park set and converts them | **Recommended.** Key stays secret, CTA quota no longer grows with riders, the Worker adds the CORS header for the Pages origin, and the iPhone app uses the same URL |
+| D. CTA's GTFS-realtime (beta) behind the same proxy | The Worker reads `VehiclePositions.json` and `TripUpdates.json` (whole city) and keeps our routes | **Later.** Fewer calls (2 per refresh) and already GTFS-realtime, but it is a beta, its bus coverage and key type are not confirmed, and filtering a whole-city file every 30 s may need more than the free plan's 10 ms of CPU per request. Design C's output so the source behind it can switch to D without an app change |
+
+**Proxy contract (option C).** One JSON answer with the three feeds in the GTFS-realtime JSON shape `data/live.js`
+already parses for Passio (`{vehiclePositions, tripUpdates, serviceAlerts}`, each `{header:{timestamp}, entity:[...]}`),
+plus `{source:'cta-bustracker-v3', generated, ok, errors:[]}`. Every id is namespaced: route `cta:171`, stop
+`cta:14020`, vehicle `cta:8123`, trip `cta:<tatripid>`. Bus Tracker fields map as: `vid` to the vehicle id,
+`lat` / `lon` / `hdg` to the position, `tmstmp` to the vehicle timestamp (Chicago local time converted to unix seconds,
+or ask with `unixTime=true`), `prdtm` to `stop_time_update.arrival.time`, `dyn` 1 (canceled) and 4 (drop-off only) to a
+flag the app shows, `dyn` 16 and 17 (invalidated) dropped. Alerts keep CTA's text verbatim and get
+`informed_entity.route_id = cta:<rt>`. The request carries nothing from the rider: no location, no stop, no route
+choice. Every rider gets the same answer and the filtering happens on the device.
+
+**Worker behavior.**
+- Cache the converted answer for 25 s (CTA refreshes about every 30 s); send `Cache-Control: max-age=15`.
+- On a CTA failure keep serving the last good answer with `ok:false` and its real `generated` time, so the app's stale
+  rules flag it. Never put a fresh timestamp on old data.
+- Daily budget guard: count CTA calls; above 80,000 in a day stop calling CTA and answer `ok:false, errors:['budget']`.
+- `Access-Control-Allow-Origin` only for `https://blobberus.github.io` (the live site and the experimental test site
+  share that origin); no cookies; GET only.
+- No request logging (Cloudflare Workers Logs off), so no IP address or request time is kept (section 5.8).
+- Fetch alerts every 2 minutes, not on every refresh.
+
+**Other hosts.** Deno Deploy, Netlify or Vercel functions, or a small VPS work the same way. A Google Apps Script web
+app (the owner already runs one for usage statistics) could proxy too, but its URL Fetch quota and slow cold answers
+make it a poor fit for a 30 s live feed. Cloudflare's free plan (100,000 Worker requests a day, cached answers
+included) covers about 800 riders a day at 10 minutes each (section 6.9); the paid plan ($5 a month, 10 million
+requests a month) covers far more. Deploying a Worker normally uses `wrangler` (Node), which this PC does not have:
+paste the script in the Cloudflare dashboard, or deploy from a GitHub Action with `cloudflare/wrangler-action`.
+
+### 4.3 The iPhone app
+
+- **Live:** the same proxy URL. `FeedClient` gets a second source (CTA) beside Passio, with the same ephemeral session
+  and no background polling. The key is never in the app: strings in an app binary can be extracted, and all installs
+  would share one daily quota.
+- **Schedule:** the bundled `web/data` copy plus the existing daily `ScheduleUpdate` check, with `cta/*.json` added to
+  its file list and its validity checks (ids match across files, stops near Hyde Park).
+- Apple's transit data in MapKit has no public API for live CTA vehicles or predictions, so it cannot replace the
+  proxy.
+
+### 4.4 Recommended shape
+
+```
+CTA GTFS zip --(daily Action: tools/build_cta.py)--> web/data/cta/*.json --(Pages)--> website, iPhone app (bundled + daily check)
+CTA Bus Tracker v3 + Alerts --(Worker: key secret, 25 s cache, budget guard)--> /cta/v1/live.json --> website (CORS), iPhone app
+Passio feeds --(unchanged)--> website, iPhone app
+```
+
+The two live sources stay separate end to end: separate fetch, separate stale state, separate failure. A CTA outage
+must never mark the shuttles stale, and a healthy shuttle feed must never hide a stale CTA feed.
