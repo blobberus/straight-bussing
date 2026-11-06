@@ -401,3 +401,87 @@ refresh then behaves like today's daily Passio refresh.
   shuttles, never mixed with live data.
 - **iOS:** Kit tests mirroring the above, in CI.
 - **Before every ship:** headless Edge screenshots in light and dark, the full browser suite, `test_precache.py`.
+
+## 6. Terms, App Store and rate limits
+
+### 6.1 CTA terms and attribution checklist (tick before CTA ships)
+
+- [ ] The key is approved on the owner's account, the owner accepted the Developer License Agreement, and the email
+      and a PDF of the terms are saved.
+- [ ] "Data provided by CTA" in Settings > Credits and in the Routes "CTA buses" group footer.
+- [ ] "Straight Bussing is not made or endorsed by the CTA." in About, `privacy.html` and the App Store description.
+- [ ] No CTA logo (current or past), no Bus Tracker icon, no CTA map or brochure copied into the app (link to
+      transitchicago.com instead). "CTA" appears only as a plain-text tag ("CTA 171"), never first in any name, never
+      next to "official" or "authorized".
+- [ ] CTA data kept current: the daily schedule build, the 25 s live cache, and no CTA schedule times past
+      `calendar_end`.
+- [ ] If CTA ends the license: remove `web/data/cta/`, disable the Worker, ship an update without CTA (the shuttles
+      keep working because nothing depends on CTA).
+- [ ] The app stays free; CTA data is never sold or offered apart from the app.
+
+### 6.2 App Store notes
+
+- **Guideline 5.2.2** (third-party services): an app that shows content from a third-party service must be allowed to
+  by that service's terms, and must show the authorization on request. Put the CTA license acceptance and the key
+  approval in the App Review notes, next to the existing written permission from UChicago Transportation / Passio.
+- **Guideline 5.2.1** (third-party trademarks): no CTA logos or anything that suggests CTA endorses the app. Keep
+  "CTA" out of the app name and subtitle; the description may say "Also shows CTA buses near campus. Data provided by
+  CTA. Straight Bussing is not made or endorsed by the CTA."
+- **Accurate metadata (2.3):** show CTA in screenshots only from the build that has it.
+- **Reviewers may open the app at night or while the proxy is down.** The CTA rows must then read clearly as
+  unavailable or scheduled, and the shuttles must work as before. Mention in the review notes that demo mode simulates
+  CTA buses too (once it does).
+- **App Privacy label:** unchanged ("Data Not Collected") as long as the proxy keeps nothing; the privacy policy page
+  must name the proxy (section 5.8).
+- When CTA ships, add these points to the review notes in `docs/APPSTORE-SUBMIT.md`.
+
+### 6.3 Rate-limit budget
+
+Two separate budgets: **CTA calls** (100,000 a day per key) and **Worker requests** (100,000 a day on Cloudflare's
+free plan, cached answers included).
+
+**CTA calls through the proxy do not grow with riders.** Worst case: all 14 routes, service around the clock, a refresh
+every 25 s (3,456 refreshes a day):
+
+| CTA call | Calls per refresh | Calls a day (worst case) |
+|---|---|---|
+| `getvehicles` (14 routes, 10 per call) | 2 | 6,912 |
+| `getpredictions` by vehicle (up to 60 buses near Hyde Park, 10 per call) | up to 6 | up to 20,736 |
+| `getdetours` / `getpatterns` (every 10 minutes) | about 2 per 10 min | about 288 |
+| Customer Alerts API (every 2 minutes) | no key, not counted | 0 |
+| **Total** | | **about 28,000 (28% of the key)** |
+
+Without a single shared cache (section 5.3) each Cloudflare location refreshes on its own; Chicago riders mostly reach
+one or two, so the worst case is about 56,000. Phase 1 (171, 172, 192; 3 calls per refresh, 6 AM to 8 PM) needs about
+6,000 calls a day. Real use is lower still: no rider in 25 s means no call, and most routes do not run all night.
+CTA's own limit answer ("Transaction limit for current day has been exceeded") is reported as `ok:false` and the app
+shows CTA times as unavailable.
+
+**Why riders must not call CTA themselves** (besides the public key and the missing CORS header):
+calls a day = riders x minutes open x polls a minute x calls a poll.
+
+| Riders a day | Minutes open | Polling | Calls a poll | CTA calls a day |
+|---|---|---|---|---|
+| 300 | 10 | every 30 s (2 a minute) | 8 | 48,000 |
+| 300 | 10 | every 10 s, like the Passio poll (6 a minute) | 8 | 144,000 (over the limit) |
+
+At 10 s polling the key would run out at about 210 riders a day.
+
+**Worker requests do grow with riders.** The app polls the proxy every 30 s while it is open and visible (hidden tabs
+pause; the iPhone app polls only in the foreground): 20 requests per 10-minute visit, so the free plan's 100,000 a day
+covers about 5,000 such visits. Past that, the paid plan ($5 a month, 10 million requests a month, about 330,000 a day)
+covers far more. A Cloudflare rate-limiting rule per IP address (check what the plan includes) keeps one copied
+script from using up the budget.
+
+## 7. Phased rollout
+
+Every phase: experimental repo first, owner review there, then the live repo with the ship checklist ticked, the
+service worker cache name bumped, and iOS CI green.
+
+| Phase | What ships | Needs from the owner | Done when |
+|---|---|---|---|
+| **0. Schedule only** | `tools/build_cta.py` + daily Action; 171, 172, 192 on the map (square stops, own colors), a "CTA buses" group in Routes, route pages with Hours & service and scheduled times labeled "CTA schedule" and "est.", Lines by Time. No bus markers, no live times, no proxy, no new party in the privacy page (files come from Pages) | Nothing (no key needed) | Build tests and browser suite green, headless shots light + dark, schedule stops at `calendar_end` |
+| **1. Live 171 and 172 (and 192)** | The proxy, `data/cta.js`, live CTA buses and predictions, CTA staleness on its own, canceled / drop-off-only labels, CTA alerts verbatim, privacy page + About + Credits updated in the same release, App Review notes | Key, terms, Cloudflare account, the default shown/hidden choice | A week on the experimental site with the proxy's health page showing calls well under budget and no stale data shown as live |
+| **2. All Hyde Park routes** | The rest of section 2: 55, 4, X4, 6, 2, 28, 15, 10, 59, then 47 and 63. Long routes drawn thin at low zoom (or clipped to the area, owner choice); performance check: first paint still under 2 s on a phone | Route list approval | First paint and planner timing unchanged within noise; map readable at the default zoom |
+| **3. Planner** | CTA legs in Directions, shuttle to CTA transfers, Current trip and trip alerts on CTA legs, iPhone Live Activity for CTA legs; decide whether CTA widens the 800 m coverage note | Coverage decision | Planner tests with mixed trips; every CTA number labeled with its source and "est." |
+| Later | CTA's GTFS-realtime (beta) as the proxy's source; Metra Electric (separate key and terms); logging CTA arrivals for learning, only if the owner asks | | |
