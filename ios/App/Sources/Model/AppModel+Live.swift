@@ -280,7 +280,7 @@ extension AppModel {
 
     var plannerData: PlannerData {
         PlannerData(stops: staticData.stops, routeStops: staticData.routeStops, routeOrder: staticData.routeStopIds,
-                    trips: liveState.trips, buses: liveState.buses)
+                    trips: liveState.trips, buses: liveState.buses, service: staticData.service)
     }
 
     /// Open Directions (optionally to a destination) and plan. Returns the planning task (demo screens await it).

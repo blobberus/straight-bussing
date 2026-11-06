@@ -8,7 +8,8 @@ import Foundation
 ///    time; only walks under 1 m get no step.
 ///  - ride: same-trip live prediction, else the predictor, else path distance at 18 km/h.
 ///  - wait: next live arrival at the board stop after you WALK there (15 s grace), else headway estimate
-///    (cycle minutes / buses running / 2, clamped to [1, 30]); route skipped if neither.
+///    (cycle minutes / buses running / 2, clamped to [1, 30]) only while the route is inside its listed hours when
+///    you reach the stop (`PlannerData.service`; owner 2026-11-06, RouteKnower E28); route skipped if neither.
 ///  - direct trips contribute, per route, the best (board, alight) pair for each ranking criterion.
 ///  - ranked by `Rank` (least walking > earliest arrival > shortest wait > criteria met); max 4.
 public enum Planner {
@@ -65,6 +66,7 @@ public enum Planner {
         let stops: [String: Stop]
         let over: [String: Double]
         let predict: RidePredictor?
+        let service: ServiceData?
         var live: [String: [(t: Double, tu: TripUpdate)]] = [:]
         var nBuses: [String: Int] = [:]
         /// Keyed by route + first and last path index: `pathIdx` makes the path from those alone.
@@ -75,6 +77,7 @@ public enum Planner {
             stops = data.stops
             over = walkMins
             self.predict = predict
+            service = data.service
             for tu in data.trips {
                 guard let rid = tu.trip.routeId else { continue }
                 for u in tu.stopTimeUpdates {
@@ -128,6 +131,7 @@ public enum Planner {
                 return Wait(min: max(0, (L.t - readyT) / 60), live: true, t: L.t, tu: L.tu)
             }
             guard let n = nBuses[rid], n > 0 else { return nil }
+            if let service, Schedule.isScheduledNow(service, rid, readyT) == false { return nil }   // past its listed hours: live times only
             let min = Swift.min(Planner.headwayCap, Swift.max(1, cycleMin(rid, seq) / Double(n) / 2))
             return Wait(min: min, live: false, t: readyT + min * 60, tu: nil)
         }

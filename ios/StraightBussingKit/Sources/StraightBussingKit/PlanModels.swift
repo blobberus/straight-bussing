@@ -140,10 +140,12 @@ public struct PlannerData: Sendable {
     public var routeOrder: [String]
     public var trips: [TripUpdate]
     public var buses: [VehiclePosition]
+    /// Listed hours: past them a route is offered only for its own live times (no headway estimate); nil = no check.
+    public var service: ServiceData?
     public init(stops: [String: Stop], routeStops: [String: [String]], routeOrder: [String]? = nil,
-                trips: [TripUpdate] = [], buses: [VehiclePosition] = []) {
+                trips: [TripUpdate] = [], buses: [VehiclePosition] = [], service: ServiceData? = nil) {
         self.stops = stops; self.routeStops = routeStops
         self.routeOrder = routeOrder ?? JS.keyOrder(routeStops.keys)
-        self.trips = trips; self.buses = buses
+        self.trips = trips; self.buses = buses; self.service = service
     }
 }
