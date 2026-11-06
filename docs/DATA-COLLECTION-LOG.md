@@ -94,11 +94,51 @@ Nov 1). Compared with the week before (Oct 26 to 30). Scripts and downloads stay
     but Passio's predictions stayed on its first two trips (501621, 501625) all evening; 80 of its 126 arrivals are `gps`
     rows (South 43%, normally 1 to 6%).
 - Impact: the arrivals themselves were logged through the GPS sweep (4319: 69 + 84 rows, 4317: 146, 4326: 80; daily
-  totals of those lines stayed in their usual range), but they carry no Passio prediction, so they drop out of the scoring sample; for riders, those buses were on the map with no or stale
-  arrival times (4317 for 7 hours). Nothing in the collector to fix; the week before had similar single-bus episodes
-  (South's 4314 / 4320 in the DC-022 watch note), so this is Passio's normal noise, larger on these two days.
+  totals of those lines stayed in their usual range), but they carry no Passio prediction, so they drop out of the
+  scoring sample; for riders, those buses were on the map with no or stale arrival times (4317 for 7 hours). Nothing in
+  the collector to fix; the week before had similar single-bus episodes (South's 4314 / 4320 in the DC-022 watch note),
+  so this is Passio's normal noise, larger on these two days.
 - Follow-up: recheck the `gps` share at the next checkup; if one bus keeps this up for days, tell the owner (it is the
   case where the app should say "no live times for this bus" rather than show a stale one).
+
+**5. Buses parked at Regenstein Library around 11:50 (owner's report, 2026-11-06; facts from the raw polls).**
+The owner saw buses that were not operating, all in front of Regenstein Library, drawn on the map as moving buses, at
+about 11:50. What the feed held (positions every 10 s; the owner's point 41.7924, -87.5999):
+- **11:50 AM Thu Nov 5: no record.** It falls in the collection gap (item 1). In the polls just before (9:30 to 10:39
+  AM) and after (12:39 to 2 PM), and at 11 AM to 1 PM on Nov 2, 3 and 4, no bus stood within 300 m of that point for 4
+  minutes or more (the morning lines' buses that lingered after their routes ended stood at Rockefeller Chapel and
+  Goldblatt Pavilion, 600 m away).
+- **11:50 PM Thu Nov 5: yes, three NightRide buses.** North **4328**, Central **4313** and East **4325** stood still
+  together at the **Reynolds Club** stop (57th St and University Ave; their shared terminal, 11 to 61 m from the stop,
+  about 200 m from the owner's point and 150 m from the Regenstein Library (N) stop): 4328 from 11:48 to 11:57 PM,
+  4313 from 11:51 to 11:57, 4325 from 11:53 to 11:58, so all three from 11:53 to 11:57. Speed 0 to 0.2 m/s (or blank),
+  but their reports stayed fresh (2 to 14 s old) and the GPS position moved up to 5 m from poll to poll (4328 within 16
+  m of one spot), which an animated map turns into small moves. South **4538** did the same at its own terminal (Burton-Judson Courts, 11:46 to 11:57 PM),
+  Apostolic/Drexel **4318** and **12645** at Goldblatt Pavilion.
+- Were they operating? The operator's alert that evening said "All evening NightRide routes will be running every 30
+  minutes for the entire evening" (4:10 PM to 00:00:34), so the NightRide buses sat 5 to 13 min at Reynolds Club every
+  30 min all evening (North 9.0 / 10.4 / 9.2 / 13.0 / 8.7 min at 9:48, 10:16, 10:46, 11:15, 11:48 PM; East and Central
+  alike). The listed hours (Thursday timetable): North and East 4:00 PM to 4:29 AM, South to 4:25 AM, Central to
+  **11:14 PM**, Apostolic/Drexel to 12:55 AM. So at 11:50 PM North and East were in a scheduled layover, but **Central
+  4313 was 36 min past its last listed trip** (501746, 11:00 to 11:14 PM), still carrying that trip; Passio sent no
+  prediction for it from 11:51 to 11:57.
+- Trip updates: North and East had been given their next timetable trips, both listed 12:00 to 12:29 AM (North 501612,
+  East 501707; South 501653, 12:00 to 12:25 AM), and Passio kept predicting them: 212 updates for 4328 and 216 for 4325
+  while they stood there; the last ones were made at 11:58 to 11:59 PM for Reynolds Club at 12:16 and 12:22 AM.
+- None of those midnight trips ran. Between 11:58 PM and 12:03 AM 4313, 4325, 4328, 4538 and 4318 left campus westbound
+  on Garfield Blvd at 10 to 15 m/s with their trips still attached (12645 left the feed at Goldblatt at 12:00:50 AM),
+  Passio still showing predictions for them until 12:04 to 12:05 AM, and they dropped out of the feed one after another
+  between 12:04:56 and 12:05:46 AM, about 2 km west of campus near Garfield and Wabash.
+  The feed stayed empty until collection stopped (12:37 AM), although North, East and South are listed until 4:25 to
+  4:29 AM (the known empty overnight feed, ARCHITECTURE "2026-10-10").
+- Every night this week: Nov 2 (4317 North, 4325 Central at Reynolds Club / Regenstein Library 11:45 to 11:54 PM),
+  Nov 3 (4319 South, 4324 East, 4538 Central, 11:46 PM to midnight), Nov 4 (4327 Central at Ellis Ave & 57th St 11:52 to
+  11:58 PM; then 4322 East and 4327 Central stood at 41.8237, -87.6506, near the operator's garage, from 12:15 to 12:33
+  AM with fresh reports and Passio still sending predictions for their trips, 194 and 223 updates). A Central bus stayed
+  in the feed 36 to 72 min past 11:29 PM (15 min after its last listed trip) every night from Nov 2 to 5.
+- Not this checkup's job: the end-of-service analysis (where buses linger before they leave service) and the app
+  change are a separate workstream started 2026-11-06 (idle buses); the off-route rule (E27, `core/offroute.js`) does
+  not hide these buses because they stand on their own line.
 
 ### DC-022 Two false alarms on the health alerts' first day (fixed 2026-11-02)
 - Found in the 2026-11-02 checkup; both issues had opened and closed by themselves.
