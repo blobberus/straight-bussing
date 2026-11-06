@@ -5,9 +5,12 @@
  * route. The pure helpers (idOf, sig, networkSig, busSig, lineWeight, lineTapWidth, routeLabel, focusSet) do not touch
  * Leaflet, so this module can be imported without `L` for unit tests.
  * Lines stack by `order` (index 0 on top); focused routes always above unfocused ones. A bus is faded exactly when its
- * route is (core/visibility.js busFaded, owner 2026-11-04).
+ * route is (core/visibility.js busFaded, owner 2026-11-04). On the dark map every route color (lines, stop rings,
+ * chevrons, bus badges) is core/routecolor.js mapColor: a color under 3:1 against the land is drawn lighter in its own
+ * hue (owner 2026-11-06); setDark switches both layers.
  */
 import { safeColor, textOn } from '../core/esc.js';
+import { mapColor } from '../core/routecolor.js';
 import { bearing as geoBearing } from '../core/geo.js';
 import { createChevronLayer, orientedLines } from './chevrons.js';
 import { lineAt as pickLine, LINE_TAP_PX } from './geometry.js';
@@ -185,7 +188,8 @@ export function routeLabel(rid, routes) {
  * @param {L.Map} map
  * @param {{onStopTap:(id:string)=>void}} cb
  * lineAt(containerPoint) names the route line under a tap: the topmost one drawn (map/geometry.js lineAt).
- * @returns {{draw(o:object, dimAll?:boolean):boolean, restyle():void, chevrons():number, stopPoints():Array, lineAt(p:{x:number, y:number}):string|null}}
+ * setDark(on) recolors the lines, stop rings and chevrons in place for the theme (core/routecolor.js mapColor).
+ * @returns {{draw(o:object, dimAll?:boolean):boolean, restyle():void, setDark(on:boolean):void, chevrons():number, stopPoints():Array, lineAt(p:{x:number, y:number}):string|null}}
  */
 export function createNetworkLayer(map, cb) {
   const L = window.L;
@@ -193,6 +197,7 @@ export function createNetworkLayer(map, cb) {
   const stopsG = L.layerGroup();
   const chev = createChevronLayer(map);
   let last = '', polys = [], stopPts = [], hits = [], stopMks = [];   // hits: drawn route lines, bottom to top: {rid, ll, bounds}
+  let dark = false, chevIn = [];   // the theme (route colors: mapColor); the chevron routes in published colors
   const showStops = () => {
     const on = map.getZoom() >= 14;
     if (on && !map.hasLayer(stopsG)) stopsG.addTo(map);
@@ -212,18 +217,18 @@ export function createNetworkLayer(map, cb) {
       // network state: every line at 0.9; focused state: focused lines 2 px wider at full opacity, the others at 0.2
       // (spec 11.3); no outlines (owner 2026-11-04)
       const front = !!focus?.has(rid), dim = dimAll || (focus && !front), bonus = front && !dimAll ? FOCUS_EXTRA : 0;
-      const color = safeColor(routes[rid]?.color), pane = front ? 'sbFocusLines' : 'sbLines';
+      const base = safeColor(routes[rid]?.color), color = mapColor(base, dark), pane = front ? 'sbFocusLines' : 'sbLines';
       const segs = (shapes[rid] || []).filter((pts) => pts && pts.length >= 2);
       for (const pts of segs) {
         const line = L.polyline(pts, { pane, className: 'sb-route', color, weight: w + bonus,
           opacity: dim ? 0.2 : front ? 1 : 0.9, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(lines);
-        polys.push({ line, bonus });
+        polys.push({ line, bonus, base });
         hits.push({ rid, ll: pts, bounds: L.latLngBounds(pts), bonus });
       }
     }
     const chevRoutes = !dimAll && fronts.length && fronts.length <= 3 ? fronts : [];
-    chev.set(chevRoutes.map((rid) => ({ rid, color: routes[rid]?.color,
-      lines: orientedLines(shapes[rid], o.routeStops?.[rid], o.stops) })));
+    chevIn = chevRoutes.map((rid) => ({ rid, color: safeColor(routes[rid]?.color), lines: orientedLines(shapes[rid], o.routeStops?.[rid], o.stops) }));
+    chev.set(chevIn.map((c) => ({ ...c, color: mapColor(c.color, dark) })));
     // stops: served by a visible route (only focus routes when focused)
     for (const [id, st] of Object.entries(o.stops || {})) {
       const rs = (o.stopRoutes?.[id] || []).map(String).filter((r) => (focus ? focus.has(r) : !hidden.has(r)));
@@ -232,7 +237,8 @@ export function createNetworkLayer(map, cb) {
       const ll = [st.lat, st.lon];
       stopPts.push(ll);
       // a circle in the card color with a route-color stroke; a stop of several routes gets the neutral label2 stroke
-      stopMks.push(L.circleMarker(ll, { pane: 'sbStops', ...stopStyle(map.getZoom()), color: single ? safeColor(routes[rs[0]]?.color) : '#5c5c63',
+      const sbBase = single ? safeColor(routes[rs[0]]?.color) : '';   // a one-route stop's ring: the route color (setDark)
+      stopMks.push(L.circleMarker(ll, { pane: 'sbStops', ...stopStyle(map.getZoom()), color: single ? mapColor(sbBase, dark) : '#5c5c63', sbBase,
         className: single ? 'sb-stop' : 'sb-stop sb-stop-multi', opacity: dimAll ? 0.4 : 1, fillOpacity: dimAll ? 0.4 : 1, interactive: false }).addTo(stopsG));
       L.circleMarker(ll, { pane: 'sbStops', radius: 22, stroke: false, fillOpacity: 0, className: 'sb-halo', bubblingMouseEvents: false })
         .on('click', () => cb.onStopTap(id)).addTo(stopsG);
@@ -262,7 +268,18 @@ export function createNetworkLayer(map, cb) {
     const lines = hits.filter((h) => h.bounds.intersects(near)).map((h) => ({ rid: h.rid, px: h.ll.map(toPx), width }));
     return pickLine([p.x, p.y], lines);
   }
-  return { draw, restyle, chevrons: () => chev.count(), stopPoints: () => stopPts, lineAt };
+  /** The theme flipped: the lines, one-route stop rings and chevrons take that theme's route colors, in place. @param {boolean} on */
+  function setDark(on) {
+    if (!!on === dark) return;
+    dark = !!on;
+    for (const p of polys) { const c = mapColor(p.base, dark); if (p.line.options.color !== c) p.line.setStyle({ color: c }); }
+    for (const m of stopMks) {
+      const c = m.options.sbBase ? mapColor(m.options.sbBase, dark) : null;
+      if (c && m.options.color !== c) m.setStyle({ color: c });
+    }
+    if (chevIn.some((c) => mapColor(c.color, true) !== c.color)) chev.set(chevIn.map((c) => ({ ...c, color: mapColor(c.color, dark) })));
+  }
+  return { draw, restyle, setDark, chevrons: () => chev.count(), stopPoints: () => stopPts, lineAt };
 }
 
 const STALE_S = 60;
@@ -387,14 +404,16 @@ const easeInOut = (k) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
  * @param {{clock?:()=>number, frame?:(fn:Function)=>any, later?:(fn:Function, ms:number)=>any, cancel?:(id:any)=>void,
  *   reduce?:()=>boolean}} [opt] tests: a manual clock (ms), frame scheduler, timer and reduced-motion switch (defaults:
  *   performance.now, requestAnimationFrame, setTimeout / clearTimeout, the media query)
- * @returns {{draw(buses:Array, o:object):number, setYou(id):boolean, shown(id):[number,number]|null}}
- *   draw returns how many markers changed; shown = where a bus's badge is drawn now (tests)
+ * @returns {{draw(buses:Array, o:object):number, setYou(id):boolean, setDark(on:boolean):void, shown(id):[number,number]|null}}
+ *   draw returns how many markers changed; setDark recolors the badges in place for the theme (core/routecolor.js
+ *   mapColor); shown = where a bus's badge is drawn now (tests)
  */
 export function createBusLayer(map, cb, opt = {}) {
   const L = window.L;
   const group = L.layerGroup().addTo(map);
-  const markers = new Map(); // vehicle id -> {rid, color, label, mk, s, ll, disp, to, anim, vt, seen, rot}
+  const markers = new Map(); // vehicle id -> {rid, base, color, label, mk, s, ll, disp, to, anim, vt, seen, rot}
   let youId = null;          // the bus you ride (Current trip): ring + "You" pill on its marker
+  let dark = false;          // the theme: badges in mapColor(route color, dark)
   let zooming = false, raf = 0, timer = 0;
   const clock = opt.clock || (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
   const schedule = opt.frame || (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
@@ -577,7 +596,7 @@ export function createBusLayer(map, cb, opt = {}) {
       if (hidden.has(rid) && !focus?.has(rid)) continue;   // never a hidden route's bus; other routes in focus: faded
       const key = String(id);
       seen.add(key);
-      const color = safeColor(o.routes?.[rid]?.color), label = routeLabel(rid, o.routes);
+      const base = safeColor(o.routes?.[rid]?.color), color = mapColor(base, dark), label = routeLabel(rid, o.routes);
       let m = markers.get(key);
       const feed = v.position.bearing == null || v.position.bearing === '' ? NaN : +v.position.bearing;
       const brg = busHeading(feed, m && m.rid === rid ? m.ll : null, [lat, lon], m ? m.brg : NaN, (a, b) => map.distance(a, b));
@@ -600,7 +619,7 @@ export function createBusLayer(map, cb, opt = {}) {
         const info = { id: key, rid, label: v.vehicle?.label != null ? String(v.vehicle.label) : '' };
         mk.on('click', () => cb.onBusTap(info));
         mk.addTo(group);
-        m = { key, rid, color, label, name, num, sel: false, faded: false, mk, s: '', ll: [lat, lon], brg: NaN, disp: start, to: r0.to, anim: null, vt, seen: now, rot: NaN };
+        m = { key, rid, base, color, label, name, num, sel: false, faded: false, mk, s: '', ll: [lat, lon], brg: NaN, disp: start, to: r0.to, anim: null, vt, seen: now, rot: NaN };
         markers.set(key, m);
         if (key === youId) markYou(m, true);
         nameMarker(m);
@@ -645,5 +664,18 @@ export function createBusLayer(map, cb, opt = {}) {
     const p = m.mk.getLatLng();
     return [p.lat, p.lng];
   }
-  return { draw, setYou, shown };
+
+  /** The theme flipped: every badge (and its heading notch) takes that theme's route color, in place. @param {boolean} on */
+  function setDark(on) {
+    if (!!on === dark) return;
+    dark = !!on;
+    for (const m of markers.values()) {
+      const c = mapColor(m.base, dark);
+      if (c === m.color) continue;
+      m.color = c; m.s = '';   // the next draw compares against the new color
+      const el = m.mk.getElement()?.firstElementChild || m.mk.options.icon?.options?.html;   // the badge, drawn or not yet
+      if (el?.style) { el.style.setProperty('--c', c); el.style.setProperty('--t', textOn(c)); }
+    }
+  }
+  return { draw, setYou, setDark, shown };
 }
