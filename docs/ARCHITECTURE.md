@@ -196,6 +196,7 @@ export function alongShape(shapeLines, routeStopsList, board, alight, fallbackLa
 // non-loop. iOS: Kit Geometry.swift is a faithful port (golden test against this file's output).
 ```
 Layer groups must never be rebuilt when nothing changed (diff by a cheap signature) so polling doesn't flicker.
+During a zoom (a flight, a zoom animation, a pinch) a network redraw is held and drawn once at zoomend, and a fit / fly asked for during a zoom animation starts at its end; a flight cut by a drag still ends with zoomend + moveend (map.js `syncView`, "Lines stay on the roads through zooms").
 
 ## UI shell (D1) and views (D2)
 ```js
@@ -1174,6 +1175,40 @@ is part of `chromeH`, so the expanded sheet stops below it the same way.
   The badges there also carry a white 2 pt ring.
 - Tests: core-routecolor.js (golden, every real route, hue kept, routes kept apart), map-layers.js (lines, stop rings,
   chevrons, badges, plan legs, theme switch in place, dark launch), map-style.js (the palette link). sw `sb-v2-139`.
+
+## Lines stay on the roads through zooms (2026-11-06, owner: "When switching line views while zoomed in, the map sometimes glitches the routes to not be matched to the roads. Fix this.")
+- **Cause (Leaflet 1.9.4, measured in headless Edge).** Every line-view switch frames the map with a 0.6 s flight
+  (`fitTo` = flyToBounds, `flyTo`). A flight cut short by `map._stop()` ends with no `zoomend`: Leaflet's drag handler
+  calls `_stop()` when a finger or the mouse drags the map during the flight (setView and a new flight call it too).
+  The SVG renderers reproject their paths only on `zoomend` / `viewreset` but move their viewBox to the new zoom at
+  `moveend`, so the route lines, stops, chevrons and the plan stayed drawn at the scale of the zoom the flight started
+  from (zoomed in at 17 and cut at 15.6: 1,000 to 8,200 px off the roads) until the next zoom. The same cut left
+  maplibre-gl-leaflet in its zooming state (basemap sync paused), the bus layer's glides paused (no badge moved) and
+  `sb-zooming` on the map (building names hidden). Second, a network redraw during a flight or a wheel / double-tap zoom
+  animation (Back, Hide all, a custom route or Lines by Time cleared) projected the new lines at that frame's zoom
+  inside renderers still framed on the start: 700 to 5,000 px off for the rest of the animation. And a fit asked for
+  during a zoom animation ran on top of it (the animation's end jumps the view back mid-flight; a non-animated fit
+  was dropped).
+- **Fix (map/map.js).** `syncView(map)` (installed first by `createMap`) wraps `map._stop`: a zoom that started and
+  is cut (not a CSS zoom animation, which ends by itself) gets `zoomend` then `moveend` at the view where it stopped,
+  the way Leaflet ends a finished flight, so every layer settles there. `drawNetwork` (and the plan's dimming redraw)
+  goes through `drawNet`: while `midZoom()` (a zoom started and has already moved the view) the latest network is held
+  and drawn once at `zoomend`, against the final view; the lines drawn before stay, on the roads; `NET_HOLD_MS`
+  (1.5 s) caps the hold (a long pinch). A redraw at the first frame of a flight (opening a route: navigate, then fit)
+  is not held. `fitTo` / `flyTo` asked for during a zoom animation start when it has ended (`afterZoomAnim`, the
+  latest request wins). Line taps (`lineAt`) project the drawn lines at tap time, so they use the final geometry.
+- **Measured** (scratch matrix: open a route, Back, another route, line tap, custom route on / off, Hide all,
+  Show all, Show running, Lines by Time on / off, Directions preview, trip start / end; each during a flight, cut by a
+  drag, and during a wheel zoom, from zoom 17): after settling, every path within 1.4 px of the basemap (rounding;
+  before, the eight cut cases were 990 to 8,200 px off); during flights within 2 px of the map, during zoom
+  animations within 2.1 px of the basemap. Sheet drags never move the map.
+- iOS: the lines are MapKit `MapPolyline` content drawn by MapKit with the camera (and `lineHit` converts at tap time),
+  so the app has no equivalent; unchanged.
+- Tests: `web/tests/map-viewsync.js` (map.test.html): a fit cut by a synthetic drag ends with zoomend then moveend,
+  the held switch is drawn there, every path (lines, stops, chevrons) projected at the final zoom and drawn within
+  1.5 px of `latLngToContainerPoint`, a line tap names the line; switches during a flight are held and drawn once at
+  the end; the NET_HOLD_MS cap; buses glide again after a cut flight. Flights are stepped with Leaflet's own
+  `_moveStart` / `_move` (headless virtual time starves requestAnimationFrame). sw `sb-v2-141`.
 
 ## Redesign: layout and shell contracts (2026-11-03, docs/DESIGN-SPEC.md; owner brief "Straight Bussing New Version.txt")
 The navigation structure is unchanged (search bar with clock and gear, three sections in the bottom bar, sheet with two

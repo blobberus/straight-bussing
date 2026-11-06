@@ -27,6 +27,38 @@ const PANES = { sbLines: 390, sbFocusLines: 394, sbPlan: 402,
   sbLabels: 410, sbStops: 420, sbPlanStops: 425, sbHighlight: 430, sbSel: 440 };   // sbLabels: building names above the lines
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+/** A network redraw held during a zoom is drawn by this time at the latest (a long pinch), even mid-zoom. */
+export const NET_HOLD_MS = 1500;
+
+/**
+ * Keep the drawn paths on the map's view through every zoom (owner 2026-11-06: "When switching line views while zoomed
+ * in, the map sometimes glitches the routes to not be matched to the roads."). Leaflet 1.9.4 ends a flight (flyTo /
+ * flyToBounds: MapApi.fitTo / flyTo, run on every line-view switch) with zoomend + moveend, but a flight cut short by
+ * map._stop() ends with neither: Leaflet's drag handler calls _stop() when a finger or the mouse drags the map during
+ * the flight (setView and a new flight call it too). The SVG renderers then keep their paths (route lines, stops, the
+ * plan) projected at the zoom the flight started from (they reproject only on zoomend / viewreset, while their viewBox
+ * follows the new zoom at moveend), maplibre-gl-leaflet stays in its zooming state (basemap sync paused) and the bus
+ * layer keeps its glides paused, until the next zoom. So a cut flight is finished the way Leaflet finishes one: zoomend,
+ * then moveend, at the view where it stopped. A CSS zoom animation is not cut by _stop() and ends by itself.
+ * @param {L.Map} map
+ * @returns {{midZoom():boolean}} midZoom: a zoom (flight, zoom animation, pinch) has started and already moved the view.
+ *   A path added now would be projected at this frame's zoom inside renderers still framed on the zoom it started from
+ *   (off the roads until it ends), so callers hold their redraws until zoomend.
+ */
+export function syncView(map) {
+  let open = false, z0 = NaN, o0 = null;
+  map.on('zoomstart', () => { open = true; z0 = map.getZoom(); o0 = map.getPixelOrigin(); });
+  map.on('zoomend', () => { open = false; });
+  const stop = map._stop;
+  map._stop = function (...args) {
+    const cut = open && !this._animatingZoom;
+    const r = stop.apply(this, args);
+    if (cut && open) this.fire('zoomend').fire('moveend');
+    return r;
+  };
+  return { midZoom: () => open && (map.getZoom() !== z0 || !o0 || !map.getPixelOrigin().equals(o0)) };
+}
+
 function hub() {
   const fns = new Set();
   return { on(fn) { if (typeof fn === 'function') fns.add(fn); return () => fns.delete(fn); },
@@ -68,6 +100,7 @@ export function createMap(elId, opts = {}) {
   const map = L.map(el, { zoomControl: false, attributionControl: false, minZoom: 11, maxZoom: 18, zoomSnap: 0.25,
     zoomDelta: 0.5, wheelPxPerZoomLevel: 90, tapTolerance: 15 }).setView(CAMPUS, 15);
   for (const [name, z] of Object.entries(PANES)) map.createPane(name).style.zIndex = String(z);
+  const view = syncView(map);   // first zoom listeners: a cut flight still ends with zoomend + moveend
 
   let dark = !!(opts && opts.dark), inset = 0, progUntil = 0, lastNet = null, planActive = false, planRids = null, lastBuses = null;
   const stopTap = hub(), busTap = hub(), userMove = hub(), mapTap = hub(), lineTap = hub();
@@ -84,6 +117,7 @@ export function createMap(elId, opts = {}) {
   let selSig = '', selStop = null, hlSig = '', planS = null, planPts = [], hlPick = null, me = null, meAcc = null;
   let planIn = null;   // the drawn plan's [option, ctx] (setTheme redraws it in the new route colors)
   let you = null, youMk = null, youS = '', labS = '';
+  let netWait = false, netTimer = 0;   // a network redraw held until the zoom in progress ends (drawNet)
   let head = null, headTurn = NaN, headS = '';   // heading cone: {deg, spread}; the rotation shown (unwrapped); last written
 
   /**
@@ -153,12 +187,48 @@ export function createMap(elId, opts = {}) {
     m.addTo(selG);
   }
 
+  /** Draw the network (lastNet) now. @returns {boolean} redrawn */
+  function drawNow() {
+    netWait = false; clearTimeout(netTimer);
+    if (!lastNet || !network.draw(lastNet, planActive)) return false;
+    landmarks.setStops(network.stopPoints());
+    return true;
+  }
+  /**
+   * Draw the network, or hold it while a zoom is under way (view.midZoom: switching lines during a fit's flight, a
+   * zoom animation or a pinch) and draw the latest state once at zoomend, against the final view; until then the lines
+   * drawn before stay, on the roads. NET_HOLD_MS caps the hold.
+   */
+  function drawNet() {
+    if (!view.midZoom()) return void drawNow();
+    if (netWait) return;
+    netWait = true;
+    netTimer = setTimeout(drawNow, NET_HOLD_MS);
+  }
+
+  /**
+   * A fit or fly asked for while Leaflet animates a zoom (the wheel, a double tap, a pinch settling: 0.25 s) starts at
+   * its zoomend. Leaflet would run the flight on top of the zoom animation (whose end then jumps the view back to the
+   * zoom's target mid-flight, lines and basemap apart for a moment) and drops a non-animated setView outright. The
+   * latest request wins. @returns {boolean} held
+   */
+  let camWait = null;
+  function afterZoomAnim(run) {
+    if (!map._animatingZoom) return false;
+    const first = !camWait;
+    camWait = run;
+    // after the zoom's whole ending (zoomend, then moveend: every layer settled), not in the middle of it
+    if (first) map.once('zoomend', () => queueMicrotask(() => { const f = camWait; camWait = null; if (f) f(); }));
+    return true;
+  }
+
   // glide off while zooming (and two frames after, so the zoom jump never transitions)
   map.on('zoomstart', () => {
     el.classList.add('sb-zooming');
     if (performance.now() > progUntil) userMove.emit(center());
   });
   map.on('zoomend', () => {
+    if (netWait) drawNow();   // a redraw held during the zoom: once, at the final zoom
     network.restyle();
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('sb-zooming')));
   });
@@ -211,14 +281,15 @@ export function createMap(elId, opts = {}) {
      * focus null/[] = no focus; [rid...] = those routes drawn last at full strength, others at .25, with
      * direction-of-travel chevrons when 1-3 routes are focused. order = draw priority, index 0 on top
      * (core/visibility.js drawOrder); focused routes always stack above unfocused ones.
-     * `dark` (optional) is forwarded to setTheme. While a plan is drawn every route dims to .25.
+     * `dark` (optional) is forwarded to setTheme. While a plan is drawn every route dims to .25. During a zoom (a fit's
+     * flight, a zoom animation, a pinch) the redraw is held and drawn once at zoomend (drawNet), so lines stay on the roads.
      * @param {{routes, shapes, routeStops, stopRoutes, stops, hidden?:string[], focus?:string[]|null, order?:string[], dark?:boolean}} o
      */
     drawNetwork(o) {
       if (!o) return;
       if (typeof o.dark === 'boolean') api.setTheme(o.dark); // same as calling setTheme(dark)
       lastNet = o;
-      if (network.draw(o, planActive)) landmarks.setStops(network.stopPoints());
+      drawNet();
     },
 
     /**
@@ -350,7 +421,7 @@ export function createMap(elId, opts = {}) {
       planG.clearLayers();
       planPts = option ? renderPlan(L, planG, option, { ...ctx, dark }) : [];
       const active = !!option;
-      if (active !== planActive) { planActive = active; favs.setDim(active); if (lastNet) network.draw(lastNet, planActive); }
+      if (active !== planActive) { planActive = active; favs.setDim(active); drawNet(); }
       const rids = active ? planRoutes(option) : null;
       if (sig(rids || ['-']) !== sig(planRids || ['-'])) {
         planRids = rids;
@@ -361,11 +432,12 @@ export function createMap(elId, opts = {}) {
     },
 
     /**
-     * Frame points or bounds in the visible area above the sheet.
+     * Frame points or bounds in the visible area above the sheet (asked for during a zoom animation: at its end).
      * @param {Array|L.LatLngBounds|{lat, lon}} target
      * @param {{maxZoom?:number, animate?:boolean}} [o]
      */
     fitTo(target, o = {}) {
+      if (afterZoomAnim(() => api.fitTo(target, o))) return;
       let b;
       if (target instanceof L.LatLngBounds) b = target;
       else {
@@ -392,7 +464,7 @@ export function createMap(elId, opts = {}) {
      */
     flyTo(pt, zoom, o = {}) {
       const ll = toLatLng(pt);
-      if (!ll) return;
+      if (!ll || afterZoomAnim(() => api.flyTo(pt, zoom, o))) return;
       const z = Math.min(18, zoom ?? Math.max(map.getZoom(), 16));
       const shift = (map.getSize().y - visibleH()) / 2; // half the sheet: target lands mid visible area
       const c = map.unproject(map.project(ll, z).add([0, shift]), z);
