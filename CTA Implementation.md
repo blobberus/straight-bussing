@@ -87,3 +87,58 @@ Christmas. The GTFS already encodes this (Thanksgiving 2026 uses Sunday trips), 
   GTFS and live feed say and never guess from the academic calendar.
 - Whether route 10 stays daily after Nov 30, 2026 (the end of the current timetable). Its page lists no season limit.
 - Fares and student passes: out of scope; the app should not say anything about fares.
+
+## 3. Data sources compared (checked 2026-11-06)
+
+"CORS: none" means a request sent with `Origin: https://blobberus.github.io` came back without an
+`Access-Control-Allow-Origin` header, so a browser page on GitHub Pages cannot read the answer.
+
+| Source | What it gives | Address | Key | CORS | Freshness | Limits | Use it for |
+|---|---|---|---|---|---|---|---|
+| CTA GTFS (static) | All CTA bus and rail routes, stops, shapes, timetables, calendar, transfers | `https://www.transitchicago.com/downloads/sch_data/google_transit.zip` | None | None | "Generally, once every week or two"; one package at a time, about two months ahead. Today's zip: Last-Modified 2026-09-14, calendar 2026-09-11 to 2026-11-30 | 69 MB zip; `stop_times.txt` is 367 MB unzipped, `shapes.txt` 54 MB | Build time only (GitHub Action), never in the browser |
+| CTA Bus Tracker API v3 | Vehicle positions, arrival predictions (about the next 30 min), patterns (shapes), stops, directions, detours | `https://www.ctabustracker.com/bustime/api/v3/<call>?key=...&format=json` | Yes, secret; one per CTA Bus Tracker account | None | About every 30 s | 100,000 requests a day per key by default (raised from 50,000 in April 2024; more on request); at most 10 routes, vehicles or stops per call | Live buses and predictions, through the proxy |
+| CTA GTFS-realtime (beta) | VehiclePositions, TripUpdates, ServiceAlerts in `.pb` and `.json` | `https://transitdata.transitchicago.com/GtfsRealtime/VehiclePositions.json?key=...` (also `TripUpdates`, `ServiceAlerts`) | Yes ("Register through the CTA Developer Center"; the page does not say which key) | None seen (only the no-key error answer could be tested) | Not stated | Not stated | Later: the same format as Passio, but labeled "Beta Testing" and bus coverage not confirmed |
+| CTA Customer Alerts API | Route status and full alert text | `https://www.transitchicago.com/api/1.0/alerts.aspx?routeid=171,172&activeonly=true&outputType=JSON` (also `routes.aspx`) | None | None | Answers are cached 30 s | Not stated | Alerts for the chosen routes, through the proxy |
+| CTA Train Tracker API | 'L' train arrivals only | `/developers/traintracker/` | Yes (50,000 a day) | n/a | n/a | n/a | Not needed for buses |
+| Metra GTFS-realtime | Metra positions, trip updates, alerts (protobuf) | `gtfspublic.metrarr.com` with an `api_token` key, updated every 30 s | Yes | Not checked | 30 s | Not stated | A later idea only: the Metra Electric line stops in Hyde Park (51st/53rd, 55th-56th-57th, 59th) |
+
+### What each source looks like in practice
+
+- **GTFS static.** Standard files: agency, calendar, calendar_dates, frequencies, routes, shapes, stop_times, stops,
+  transfers, trips, plus `developers_license_agreement.htm`. No `feed_info.txt`. `route_id` is the public route
+  number as text ("4", "171", "X4", "J14") and is the same value Bus Tracker calls `rt`. `trips.txt` has a readable
+  `direction` (North, South, East, West) besides `direction_id`. 132 routes in all (rail included, with ids such as
+  `Red` and `G`). CTA's `route_color` values are generic (express red `#b71234`, locals grey `#99999C` / `#414145`),
+  so they do not identify a route.
+- **Bus Tracker v3 calls we would use.** `getvehicles` (`rt=` up to 10 routes), `getpredictions` (`stpid=` up to 10
+  stops, or `vid=` up to 10 vehicles; `top=` caps the count), `getpatterns` (`rt=` one route, or `pid=` up to 10),
+  `getstops` (`rt` + `dir`), `getdetours`, `gettime`. Times are Chicago local `YYYYMMDD HH:MM` unless `unixTime=true`
+  (milliseconds) is sent; `tmres=s` gives seconds. `prdctdn` is minutes or `DUE`. Prediction fields worth honoring:
+  `dly` (delayed), `dyn` (1 canceled, 4 expressed = drop-off only, 16 and 17 invalidated: CTA says these must not be
+  shown to the public), `psgld` (crowding). Errors arrive inside a normal 200 answer, for example
+  `{"bustime-response": {"error": [{"msg": "Invalid API access key supplied"}]}}` and "Transaction limit for current
+  day has been exceeded."
+- **Why predictions need the schedule too.** Bus Tracker only predicts about 30 minutes ahead (CTA says so on the
+  developer page). Anything later must come from the GTFS timetable and be labeled as a scheduled time.
+- **Detours are common.** Two of the priority routes had reroutes on the day of checking (172 northbound, Nov 5 to 20;
+  192 northbound since Dec 2025). Bus Tracker v3 marks detour patterns with a `dtrid`, and the Alerts API carries the
+  text. The plan shows the alert text verbatim, like the shuttle alerts.
+
+### Terms that apply (CTA Developer License Agreement and "CTA Trademarks & You")
+
+- Using any CTA data or API means accepting the Developer License Agreement (`/developers/terms/`; a copy also ships
+  inside the GTFS zip). CTA may change it, cut access or disable apps at any time; on termination the data must be
+  deleted.
+- Use is limited to "the sole purpose of assisting mass transportation (i.e., bus or rail) riders". Caching is allowed
+  ("You may cache CTA Data ... to improve your application's user experience") as long as it is kept reasonably
+  current. CTA data may not be sold apart from the app.
+- **No endorsement:** "You and your application must not express or imply any affiliation or relationship with or
+  sponsorship or endorsement by CTA." Never "official" or "authorized" next to a CTA mark.
+- **No CTA logo** of any kind, current or past. The Bus Tracker icon may appear only next to live Bus Tracker data,
+  unmodified, black, white or grey, with the line "CTA Bus Tracker (SM) logo icon is a trademark of the Chicago
+  Transit Authority." Simplest: do not use the icon at all.
+- The app name must not start with "CTA" or name a CTA service. "Straight Bussing" is fine as is; do not rename it to
+  include CTA.
+- Attribution is optional ("the option, but not the obligation, to credit CTA"). We should credit anyway, in the
+  words CTA suggests: "Data provided by CTA", plus "Straight Bussing is not made or endorsed by the CTA."
+- Official 'L' line colors may be used; there are no official bus route colors to borrow.
