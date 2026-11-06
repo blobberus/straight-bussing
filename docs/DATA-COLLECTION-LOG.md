@@ -32,7 +32,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 
 ## Errors
 
-### DC-023 Checkup 2026-11-06: a 2-hour gap on Nov 5 from GitHub API errors, and the anomalies of Nov 2 to 5 (fixed / watch)
+### DC-023 Checkup 2026-11-06: a 2-hour gap on Nov 5 (GitHub API errors) and the anomalies of Nov 2 to 5 (fixed / open)
 Owner (2026-11-06): "Check the data collection status and create a log on any anomalies." Times are Chicago (CST since
 Nov 1). Compared with the week before (Oct 26 to 30). Scripts and downloads stayed off the repo (job folder).
 
@@ -113,8 +113,8 @@ about 11:50. What the feed held (positions every 10 s; the owner's point 41.7924
   about 200 m from the owner's point and 150 m from the Regenstein Library (N) stop): 4328 from 11:48 to 11:57 PM,
   4313 from 11:51 to 11:57, 4325 from 11:53 to 11:58, so all three from 11:53 to 11:57. Speed 0 to 0.2 m/s (or blank),
   but their reports stayed fresh (2 to 14 s old) and the GPS position moved up to 5 m from poll to poll (4328 within 16
-  m of one spot), which an animated map turns into small moves. South **4538** did the same at its own terminal (Burton-Judson Courts, 11:46 to 11:57 PM),
-  Apostolic/Drexel **4318** and **12645** at Goldblatt Pavilion.
+  m of one spot), which an animated map turns into small moves. South **4538** did the same at its own terminal
+  (Burton-Judson Courts, 11:46 to 11:57 PM), Apostolic/Drexel **4318** and **12645** at Goldblatt Pavilion.
 - Were they operating? The operator's alert that evening said "All evening NightRide routes will be running every 30
   minutes for the entire evening" (4:10 PM to 00:00:34), so the NightRide buses sat 5 to 13 min at Reynolds Club every
   30 min all evening (North 9.0 / 10.4 / 9.2 / 13.0 / 8.7 min at 9:48, 10:16, 10:46, 11:15, 11:48 PM; East and Central
@@ -191,8 +191,8 @@ a bus counts when its route label is outside the route's listed hours by more th
   its bus stayed in the feed, every route id in the timetable.
 - Runs since Nov 2 (131): all succeeded; 125 logger runs with 0 processing errors, at most 2 of 840 feed reads failed in
   a run, 0 alert polls failed; the 9 runs with under 30 rows all started between 11:59 PM and 1:18 AM or at 3:28 to
-  4:15 AM, none while buses were in service. One more dispatch error: an idle run's start of the 4:15 AM collect run got HTTP 500 on Wed Nov 4
-  and went through on its second try two minutes later (the old 3-try limit held that time).
+  4:15 AM, none while buses were in service. One more dispatch error: an idle run's start of the 4:15 AM collect run
+  got HTTP 500 on Wed Nov 4 and went through on its second try two minutes later (the old 3-try limit held that time).
 - Data: 0 duplicates, 0 rows missing ids, 13 lines and 92 stations each weekday; per line and hour against the week
   before, the hours under half are the Nov 5 gap, the 30-minute NightRide evenings, single buses that drove away from
   their route (Mon Nov 2 South 10 to 11 PM: its bus 12644 was 4.7 km from the route; Regents Express 9 arrivals that
@@ -203,6 +203,12 @@ a bus counts when its route label is outside the route's listed hours by more th
 - Archive: every file for Nov 1 to 4; Nov 5 archived at 3:58 AM Nov 6 by hand (101,849 prediction updates, 76,339
   position reports, 207,478 forecast rows) since the scheduled run fires 6 to 10 h late. Weather context daily. Collector
   tests green on both fix pushes.
+
+**Status.** Fixed: items 1 to 3 (`91954826`, `948734a1`, data repo `1ff8349`). Watch: item 4 (Passio's side; recheck the
+`gps` share next time). Open, the owner's call: item 6 (a detector change validated by replays). Facts handed to the
+idle-buses workstream: items 5 and 7. For the owner: the repository secret `COLLECT_DISPATCH_TOKEN` in the data repo
+would let the watchdog restart the collector by itself (it only reported on Nov 5); nothing lost on Nov 5 can be
+recovered. The `collector-health` issue stays open for the Nov 5 gap until about Nov 8 and then closes itself.
 
 ### DC-022 Two false alarms on the health alerts' first day (fixed 2026-11-02)
 - Found in the 2026-11-02 checkup; both issues had opened and closed by themselves.
