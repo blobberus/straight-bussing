@@ -10,6 +10,10 @@ up to **Tuesday, October 13, 2026, 4:20 PM** (collection started Thursday, Octob
   more, 1 below; before it the 10% rule), how predictions are scored, where each predictor stands and the plan to optimize the
   algorithm: **`docs/GOAL-AND-METHOD.md`**. This guide only refers to it.
 - How arrivals are detected, technically: `docs/DATA.md`. A visual overview: `docs/prediction-explainer.html`.
+- **Every finding in one workbook (for agents):** the data repo's `findings/straight-bussing-findings.xlsx` (CSV copies
+  in `findings/csv/`, index `findings/README.md`; github.com/blobberus/straight-bussing-data), rebuilt every Monday:
+  transitions, end-of-service lingering, lines most affected, off-route, the forecast bench, collection anomalies, and
+  the weekly retry of "which bus will leave".
 
 ## What exists, and what each file is for
 
