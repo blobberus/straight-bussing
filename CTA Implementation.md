@@ -485,3 +485,79 @@ service worker cache name bumped, and iOS CI green.
 | **2. All Hyde Park routes** | The rest of section 2: 55, 4, X4, 6, 2, 28, 15, 10, 59, then 47 and 63. Long routes drawn thin at low zoom (or clipped to the area, owner choice); performance check: first paint still under 2 s on a phone | Route list approval | First paint and planner timing unchanged within noise; map readable at the default zoom |
 | **3. Planner** | CTA legs in Directions, shuttle to CTA transfers, Current trip and trip alerts on CTA legs, iPhone Live Activity for CTA legs; decide whether CTA widens the 800 m coverage note | Coverage decision | Planner tests with mixed trips; every CTA number labeled with its source and "est." |
 | Later | CTA's GTFS-realtime (beta) as the proxy's source; Metra Electric (separate key and terms); logging CTA arrivals for learning, only if the owner asks | | |
+
+## 8. Risks and open questions for the owner
+
+### Risks
+
+| Risk | What could happen | How the plan handles it |
+|---|---|---|
+| One key, one account | The key is revoked, the account is lost, or the person who holds it leaves. CTA live times stop | The key sits on the owner's own long-term account and only in the Worker secret; the app falls back to "CTA schedule" labels; the shuttles are unaffected. Write the recovery steps in `docs/RUN.md` when phase 1 ships |
+| The first server | The proxy is the project's first piece of running infrastructure: someone has to own it, pay for it if usage grows ($5 a month), and notice when it breaks | Free plan first; `/cta/v1/health`; the app shows CTA staleness on its own, so a dead proxy is visible, never silent |
+| Someone else uses the proxy | CORS only stops other web pages, not scripts, so a copied URL could spend Worker requests | The cache makes each copy cheap; a per-IP rate-limiting rule; CTA calls stay bounded by the refresh rate whatever the traffic |
+| CTA changes the terms or cuts access | The license allows it at any time, without notice | CTA is optional everywhere; removal is a data change plus a Worker switch-off (section 6.1) |
+| Rider safety | Predictions only reach about 30 minutes; detours and canceled trips are common (two priority routes were rerouted on the day of checking); a bus can stop reporting | Source labels on every time, "est.", canceled and drop-off-only shown, alerts verbatim, separate staleness, schedule stops at `calendar_end` |
+| "Official" confusion | Two operators in one app; riders may call the wrong number | The unofficial line covers both; CTA rows link to CTA Customer Service and transitchicago.com; 773.702.8181 stays for the shuttles and safety |
+| Schedule expiry | Today's CTA zip ends 2026-11-30; a late new zip would leave stale timetables | The build fails loudly 7 days before the end; the app stops showing CTA schedule times past `calendar_end` |
+| Map clutter and speed | 14 long routes, about 400 more stops; slower first paint or planning | CTA files load after first paint; thin lines at low zoom; phases add routes gradually; planner timing checked per phase |
+| Source changes | Bus Tracker v3 retired, or the GTFS-realtime beta becomes the main feed | The proxy contract hides the source; the app only reads GTFS-realtime JSON |
+| App Review | Reviewers ask for proof of permission for CTA data, or test while CTA is quiet | License + key email in the review notes (5.2.2); clear unavailable states; demo mode |
+| Names | CTA route names include "U. of Chicago" | Shown only as CTA's own route names (operator data, like the shuttle alert text), never in the app's branding |
+
+### Open questions (defaults in brackets, used if the owner says nothing)
+
+1. **Key ownership:** will the owner apply for the Bus Tracker key on the owner's own CTA account and accept CTA's
+   Developer License Agreement? [Required before phase 1; phase 0 needs no key.]
+2. **Proxy hosting:** Cloudflare Workers free plan, with the paid plan ($5 a month) only if traffic needs it?
+   `workers.dev` address or a custom domain? [Cloudflare free, `workers.dev`.]
+3. **Routes per phase:** [171, 172, 192 first; then 55, 4, X4, 6, 2, 28, 15, 10, 59; then 47 and 63.]
+4. **Shown by default?** Are CTA routes on the map when the app opens, or hidden until turned on in Routes? [Shown
+   for 171 and 172, hidden for the rest.]
+5. **Coverage and planning:** should CTA count for the 800 m coverage note and in Directions, or stay information
+   only? [Information only until phase 3.]
+6. **Bus numbers:** CTA's real bus numbers (for example "Bus 8123") or "Bus 1, Bus 2" like the shuttles? [Bus 1, Bus 2.]
+7. **Long routes:** draw them in full or only the Hyde Park part? [Full, thin at low zoom.]
+8. **GTFS-realtime beta:** ask CTA for access and bus coverage now or later? [Later.]
+9. **CTA contact line:** CTA Customer Service 1-888-YOURCTA (1-888-968-7282) and transitchicago.com on CTA routes,
+   with 773.702.8181 kept for safety? [Yes.]
+
+## 9. Sources (all checked 2026-11-06)
+
+CTA, official:
+- CTA Developer Center: https://www.transitchicago.com/developers/
+- Bus Tracker API page (key steps, 100,000 a day): https://www.transitchicago.com/developers/bustracker/
+- Bus Tracker API v3 guide, rev. 2025-04-21 (calls, limits, `dyn` codes, errors):
+  https://www.transitchicago.com/assets/1/6/cta_Bus_Tracker_API_Developer_Guide_and_Documentation_2025-04-21.pdf
+- GTFS page (cadence, contents): https://www.transitchicago.com/developers/gtfs/
+- GTFS zip, downloaded and analyzed for section 2: https://www.transitchicago.com/downloads/sch_data/google_transit.zip
+  (Last-Modified 2026-09-14; calendar 2026-09-11 to 2026-11-30)
+- GTFS-realtime portal, "Beta Testing": https://transitdata.transitchicago.com/
+- Customer Alerts API: https://www.transitchicago.com/developers/alerts/
+- Developer License Agreement and Terms of Use: https://www.transitchicago.com/developers/terms/
+- CTA Trademarks & You (branding rules): https://www.transitchicago.com/developers/branding/
+- Train Tracker API (50,000 a day, for comparison): https://www.transitchicago.com/developers/traintracker/
+- Route pages: https://www.transitchicago.com/bus/171/ , https://www.transitchicago.com/bus/172/ ,
+  https://www.transitchicago.com/bus/192/ , https://www.transitchicago.com/bus/2/ , https://www.transitchicago.com/bus/10/
+
+Checks run from this PC on 2026-11-06 (repeat them before relying on the results):
+- CORS: `curl -s -D - -H "Origin: https://blobberus.github.io" <url>` on the GTFS zip, on
+  `https://www.ctabustracker.com/bustime/api/v3/gettime?key=x&format=json`, on the three
+  `transitdata.transitchicago.com/GtfsRealtime/*.json` feeds and on the Customer Alerts API: none sent
+  `Access-Control-Allow-Origin`.
+- Bus Tracker with a fake key: HTTP 200 with `{"bustime-response": {"error": [{"msg": "Invalid API access key
+  supplied"}]}}`.
+- GTFS-realtime without a key: HTTP 200 with `errCd 100`, "Required parameter 'key' is missing."
+- Customer Alerts API without a key: works, JSON with `outputType=JSON`, showed the 172 reroute.
+
+Others:
+- Mobility Database entry for the CTA schedule feed (confirms the zip address as the official one):
+  https://mobilitydatabase.org/feeds/gtfs/mdb-389
+- Cloudflare Workers pricing (free 100,000 requests a day, 10 ms CPU; paid $5 a month, 10 million requests; cached
+  answers count): https://developers.cloudflare.com/workers/platform/pricing/
+- Apple App Review Guidelines 2.3, 5.2.1, 5.2.2: https://developer.apple.com/app-store/review/guidelines/
+- Metra GTFS API (later idea; the page refused the fetch tool, details from search results only):
+  https://metra.com/metra-gtfs-api
+
+Not verified: whether CTA's GTFS-realtime beta covers buses, which key it uses and its limits; whether any CTA source
+sends CORS headers once a valid key is used; Metra's limits; whether Durable Objects are on Cloudflare's free plan
+today; how 171, 172 and 192 run during University breaks; whether route 10 stays daily after 2026-11-30.
