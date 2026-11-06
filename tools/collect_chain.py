@@ -14,6 +14,9 @@ so a 70-min run overlaps its successor by ~30 min and never more than 2 runs exi
      sooner than 40 min after it started: a chain, never a tree.
   3. If a newer run is active, that run leads the chain; this one only keeps watching in case it vanishes.
   4. Any GitHub API error means "don't dispatch". Gives up --until seconds (85 min) after it started.
+     A dispatch call that fails is tried again up to DISPATCH_TRIES times, 1, 2, 4, then 5 min apart, with the
+     run list read again before each try (GitHub's API answered 500 / 502 for minutes on 2026-11-05 and three
+     tries one minute apart all failed: a 2-hour gap, docs/DATA-COLLECTION-LOG.md DC-023).
   5. Kill switches: repo variable COLLECT_CHAIN=off (runs that start afterwards never dispatch), or
      disable the workflow in the Actions tab (checked before every dispatch; the keepalive step respects it).
 `wait` keeps the job alive while the watcher still has a duty (state 'sleeping' or 'leader'), then prints the
@@ -40,6 +43,14 @@ WORKFLOW = "collect.yml"
 MODES = ("collect", "sleep")
 ACTIVE = {"queued", "in_progress", "requested", "waiting"}   # 'pending' = parked behind its slot's running run
 WAITING = {"sleeping", "leader"}                              # states in which the job must stay alive
+DISPATCH_TRIES = 10       # a failed dispatch call is tried this often in all (DC-023: 3 tries in 2 min were too few)
+DISPATCH_BACKOFF = 300    # longest wait between two tries (s)
+
+
+def retry_in(failures, every):
+    """Seconds to wait after the failures-th failed dispatch: every, doubling, at most DISPATCH_BACKOFF (a collect run:
+    tries 40, 41, 43, 47, 52 ... 77 min after it started, all before its 85-min deadline)."""
+    return min(every * 2 ** max(0, failures - 1), max(every, DISPATCH_BACKOFF))
 
 
 def _start_key(r):
@@ -131,9 +142,10 @@ class Watcher:
                 return self._set("done:dispatched", f"started {what}")
             except Exception as ex:          # if it did start a run anyway, the next check sees 2 and stops
                 self.failures += 1
-                verdict, why = "leader", f"dispatch failed ({self.failures}/3): {str(ex)[:200]}"
-                if self.failures >= 3:
+                verdict, why = "leader", f"dispatch failed ({self.failures}/{DISPATCH_TRIES}): {str(ex)[:200]}"
+                if self.failures >= DISPATCH_TRIES:
                     return self._set("done:error", why)
+                self.next_at = now + retry_in(self.failures, self.every)
         self._set(verdict, why)
 
 
@@ -203,9 +215,10 @@ class Sleeper:
             return self._set("done:dispatched", f"started {what}")
         except Exception as ex:
             self.failures += 1
-            self._set("waking", f"dispatch failed ({self.failures}/3): {str(ex)[:200]}")
-            if self.failures >= 3:
-                self._set("done:error", self.why)
+            self._set("waking", f"dispatch failed ({self.failures}/{DISPATCH_TRIES}): {str(ex)[:200]}")
+            if self.failures >= DISPATCH_TRIES:
+                return self._set("done:error", self.why)
+            self.next_at = now + retry_in(self.failures, self.every)
 
 
 def live_gate(service, names=None, probe=G.probe, alerts=None, every_alerts=600):

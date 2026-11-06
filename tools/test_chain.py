@@ -139,14 +139,60 @@ def kill_switches_and_api_errors_mean_no_dispatch():
     w = C.Watcher(api, 7, "a", T)
     drive(w, T, T + 9000)
     assert api.dispatched == ["b"]
-    api = FakeApi([run(7, "in_progress", T)])                         # dispatch keeps failing: 3 tries max
+    api = FakeApi([run(7, "in_progress", T)])                         # dispatch keeps failing: DISPATCH_TRIES max
     api.fail_dispatch = 99
     w = C.Watcher(api, 7, "a", T)
     drive(w, T, T + 9000)
-    assert w.state == "done:error" and api.fail_dispatch == 96, (w.state, api.fail_dispatch)
+    assert w.state == "done:error" and api.fail_dispatch == 99 - C.DISPATCH_TRIES, (w.state, api.fail_dispatch)
     w = C.Watcher(FakeApi([run(7, "in_progress", T)]), 7, "a", T, dry_run=True)
     drive(w, T, T + 9000)
     assert w.state == "done:dry-run"
+
+
+@test
+def a_few_minutes_of_github_errors_do_not_stop_the_chain():
+    # 2026-11-05 (DC-023): the dispatch API answered 502, 500, 500 at 40, 41 and 42 min; with 3 tries one minute apart
+    # the chain stopped and nothing collected for 2 hours. Now the tries back off (1, 2, 4, then 5 min) and go on.
+    T = 1_800_000_000
+    tries = []
+
+    class Flaky(FakeApi):
+        def dispatch(self, slot, mode="collect"):
+            tries.append(self.now)
+            super().dispatch(slot, mode)
+    api = Flaky([run(7, "in_progress", T)])
+    api.fail_dispatch = 4                                              # down for about 7 minutes
+    w = C.Watcher(api, 7, "a", T)
+    t = T
+    while t <= T + 9000 and not w.done:
+        api.now = t
+        w.step(t)
+        t += 10
+    assert w.state == "done:dispatched" and api.dispatched == ["b"], (w.state, w.why)
+    gaps = [b - a for a, b in zip(tries, tries[1:])]
+    assert tries[0] == T + 2400 and gaps == [60, 120, 240, 300], gaps
+    assert tries[-1] < T + 5100                                       # before the watcher's deadline
+    # every try re-reads the run list first: a run GitHub created despite an error is never doubled
+    assert C.retry_in(1, 60) == 60 and C.retry_in(3, 60) == 240 and C.retry_in(9, 60) == 300
+    assert C.retry_in(1, 600) == 600                                   # never sooner than the check interval
+    # all tries fit before the deadline: the last one is at 77 min
+    total = 2400 + sum(C.retry_in(k, 60) for k in range(1, C.DISPATCH_TRIES))
+    assert total < 5100, total
+
+
+@test
+def sleeper_retries_a_failed_dispatch_with_backoff():
+    T = 1_800_000_000
+    api = FakeApi([run(7, "in_progress", T)])
+    api.fail_dispatch = 3
+    s = C.Sleeper(api, 7, "a", T, lambda now: ("collect", "2 buses reporting live"))
+    drive_sleeper(s, T, T + 1200)
+    assert s.state == "done:dispatched" and api.modes == ["collect"], (s.state, s.why)
+    api = FakeApi([run(7, "in_progress", T)])
+    api.fail_dispatch = 99
+    s = C.Sleeper(api, 7, "a", T, lambda now: ("collect", "bus"))
+    drive_sleeper(s, T, T + 20000)
+    assert s.state == "done:error" and api.fail_dispatch == 99 - C.DISPATCH_TRIES, (s.state, api.fail_dispatch)
 
 
 @test
