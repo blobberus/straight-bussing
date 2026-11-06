@@ -27,7 +27,7 @@ come last. The table in section 2 has hours and stops for each.
    turns it into small `web/data/cta/*.json` files, the same way `tools/build_gtfs.py` handles Passio's zip.
 2. **Live buses and arrival predictions**: the CTA Bus Tracker API v3. It needs a **secret API key** and sends no CORS
    header, so it cannot be called from the website or shipped in the app. A tiny **proxy** owned by the owner (a
-   Cloudflare Worker is the cheapest fit) holds the key, asks CTA at most once every 30 seconds for the whole Hyde Park
+   Cloudflare Worker is the cheapest fit) holds the key, asks CTA at most about twice a minute for the whole Hyde Park
    set, and answers riders with one small JSON file in the same GTFS-realtime JSON shape the app already reads from
    Passio. Riders send nothing about themselves to it (no location, no chosen stop); the app filters on the device.
 3. **Alerts**: CTA's Customer Alerts API (no key, but no CORS either), served through the same proxy.
@@ -160,8 +160,9 @@ browser cannot download (the repo already has one, as a GitHub Action) and a pla
 
 Keep the output small, because Hyde Park routes are long (route 4 runs from downtown to 115th Street, 122 stops). Store
 each distinct stop pattern once (stop ids plus minutes from the first stop) and each trip as `[pattern, start minute,
-service]`. Rough size for the 14 routes: well under 200 KB uncompressed, loaded after first paint, never blocking it
-(ship checklist 3).
+service]`, and keep timetable minutes only for stops near campus. Rough size: the 14 routes have about 10,000 trips in
+today's zip, so on the order of 200 KB uncompressed (far less gzipped); the three phase-0 routes are about 15 KB. Load
+it after first paint, never blocking it (ship checklist 3).
 
 ### 4.2 Live buses, predictions and alerts
 
@@ -195,8 +196,8 @@ choice. Every rider gets the same answer and the filtering happens on the device
 **Other hosts.** Deno Deploy, Netlify or Vercel functions, or a small VPS work the same way. A Google Apps Script web
 app (the owner already runs one for usage statistics) could proxy too, but its URL Fetch quota and slow cold answers
 make it a poor fit for a 30 s live feed. Cloudflare's free plan (100,000 Worker requests a day, cached answers
-included) covers about 5,000 ten-minute visits a day when the app polls every 30 s (section 6.3); the paid plan ($5 a month, 10 million
-requests a month) covers far more. Deploying a Worker normally uses `wrangler` (Node), which this PC does not have:
+included) covers about 5,000 ten-minute visits a day when the app polls every 30 s (section 6.3); the paid plan
+($5 a month, 10 million requests a month) covers far more. Deploying a Worker normally uses `wrangler` (Node), which this PC does not have:
 paste the script in the Cloudflare dashboard, or deploy from a GitHub Action with `cloudflare/wrangler-action`.
 
 ### 4.3 The iPhone app
@@ -247,7 +248,7 @@ layout; where the experimental build chose a different name, use its name and up
 - **Download** with a conditional GET; keep the zip's `Last-Modified` / `ETag` in `web/data/cta/meta.json` and exit
   early when nothing changed (the zip is 69 MB and changes every week or two).
 - **Stream** `stop_times.txt` once with `csv.reader` (367 MB unzipped), keeping only trips of the chosen routes. Times
-  past 24:00 belong to the previous service day, as in the Passio build.
+  past 24:00 are after midnight but belong to the trip's service day, as in the Passio build.
 - **Write** to `web/data/cta/` (every id with the `cta:` prefix):
   - `routes.json`: `{"cta:171": {short:"171", long:"U. of Chicago/Hyde Park", color, text_color, agency:"cta", url}}`
     with our own colors (section 5.5), not CTA's greys.
@@ -278,8 +279,8 @@ Workflow: a step in `pages.yml` (which already refreshes the Passio GTFS daily) 
 - **Calls per refresh** (all with `format=json&tmres=s&unixTime=true`): `getvehicles?rt=` in groups of 10 routes, then
   `getpredictions?vid=` in groups of 10 for the vehicles within about 3 km of Hyde Park (at most 6 calls). Predictions
   by vehicle give each bus its whole list of upcoming stops, which trip following ("Get off in 2 stops") needs;
-  predictions by stop would cover only 10 stops a call. Alerts from `alerts.aspx?routeid=...&activeonly=true&outputType=JSON`
-  every 2 minutes (no key needed, no quota used). Patterns and detours (`getpatterns`, `getdetours`) every 10 minutes,
+  predictions by stop would cover only 10 stops a call. Alerts from
+  `alerts.aspx?routeid=...&activeonly=true&outputType=JSON` every 2 minutes (no key needed, no quota used). Patterns and detours (`getpatterns`, `getdetours`) every 10 minutes,
   only to mark a route as detoured.
 - **One refresh for everyone.** A single Durable Object holding the cache and the call counter gives one CTA refresh
   for all Cloudflare locations and an exact daily count (check that Durable Objects are on the current free plan; if
@@ -300,8 +301,8 @@ Workflow: a step in `pages.yml` (which already refreshes the Passio GTFS daily) 
   `ctaFeedTs`, `ctaLastOk`, `ctaFailed`. It pauses when the page is hidden and polls on return, like `live.js`.
   Polling faster than 30 s buys nothing (CTA refreshes every 30 s).
 - One constant `CTA_LIVE_URL` (like `USAGE_URL`); empty means phase 0, schedule only, no request to any proxy.
-- Keeping CTA in its own keys means nothing that reads `buses` / `trips` today (the collector's assumptions, bus
-  numbering, off-route hiding, Passio alert mapping) picks up CTA by accident. Code that should show both asks for
+- Keeping CTA in its own keys means nothing that reads `buses` / `trips` today (bus numbering, off-route hiding,
+  Passio alert mapping, the demo feed) picks up CTA by accident. Code that should show both asks for
   both through small helpers (`allBuses(state)`, `allTrips(state)`) in `core/agency.js`.
 
 ### 5.5 Core logic for a second agency
@@ -346,7 +347,7 @@ Workflow: a step in `pages.yml` (which already refreshes the Passio GTFS daily) 
 
 ### 5.6 Map and screens
 
-- **Map** (`map/layers.js`, `map/landmarks.js` untouched): CTA bus badge with its own shape and the route number,
+- **Map** (`map/layers.js`): CTA bus badge with its own shape and the route number,
   square CTA stops, CTA lines drawn under the shuttle lines by default (map order is user-editable as today), thinner
   at low zoom so long routes do not crowd campus.
 - **Routes list** (`ui/views/routes.js`): a separate "CTA buses" group below the shuttles, every row tagged "CTA",
