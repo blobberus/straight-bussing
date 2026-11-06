@@ -430,6 +430,21 @@ public enum RouteText {
         public var text: String
     }
 
+    /// The route page's line for its buses more than a block off it (`OffRoute`, owner 2026-11-06; web core/offroute.js
+    /// awayText): "" for none, "1 bus is away from the route and hidden from the map.", "2 buses are away from ...".
+    public static func awayText(_ n: Int) -> String {
+        guard n > 0 else { return "" }
+        let who = n == 1 ? "1 bus is" : "\(n) buses are"
+        return who + " away from the route and hidden from the map."
+    }
+
+    /// The note under a scheduled route with no bus on the map (web ui/views/route.js noLiveNote): a bus more than a
+    /// block off the route does send its location, so the note then says no bus is ON the route.
+    public static func noLiveNote(away: Int) -> String {
+        (away > 0 ? "No bus is on this route right now" : "No bus on this route is sending its location")
+            + ", so we can't confirm it's running. Call 773.702.8181 before you rely on it."
+    }
+
     /// Is the route closed right now (owner 2026-10-27: then "Hours & service" comes before the stops)? No bus of it
     /// running and the schedule does not say it runs now: a scheduled route whose buses send no location stays open,
     /// and so does a bus running outside the timetable. Web ui/views/route.js `routeClosed`.

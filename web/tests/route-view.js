@@ -164,6 +164,27 @@ test("route view: an open route with no bus reporting keeps the help right after
   ok(help > 0 && help < o.tl && o.svc > o.tl, "help, stops, hours: " + JSON.stringify({ ...o, help }));
 });
 
+// Owner 2026-11-06 (core/offroute.js): a bus more than a block off its route is hidden from the map but still tracked
+test("route view: buses more than a block off the route get one quiet line; the scheduled note stays honest", () => {
+  const away = (id, rid) => ({ vehicle: { id, label: id }, position: { latitude: 41.82, longitude: -87.64 }, trip: { trip_id: "x", route_id: rid }, timestamp: WED_10AM - 5 });
+  const lineOf = (h) => (h.match(/<p class="v-sec r-away">([^<]*)<\/p>/) || [])[1];
+  const quiet = renderRoute(svcState({ buses: [], away: [away("v7", "R1")], lastOk: WED_10AM, feedTs: WED_10AM }), WED_10AM);
+  eq(lineOf(quiet), "1 bus is away from the route and hidden from the map.");
+  ok(quiet.includes("No bus is on this route right now, so we can&#39;t confirm it&#39;s running. Call 773.702.8181 before you rely on it.")
+    || quiet.includes("No bus is on this route right now, so we can't confirm it's running. Call 773.702.8181 before you rely on it."), "the scheduled note: no bus ON the route (one does send its location)");
+  ok(!quiet.includes("sending its location"), "never 'no bus is sending its location' while one is away");
+  ok(quiet.indexOf('class="v-sec r-away"') < quiet.indexOf('class="v-sec r-nolive"'), "the away line comes first");
+  ok(!quiet.includes("bus running") && !quiet.includes("buses running"), "an away bus is never counted as running");
+  const two = renderRoute(svcState({ away: [away("v7", "R1"), away("v8", "R1"), away("v9", "R2")], lastOk: WED_10AM, feedTs: WED_10AM }), WED_10AM);
+  eq(lineOf(two), "2 buses are away from the route and hidden from the map.", "this route's away buses only, next to its running one");
+  ok(two.includes("1 bus running"), "the running bus is still counted: " + (two.match(/<p class="v-status">.*?<\/p>/) || [""])[0]);
+  eq(lineOf(renderRoute(svcState({ away: [away("v9", "R2")], lastOk: WED_10AM, feedTs: WED_10AM }), WED_10AM)), undefined, "another route's away bus: no line");
+  const none = renderRoute(svcState({ buses: [], away: [], lastOk: WED_10AM, feedTs: WED_10AM }), WED_10AM);
+  ok(!none.includes("r-away") && none.includes("No bus on this route is sending its location"), "none away: the usual note");
+  const outage = renderRoute(svcState({ buses: [], away: [away("v7", "R1")], failed: true, lastOk: WED_10AM - 600 }), WED_10AM);
+  ok(!outage.includes("r-away") && outage.includes("Live status unavailable"), "a feed outage: no away line, the outage wording");
+});
+
 test("route view: closed route without listed stops puts the hours above the empty state; no schedule = no change", () => {
   const s = svcState({ buses: [], routeStops: { R2: ["S3", "S2", "S4", "S3"], R3: ["S1", "S3"] } });
   const h = renderRoute(s, WED_10PM);

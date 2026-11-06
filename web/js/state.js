@@ -93,6 +93,7 @@ export function initialState() {
     staticLoaded: false,
     // live (data/live.js fills every 10 s)
     buses: [], trips: [], alerts: [],
+    away: [],                                                  // buses more than a block off their route (core/offroute.js): hidden, still tracked
     feedTs: 0, lastOk: 0, failed: false, liveLoaded: false,
     // user/prefs
     user: null, locState: 'unknown', locErr: null,

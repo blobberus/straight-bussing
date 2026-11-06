@@ -192,6 +192,7 @@ extension AppModel {
     func applyLive(_ s: LiveState, now t: Double) {
         liveState = s
         if buses != s.buses { buses = s.buses }
+        if away != s.awayBuses { away = s.awayBuses }
         if trips != s.trips {
             trips = s.trips
             arrivalIndex = Arrivals.index(trips: s.trips)
@@ -218,8 +219,10 @@ extension AppModel {
             BusMotion.Report(id: BusNumbers.key(b) ?? "bus-\(i)", rid: b.trip.routeId ?? "", label: b.displayLabel, coord: b.coord,
                              bearing: b.bearing, vt: b.timestamp)
         }
+        // a bus more than a block off its route (Kit OffRoute) leaves the map at once, not after the 45 s drop-out hold
+        let awayIds = Set(liveState.awayBuses.compactMap { BusNumbers.key($0) })
         busMotion.update(reports, shapes: staticData.shapes, version: staticVersion, now: now,
-                         reduce: UIAccessibility.isReduceMotionEnabled || config.demo || mapCovered)
+                         reduce: UIAccessibility.isReduceMotionEnabled || config.demo || mapCovered, away: awayIds)
         publishBuses()
     }
 

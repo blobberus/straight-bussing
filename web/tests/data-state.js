@@ -5,7 +5,7 @@ import { initialState, persistPrefs, cleanHidden, cleanTheme, KEYS } from '../js
 import { tick } from './data-helpers.js';
 
 const CONTRACT_KEYS = ['routes', 'stops', 'shapes', 'routeStops', 'stopRoutes', 'addresses', 'staticLoaded',
-  'buses', 'trips', 'alerts', 'feedTs', 'lastOk', 'failed', 'liveLoaded',
+  'buses', 'trips', 'alerts', 'away', 'feedTs', 'lastOk', 'failed', 'liveLoaded',
   'user', 'locState', 'locErr', 'hiddenRoutes', 'theme', 'service', 'landmarks',
   'routeOrder', 'customRoutes', 'activeCustom', 'prevHidden', 'favStops', 'notify', 'usage', 'journey', 'timeView',
   'view', 'prevView', 'stopId', 'routeId', 'routeFilter', 'busId'];

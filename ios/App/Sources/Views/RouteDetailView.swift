@@ -34,6 +34,8 @@ struct RouteDetailView: View {
         let svc = model.staticData.service
         // scheduled but no bus reporting: "Scheduled until 4:29 AM, no live location", never "Not running" (rider safety)
         let quiet: String? = n == 0 && !model.liveOutage ? Operating.noLiveStatus(rid, buses: model.buses, service: svc, now: model.now) : nil
+        // buses more than a block off this route (Kit OffRoute, owner 2026-11-06): hidden from the map, still tracked
+        let awayN = model.liveOutage ? 0 : OffRoute.awayCount(model.away, rid: rid)
         let status: String = n > 0 ? LiveText.runningText(n, model.staleLevel)
             : model.liveOutage ? "Live status unavailable" : quiet ?? "Not running right now"
         let ids = RouteText.stopOrder(model.staticData.routeStops[rid])
@@ -55,9 +57,11 @@ struct RouteDetailView: View {
                     if !r.short.isEmpty && !r.long.isEmpty { Text("· \(r.short)").font(.subheadline).foregroundStyle(Palette.text2) }
                 }
                 .accessibilityElement(children: .combine)
+                if awayN > 0 {
+                    Text(RouteText.awayText(awayN)).font(.footnote).foregroundStyle(Palette.text2)
+                }
                 if quiet != nil {
-                    Text("No bus on this route is sending its location, so we can't confirm it's running. Call 773.702.8181 before you rely on it.")
-                        .font(.footnote).foregroundStyle(Palette.text2)
+                    Text(RouteText.noLiveNote(away: awayN)).font(.footnote).foregroundStyle(Palette.text2)
                 }
                 // the service day, not the calendar date: at 12:10 AM a route running until 12:25 AM shows
                 // "Friday service ... · Scheduled now", never "Today No service · Scheduled now"

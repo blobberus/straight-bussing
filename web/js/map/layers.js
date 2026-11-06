@@ -566,6 +566,7 @@ export function createBusLayer(map, cb, opt = {}) {
     const hidden = new Set((o.hidden || []).map(String)), focus = focusSet(o.focus);
     const plan = Array.isArray(o.plan) ? o.plan : null;
     const nums = busNumbers(buses), sel = o.selected != null ? String(o.selected) : null;
+    const away = new Set((o.away || []).filter((k) => k != null).map(String));   // more than a block off its route: gone at once
     const seen = new Set(), listed = new Set();
     let changed = 0;
     for (const v of buses || []) {
@@ -629,7 +630,7 @@ export function createBusLayer(map, cb, opt = {}) {
     for (const [key, m] of markers) {
       if (seen.has(key)) { m.gone = null; continue; }
       // not in this poll while others are (not hidden by the rider): keep it where it is for MISSING_S, then remove it
-      if (!listed.has(key) && listed.size) {
+      if (!listed.has(key) && listed.size && !away.has(key)) {
         if (m.gone == null) m.gone = now;
         if (now - m.gone <= MISSING_S) continue;
       }

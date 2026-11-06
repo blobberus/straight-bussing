@@ -38,10 +38,13 @@ public struct LiveState: Sendable, Equatable {
     /// empty answer is believed (rider safety: "No shuttles are reporting live locations" is at most one poll late).
     /// Each bus keeps its own report time, so stale dimming and `Operating` work as before.
     public static let emptyHoldS = 30.0
-    /// `OffRoute` clocks between polls (web data/live.js offTracks) and the vehicles it hides now: they are left out of
-    /// `buses`, and their trip updates out of `trips`.
+    /// `OffRoute` clocks between polls (web data/live.js offTracks) and the vehicles it hides now (more than a block off
+    /// their route): they are left out of `buses`, and their trip updates out of `trips`.
     public var offTracks: [String: OffRoute.Track] = [:]
     public var offHidden: [String] = []
+    /// Those buses themselves (web store.away): still tracked, never counted as running; the route page counts them
+    /// ("1 bus is away from the route and hidden from the map") and the map removes their markers at once.
+    public var awayBuses: [VehiclePosition] = []
     /// `Idle` still clocks between polls (web data/live.js idleTracks) and the vehicles it hides now (idle, not in
     /// service): left out of `buses`, and their trip updates out of `trips`.
     public var idleTracks: [String: Idle.Track] = [:]
@@ -68,8 +71,8 @@ extension LiveState {
     /// Merge a poll like data/live.js `run()`: success needs vehiclePositions + tripUpdates; alerts failing
     /// alone is tolerated; failure keeps the last good data and sets `failed`; each feed that did succeed
     /// is still applied; ONE empty vehicle answer in service keeps the last list (`emptyHoldS`); buses are
-    /// filtered to operating vehicles, then buses long off their route (`OffRoute`) and buses idle and not in service
-    /// (`Idle`) are dropped with their trip updates.
+    /// filtered to operating vehicles, then buses more than a block off their route (`OffRoute`, kept in `awayBuses`)
+    /// and buses idle and not in service (`Idle`) are dropped with their trip updates.
     public func applying(_ poll: FeedPoll, staticData: StaticData?, now: Double) -> LiveState {
         var s = self
         s.loaded = true
@@ -104,6 +107,7 @@ extension LiveState {
                                     alerts: s.alerts, routes: staticData?.routes ?? [:], now: now, feedTs: s.feedTs)
             s.offTracks = off.tracks
             s.offHidden = off.hidden
+            s.awayBuses = OffRoute.awayBuses(s.buses, hidden: off.hidden)
             let idle = Idle.step(s.idleTracks, buses: s.buses, trips: s.trips, service: staticData?.service,
                                  idle: staticData?.idle, now: now, feedTs: s.feedTs)
             s.idleTracks = idle.tracks

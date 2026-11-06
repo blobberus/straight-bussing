@@ -252,3 +252,21 @@ test('bus layer: a bus missing from a poll keeps its badge for MISSING_S, then c
   eq(count(), 0, 'a route the rider hides goes at once');
   m.remove();
 });
+
+test('bus layer: a bus more than a block off its route (o.away, core/offroute.js) goes at once; back within a block it starts on its line', () => {
+  const m = window.L.map(box('t-track-away'), { zoomControl: false, attributionControl: false }).setView(P(2, 1), 15);
+  const routes = { r1: { short: 'CEN', color: '#FF9900' } }, shapes = { r1: [ell()] };
+  const s = prepareShape(shapes.r1)[0], pos = (x) => pointAt(s.line, s.cum, x);
+  const bus = (p, ts, id = 7) => ({ vehicle: { id }, trip: { route_id: 'r1' }, position: { latitude: p[0], longitude: p[1] }, timestamp: ts });
+  const other = (ts) => bus(pos(50), ts, 8);
+  const layer = manualLayer(m);
+  const count = () => m.getContainer().querySelectorAll('.sb-bus').length;
+  layer.draw([bus(pos(300), 1000), other(1000)], { routes, shapes, nowS: 1000 });
+  eq(count(), 2);
+  layer.draw([other(1010)], { routes, shapes, nowS: 1010, away: ['7'] });
+  eq([count(), layer.shown(7)], [1, null], 'hidden by the off-route rule: no MISSING_S hold');
+  layer.draw([bus(pos(600), 1060), other(1060)], { routes, shapes, nowS: 1060 });
+  eq(count(), 2, 'back within a block: shown on the next poll');
+  near(distM(layer.shown(7), pos(600)), 0, 1, 'a new badge on its line where it is, no glide across the gap');
+  m.remove();
+});

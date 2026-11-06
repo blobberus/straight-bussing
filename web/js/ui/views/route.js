@@ -25,6 +25,7 @@ import { effectiveHidden } from "../../core/visibility.js";
 import { serviceHoursAt, isScheduledNow, weekSummary, upcomingChanges, busesByHour, groupHours, hourLabel, dayKey, routeService } from "../../core/schedule.js";
 import { emptyState, skeleton, OFFICIAL_PHONE, liveDotHTML } from "../components.js";
 import { noLiveStatus, scheduledNoLive } from "../../core/operating.js";
+import { awayCount, awayText } from "../../core/offroute.js";
 import { noBusHelpHTML } from "./alerts.js";
 import { busKey, busNumbers, busName, selectedBus, busArrival } from "../../core/busnum.js";
 
@@ -174,13 +175,24 @@ export function routeStatusText(state, rid, now = nowS()) {
   return "Not running";
 }
 
-/** Status line under the title: buses running + today's scheduled hours. */
+/**
+ * The note under a scheduled route with no bus on the map (iOS Kit RouteText.noLiveNote, same words). A bus more than a
+ * block off the route (core/offroute.js, store.away) does send its location, so the note then says no bus is ON the route.
+ * @param {number} away buses of the route more than a block off it
+ * @returns {string}
+ */
+export function noLiveNote(away) {
+  return `${away > 0 ? "No bus is on this route right now" : "No bus on this route is sending its location"}, so we can't confirm it's running. Call ${OFFICIAL_PHONE} before you rely on it.`;
+}
+
+/** Status line under the title: buses running + today's scheduled hours; buses hidden for being more than a block off. */
 function statusHtml(state, rid, r, n, now) {
   const unknown = liveUnknown(state, now), quiet = !n && !unknown && noLiveStatus(state, rid, now);   // scheduled, silent: not "not running"
   const idle = unknown ? "Live status unavailable" : quiet || "Not running right now";   // a feed outage is not "not running"
-  const lvl = staleLevel(state, now);
+  const lvl = staleLevel(state, now), away = unknown ? 0 : awayCount(state.away, rid);
   let h = `<p class="v-status">${n ? liveDotHTML(lvl) : ""}${n ? esc(runningText(n, lvl)) : esc(idle)}${r.short && r.long ? ` &middot; <span class="v-sec">${esc(r.short)}</span>` : ""}</p>`;
-  if (quiet) h += `<p class="v-sec r-nolive">${esc(`No bus on this route is sending its location, so we can't confirm it's running. Call ${OFFICIAL_PHONE} before you rely on it.`)}</p>`;
+  if (away) h += `<p class="v-sec r-away">${esc(awayText(away))}</p>`;   // still tracked; shown again once back within a block
+  if (quiet) h += `<p class="v-sec r-nolive">${esc(noLiveNote(away))}</p>`;
   // the service day, not the calendar date: at 12:10 AM a route running until 12:25 AM reads "Friday service ...
   // · Scheduled now", never "Today No service · Scheduled now" (iOS RouteDetailView)
   const sh = serviceHoursAt(state.service, rid, now), today = sh && sh.hours;

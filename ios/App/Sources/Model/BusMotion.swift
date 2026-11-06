@@ -114,7 +114,9 @@ final class BusMotion {
 
     /// A poll's reports (or the same ones again when only the clock moved): every bus whose report changed starts a
     /// move from where its badge is now. Buses no longer reported are dropped.
-    func update(_ reports: [Report], shapes: [String: [[LatLon]]], version: Int, now: Double, reduce: Bool) {
+    /// `away`: buses more than a block off their route (Kit `OffRoute`, web map/layers.js o.away): their markers go at
+    /// once (no `missingS` hold); back within a block, a new marker starts on the line where the bus is.
+    func update(_ reports: [Report], shapes: [String: [[LatLon]]], version: Int, now: Double, reduce: Bool, away: Set<String> = []) {
         let t = clock()
         var keep = Set<String>()
         for r in reports {
@@ -165,7 +167,7 @@ final class BusMotion {
             movers[r.id] = m
         }
         for (id, var m) in movers where !keep.contains(id) {
-            if reports.isEmpty { movers[id] = nil; continue }   // no bus at all: the map agrees with the pill at once
+            if reports.isEmpty || away.contains(id) { movers[id] = nil; continue }   // no bus at all: the map agrees with the pill at once
             if let g = m.gone {
                 if now - g > Self.missingS { movers[id] = nil }
             } else {

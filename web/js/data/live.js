@@ -2,12 +2,14 @@
 // Failure keeps the last good data and sets failed:true so the UI can show it.
 // store.buses holds only vehicles that are operating (core/operating.js): ghosts that stopped
 // reporting, unknown routes and buses on out-of-service routes without predictions are dropped here,
-// so the map, route detail, counts, alerts and planner never show them. Buses that have not followed their
-// route for a long time (core/offroute.js: garage runs, parked off the line) and buses that are idle and not in
-// service (core/idle.js: parked for a long time, past their listed hours, lingering at the end of a shift) are dropped
-// too, with their trip updates, so no arrival time comes from a bus the map does not show.
+// so the map, route detail, counts, alerts and planner never show them. Buses more than a block off their route
+// (core/offroute.js: garage runs, parked off the line, owner 2026-11-06) and buses that are idle and not in service
+// (core/idle.js: parked for a long time, past their listed hours, lingering at the end of a shift) are dropped too,
+// with their trip updates, so no arrival time comes from a bus the map does not show. The buses more than a block off
+// are still tracked: their clocks stay here and store.away lists them (the route page counts them), so a bus shows
+// again on its first report back within a block.
 import { operatingBuses } from '../core/operating.js';
-import { offRouteStep, dropHidden } from '../core/offroute.js';
+import { offRouteStep, dropHidden, awayBuses } from '../core/offroute.js';
 import { idleStep } from '../core/idle.js';
 
 /** Passio feed base URL. */
@@ -141,6 +143,8 @@ export function startLive(store, opts = {}) {
         routes: s.routes, nowS: nowFn(), feedTs: patch.feedTs });
       offTracks = off.tracks;
       offHidden = off.hidden;
+      const away = awayBuses(patch.buses, offHidden);   // still tracked, not shown (never counted as running)
+      patch.away = away.length || (s.away || []).length ? away : s.away || away;   // none before and now: no change to report
       const idle = idleStep(idleTracks, patch.buses, { trips: patch.trips || s.trips, service: s.service, idle: s.idle,
         nowS: nowFn(), feedTs: patch.feedTs });
       idleTracks = idle.tracks;

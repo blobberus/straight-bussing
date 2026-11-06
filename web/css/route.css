@@ -2,13 +2,14 @@
    a thin parallel bus rail with direction chevrons, and the live buses as route-colored chips on it. */
 
 /* status and today's hours under the title */
-.v-route > .v-status, .v-route > .r-today, .v-route > .r-nolive { padding: 0 var(--s-1); }
+.v-route > .v-status, .v-route > .r-today, .v-route > .r-nolive, .v-route > .r-away { padding: 0 var(--s-1); }
 .v-status .v-sec { display: inline; }   /* "2 buses running · 53RD" is one line (.v-sec is a block elsewhere) */
 .r-today { margin: 0 0 var(--s-3); }
 .r-k { font-weight: var(--w-semibold); color: var(--label); margin-right: var(--s-1); }
 .r-sched { font-weight: var(--w-semibold); color: var(--label-2); }
 .r-sched.is-on { color: var(--label); }   /* schedule data, not live: never the live green or its dot (the words carry the state) */
 .r-nolive { margin: 0 0 var(--s-3); }
+.r-away { margin: 0 0 var(--s-2); }   /* buses more than a block off the route (core/offroute.js): hidden from the map, still tracked */
 
 /* where the buses are (text, also the accessible description of the rail); each bus is a button: pick it to see its own
    time at every station (core/busnum.js; 44 px target) */

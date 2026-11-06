@@ -1,33 +1,29 @@
 import Foundation
 
-/// Buses that are not following their route (owner 2026-11-04: "If buses are not following their routes for a long
-/// period of time (measure this by the bus operation data and their listed hours), remove them from the map"). A
-/// faithful port of web/js/core/offroute.js (same rules and numbers; OffRouteTests replays the web's answers on real
-/// bus reports, Fixtures/offroute_golden.json). `LiveState.applying` runs it after `Operating`, so the map, route
-/// pages, arrivals, counts, alerts and the planner never show such a bus. Measured on 25 days of archived bus reports:
-/// RouteKnower.md E27, docs/ARCHITECTURE.md "Buses that do not follow their route".
+/// Buses more than a block off their route (owner 2026-11-06: "If a bus is off it's route for more than a block, make
+/// the bus disappear from the map (so it does not confuse viewers of the route) as it is most likely not running
+/// anymore--still continue to track the bus"; it replaced the 2026-11-04 rule, 300 m from every line for 15 min). A
+/// faithful port of web/js/core/offroute.js (same rules and numbers; OffRouteTests replays the web's answers on real bus
+/// reports, Fixtures/offroute_golden.json). `LiveState.applying` runs it after `Operating`: a hidden bus leaves the map,
+/// route pages, arrivals, counts, alerts and the planner, but its clock stays in `LiveState.offTracks` and the bus in
+/// `LiveState.awayBuses` (the route page says "1 bus is away from the route and hidden from the map"), so it shows again
+/// on its first report back within a block. Measured on 27 days of archived bus reports: RouteKnower.md E27b,
+/// docs/ARCHITECTURE.md "Buses that do not follow their route".
 ///
-/// OFF the route: farther than `offM` from its route's line AND from every other route's line (a bus filling in on
-/// another line still follows a route). The clock starts at the first such report and restarts when it comes within
-/// `offM` of any line, changes route, or sends nothing for `gapS`. HIDDEN once the clock reaches `hideInS` inside its
-/// route's listed hours (padded `hoursPadS`), `hideOutS` outside them, except (rider safety) while FOLLOWING (the closest
-/// points of its line spread `followM` since the clock started: the Downtown Campus Connector off Lake Shore Drive),
-/// RETURNING (`returnM` closer to its line than its farthest point: leaving the garage), or, inside the listed hours,
-/// during an operator alert that names its route or names no route and reads like a detour. A hidden bus's trip updates
-/// are dropped too (`dropHidden`): Passio kept predicting the buses that drove to the garage on Nov 2 (DC-022).
+/// MORE THAN A BLOCK OFF: farther than `blockM` from its OWN route's line (one Chicago block, 201 m, plus the drawn
+/// line's offset from the lane and GPS error). The clock starts at the first such report and restarts within `blockM`
+/// of its line, on a route change, or after `gapS` without a report. HIDDEN once the clock reaches `confirmS` on at
+/// least two distinct reports (one bad GPS fix never hides a bus), except inside its route's listed hours (padded
+/// `hoursPadS`) while an operator alert names its route or names no route and reads like a detour (an official detour
+/// means the bus is serving riders). A hidden bus's trip updates are dropped too (`dropHidden`): Passio keeps
+/// predicting buses that drive to the garage (DC-022).
 public enum OffRoute {
-    /// A report farther than this from its route's line (and from every other line) is off the route (m).
-    public static let offM = 300.0
-    /// Off the route this long inside the listed hours (+ `hoursPadS`) = hidden (s).
-    public static let hideInS = 15.0 * 60
-    /// Off the route this long outside the listed hours = hidden (s).
-    public static let hideOutS = 5.0 * 60
-    /// The listed hours are padded this much at both ends (s).
+    /// A report farther than this from its own route's line is more than a block off the route (m).
+    public static let blockM = 250.0
+    /// More than a block off for this long (from its first such report, on the bus's own report times) = hidden (s).
+    public static let confirmS = 45.0
+    /// The listed hours are padded this much at both ends for the detour alert exemption (s).
     public static let hoursPadS = 30.0 * 60
-    /// The closest points of the line spread this far since the clock started = driving along the route elsewhere (m).
-    public static let followM = 1500.0
-    /// This much closer to its line than its farthest point since the clock started = heading back (m).
-    public static let returnM = 1000.0
     /// No report from the bus for longer than this restarts its clock (s).
     public static let gapS = 600.0
     /// Operator alert text that reads like a detour (for alerts that name no route); web DETOUR_RE.
@@ -35,21 +31,14 @@ public enum OffRoute {
 
     static let earthR = 6_371_000.0, rad = Double.pi / 180
 
-    /// A lat/lon box (the closest line points since the clock started).
-    public struct Box: Equatable, Sendable {
-        public var s: Double, n: Double, w: Double, e: Double
-        public init(s: Double, n: Double, w: Double, e: Double) { self.s = s; self.n = n; self.w = w; self.e = e }
-    }
-
-    /// One bus's clock (web: tracks[id]).
+    /// One bus's clock (web: tracks[id]); `n` = its distinct reports more than a block off since the clock started.
     public struct Track: Equatable, Sendable {
         public var rid: String
         public var since: Double
         public var last: Double
-        public var dmax: Double
-        public var box: Box
-        public init(rid: String, since: Double, last: Double, dmax: Double, box: Box) {
-            self.rid = rid; self.since = since; self.last = last; self.dmax = dmax; self.box = box
+        public var n: Int
+        public init(rid: String, since: Double, last: Double, n: Int) {
+            self.rid = rid; self.since = since; self.last = last; self.n = n
         }
     }
 
@@ -107,11 +96,6 @@ public enum OffRoute {
         return false
     }
 
-    static func spanM(_ b: Box) -> Double {
-        let kx = earthR * rad * cos((b.s + b.n) / 2 * rad)
-        return hypot((b.e - b.w) * kx, (b.n - b.s) * earthR * rad)
-    }
-
     /// One vehicle poll (web offRouteStep): carry each bus's clock forward and say which buses are hidden (vehicle ids,
     /// input order). `now` = the clock for listed hours and alerts; `feedTs` = the feed's time (report times fall back to it).
     public static func step(_ tracks: [String: Track], buses: [VehiclePosition], shapes: [String: [[LatLon]]],
@@ -124,27 +108,17 @@ public enum OffRoute {
             guard let id = b.vehicle.id, !id.isEmpty else { continue }
             seen.insert(id)
             guard let rid = b.trip.routeId, !rid.isEmpty, b.latitude.isFinite, b.longitude.isFinite else { continue }
-            guard let own = closestOnLine(shapes[rid], lat: b.latitude, lon: b.longitude), own.d > offM else { continue }
-            if shapes.keys.contains(where: { $0 != rid && (closestOnLine(shapes[$0], lat: b.latitude, lon: b.longitude)?.d ?? .infinity) <= offM }) {
-                continue                                                       // on another route's line
-            }
+            guard let own = closestOnLine(shapes[rid], lat: b.latitude, lon: b.longitude), own.d > blockM else { continue }
             let t = b.timestamp != 0 ? b.timestamp : ref
-            let p = tracks[id]
-            let cont = p.map { $0.rid == rid && t >= $0.since && t - $0.last <= gapS } ?? false
-            let box: Box
-            if cont, let p {
-                box = Box(s: min(p.box.s, own.lat), n: max(p.box.n, own.lat), w: min(p.box.w, own.lon), e: max(p.box.e, own.lon))
+            let tr: Track
+            if let p = tracks[id], p.rid == rid, t >= p.since, t - p.last <= gapS {
+                tr = Track(rid: rid, since: p.since, last: max(p.last, t), n: max(p.n, 1) + (t > p.last ? 1 : 0))
             } else {
-                box = Box(s: own.lat, n: own.lat, w: own.lon, e: own.lon)
+                tr = Track(rid: rid, since: t, last: t, n: 1)
             }
-            let tr = Track(rid: rid, since: cont ? p!.since : t, last: cont ? max(p!.last, t) : t,
-                           dmax: max(cont ? p!.dmax : 0, own.d), box: box)
             next[id] = tr
-            let inside = inListedHours(service, rid, nowT) != false             // no schedule data counts as inside
-            if t - tr.since < (inside ? hideInS : hideOutS) { continue }
-            if spanM(box) >= followM { continue }                              // following its route elsewhere
-            if own.d <= tr.dmax - returnM { continue }                         // heading back to its line
-            if inside && detourAlert(alerts, routes: routes, rid: rid, now: nowT) { continue }
+            if tr.n < 2 || t - tr.since < confirmS { continue }                // one bad fix never hides a bus
+            if inListedHours(service, rid, nowT) != false && detourAlert(alerts, routes: routes, rid: rid, now: nowT) { continue }   // official detour
             hidden.append(id)
         }
         for (id, p) in tracks where !seen.contains(id) && ref - p.last <= gapS { next[id] = p }
@@ -157,5 +131,17 @@ public enum OffRoute {
         let h = Set(hidden)
         return (buses.filter { !($0.vehicle.id.map(h.contains) ?? false) },
                 trips.filter { !($0.vehicle.id.map(h.contains) ?? false) })
+    }
+
+    /// The buses `step` hid, kept for the route page (web awayBuses; `LiveState.awayBuses`): still tracked, not shown.
+    public static func awayBuses(_ buses: [VehiclePosition], hidden: [String]) -> [VehiclePosition] {
+        guard !hidden.isEmpty else { return [] }
+        let h = Set(hidden)
+        return buses.filter { $0.vehicle.id.map(h.contains) ?? false }
+    }
+
+    /// How many of a route's buses are more than a block off it and hidden (web awayCount).
+    public static func awayCount(_ away: [VehiclePosition], rid: String) -> Int {
+        away.filter { $0.trip.routeId == rid }.count
     }
 }

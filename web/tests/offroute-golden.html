@@ -9,16 +9,19 @@
 <script type="module">
 import { offRouteStep } from "../js/core/offroute.js";
 const fx = await (await fetch("fixtures/offroute_golden.json", { cache: "no-store" })).json();
+// the case's operator alerts as feed alerts (core-offroute.js and the Kit OffRouteTests build them the same way)
+const feedAlerts = (c) => (c.alerts || []).map((a) => ({ header_text: a.header, description_text: a.description,
+  informed_entity: a.routes.length ? a.routes.map((r) => ({ route_id: r })) : [{ agency_id: "1068" }], active_period: [{ start: a.start, end: a.end }] }));
 const out = {};
 for (const c of fx.cases) {
   let tracks = {};
-  const expect = [], trace = [];
+  const expect = [], trace = [], alerts = feedAlerts(c);
   for (const p of c.polls) {
     const buses = p.v.map(([veh, rid, lat, lon, vt]) => ({ vehicle: { id: veh }, trip: { route_id: rid }, position: { latitude: lat, longitude: lon }, timestamp: vt }));
-    const r = offRouteStep(tracks, buses, { shapes: fx.shapes, service: fx.service, routes: fx.routes, alerts: [], nowS: p.h, feedTs: p.h });
+    const r = offRouteStep(tracks, buses, { shapes: fx.shapes, service: fx.service, routes: fx.routes, alerts, nowS: p.h, feedTs: p.h });
     tracks = r.tracks;
     expect.push(r.hidden);
-    trace.push([p.h, r.hidden.join(","), Object.entries(tracks).map(([k, t]) => k + ":" + Math.round((p.h - t.since) / 60) + "m/" + Math.round(t.dmax)).join(" ")]);
+    trace.push([p.h, r.hidden.join(","), Object.entries(tracks).map(([k, t]) => k + ":" + Math.round(p.h - t.since) + "s/" + t.n).join(" ")]);
   }
   out[c.name] = { expect, trace };
 }

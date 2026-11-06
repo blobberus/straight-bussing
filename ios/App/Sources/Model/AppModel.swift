@@ -239,6 +239,9 @@ final class AppModel {
     var predictor: SchedulePredictor?
     // Live: each slice is assigned only when it changes (see `applyLive`).
     var buses: [VehiclePosition] = []
+    /// Buses more than a block off their route (Kit `OffRoute`, `LiveState.awayBuses`): hidden, still tracked; never
+    /// counted as running. The route page counts them (`RouteText.awayText`).
+    var away: [VehiclePosition] = []
     var trips: [TripUpdate] = []
     var alerts: [ServiceAlert] = []
     var liveLoaded = false

@@ -1,12 +1,13 @@
 import XCTest
 @testable import StraightBussingKit
 
-/// Port of web/tests/core-offroute.js (buses not following their route for a long time are hidden; RouteKnower E27)
-/// and the web's own answers on real bus reports (Fixtures/offroute_golden.json, the same file the web test reads).
+/// Port of web/tests/core-offroute.js (buses more than a block off their route are hidden, still tracked; RouteKnower
+/// E27b) and the web's own answers on real bus reports (Fixtures/offroute_golden.json, the same file the web test reads).
 final class OffRouteTests: XCTestCase {
     let noon = 1_791_997_200.0       // Wed 2026-10-14 12:00 Chicago (CDT)
     let night = 1_792_033_200.0      // Wed 22:00: route A ended at 21:00, past the 30 min pad
     let garage = LatLon(lat: 41.82, lon: -87.64)
+    let onA = LatLon(lat: 41.7902, lon: -87.61)
     // A runs east-west along 41.79, B along 41.80; both 07:00 to 21:00
     let shapes: [String: [[LatLon]]] = [
         "A": [[LatLon(lat: 41.79, lon: -87.62), LatLon(lat: 41.79, lon: -87.60), LatLon(lat: 41.79, lon: -87.58)]],
@@ -28,8 +29,8 @@ final class OffRouteTests: XCTestCase {
         OffRoute.step(tr, buses: buses, shapes: s ?? shapes, service: service, alerts: alerts, routes: routes, now: nowS ?? t, feedTs: t)
     }
 
-    /// The first poll time at which the bus is hidden (nil: never), feeding it every `every` s from t0 to t1.
-    func firstHidden(_ rid: String, _ pos: (Double) -> LatLon, _ t0: Double, _ t1: Double, every: Double = 30,
+    /// The first poll time at which the bus is hidden (nil: never), feeding it a new report every `every` s from t0 to t1.
+    func firstHidden(_ rid: String, _ pos: (Double) -> LatLon, _ t0: Double, _ t1: Double, every: Double = 15,
                      alerts: [ServiceAlert] = []) -> (first: Double?, rows: [(Double, Bool)]) {
         var tr: [String: OffRoute.Track] = [:], rows: [(Double, Bool)] = []
         var t = t0
@@ -43,8 +44,7 @@ final class OffRouteTests: XCTestCase {
     }
 
     func testConstantsAreTheMeasuredRule() {
-        XCTAssertEqual([OffRoute.offM, OffRoute.hideInS, OffRoute.hideOutS, OffRoute.hoursPadS, OffRoute.followM, OffRoute.returnM, OffRoute.gapS],
-                       [300, 900, 300, 1800, 1500, 1000, 600])
+        XCTAssertEqual([OffRoute.blockM, OffRoute.confirmS, OffRoute.hoursPadS, OffRoute.gapS], [250, 45, 1800, 600])
     }
 
     func testClosestPointOnALine() throws {
@@ -78,74 +78,86 @@ final class OffRouteTests: XCTestCase {
         XCTAssertFalse(OffRoute.detourAlert([al("Shuttles rerouted", [], [.init(start: noon + 3600, end: noon + 7200)])], routes: routes, rid: "A", now: noon))
     }
 
-    func testParkedFarFromEveryLineHiddenAfter15MinShownWhenBack() {
+    func testGarageBoundBusHiddenAfter45sStillTrackedShownWhenBack() {
         let g = garage
-        XCTAssertEqual(firstHidden("A", { _ in g }, noon, noon + 1800).first, noon + OffRoute.hideInS)
+        let rows = firstHidden("A", { _ in g }, noon, noon + 600).rows
+        XCTAssertEqual(rows.first { $0.1 }?.0, noon + OffRoute.confirmS, "hidden at 45 s (the fourth report)")
+        XCTAssertTrue(rows.filter { $0.0 >= noon + OffRoute.confirmS }.allSatisfy { $0.1 }, "and stays hidden")
+        XCTAssertEqual(firstHidden("A", { _ in g }, night, night + 600).first, night + OffRoute.confirmS, "outside the hours: the same")
         var tr: [String: OffRoute.Track] = [:]
         var t = noon
-        while t <= noon + 1200 { tr = step(tr, [bus("g", "A", g, t)], t).tracks; t += 30 }
-        let back = step(tr, [bus("g", "A", LatLon(lat: 41.7905, lon: -87.61), noon + 1230)], noon + 1230)
-        XCTAssertEqual(back.hidden, [], "back on its line: shown at once")
+        while t <= noon + 300 { tr = step(tr, [bus("g", "A", g, t)], t).tracks; t += 15 }
+        XCTAssertEqual(tr["g"], OffRoute.Track(rid: "A", since: noon, last: noon + 300, n: 21), "still tracked while hidden")
+        let back = step(tr, [bus("g", "A", onA, noon + 310)], noon + 310)
+        XCTAssertEqual(back.hidden, [], "back within a block: shown on that report")
         XCTAssertTrue(back.tracks.isEmpty, "its clock is gone")
-        XCTAssertEqual(firstHidden("A", { _ in g }, night, night + 900).first, night + OffRoute.hideOutS, "outside the hours: 5 min")
+        XCTAssertEqual(step(back.tracks, [bus("g", "A", g, noon + 320)], noon + 320).hidden, [], "off again: a new clock")
     }
 
-    func testNeverHiddenNearAnotherLineOrItsOwn() {
-        XCTAssertNil(firstHidden("A", { _ in LatLon(lat: 41.8005, lon: -87.60) }, noon, noon + 3600).first, "on B's line")
-        XCTAssertNil(firstHidden("A", { _ in LatLon(lat: 41.7925, lon: -87.60) }, noon, noon + 3600).first, "280 m from its line")
-        XCTAssertEqual(firstHidden("A", { _ in LatLon(lat: 41.7935, lon: -87.61) }, noon, noon + 3600).first, noon + OffRoute.hideInS)
+    func testABlockIsMeasuredFromTheBusesOwnLineOnly() {
+        XCTAssertNil(firstHidden("A", { _ in LatLon(lat: 41.7920, lon: -87.60) }, noon, noon + 3600).first, "222 m from its line")
+        XCTAssertEqual(firstHidden("A", { _ in LatLon(lat: 41.7925, lon: -87.61) }, noon, noon + 600).first, noon + OffRoute.confirmS, "278 m")
+        XCTAssertEqual(firstHidden("A", { _ in LatLon(lat: 41.8005, lon: -87.60) }, noon, noon + 600).first, noon + OffRoute.confirmS, "on B's line, filed under A")
+        XCTAssertNil(firstHidden("B", { _ in LatLon(lat: 41.8005, lon: -87.60) }, noon, noon + 3600).first, "on its own line B")
     }
 
-    func testFollowingAndReturningAreNeverHidden() {
+    func testOneBadFixNeverHidesABus() {
+        let n = noon, far = LatLon(lat: 41.7945, lon: -87.61), on = onA
+        XCTAssertNil(firstHidden("A", { $0 == n + 100 ? far : on }, noon, noon + 400, every: 10).first, "a single spike")
+        XCTAssertNil(firstHidden("A", { $0 >= n + 100 && $0 <= n + 130 ? far : on }, noon, noon + 400, every: 10).first, "four far fixes over 30 s")
+        var tr: [String: OffRoute.Track] = [:]
+        var h = noon
+        while h <= noon + 300 {
+            let r = OffRoute.step(tr, buses: [bus("r", "A", garage, noon)], shapes: shapes, service: service, alerts: [], routes: routes, now: h, feedTs: h)
+            tr = r.tracks
+            XCTAssertEqual(r.hidden, [], "the same report repeated at \(h - noon) s")
+            h += 10
+        }
+        XCTAssertEqual(tr["r"]?.n, 1, "counted once")
+    }
+
+    func testFollowingOnAnotherStreetIsHiddenNowADetourAlertKeepsItShownInsideTheHours() {
         let n = noon
         let along: (Double) -> LatLon = { t in LatLon(lat: 41.775, lon: -87.62 + 0.04 * min(1, (t - n) / 1500)) }
-        XCTAssertNil(firstHidden("A", along, noon, noon + 2400).first, "along its route on another street")
-        XCTAssertEqual(firstHidden("A", { _ in LatLon(lat: 41.775, lon: -87.60) }, noon, noon + 2400).first, noon + OffRoute.hideInS, "parked there")
+        XCTAssertEqual(firstHidden("A", along, noon, noon + 2400).first, noon + OffRoute.confirmS, "no alert: hidden")
+        let detour = [ServiceAlert(id: "d", header: "Detour", description: "Shuttles are on a detour around 59th St")]
+        XCTAssertNil(firstHidden("A", along, noon, noon + 2400, alerts: detour).first, "a detour alert: shown")
+        let named = [ServiceAlert(id: "n", header: "North Route", routeIds: ["38734"])]
+        XCTAssertNil(firstHidden("A", along, noon, noon + 2400, alerts: named).first, "an alert naming A by Passio's id")
+        XCTAssertEqual(firstHidden("B", along, noon, noon + 2400, alerts: named).first, noon + OffRoute.confirmS, "naming another route")
         let g = garage
-        let out: (Double) -> LatLon = { t in
-            t < n + 1200 ? g : LatLon(lat: g.lat - 0.001 * ((t - n - 1200) / 30), lon: g.lon + 0.001 * ((t - n - 1200) / 30))
-        }
-        let rows = firstHidden("A", out, noon, noon + 1800).rows
-        let last = rows.filter { $0.1 }.last!.0
-        let d0 = OffRoute.closestOnLine(shapes["A"], lat: g.lat, lon: g.lon)!.d
-        let p = out(last + 30), dAt = OffRoute.closestOnLine(shapes["A"], lat: p.lat, lon: p.lon)!.d
-        XCTAssertGreaterThanOrEqual(d0 - dAt, OffRoute.returnM - 10)
-        XCTAssertLessThan(d0 - dAt, OffRoute.returnM + 300)
-        XCTAssertTrue(rows.filter { $0.0 > last }.allSatisfy { !$0.1 }, "stays shown while it heads back")
-    }
-
-    func testDetourAlertKeepsItShownInsideTheHoursOnly() {
-        let alerts = [ServiceAlert(id: "d", header: "Detour", description: "Shuttles are on a detour around 59th St")]
-        let g = garage
-        XCTAssertNil(firstHidden("A", { _ in g }, noon, noon + 1800, alerts: alerts).first)
-        XCTAssertEqual(firstHidden("A", { _ in g }, night, night + 900, alerts: alerts).first, night + OffRoute.hideOutS)
+        XCTAssertEqual(firstHidden("A", { _ in g }, night, night + 600, alerts: detour).first, night + OffRoute.confirmS, "outside the hours")
     }
 
     func testGapsRouteChangesMissingPollsAndThePhoneClock() {
         var tr = step([:], [bus("g", "A", garage, noon)], noon).tracks
         tr = step(tr, [bus("g", "A", garage, noon + 600)], noon + 600).tracks
         XCTAssertEqual(tr["g"]?.since, noon, "a 10 min gap continues")
+        XCTAssertEqual(tr["g"]?.n, 2)
         tr = step(tr, [bus("g", "A", garage, noon + 1201)], noon + 1201).tracks
         XCTAssertEqual(tr["g"]?.since, noon + 1201, "a longer gap: a new clock")
+        XCTAssertEqual(tr["g"]?.n, 1)
         tr = step(tr, [bus("g", "B", garage, noon + 1231)], noon + 1231).tracks
         XCTAssertEqual(tr["g"]?.since, noon + 1231, "a route change: a new clock")
-        XCTAssertEqual(step(tr, [], noon + 1500).tracks["g"]?.since, noon + 1231, "missing from one poll: kept")
+        let missing = step(tr, [], noon + 1500)
+        XCTAssertEqual(missing.tracks["g"]?.since, noon + 1231, "missing from one poll: kept")
+        XCTAssertEqual(missing.hidden, [])
         XCTAssertTrue(step(tr, [], noon + 1231 + OffRoute.gapS + 1).tracks.isEmpty, "dropped after gapS")
         var t2: [String: OffRoute.Track] = [:]
         var t = noon
-        while t <= noon + 840 { t2 = step(t2, [bus("g", "A", garage, t)], t, nowS: t + 3 * 3600).tracks; t += 60 }
-        XCTAssertEqual(step(t2, [bus("g", "A", garage, noon + 870)], noon + 870, nowS: noon + 870 + 3 * 3600).hidden, [], "report times, not the phone's")
+        while t <= noon + 30 { t2 = step(t2, [bus("g", "A", garage, t)], t, nowS: t + 3 * 3600).tracks; t += 15 }
+        XCTAssertEqual(step(t2, [bus("g", "A", garage, noon + 40)], noon + 40, nowS: noon + 3 * 3600 + 900).hidden, [], "report times, not the phone's")
     }
 
     func testNothingHiddenWithoutLinesOrVehicleIds() {
         var tr: [String: OffRoute.Track] = [:]
         var t = noon
-        while t <= noon + 1800 {
+        while t <= noon + 600 {
             let r = step(tr, [bus("g", "A", garage, t), VehiclePosition(latitude: garage.lat, longitude: garage.lon, trip: .init(routeId: "A"), timestamp: t)],
                          t, shapes: [:])
             tr = r.tracks
             XCTAssertEqual(r.hidden, [])
-            t += 60
+            t += 15
         }
     }
 
@@ -159,8 +171,22 @@ final class OffRouteTests: XCTestCase {
         XCTAssertEqual(d.trips.map(\.vehicle.id), ["2", nil])
     }
 
-    /// data/live.js parity: the merge drops a bus 15 min off its route, and its trip updates; back on its line = back.
-    func testLiveMergeDropsTheBusAndItsTripUpdates() {
+    func testAwayBusesCountsAndTheRoutePageWords() {
+        let buses = [bus("1", "A", garage, noon), bus("2", "A", onA, noon), bus("3", "B", garage, noon), bus("4", "A", garage, noon)]
+        XCTAssertEqual(OffRoute.awayBuses(buses, hidden: ["4", "1"]).map(\.vehicle.id), ["1", "4"], "input order")
+        XCTAssertEqual(OffRoute.awayBuses(buses, hidden: []), [])
+        let away = OffRoute.awayBuses(buses, hidden: ["1", "3", "4"])
+        XCTAssertEqual([OffRoute.awayCount(away, rid: "A"), OffRoute.awayCount(away, rid: "B"), OffRoute.awayCount(away, rid: "C")], [2, 1, 0])
+        XCTAssertEqual(RouteText.awayText(0), "")
+        XCTAssertEqual(RouteText.awayText(1), "1 bus is away from the route and hidden from the map.")
+        XCTAssertEqual(RouteText.awayText(2), "2 buses are away from the route and hidden from the map.")
+        XCTAssertEqual(RouteText.noLiveNote(away: 0), "No bus on this route is sending its location, so we can't confirm it's running. Call 773.702.8181 before you rely on it.")
+        XCTAssertEqual(RouteText.noLiveNote(away: 1), "No bus is on this route right now, so we can't confirm it's running. Call 773.702.8181 before you rely on it.")
+    }
+
+    /// data/live.js parity: the merge drops a bus 45 s more than a block off, and its trip updates, keeps it in
+    /// `awayBuses`; back within a block = back.
+    func testLiveMergeDropsTheBusKeepsItAwayAndBringsItBack() {
         let stat = StaticData(routes: routes, stops: ["S": Stop(id: "S", name: "S", lat: 41.79, lon: -87.61)], shapes: shapes,
                               routeStops: ["A": ["S"]], service: service)
         var pos = garage
@@ -172,20 +198,24 @@ final class OffRouteTests: XCTestCase {
                             alerts: .success(Feed(timestamp: t, entities: [])))
         }
         var s = LiveState(), t = noon
-        while t < noon + OffRoute.hideInS { s = s.applying(poll(t), staticData: stat, now: t); t += 60 }
-        XCTAssertEqual(s.buses.map(\.vehicle.id), ["g", "ok"], "14 min: still shown")
+        while t < noon + OffRoute.confirmS { s = s.applying(poll(t), staticData: stat, now: t); t += 10 }
+        XCTAssertEqual(s.buses.map(\.vehicle.id), ["g", "ok"], "40 s: still shown")
+        XCTAssertEqual(s.awayBuses, [])
         s = s.applying(poll(t), staticData: stat, now: t)
-        XCTAssertEqual(s.buses.map(\.vehicle.id), ["ok"], "15 min: hidden")
+        XCTAssertEqual(s.buses.map(\.vehicle.id), ["ok"], "45 s: hidden")
         XCTAssertEqual(s.trips.map(\.vehicle.id), ["ok"], "its arrival times go with it")
+        XCTAssertEqual(s.awayBuses.map(\.vehicle.id), ["g"], "still tracked")
         pos = LatLon(lat: 41.7902, lon: -87.605)
         t += 10
         s = s.applying(poll(t), staticData: stat, now: t)
-        XCTAssertEqual(s.buses.map(\.vehicle.id), ["g", "ok"], "back on its line: shown at once")
+        XCTAssertEqual(s.buses.map(\.vehicle.id), ["g", "ok"], "back within a block: shown at once")
         XCTAssertEqual(s.trips.map(\.vehicle.id), ["g", "ok"])
+        XCTAssertEqual(s.awayBuses, [])
     }
 
-    /// The web's answers on real bus reports, poll by poll (DC-022 garage runs, the Downtown Campus Connector detour off
-    /// Lake Shore Drive, the Apostolic 8 AM Metra run, a bus parked at the garage).
+    /// The web's answers on real bus reports, poll by poll (DC-022 garage runs, a bus parked at the garage, buses on their
+    /// line, a GPS spike, the Downtown Campus Connector detour off Lake Shore Drive, the Apostolic 8 AM Metra run, a North
+    /// bus off its line under an operator alert naming North).
     func testGoldenRealReportsMatchTheWeb() throws {
         let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: TS.fixture("offroute_golden")) as? [String: Any])
         let shapesRaw = try XCTUnwrap(root["shapes"] as? [String: [[[Double]]]])
@@ -199,6 +229,12 @@ final class OffRouteTests: XCTestCase {
             let name = try XCTUnwrap(c["name"] as? String)
             let ps = try XCTUnwrap(c["polls"] as? [[String: Any]]), expect = try XCTUnwrap(c["expect"] as? [[String]])
             XCTAssertEqual(ps.count, expect.count)
+            // the case's operator alerts (web core-offroute.js feedAlerts)
+            let alerts: [ServiceAlert] = ((c["alerts"] as? [[String: Any]]) ?? []).map { a in
+                ServiceAlert(id: a["id"] as? String ?? "", header: a["header"] as? String ?? "", description: a["description"] as? String ?? "",
+                             activePeriods: [.init(start: (a["start"] as? NSNumber)?.doubleValue, end: (a["end"] as? NSNumber)?.doubleValue)],
+                             routeIds: a["routes"] as? [String] ?? [])
+            }
             var tr: [String: OffRoute.Track] = [:]
             for (i, p) in ps.enumerated() {
                 let h = try XCTUnwrap(p["h"] as? NSNumber).doubleValue
@@ -207,15 +243,17 @@ final class OffRouteTests: XCTestCase {
                     VehiclePosition(vehicle: .init(id: x[0] as? String), latitude: (x[2] as! NSNumber).doubleValue, longitude: (x[3] as! NSNumber).doubleValue,
                                     trip: .init(routeId: x[1] as? String), timestamp: (x[4] as! NSNumber).doubleValue)
                 }
-                let r = OffRoute.step(tr, buses: buses, shapes: shapes, service: service, alerts: [], routes: routes, now: h, feedTs: h)
+                let r = OffRoute.step(tr, buses: buses, shapes: shapes, service: service, alerts: alerts, routes: routes, now: h, feedTs: h)
                 tr = r.tracks
                 if r.hidden != expect[i] { bad.append("\(name) poll \(i): \(r.hidden) vs web \(expect[i])") }
                 for id in r.hidden { hiddenSeen.insert(name + ":" + id) }
                 polls += 1
             }
         }
-        XCTAssertGreaterThan(polls, 300)
+        XCTAssertGreaterThan(polls, 1000)
         XCTAssertEqual(Array(bad.prefix(10)), [], "\(bad.count) polls differ from web/js/core/offroute.js")
-        XCTAssertEqual(hiddenSeen, ["dc022:4313", "dc022:4325", "dc022:4327", "garage:4324"], "never the detour or the Metra run")
+        XCTAssertEqual(hiddenSeen, ["dc022:4313", "dc022:4325", "dc022:4327", "garage:4324", "apostolic:4328",
+                                    "dcc:12642", "dcc:12645", "dcc:12649", "dcc:4314", "dcc:4320"],
+                       "never the buses on their line, the GPS spike or the North bus under its route's alert")
     }
 }
