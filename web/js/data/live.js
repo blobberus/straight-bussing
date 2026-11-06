@@ -3,10 +3,12 @@
 // store.buses holds only vehicles that are operating (core/operating.js): ghosts that stopped
 // reporting, unknown routes and buses on out-of-service routes without predictions are dropped here,
 // so the map, route detail, counts, alerts and planner never show them. Buses that have not followed their
-// route for a long time (core/offroute.js: garage runs, parked off the line) are dropped too, with their trip
-// updates, so no arrival time comes from a bus the map does not show.
+// route for a long time (core/offroute.js: garage runs, parked off the line) and buses that are idle and not in
+// service (core/idle.js: parked for a long time, past their listed hours, lingering at the end of a shift) are dropped
+// too, with their trip updates, so no arrival time comes from a bus the map does not show.
 import { operatingBuses } from '../core/operating.js';
 import { offRouteStep, dropHidden } from '../core/offroute.js';
+import { idleStep } from '../core/idle.js';
 
 /** Passio feed base URL. */
 export const BASE = 'https://passio3.com/chicago/passioTransit/gtfs/realtime/';
@@ -85,6 +87,7 @@ export function startLive(store, opts = {}) {
   let timer = 0, inflight = null, ctl = null, fails = 0, stopped = false;
   let lastBuses = [], lastBusesAt = 0;    // the last poll that had buses (EMPTY_HOLD_S); [] once an empty is believed
   let offTracks = {}, offHidden = [];      // core/offroute.js clocks between polls; the vehicles it hides now
+  let idleTracks = {}, idleHidden = [];    // core/idle.js still clocks between polls; the vehicles it hides now
 
   /** Paused: the page is hidden and nothing needs data in the background. */
   const hidden = () => !!(doc && doc.hidden) && !keepAlive();
@@ -138,10 +141,15 @@ export function startLive(store, opts = {}) {
         routes: s.routes, nowS: nowFn(), feedTs: patch.feedTs });
       offTracks = off.tracks;
       offHidden = off.hidden;
-      if (offHidden.length && !patch.trips) patch.trips = s.trips;   // the store's trips still list a newly hidden bus
+      const idle = idleStep(idleTracks, patch.buses, { trips: patch.trips || s.trips, service: s.service, idle: s.idle,
+        nowS: nowFn(), feedTs: patch.feedTs });
+      idleTracks = idle.tracks;
+      idleHidden = idle.hidden;
+      if ((offHidden.length || idleHidden.length) && !patch.trips) patch.trips = s.trips;   // the store's trips still list a newly hidden bus
     }
-    if (offHidden.length && (patch.buses || patch.trips)) {
-      const d = dropHidden(patch.buses, patch.trips, offHidden);
+    const hiddenNow = idleHidden.length ? offHidden.concat(idleHidden) : offHidden;
+    if (hiddenNow.length && (patch.buses || patch.trips)) {
+      const d = dropHidden(patch.buses, patch.trips, hiddenNow);
       if (patch.buses) patch.buses = d.buses;
       if (patch.trips) patch.trips = d.trips;
     }
