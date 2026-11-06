@@ -56,6 +56,28 @@ Nov 1). Compared with the week before (Oct 26 to 30). Scripts and downloads stay
   than about 37 min would still stop the chain; the outside watchdog (item 3) is the net for that, and with the
   owner's `COLLECT_DISPATCH_TOKEN` secret in the data repo it would restart the collector by itself.
 
+**2. `monitor.py status` could not read the data CSV (fixed).**
+- What: this checkup's `status` printed `arrivals.csv 0.00 MB, 0 rows` and no newest arrival. GitHub's raw file CDN now
+  answers a suffix byte range (`Range: bytes=-65536`, the last 64 KB) with `501 Unsupported client range`; explicit
+  ranges (`bytes=N-M`) still work. The 2026-11-04 checkup still read it, so the change came between Nov 4 and 6.
+- Impact: none on the data; `status`'s rule "buses are running but no new arrivals merged for 3 h" was silently off,
+  and the line looked like an empty data branch. Nothing else reads files that way (the health checks and the
+  watchdog read a git checkout).
+- Fix (`948734a1`): `fetch_tail` asks for byte 0 (the size comes back in Content-Range), then for the last 64 KB; a read
+  error is printed as one instead of zero rows. Test `test_tail_of_the_data_csv_uses_explicit_byte_ranges` (a fake CDN
+  that rejects suffix ranges, and a server without range support). Now: `arrivals.csv 19.23 MB, ~93,700 rows`.
+
+**3. The data repo's sync chain and its watchdog stopped in the same window (fixed).**
+- What: sync run 42058905057 tried to start the next sync at 10:15 AM Nov 5; its one `gh workflow run` got HTTP 500,
+  and no sync ran from 10:15 AM until its cron backstop fired at 12:11 PM. The watchdog lives in that chain, so it
+  first saw the collector gap at 12:12 PM ("12 bus(es) are running but no collect run is active and the newest arrival
+  is 94 min old"), about 1 h 30 min late, and closed its issue at 1:03 PM.
+- Impact: the public data repo was 2 hours stale; the outside net for the collector was down while it was needed.
+- Fix (data repo `1ff8349`): the sync chain tries the dispatch up to 6 times, 1, 2, 4, 5 and 5 min apart, with its
+  waiting-run check before every try; the job limit went from 45 to 60 min. Checked with a stand-in `gh` failing 0, 3
+  and 9 times. Still open for the owner: the watchdog can only report, not restart, until the repository secret
+  `COLLECT_DISPATCH_TOKEN` is set in the data repo (DC-021).
+
 ### DC-022 Two false alarms on the health alerts' first day (fixed 2026-11-02)
 - Found in the 2026-11-02 checkup; both issues had opened and closed by themselves.
 - **Data repo watchdog, Sun Nov 1 4:00 to 4:51 PM ("stale"):** the rule "buses running and a collect run active, but no
