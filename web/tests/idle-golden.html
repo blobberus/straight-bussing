@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>idle golden (running)</title></head>
+<body>
+<!-- Not a test page (the suite runs *.test.html): experiments/routeknower/E28-scripts/make_golden.py --expect opens it in
+     headless Edge to store web/js/core/idle.js's answers on the real polls of fixtures/idle_golden.json (the web test
+     core-idle.js and the iOS Kit IdleTests check against them). -->
+<pre id="result">running...</pre>
+<script type="module">
+import { idleStep } from "../js/core/idle.js";
+const fx = await (await fetch("fixtures/idle_golden.json", { cache: "no-store" })).json();
+const out = {};
+for (const c of fx.cases) {
+  let tracks = {};
+  const expect = [];
+  for (const p of c.polls) {
+    const buses = p.v.map(([veh, rid, lat, lon, vt]) => ({ vehicle: { id: veh }, trip: { route_id: rid }, position: { latitude: lat, longitude: lon }, timestamp: vt }));
+    const trips = p.p.filter((x) => x[1]).map(([veh, t]) => ({ trip: { trip_id: "t" + veh }, vehicle: { id: veh }, stop_time_update: [{ stop_id: "s", arrival: { time: t } }] }));
+    const r = idleStep(tracks, buses, { trips, service: fx.service, idle: fx.idle, nowS: p.h, feedTs: p.h });
+    tracks = r.tracks;
+    expect.push(r.hidden);
+  }
+  out[c.name] = { expect };
+}
+document.getElementById("result").textContent = JSON.stringify(out);
+document.title = "TESTS pass=1 fail=0";
+</script>
+</body>
+</html>
