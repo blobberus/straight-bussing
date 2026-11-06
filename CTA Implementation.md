@@ -42,7 +42,7 @@ in About.
 
 **What only the owner can do:** apply for a Bus Tracker API key on the owner's own CTA account (and accept CTA's
 Developer License Agreement), create the Cloudflare account that hosts the proxy (the free plan covers the expected
-traffic; the paid plan is $5 a month), and answer the open questions in section 7.
+traffic; the paid plan is $5 a month), and answer the open questions in section 8.
 
 ## 2. Hyde Park CTA bus routes (checked 2026-11-06)
 
@@ -167,7 +167,7 @@ service]`. Rough size for the 14 routes: well under 200 KB uncompressed, loaded 
 
 | Option | How | Verdict |
 |---|---|---|
-| A. Direct calls from the page or the app | The page fetches `ctabustracker.com/bustime/api/v3/...?key=...` itself | **Not possible.** No CORS header, so browsers refuse to read the answer. The key would be public (anyone could copy it from the site or the app binary, burn the daily quota or get it revoked). Each rider would spend quota on their own (section 6.9) |
+| A. Direct calls from the page or the app | The page fetches `ctabustracker.com/bustime/api/v3/...?key=...` itself | **Not possible.** No CORS header, so browsers refuse to read the answer. The key would be public (anyone could copy it from the site or the app binary, burn the daily quota or get it revoked). Each rider would spend quota on their own (section 6.3) |
 | B. Scheduled GitHub Action snapshot | An Action polls CTA and commits a JSON file that Pages serves | **Too slow for live.** Cron runs at most every 5 minutes and GitHub often fires it late (this repo saw 4 to 5 hour gaps, DC-013); Pages adds a deploy delay. Times would be minutes old and the stale pill would show "late" or "old" most of the time. Fine for the schedule, not for buses |
 | C. Tiny proxy that holds the key | A Cloudflare Worker (or similar) with the key as a secret. One public read-only endpoint, for example `GET /cta/v1/live.json`, answers every rider from a 25 s cache; on a miss it makes the CTA calls for the whole Hyde Park set and converts them | **Recommended.** Key stays secret, CTA quota no longer grows with riders, the Worker adds the CORS header for the Pages origin, and the iPhone app uses the same URL |
 | D. CTA's GTFS-realtime (beta) behind the same proxy | The Worker reads `VehiclePositions.json` and `TripUpdates.json` (whole city) and keeps our routes | **Later.** Fewer calls (2 per refresh) and already GTFS-realtime, but it is a beta, its bus coverage and key type are not confirmed, and filtering a whole-city file every 30 s may need more than the free plan's 10 ms of CPU per request. Design C's output so the source behind it can switch to D without an app change |
@@ -195,7 +195,7 @@ choice. Every rider gets the same answer and the filtering happens on the device
 **Other hosts.** Deno Deploy, Netlify or Vercel functions, or a small VPS work the same way. A Google Apps Script web
 app (the owner already runs one for usage statistics) could proxy too, but its URL Fetch quota and slow cold answers
 make it a poor fit for a 30 s live feed. Cloudflare's free plan (100,000 Worker requests a day, cached answers
-included) covers about 800 riders a day at 10 minutes each (section 6.9); the paid plan ($5 a month, 10 million
+included) covers about 5,000 ten-minute visits a day when the app polls every 30 s (section 6.3); the paid plan ($5 a month, 10 million
 requests a month) covers far more. Deploying a Worker normally uses `wrangler` (Node), which this PC does not have:
 paste the script in the Cloudflare dashboard, or deploy from a GitHub Action with `cloudflare/wrangler-action`.
 
@@ -219,3 +219,185 @@ Passio feeds --(unchanged)--> website, iPhone app
 
 The two live sources stay separate end to end: separate fetch, separate stale state, separate failure. A CTA outage
 must never mark the shuttles stale, and a healthy shuttle feed must never hide a stale CTA feed.
+
+## 5. Step-by-step implementation plan
+
+Order matters: each step leaves the app working, and the shuttles never depend on anything CTA. Build it on the
+experimental repo first (the owner's process), then port to the live repo. File names below follow the live repo's
+layout; where the experimental build chose a different name, use its name and update this file.
+
+### 5.1 Owner steps first (nothing live works without them)
+
+1. **Bus Tracker key.** Sign in to (or create and activate) a CTA Bus Tracker account at ctabustracker.com, open
+   **My Account**, follow the **Developer API** link and apply. One key per account; CTA emails it after approval.
+   Use an account the owner controls long term (the project's own email, not a shared or school account).
+2. **Terms.** Read and accept the CTA Developer License Agreement (`/developers/terms/`). Save the approval email and
+   a PDF of the terms as accepted: App Review may ask for proof of permission (section 6.2).
+3. **Proxy host.** Create a free Cloudflare account, a Worker (for example `straight-bussing-cta`), and add the key as
+   the secret `CTA_KEY`. Turn off Workers Logs. Note the Worker URL for `CTA_LIVE_URL` (step 5.4).
+4. **Optional, later.** Ask CTA (through the Developer Center contact) which key the GTFS-realtime beta uses and
+   whether it covers buses.
+5. Answer the open questions in section 8.
+
+### 5.2 Schedule build: `tools/build_cta.py` and its workflow
+
+`tools/build_cta.py` (Python 3.11, standard library only, like `tools/build_gtfs.py`):
+
+- **Route list** in one editable file, `tools/cta_routes.json` (phase by phase: `["171","172","192"]` first).
+- **Download** with a conditional GET; keep the zip's `Last-Modified` / `ETag` in `web/data/cta/meta.json` and exit
+  early when nothing changed (the zip is 69 MB and changes every week or two).
+- **Stream** `stop_times.txt` once with `csv.reader` (367 MB unzipped), keeping only trips of the chosen routes. Times
+  past 24:00 belong to the previous service day, as in the Passio build.
+- **Write** to `web/data/cta/` (every id with the `cta:` prefix):
+  - `routes.json`: `{"cta:171": {short:"171", long:"U. of Chicago/Hyde Park", color, text_color, agency:"cta", url}}`
+    with our own colors (section 5.5), not CTA's greys.
+  - `stops.json`: `{"cta:14020": {name, lat, lon, code}}`, only stops of the chosen routes.
+  - `shapes.json`: the main shape per direction (at most 2, like `MAX_SHAPES_PER_DIR`), simplified to about 5 m.
+  - `route_stops.json`: `{"cta:171": {"North": [...], "South": [...]}}`. CTA routes are two-direction lines, not the
+    Passio loops (`first == last`), so this is a new shape; core code must not assume a loop for `cta:` routes.
+  - `service.json`: day spans in the same format as the Passio `service.json`, so `core/schedule.js`,
+    "Hours & service" and Lines by Time work unchanged.
+  - `timetable.json`: patterns (stop ids + minutes from the first stop) and trips (`[pattern, start, service]`) plus
+    the service calendar, for times beyond Bus Tracker's 30-minute horizon.
+  - `links.json`: CTA stop to Passio stop pairs within 60 m (same corner), for "also served by" lines (section 5.5).
+  - `meta.json`: `generated_utc`, `source`, `last_modified`, `calendar_start`, `calendar_end`.
+- **Safety** (as in `build_gtfs.py`): build everything first, then write; an empty or broken zip never replaces good
+  files. Fail the run when `calendar_end` is less than 7 days away (CTA's zip of 2026-09-14 ends 2026-11-30), and the
+  app must stop showing CTA schedule times past `calendar_end` instead of guessing.
+
+Workflow: a step in `pages.yml` (which already refreshes the Passio GTFS daily) or a separate `cta.yml`, daily around
+5 AM Chicago time, committing `web/data/cta/` only when it changed. Keep it independent of the Passio step
+(`continue-on-error`, a line in the run summary), so a CTA server problem never blocks the shuttle refresh.
+
+### 5.3 The proxy: `tools/cta-proxy/`
+
+- `tools/cta-proxy/transform.js`: pure functions (no fetch, no globals) that turn Bus Tracker answers into the GTFS-
+  realtime JSON of section 4.2. Being a plain ES module, the browser test runner tests it like any `core/` file.
+- `tools/cta-proxy/worker.js`: the Cloudflare module Worker (about 150 lines): routes `GET /cta/v1/live.json` and
+  `GET /cta/v1/health` (counts only: last refresh, calls today, last CTA error); everything else 404.
+- **Calls per refresh** (all with `format=json&tmres=s&unixTime=true`): `getvehicles?rt=` in groups of 10 routes, then
+  `getpredictions?vid=` in groups of 10 for the vehicles within about 3 km of Hyde Park (at most 6 calls). Predictions
+  by vehicle give each bus its whole list of upcoming stops, which trip following ("Get off in 2 stops") needs;
+  predictions by stop would cover only 10 stops a call. Alerts from `alerts.aspx?routeid=...&activeonly=true&outputType=JSON`
+  every 2 minutes (no key needed, no quota used). Patterns and detours (`getpatterns`, `getdetours`) every 10 minutes,
+  only to mark a route as detoured.
+- **One refresh for everyone.** A single Durable Object holding the cache and the call counter gives one CTA refresh
+  for all Cloudflare locations and an exact daily count (check that Durable Objects are on the current free plan; if
+  not, the per-location Cache API plus the design bound in section 6.3 is enough).
+- **Errors.** CTA answers errors inside a 200 response; map "Transaction limit for current day has been exceeded" to
+  `ok:false, errors:['cta-limit']` and any other error to `ok:false` with the message, always with the last good data
+  and its real time.
+- **Deploy** from the Cloudflare dashboard (paste) or a `cta-proxy.yml` Action with `cloudflare/wrangler-action`
+  (Node runs in CI only). Keep the deployed copy identical to the repo file.
+
+### 5.4 Web data layer
+
+- `web/js/data/static.js`: after the Passio files load and first paint is done, load `data/cta/*.json` (idle time) and
+  add them to the store. Missing or broken CTA files mean "no CTA", never an error for the shuttles.
+- `web/js/data/cta.js` (the experimental build calls it `cta-live.js`): `startCtaLive(store, {url, intervalMs:30000})`
+  polls the proxy, parses with the same `parseBuses` / `parseTrips` / `parseAlerts` that `data/live.js` exports,
+  applies the CTA operating rule, and writes **separate** store keys: `ctaBuses`, `ctaTrips`, `ctaAlerts`,
+  `ctaFeedTs`, `ctaLastOk`, `ctaFailed`. It pauses when the page is hidden and polls on return, like `live.js`.
+  Polling faster than 30 s buys nothing (CTA refreshes every 30 s).
+- One constant `CTA_LIVE_URL` (like `USAGE_URL`); empty means phase 0, schedule only, no request to any proxy.
+- Keeping CTA in its own keys means nothing that reads `buses` / `trips` today (the collector's assumptions, bus
+  numbering, off-route hiding, Passio alert mapping) picks up CTA by accident. Code that should show both asks for
+  both through small helpers (`allBuses(state)`, `allTrips(state)`) in `core/agency.js`.
+
+### 5.5 Core logic for a second agency
+
+- **Ids.** New `core/agency.js`: `CTA = 'cta:'`, `isCta(id)`, `agencyOf(id)`, `ctaId(raw)`, `rawId(id)`. Route, stop,
+  trip and vehicle ids carry the prefix everywhere: in the store, in saved settings (hidden routes, favorites, custom
+  routes), in URLs. Passio ids stay as they are and keep joining Passio's `routes.txt` only; CTA's numeric stop ids
+  (for example `1529`) would otherwise collide with Passio's. `alertRouteIds` (Passio's shape-id aliases) never
+  applies to CTA.
+- **Colors and shapes.** CTA's `route_color` values are generic greys, and grey means "hidden" or "faded" in this
+  app. Give CTA routes their own colors from a fixed set that differs from every Passio color and passes contrast in
+  light and dark (docs/DESIGN.md "1b"), square stop markers, a distinct bus badge, and a "CTA" text tag on every row,
+  so agency is never shown by color alone.
+- **Stops are linked, never merged.** `links.json` pairs nearby stops. A shuttle station page shows "CTA here: 171,
+  172" with the walk; a CTA stop page shows the shuttles there. The records stay apart (different ids, names and
+  arrival sources). The planner does not need the links: its 150 m transfer walk already connects them.
+- **Operating rule** (`core/operating.js`): a CTA vehicle counts when its timestamp is at most 5 minutes older than
+  the proxy's `generated`, its route is a known `cta:` route, and the route is in the configured list. CTA buses skip
+  `core/offroute.js` at first: Bus Tracker reports detours itself, and a detoured CTA bus is a real bus.
+- **Arrivals** (`core/arrivals.js`): arrivals carry `agency` and `source`: `cta-live` (a Bus Tracker prediction) or
+  `cta-schedule` (the timetable, used only past the predictions or when the proxy is down). Canceled (`dyn` 1) shows
+  as "Canceled", drop-off only (`dyn` 4) as "Drop-off only"; invalidated trips never reach the app.
+- **Staleness.** `staleLevel` runs per source. The status pill shows the worst state among the sources on screen; when
+  only CTA is behind it says so ("CTA times delayed"). A failed proxy shows CTA rows as unavailable or "Scheduled",
+  never as live.
+- **Schedule** (`core/schedule.js`, `core/timeactive.js`): reuse with `cta/service.json`; Lines by Time lists CTA
+  routes in their own group.
+- **Visibility** (`core/visibility.js`): hidden CTA routes persist like any route; the default (shown or hidden) is an
+  owner question.
+- **Bus numbers** (`core/busnum.js`): number CTA buses within a CTA route only; whether to show CTA's own bus numbers
+  instead is an owner question.
+- **Planner** (`core/planner.js`, phase 3): CTA bus legs board and alight at CTA stops; ride time from same-trip
+  predictions, else the timetable, else distance at 18 km/h; wait from predictions within 30 minutes, else the
+  timetable. Each `BusLeg` gets `agency` and `source` (`cta-live` / `cta-schedule`) and every number stays "est.".
+  Transfers between agencies use the existing transfer walk rule. No fares. Keep planning under 50 ms on a phone with
+  the extra stops (limit CTA candidates to the walking radius, as today). `core/coverage.js` keeps measuring distance
+  to the campus shuttle routes unless the owner decides CTA should widen coverage.
+- **Words** (`core/text.js`, iOS `Wording`): "CTA 171", "CTA live", "CTA schedule", "est.", "Data provided by CTA",
+  "Not made or endorsed by the CTA". No dash characters in UI text (docs/DESIGN.md).
+- **Trip alerts** (`core/tripyou.js`, `core/notify.js`): work for CTA legs through the same trip evaluation, as long as
+  the leg has a CTA trip id and vehicle predictions; notifications keep "Unofficial."
+
+### 5.6 Map and screens
+
+- **Map** (`map/layers.js`, `map/landmarks.js` untouched): CTA bus badge with its own shape and the route number,
+  square CTA stops, CTA lines drawn under the shuttle lines by default (map order is user-editable as today), thinner
+  at low zoom so long routes do not crowd campus.
+- **Routes list** (`ui/views/routes.js`): a separate "CTA buses" group below the shuttles, every row tagged "CTA",
+  the group footer "Data provided by CTA. Not made or endorsed by the CTA."
+- **Route page** (`ui/views/route.js`): North / South (or East / West) instead of a loop rail; CTA alerts verbatim;
+  contact for CTA routes: CTA Customer Service 1-888-YOURCTA (1-888-968-7282) and the route's transitchicago.com
+  page. 773.702.8181 stays wherever the shuttles or rider safety are concerned.
+- **Station page** (`ui/views/stop.js`): one time-sorted list, each row tagged by agency and source.
+- **Route search** (`core/routesearch.js`): "171", "cta 4", "cottage grove" find CTA routes.
+
+### 5.7 iPhone app (Kit ports first)
+
+Mirror every core change in `ios/StraightBussingKit` and add a row to the parity matrix in `ios/README.md`:
+`Agency.swift` (ids), `StaticModels` / `StaticLoader` (CTA files optional), `LiveModels` / `FeedClient` (the CTA source
+with its own stale state), `Operating`, `Arrivals`, `Schedule`, `Planner` / `PlannerRefine`, `TripFollow`,
+`BusNumbers`, `Wording`, `ScheduleUpdate` (file list and checks). Tests use the **same JSON fixtures** as the web
+(recorded proxy answers and a small `cta/*.json` set) and compare with results produced by the web JS, the way
+`Geometry` uses golden paths. App side: square CTA stops and the CTA bus badge in `MapScreen`, the CTA group in
+Routes, Credits and About lines, "CTA 171" in the Live Activity. Built and tested only in CI (`ios.yml`; no Mac here).
+
+### 5.8 Privacy page, About and Credits
+
+- `web/privacy.html`, "What leaves your device": add, in plain words, "CTA bus data. The app downloads CTA bus
+  positions, arrival predictions and alerts for the Hyde Park routes from <proxy address>, a small service run for
+  Straight Bussing that gets them from the CTA. The request contains nothing about you: no location, no stop, no
+  search. Like any web server it sees your IP address to answer, and it keeps no log." Update the effective date.
+- The same words in About (`ui/views/about.js`), iOS About and Settings, and the privacy line of ship checklist 6 in
+  `.claude/rules/project.md` (all four must match).
+- App Privacy label: stays "Data Not Collected" only while the proxy keeps nothing (Apple counts data as collected
+  when it is kept longer than needed to answer the request). Check again before submitting.
+- Settings > Credits: "CTA bus data: Data provided by CTA (Chicago Transit Authority). Straight Bussing is not made or
+  endorsed by the CTA." (Crediting CTA is fine; the Credits rule only excludes UChicago.)
+- `web/js/data/usage.js`: no change. Never add CTA choices to usage rows without a new owner decision.
+
+### 5.9 Service worker
+
+Precache `web/data/cta/*.json` with the rest of `data/` (`tools/test_precache.py` must pass), bump `sb-v2-<n>` in the
+commit that adds the files, and never cache the proxy (cross-origin answers are already never cached). The daily CTA
+refresh then behaves like today's daily Passio refresh.
+
+### 5.10 Tests
+
+- **Python:** `tools/test_build_cta.py` with a tiny fixture zip (3 stops, 2 trips, a 25:10 time, a `calendar_dates`
+  removal, a holiday on Sunday service) checked against expected JSON; run it in `collector-tests.yml` or a new job.
+- **Browser** (`tools/run_browser_tests.py`), new files: `core-agency.js` (a Passio stop `1529` and `cta:1529` never
+  mix; saved settings keep prefixes), `cta-transform.js` (Bus Tracker fixtures to GTFS-realtime JSON: times, `dyn` 16
+  and 17 dropped, `dyn` 1 flagged, an error answer becomes `ok:false` with the old time), `data-cta-live.js` (proxy
+  down: `ctaFailed` true and the Passio state untouched; old `generated`: "old"), plus cases in the existing arrivals,
+  planner, visibility, routes and route view tests (CTA tag text, contact line, schedule fallback labeled), and an e2e
+  test with a stubbed proxy.
+- **Demo mode** (`?demo=1`): simulate CTA buses from `cta/timetable.json` the way `data/demo.js` does for the
+  shuttles, never mixed with live data.
+- **iOS:** Kit tests mirroring the above, in CI.
+- **Before every ship:** headless Edge screenshots in light and dark, the full browser suite, `test_precache.py`.
