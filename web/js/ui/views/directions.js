@@ -286,7 +286,7 @@ export async function replan({ fresh = false } = {}) {
   const state = cur(), token = ++D.token;
   if (!D.from || !D.to || !state.staticLoaded) { D.result = null; D.refining = false; patchRes(); try { ctxRef?.map?.drawPlan?.(null); } catch (e) { /* */ } return; }
   const now = nowFn(), from = D.from, to = D.to;
-  const data = { stops: state.stops, routes: state.routes, routeStops: state.routeStops, trips: state.trips || [], buses: state.buses || [] };
+  const data = { stops: state.stops, routes: state.routes, routeStops: state.routeStops, trips: state.trips || [], buses: state.buses || [], service: state.service };
   let r;
   try { r = deps.plan({ from, to, now, data, predict: deps.predict }); } catch (e) { r = null; }
   if (!r || !Array.isArray(r.options)) { const m = hav(from, to) * 1.2; r = { options: [], walkOnly: { m, min: m / 80 } }; }

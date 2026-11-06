@@ -54,6 +54,20 @@ test("headway wait capped at 30 min and divided by buses running", () => {
   ok(PLANNER.HEADWAY_CAP === 30);
 });
 
+test("no headway estimate for a route past its listed hours: only its live times (RouteKnower E28)", () => {
+  const wk = (first, last) => ({ first, last, trips: 9, buses: [] });
+  const days = (d) => ({ mon: d, tue: d, wed: d, thu: d, fri: d, sat: d, sun: d });
+  const open = { routes: { LOOP: { days: days(wk("00:00", "23:59")), exceptions: [] } } };
+  const closed = { routes: { LOOP: { days: days(null), exceptions: [] } } };
+  const keys = (r) => r.options.filter((o) => !o.walkOnly).map((o) => o.key);
+  ok(keys(plan({ from: near_("L3"), to: near_("L1"), now: T, data: data({ service: open }) })).includes("LOOP"), "inside its hours: estimated");
+  ok(!keys(plan({ from: near_("L3"), to: near_("L1"), now: T, data: data({ service: closed }) })).some((k) => k.startsWith("LOOP")), "outside: not offered");
+  const live = plan({ from: near_("L3"), to: near_("L1"), now: T, data: data({ service: closed, trips: [trip("x", "LOOP", [["L3", T + 300], ["L0", T + 400], ["L1", T + 500]])] }) });
+  const o = live.options.find((x) => x.key === "LOOP");
+  ok(o && busLegs(o)[0].waitLive, "outside its hours with a live time: offered, live");
+  ok(keys(plan({ from: near_("L3"), to: near_("L1"), now: T, data: data({ service: { routes: {} } }) })).includes("LOOP"), "no schedule data for it: as before");
+});
+
 test("one transfer within 150 m (A -> walk -> B)", () => {
   const r = plan({ from: near_("A0"), to: near_("B1", -0.0001), now: T, data: data() });
   const o = r.options.find((x) => x.key === "A>B");

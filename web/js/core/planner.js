@@ -12,7 +12,11 @@
  *  - ride time: same-trip live prediction (trip update at alight minus at board), else
  *    predict.rideMinutes, else path distance at 18 km/h.
  *  - wait: next live arrival at the board stop after you WALK there (15 s grace), else headway
- *    estimate = cycle minutes / buses running / 2, clamped to [1, 30]; route skipped if neither.
+ *    estimate = cycle minutes / buses running / 2, clamped to [1, 30], only while the route is inside its listed
+ *    hours when you reach the stop (data.service; no schedule data = allowed): a bus past its route's end of service
+ *    is offered only for its own live times (owner 2026-11-06, RouteKnower E28); route skipped if neither.
+ *    Buses that are idle and not in service (core/idle.js) or long off their route (core/offroute.js) never reach
+ *    the planner: data/live.js drops them and their trip updates.
  *    A transfer's second wait starts after the transfer walk.
  *  - total/arrive = walk + wait + ride (+ transfer walk + wait + ride) + walk to the destination.
  *  - direct trips: per route, the best boarding/alighting pair for EACH ranking criterion (least
@@ -26,6 +30,7 @@
 import { hav, WALK_M_PER_MIN as WALK_M_MIN, WALK_DETOUR as DETOUR } from "./geo.js";
 import { nowS } from "./time.js";
 import { pickOptions, walkTotals, walkFirst } from "./rank.js";
+import { isScheduledNow } from "./schedule.js";
 
 const MAX_WALK = 800, MAX_WALK_FAR = 1600, XFER_M = 150, BUS_M_MIN = 18000 / 60;
 const MAX_OPTS = 4, MIN_WALK_LEG = 1, GRACE_S = 15, HEADWAY_CAP = 30, XFER_GAIN_MIN = 2;
@@ -118,6 +123,7 @@ function makeCtx({ data, predict, walkMins }) {
     }
     const n = nBuses[rid];
     if (!n) return null;
+    if (D.service && isScheduledNow(D.service, rid, readyT) === false) return null;   // past its listed hours: live times only
     const min = Math.min(HEADWAY_CAP, Math.max(1, cycleMin(seq) / n / 2));
     return { min, live: false, t: readyT + min * 60, tu: null };
   };
@@ -281,7 +287,7 @@ function candidates(C, seqs, from, to, t0, maxM) {
 /**
  * Plan trips from `from` to `to`. Totals include every walk: to the boarding stop, between stops
  * on a transfer, and from the alighting stop to the destination.
- * @param {{from:{lat,lon}, to:{lat,lon}, now?:number, data:{stops,routes,routeStops,trips,buses},
+ * @param {{from:{lat,lon}, to:{lat,lon}, now?:number, data:{stops,routes,routeStops,trips,buses,service?},
  *   predict?:{rideMinutes:Function}, walkMins?:Object<string,number>}} args
  *   walkMins: router minute overrides keyed 'start:<stopId>', 'end:<stopId>', 'xfer:<fromId>><toId>'
  *   (used by refineWalking; normal callers omit it).
