@@ -1,0 +1,524 @@
+kind,route,spot,lat,lon,events,days,weekday_events,labels,time_p10,time_p50,time_p90,typical_where,vehicles,passio_predicted_at_leave
+leave,Downtown Campus Connector,Midway Plaisance & Cottage Grove,41.78739,-87.60617,53,18,53,break 20 / shift_end 19 / feed_drop 11 / route_switch 3,10:31,12:19,17:11,out of the feed,18,50
+leave,Downtown Campus Connector,59th & Ellis,41.78759,-87.60109,47,18,47,break 19 / feed_drop 16 / shift_end 12,10:56,12:38,21:29,out of the feed,15,39
+leave,Downtown Campus Connector,Rockefeller Chapel,41.78768,-87.5971,44,16,44,break 21 / shift_end 9 / route_switch 7 / feed_drop 7,10:27,13:41,20:58,drove off,15,21
+leave,Downtown Campus Connector,Gleacher Center,41.88951,-87.62128,29,19,29,feed_drop 14 / shift_end 10 / break 5,13:22,18:29,20:59,out of the feed,13,29
+leave,Apostolic/Drexel,Goldblatt Pavilion,41.78774,-87.60393,27,15,27,break 8 / route_switch 7 / shift_end 6 / feed_drop 6,16:00,20:51,00:00,drove off,10,25
+leave,Downtown Campus Connector,Goldblatt Pavilion,41.7877,-87.6038,20,13,20,break 9 / feed_drop 6 / shift_end 5,10:54,11:43,12:56,out of the feed,10,18
+leave,Red Line/Arts Block,170 m from Garfield & Wabash (WB),41.79485,-87.62569,19,13,19,feed_drop 9 / break 8 / shift_end 2,11:37,14:23,21:12,out of the feed,6,17
+leave,Red Line/Arts Block,Midway Plaisance & Cottage Grove,41.78645,-87.60657,14,12,14,shift_end 5 / route_switch 4 / break 3 / feed_drop 2,10:56,11:07,21:18,drove off,5,13
+leave,Midway Metra,Midway Plaisance & Cottage Grove,41.78715,-87.60633,13,11,13,route_switch 6 / feed_drop 4 / shift_end 2 / break 1,09:48,10:02,19:13,drove off,8,10
+leave,Apostolic,S Drexel Ave & 57th St,41.79106,-87.60374,12,11,12,shift_end 4 / break 4 / feed_drop 3 / route_switch 1,09:22,09:53,10:12,drove off,4,7
+leave,Red Line/Arts Block,59th & Ellis,41.78764,-87.60148,12,8,12,route_switch 10 / break 1 / shift_end 1,11:01,13:59,20:06,drove off,5,8
+leave,Downtown Campus Connector,Operator garage,41.8205,-87.64141,11,8,11,shift_end 5 / break 4 / route_switch 2,13:18,13:43,21:44,out of the feed,7,7
+leave,Apostolic/Drexel,59th & Ellis,41.78738,-87.6014,11,8,11,break 4 / shift_end 3 / feed_drop 2 / route_switch 2,18:50,20:57,21:59,drove off,10,10
+leave,Downtown Campus Connector,Wyler Pavilion,41.78782,-87.60565,9,7,9,break 5 / shift_end 3 / route_switch 1,08:29,11:07,12:57,drove off,6,8
+leave,Midway Metra,Goldblatt Pavilion,41.78775,-87.60358,9,7,9,route_switch 6 / shift_end 2 / feed_drop 1,09:45,17:25,19:00,drove off,5,7
+leave,Apostolic/Drexel,Wyler Pavilion,41.78786,-87.60513,9,7,9,shift_end 3 / break 2 / route_switch 2 / feed_drop 2,15:45,18:46,21:09,Operator garage,5,9
+leave,Downtown Campus Connector,near Gleacher Center,41.88925,-87.62018,8,7,8,feed_drop 5 / shift_end 2 / break 1,10:07,15:00,20:52,out of the feed,4,7
+leave,Red Line/Arts Block,Logan Center for Arts,41.78587,-87.60418,8,7,8,break 5 / route_switch 2 / shift_end 1,10:26,18:07,21:13,drove off,5,5
+leave,Red Line/Arts Block,Garfield & Wabash (WB),41.79469,-87.62525,8,6,8,feed_drop 3 / shift_end 3 / break 2,13:14,21:14,21:22,out of the feed,6,7
+leave,Red Line/Arts Block,Garfield Green Line Station,41.79481,-87.61808,8,6,8,feed_drop 6 / shift_end 2,11:18,16:04,20:55,out of the feed,4,7
+leave,Friend Center/Metra,Goldblatt Pavilion,41.78772,-87.60393,7,6,7,route_switch 4 / feed_drop 2 / break 1,09:47,13:02,18:00,drove off,5,7
+leave,Central,Ellis Ave & 57th St,41.79148,-87.60143,7,7,6,feed_drop 4 / shift_end 2 / route_switch 1,21:08,21:34,22:14,out of the feed,5,5
+leave,Red Line/Arts Block,Logan Center,41.78586,-87.60332,7,7,7,break 5 / route_switch 1 / shift_end 1,10:20,10:24,13:13,drove off,2,7
+leave,Apostolic/Drexel,Operator garage,41.81993,-87.64193,7,4,7,shift_end 4 / break 2 / route_switch 1,13:15,20:42,23:03,out of the feed,5,7
+leave,Downtown Campus Connector,near DuSable Black History Museum,41.79133,-87.60642,7,5,7,feed_drop 5 / shift_end 1 / break 1,12:40,13:12,21:29,out of the feed,5,7
+leave,53rd Street Express,Midway Plaisance & Cottage Grove,41.78724,-87.60606,7,6,7,shift_end 3 / break 2 / feed_drop 2,11:08,11:39,15:08,Operator garage,5,6
+leave,Red Line/Arts Block,160 m from Garfield & Wabash (WB),41.79469,-87.62563,7,6,7,break 5 / shift_end 1 / feed_drop 1,13:57,14:01,21:18,drove off,3,6
+leave,Apostolic,South Campus Resident Hall,41.78374,-87.60118,6,6,6,break 6,08:42,08:43,09:05,drove off,1,5
+leave,Apostolic/Drexel,Burton-Judson Courts (NE Corner),41.78641,-87.60113,6,5,6,route_switch 5 / break 1,13:17,18:28,20:30,drove off,2,6
+leave,Downtown Campus Connector,E Randolph St & S Michigan Ave,41.88356,-87.62421,5,3,5,shift_end 4 / feed_drop 1,10:05,18:42,21:02,drove off,2,4
+leave,Drexel,Burton-Judson Courts (NE Corner),41.78644,-87.60117,5,4,5,route_switch 3 / break 2,09:59,10:04,10:20,drove off,4,2
+leave,East,Reynolds Club,41.79097,-87.59768,5,4,4,break 2 / shift_end 1 / route_switch 1 / feed_drop 1,17:50,20:50,21:15,out of the feed,4,5
+leave,Downtown Campus Connector,"Unnamed (41.8254, -87.6010)",41.82543,-87.60103,5,5,5,feed_drop 3 / shift_end 2,22:01,22:07,22:10,out of the feed,2,2
+leave,53rd Street Express,59th & Ellis,41.78758,-87.6013,4,4,4,route_switch 2 / feed_drop 1 / shift_end 1,10:43,10:49,10:53,out of the feed,3,3
+leave,East,Ellis Ave & 57th St,41.79145,-87.60131,4,4,3,shift_end 3 / feed_drop 1,21:22,21:46,22:13,out of the feed,4,4
+leave,Drexel,S Drexel Ave & 57th St,41.79107,-87.60366,4,4,4,route_switch 4,09:58,09:58,10:04,drove off,2,2
+leave,Midway Metra,Logan Center,41.78587,-87.60346,4,3,4,route_switch 3 / break 1,08:08,10:02,16:20,drove off,4,3
+leave,Apostolic,Goldblatt Pavilion,41.78772,-87.60394,4,4,4,route_switch 3 / feed_drop 1,09:58,10:10,10:52,drove off,3,3
+leave,53rd Street Express,Press Building,41.78613,-87.59101,4,4,4,feed_drop 2 / shift_end 1 / break 1,10:35,11:31,12:26,out of the feed,3,3
+leave,Apostolic,Operator garage,41.81987,-87.6418,4,3,4,break 2 / shift_end 2,10:24,10:41,11:11,Operator garage,2,0
+leave,Downtown Campus Connector,"Unnamed (41.8102, -87.5905)",41.81017,-87.59049,4,2,4,feed_drop 2 / shift_end 2,09:11,16:13,21:38,out of the feed,1,4
+leave,East,Operator garage,41.81991,-87.64215,3,3,1,shift_end 2 / break 1,08:38,22:31,22:57,out of the feed,3,1
+leave,Central,Reynolds Club,41.79133,-87.59836,3,3,2,shift_end 2 / feed_drop 1,19:38,22:01,22:21,out of the feed,3,2
+leave,Drexel,Goldblatt Pavilion,41.78776,-87.6035,3,3,3,route_switch 3,08:18,09:54,09:57,drove off,3,2
+leave,Apostolic,59th & Ellis,41.78718,-87.60123,3,3,3,route_switch 2 / shift_end 1,10:11,10:45,10:47,drove off,2,0
+leave,Midway Metra,Rockefeller Chapel,41.78785,-87.59797,3,3,3,route_switch 3,18:52,19:02,20:59,parked at Reynolds Club,2,1
+leave,Apostolic/Drexel,57th Street & Drexel (NB),41.79153,-87.60364,3,2,3,feed_drop 2 / route_switch 1,20:53,20:55,21:24,out of the feed,2,3
+leave,Midway Metra,59th & Ellis,41.78786,-87.60161,3,3,3,route_switch 2 / break 1,09:33,09:33,17:46,drove off,2,2
+leave,Downtown Campus Connector,near Center for Care and Discovery,41.79129,-87.60602,3,3,3,break 2 / feed_drop 1,13:14,13:18,19:21,drove off,2,1
+leave,South,Burton-Judson Courts (NE Corner),41.78614,-87.6013,3,3,3,shift_end 3,20:56,21:05,21:07,out of the feed,1,3
+leave,Apostolic,Bernard Mitchell Hospital,41.78954,-87.60521,3,3,3,shift_end 1 / feed_drop 1 / route_switch 1,10:03,10:04,10:04,out of the feed,1,3
+leave,Apostolic/Drexel,Woodlawn Ave & 61st St,41.78423,-87.59603,3,3,3,route_switch 3,17:02,18:04,22:13,drove off,2,3
+leave,Red Line/Arts Block,Burton-Judson Courts (NE Corner),41.7865,-87.60129,3,3,3,route_switch 3,11:04,11:09,14:59,drove off,3,2
+leave,53rd Street Express,S Lake Park & E 53rd St,41.79954,-87.5872,3,3,3,route_switch 3,11:21,11:34,11:48,drove off,2,2
+leave,Downtown Campus Connector,59th St & Metra,41.78763,-87.58901,3,3,3,shift_end 1 / break 1 / feed_drop 1,11:10,14:23,19:01,drove off,2,0
+leave,Red Line/Arts Block,Ellis Garage & Ratner Athletic (West),41.79502,-87.60142,3,3,3,route_switch 3,11:24,11:38,11:55,drove off,1,3
+leave,South,59th & Ellis,41.78727,-87.60138,3,3,3,feed_drop 2 / shift_end 1,22:41,22:48,22:50,out of the feed,2,3
+leave,Apostolic/Drexel,Bernard Mitchell Hospital,41.78919,-87.605,3,3,3,break 2 / route_switch 1,19:08,19:33,20:26,drove off,3,3
+leave,Downtown Campus Connector,International House,41.78735,-87.59109,3,3,3,break 2 / route_switch 1,10:51,11:54,15:47,drove off,3,1
+leave,Downtown Campus Connector,near 59th St Metra,41.78768,-87.58638,3,3,3,break 2 / feed_drop 1,09:59,10:20,11:35,drove off,2,0
+leave,Apostolic,57th Street & Drexel (NB),41.79131,-87.60362,3,3,3,route_switch 2 / break 1,10:04,10:07,10:25,drove off,2,2
+leave,Downtown Campus Connector,near Social Science Research,41.78778,-87.59871,3,2,3,break 2 / feed_drop 1,10:42,10:59,11:13,drove off,3,0
+leave,Red Line/Arts Block,Washington Park Arts Incubator,41.79471,-87.61669,3,3,3,feed_drop 2 / route_switch 1,11:19,11:19,11:22,out of the feed,2,3
+leave,Central,Booth School,41.78957,-87.59803,2,2,1,feed_drop 1 / break 1,21:00,21:11,21:21,out of the feed,1,1
+leave,North,55th Street & University,41.7951,-87.59665,2,2,1,route_switch 2,19:31,19:52,20:13,drove off,1,1
+leave,East,Ellis Garage & Ratner Athletic (West),41.79505,-87.60135,2,2,0,shift_end 2,21:45,21:57,22:09,out of the feed,2,1
+leave,Downtown Campus Connector,S Michigan Ave/Roosevelt,41.8678,-87.62334,2,2,2,shift_end 2,07:46,10:08,12:30,drove off,1,1
+leave,Downtown Campus Connector,near Museum of Science and Industry,41.7899,-87.58545,2,2,2,break 1 / feed_drop 1,10:52,11:11,11:31,drove off,2,0
+leave,Red Line/Arts Block,near Washington Park Arts Incubator,41.79474,-87.62072,2,2,2,feed_drop 2,12:25,16:24,20:23,out of the feed,2,1
+leave,Downtown Campus Connector,E 56th St & S Hyde Park Blvd (SW Corner),41.7927,-87.58309,2,2,2,shift_end 2,10:30,12:06,13:41,drove off,2,2
+leave,Downtown Campus Connector,N (Upper) Wacker Dr & W Madison St,41.88298,-87.6368,2,2,2,shift_end 2,08:59,14:19,19:40,drove off,1,1
+leave,South,Midway Plaisance & Cottage Grove,41.78615,-87.606,2,2,2,feed_drop 2,22:10,22:13,22:16,out of the feed,1,2
+leave,53rd Street Express,Goldblatt Pavilion,41.7877,-87.60314,2,2,2,shift_end 2,11:02,11:09,11:16,out of the feed,1,2
+leave,Downtown Campus Connector,"Unnamed (41.8111, -87.5891)",41.8111,-87.58911,2,2,2,break 2,09:18,11:17,13:17,drove off,1,2
+leave,Apostolic,Burton-Judson Courts (NE Corner),41.78645,-87.6017,2,2,2,feed_drop 1 / route_switch 1,10:07,10:15,10:23,out of the feed,2,1
+leave,Red Line/Arts Block,Garfield & Wabash (EB),41.79435,-87.62207,2,2,2,break 2,10:36,10:37,10:38,drove off,1,2
+leave,Downtown Campus Connector,"Unnamed (41.8140, -87.5926)",41.81403,-87.59259,2,2,2,break 2,15:12,17:12,19:11,drove off,2,2
+leave,Downtown Campus Connector,580 m from S Michigan Ave/Roosevelt,41.86872,-87.62159,2,2,2,shift_end 1 / break 1,13:27,16:22,19:17,Operator garage,1,2
+leave,Drexel,Midway Plaisance & Cottage Grove,41.78712,-87.6063,2,2,2,shift_end 1 / feed_drop 1,09:51,09:51,09:52,drove off,2,2
+leave,Downtown Campus Connector,57th St. & Metra (NB),41.79139,-87.58545,2,2,2,shift_end 1 / feed_drop 1,10:13,10:19,10:25,drove off,2,1
+leave,Midway Metra,60th & Cottage Grove,41.78589,-87.60507,2,2,2,route_switch 2,18:58,19:01,19:05,drove off,2,2
+leave,Drexel,Logan Center for Arts,41.78563,-87.60439,2,2,2,route_switch 1 / break 1,07:02,08:22,09:42,drove off,2,2
+leave,Friend Center/Metra,Bernard Mitchell Hospital,41.78945,-87.60485,2,2,2,shift_end 1 / route_switch 1,05:41,07:51,10:01,out of the feed,2,2
+leave,North,Rockefeller Chapel,41.78761,-87.5964,2,2,2,route_switch 2,21:52,21:52,21:52,drove off,1,2
+leave,East,Ellis/57th,41.79142,-87.60113,2,2,1,feed_drop 1 / shift_end 1,21:22,21:39,21:57,out of the feed,2,1
+leave,Central,Ellis/57th,41.79136,-87.60096,2,2,1,feed_drop 1 / shift_end 1,21:30,21:47,22:03,out of the feed,2,2
+leave,Downtown Campus Connector,210 m from E Randolph St & S Michigan Ave,41.88445,-87.62131,2,2,2,break 2,14:24,15:15,16:06,parked at Gleacher Center,2,2
+leave,Downtown Campus Connector,"Unnamed (41.8253, -87.6010)",41.82531,-87.60099,2,2,2,shift_end 1 / feed_drop 1,22:06,22:11,22:16,out of the feed,2,1
+leave,53rd Street Express,Wyler Pavilion,41.78782,-87.60596,2,2,2,route_switch 2,10:30,10:49,11:08,drove off,2,2
+leave,Downtown Campus Connector,"Unnamed (41.8253, -87.6006)",41.82527,-87.60061,2,2,2,shift_end 1 / feed_drop 1,22:09,22:13,22:18,out of the feed,2,2
+leave,Downtown Campus Connector,near Ronald McDonald House,41.795,-87.6065,2,1,2,route_switch 2,12:54,14:54,16:55,drove off,2,2
+leave,Red Line/Arts Block,Gleacher Center,41.88965,-87.62113,2,2,2,route_switch 2,11:46,11:48,11:51,drove off,1,2
+leave,Downtown Campus Connector,300 m from E 56th St & S Hyde Park Blvd (SW Corner),41.79259,-87.58049,2,2,2,break 2,12:57,15:53,18:49,drove off,2,0
+leave,Red Line/Arts Block,Operator garage,41.82001,-87.64195,2,2,2,break 2,14:21,14:25,14:29,Operator garage,1,2
+leave,Red Line/Arts Block,Garfield Red Line Station (EB),41.79431,-87.6321,2,2,2,feed_drop 1 / shift_end 1,10:40,10:44,10:49,out of the feed,2,2
+leave,North,420 m from Ellis & 53rd St.,41.80229,-87.6041,1,1,0,shift_end 1,21:19,21:19,21:19,out of the feed,1,0
+leave,Downtown Campus Connector,240 m from Shoreland Building,41.79411,-87.57985,1,1,1,shift_end 1,09:35,09:35,09:35,drove off,1,0
+leave,Downtown Campus Connector,"Unnamed (41.8412, -87.6095)",41.84115,-87.60948,1,1,1,shift_end 1,11:30,11:30,11:30,drove off,1,0
+leave,Downtown Campus Connector,"Unnamed (41.8131, -87.5914)",41.81313,-87.59139,1,1,1,shift_end 1,12:35,12:35,12:35,drove off,1,0
+leave,Downtown Campus Connector,"Unnamed (41.8630, -87.6186)",41.86298,-87.61863,1,1,1,shift_end 1,14:40,14:40,14:40,drove off,1,1
+leave,Downtown Campus Connector,480 m from E Randolph St & S Michigan Ave,41.88004,-87.62419,1,1,1,shift_end 1,16:50,16:50,16:50,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8296, -87.6046)",41.82957,-87.60458,1,1,1,shift_end 1,18:15,18:15,18:15,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8157, -87.5943)",41.81572,-87.5943,1,1,1,break 1,19:29,19:29,19:29,drove off,1,1
+leave,Red Line/Arts Block,near Garfield Green Line,41.7948,-87.61538,1,1,1,feed_drop 1,20:48,20:48,20:48,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8106, -87.5892)",41.81064,-87.58923,1,1,1,shift_end 1,21:16,21:16,21:16,Operator garage,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8125, -87.5907)",41.81247,-87.59068,1,1,1,feed_drop 1,21:40,21:40,21:40,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8255, -87.6010)",41.82547,-87.60103,1,1,1,feed_drop 1,22:06,22:06,22:06,out of the feed,1,1
+leave,Apostolic,Comer Children's Hospital,41.79082,-87.60378,1,1,1,feed_drop 1,10:08,10:08,10:08,out of the feed,1,0
+leave,Red Line/Arts Block,Ronald McDonald House & Friend Center,41.795,-87.60603,1,1,1,feed_drop 1,11:25,11:25,11:25,out of the feed,1,0
+leave,Downtown Campus Connector,250 m from E Randolph St & S Michigan Ave,41.88491,-87.62087,1,1,1,break 1,16:47,16:47,16:47,drove off,1,1
+leave,Downtown Campus Connector,Ronald McDonald House & Friend Center,41.7953,-87.60348,1,1,1,route_switch 1,17:07,17:07,17:07,drove off,1,1
+leave,Red Line/Arts Block,60th St. & Ellis (SE Corner),41.78591,-87.60145,1,1,1,route_switch 1,17:10,17:10,17:10,drove off,1,1
+leave,South,"Unnamed (41.8237, -87.6329)",41.82367,-87.63289,1,1,1,shift_end 1,22:02,22:02,22:02,out of the feed,1,1
+leave,Downtown Campus Connector,190 m from E Randolph St & S Michigan Ave,41.88457,-87.62151,1,1,1,feed_drop 1,22:08,22:08,22:08,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8098, -87.5917)",41.80976,-87.59169,1,1,1,break 1,08:24,08:24,08:24,drove off,1,1
+leave,Apostolic,60th St. & Ellis (SE Corner),41.78545,-87.60118,1,1,1,route_switch 1,10:35,10:35,10:35,drove off,1,0
+leave,Red Line/Arts Block,"Unnamed (41.8122, -87.5904)",41.81221,-87.5904,1,1,1,shift_end 1,13:43,13:43,13:43,Operator garage,1,1
+leave,Downtown Campus Connector,410 m from S Michigan Ave/Roosevelt,41.86745,-87.61908,1,1,1,break 1,13:57,13:57,13:57,drove off,1,1
+leave,Downtown Campus Connector,540 m from E Randolph St & S Michigan Ave,41.87947,-87.62401,1,1,1,shift_end 1,18:27,18:27,18:27,out of the feed,1,1
+leave,North,Booth School,41.79002,-87.59645,1,1,1,route_switch 1,20:52,20:52,20:52,drove off,1,1
+leave,East,Rockefeller Chapel,41.78778,-87.59771,1,1,1,route_switch 1,20:58,20:58,20:58,drove off,1,1
+leave,North,Ellis Garage & Ratner Athletic (West),41.79502,-87.60275,1,1,1,feed_drop 1,22:10,22:10,22:10,out of the feed,1,1
+leave,Red Line/Arts Block,390 m from Washington Park Arts Incubator,41.79385,-87.61354,1,1,1,route_switch 1,11:01,11:01,11:01,drove off,1,1
+leave,Downtown Campus Connector,430 m from S Michigan Ave/Roosevelt,41.86701,-87.619,1,1,1,shift_end 1,11:02,11:02,11:02,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8130, -87.5912)",41.81296,-87.59117,1,1,1,shift_end 1,13:20,13:20,13:20,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8315, -87.6061)",41.8315,-87.60612,1,1,1,shift_end 1,14:00,14:00,14:00,drove off,1,1
+leave,Downtown Campus Connector,230 m from S Michigan Ave/Roosevelt,41.86759,-87.6213,1,1,1,shift_end 1,18:00,18:00,18:00,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8380, -87.6084)",41.83801,-87.60843,1,1,1,shift_end 1,22:41,22:41,22:41,out of the feed,1,1
+leave,Apostolic/Drexel,"Unnamed (41.8148, -87.6262)",41.8148,-87.62625,1,1,1,route_switch 1,06:22,06:22,06:22,out of the feed,1,1
+leave,Midway Metra,Operator garage,41.81986,-87.64219,1,1,1,route_switch 1,06:26,06:26,06:26,drove off,1,0
+leave,Drexel,"Unnamed (41.8806, -87.6172)",41.88062,-87.61718,1,1,1,route_switch 1,06:32,06:32,06:32,drove off,1,1
+leave,Drexel,530 m from Midway Plaisance & Cottage Grove,41.78668,-87.61267,1,1,1,route_switch 1,10:25,10:25,10:25,drove off,1,0
+leave,Apostolic,Wyler Pavilion,41.78776,-87.60513,1,1,1,route_switch 1,10:25,10:25,10:25,drove off,1,0
+leave,Downtown Campus Connector,"Unnamed (41.8127, -87.5905)",41.81265,-87.59048,1,1,1,break 1,13:04,13:04,13:04,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8126, -87.5907)",41.81256,-87.59074,1,1,1,break 1,15:19,15:19,15:19,drove off,1,1
+leave,53rd Street Express,"Unnamed (41.8220, -87.6231)",41.82203,-87.62312,1,1,1,route_switch 1,15:36,15:36,15:36,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8039, -87.6227)",41.8039,-87.62268,1,1,1,route_switch 1,15:37,15:37,15:37,drove off,1,1
+leave,Apostolic/Drexel,Washington Park Arts Incubator,41.79446,-87.61762,1,1,1,route_switch 1,15:40,15:40,15:40,drove off,1,1
+leave,Downtown Campus Connector,Law School (N),41.78589,-87.59931,1,1,1,route_switch 1,16:59,16:59,16:59,drove off,1,1
+leave,Downtown Campus Connector,Stony Island Parking Lot,41.78755,-87.58659,1,1,1,route_switch 1,17:57,17:57,17:57,drove off,1,1
+leave,Apostolic/Drexel,Reynolds Club,41.7913,-87.59803,1,1,1,shift_end 1,19:51,19:51,19:51,out of the feed,1,1
+leave,Apostolic/Drexel,Booth School,41.78974,-87.59638,1,1,1,route_switch 1,21:28,21:28,21:28,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8280, -87.6030)",41.828,-87.60305,1,1,1,feed_drop 1,22:27,22:27,22:27,out of the feed,1,1
+leave,North,320 m from Kimbark Plaza (NE Corner),41.80237,-87.59641,1,1,0,shift_end 1,21:20,21:20,21:20,out of the feed,1,1
+leave,Downtown Campus Connector,180 m from Garfield & Wabash (WB),41.79474,-87.62582,1,1,1,route_switch 1,13:40,13:40,13:40,drove off,1,1
+leave,Downtown Campus Connector,460 m from S Lake Park Ave & E Hyde Park Blvd,41.8069,-87.58977,1,1,1,break 1,19:59,19:59,19:59,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8252, -87.6008)",41.82522,-87.60084,1,1,1,feed_drop 1,22:17,22:17,22:17,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8739, -87.6240)",41.87388,-87.62402,1,1,1,shift_end 1,07:15,07:15,07:15,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8869, -87.6319)",41.88694,-87.63189,1,1,1,break 1,08:37,08:37,08:37,drove off,1,1
+leave,Apostolic,Levi Hall (E),41.7892,-87.60146,1,1,1,break 1,08:41,08:41,08:41,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8764, -87.6242)",41.87643,-87.6242,1,1,1,shift_end 1,08:45,08:45,08:45,drove off,1,1
+leave,Downtown Campus Connector,290 m from S Michigan Ave/Roosevelt,41.86776,-87.62047,1,1,1,feed_drop 1,10:15,10:15,10:15,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8132, -87.5914)",41.81317,-87.59145,1,1,1,break 1,10:30,10:30,10:30,drove off,1,1
+leave,Downtown Campus Connector,400 m from S Lake Park Ave & E Hyde Park Blvd,41.80635,-87.58951,1,1,1,break 1,11:24,11:24,11:24,drove off,1,1
+leave,Downtown Campus Connector,400 m from E Randolph St & S Michigan Ave,41.88078,-87.62416,1,1,1,shift_end 1,15:05,15:05,15:05,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8492, -87.6124)",41.84916,-87.61244,1,1,1,break 1,17:05,17:05,17:05,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8617, -87.6183)",41.86168,-87.61829,1,1,1,shift_end 1,22:00,22:00,22:00,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8234, -87.6265)",41.82341,-87.62645,1,1,1,break 1,13:18,13:18,13:18,drove off,1,1
+leave,53rd Street Express,Burton-Judson Courts (NE Corner),41.78593,-87.60026,1,1,1,break 1,13:20,13:20,13:20,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8526, -87.6145)",41.85263,-87.61448,1,1,1,break 1,13:59,13:59,13:59,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8239, -87.5996)",41.8239,-87.59963,1,1,1,break 1,15:33,15:33,15:33,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8155, -87.5941)",41.81551,-87.59411,1,1,1,break 1,17:57,17:57,17:57,drove off,1,1
+leave,Friend Center/Metra,Logan Center for Arts,41.78532,-87.60435,1,1,1,route_switch 1,06:18,06:18,06:18,drove off,1,1
+leave,53rd Street Express,Ellis Garage & Ratner Athletic (West),41.79504,-87.60156,1,1,1,route_switch 1,07:07,07:07,07:07,drove off,1,1
+leave,Drexel,near Center for Care and Discovery,41.7916,-87.60564,1,1,1,route_switch 1,09:56,09:56,09:56,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8148, -87.5934)",41.81475,-87.59341,1,1,1,break 1,15:05,15:05,15:05,drove off,1,1
+leave,Downtown Campus Connector,170 m from Roosevelt CTA Station,41.86576,-87.62703,1,1,1,break 1,17:26,17:26,17:26,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8253, -87.6007)",41.82526,-87.60066,1,1,1,shift_end 1,22:25,22:25,22:25,out of the feed,1,1
+leave,South,Ellis/57th,41.79138,-87.60123,1,1,1,route_switch 1,23:16,23:16,23:16,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8616, -87.6181)",41.86156,-87.61809,1,1,1,feed_drop 1,10:22,10:22,10:22,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8106, -87.5896)",41.81062,-87.58959,1,1,1,break 1,12:15,12:15,12:15,drove off,1,1
+leave,Apostolic/Drexel,Ellis/57th,41.7913,-87.60138,1,1,1,break 1,14:36,14:36,14:36,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8144, -87.5930)",41.81439,-87.59304,1,1,1,break 1,15:12,15:12,15:12,drove off,1,1
+leave,Midway Metra,Bernard Mitchell Hospital,41.78931,-87.60609,1,1,1,feed_drop 1,18:50,18:50,18:50,out of the feed,1,1
+leave,Downtown Campus Connector,220 m from Shoreland Building,41.79433,-87.57967,1,1,1,break 1,19:58,19:58,19:58,drove off,1,1
+leave,North,Ronald McDonald House & Friend Center,41.79503,-87.60351,1,1,0,shift_end 1,21:23,21:23,21:23,out of the feed,1,1
+leave,Central,Operator garage,41.81996,-87.64218,1,1,0,shift_end 1,22:28,22:28,22:28,out of the feed,1,1
+leave,Apostolic,Woodlawn Ave & 61st St,41.78409,-87.5962,1,1,1,route_switch 1,10:02,10:02,10:02,drove off,1,1
+leave,53rd Street Express,Ellis/57th,41.79102,-87.60132,1,1,1,shift_end 1,10:26,10:26,10:26,Operator garage,1,1
+leave,Downtown Campus Connector,420 m from S Michigan Ave/Roosevelt,41.86688,-87.61909,1,1,1,shift_end 1,10:37,10:37,10:37,out of the feed,1,1
+leave,Apostolic/Drexel,S Drexel Ave & 57th St,41.79119,-87.60344,1,1,1,break 1,12:50,12:50,12:50,drove off,1,1
+leave,Red Line/Arts Block,290 m from Garfield & Wabash (WB),41.79471,-87.62713,1,1,1,break 1,13:43,13:43,13:43,drove off,1,1
+leave,Apostolic/Drexel,Gleacher Center,41.88952,-87.62082,1,1,1,route_switch 1,18:10,18:10,18:10,drove off,1,1
+leave,Apostolic/Drexel,320 m from Roosevelt CTA Station,41.86734,-87.63089,1,1,1,route_switch 1,18:54,18:54,18:54,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8255, -87.6011)",41.82553,-87.60107,1,1,1,feed_drop 1,22:25,22:25,22:25,out of the feed,1,1
+leave,Downtown Campus Connector,440 m from E Randolph St & S Michigan Ave,41.88038,-87.62432,1,1,1,break 1,07:16,07:16,07:16,drove off,1,1
+leave,Downtown Campus Connector,59th St & Kimbark / Lab School,41.78724,-87.59375,1,1,1,break 1,08:06,08:06,08:06,drove off,1,0
+leave,Downtown Campus Connector,240 m from Gleacher Center,41.88788,-87.62022,1,1,1,feed_drop 1,10:09,10:09,10:09,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8740, -87.6242)",41.874,-87.62421,1,1,1,feed_drop 1,21:38,21:38,21:38,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8782, -87.6246)",41.8782,-87.62463,1,1,1,feed_drop 1,22:32,22:32,22:32,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8256, -87.6011)",41.82563,-87.60109,1,1,1,shift_end 1,22:37,22:37,22:37,out of the feed,1,0
+leave,Downtown Campus Connector,470 m from S Lake Park Ave & E Hyde Park Blvd,41.8069,-87.58992,1,1,1,break 1,07:58,07:58,07:58,drove off,1,1
+leave,Drexel,57th Street & Drexel (NB),41.79121,-87.60396,1,1,1,shift_end 1,09:16,09:16,09:16,out of the feed,1,1
+leave,Downtown Campus Connector,260 m from Gleacher Center,41.88757,-87.62065,1,1,1,feed_drop 1,10:02,10:02,10:02,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8239, -87.5998)",41.8239,-87.59984,1,1,1,break 1,10:33,10:33,10:33,drove off,1,0
+leave,Apostolic,"Unnamed (41.8237, -87.6232)",41.82373,-87.62324,1,1,1,shift_end 1,11:51,11:51,11:51,out of the feed,1,0
+leave,Apostolic,220 m from N (Upper) Wacker Dr & W Madison St,41.88394,-87.63722,1,1,1,route_switch 1,11:52,11:52,11:52,drove off,1,0
+leave,Downtown Campus Connector,300 m from E Randolph St & S Michigan Ave,41.88452,-87.62024,1,1,1,break 1,11:54,11:54,11:54,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8389, -87.6088)",41.8389,-87.60878,1,1,1,feed_drop 1,18:30,18:30,18:30,out of the feed,1,1
+leave,Midway Metra,International House,41.78787,-87.59176,1,1,1,break 1,18:58,18:58,18:58,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8105, -87.5890)",41.81048,-87.58901,1,1,1,shift_end 1,22:06,22:06,22:06,Operator garage,1,0
+leave,Downtown Campus Connector,"Unnamed (41.8129, -87.5910)",41.81285,-87.59102,1,1,1,break 1,09:03,09:03,09:03,drove off,1,0
+leave,Downtown Campus Connector,"Unnamed (41.8870, -87.6309)",41.88699,-87.63095,1,1,1,feed_drop 1,10:37,10:37,10:37,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8123, -87.5905)",41.81231,-87.59048,1,1,1,break 1,10:39,10:39,10:39,drove off,1,0
+leave,53rd Street Express,Stony Island Parking Lot,41.7874,-87.58664,1,1,1,route_switch 1,10:51,10:51,10:51,parked at Rockefeller Chapel,1,1
+leave,Red Line/Arts Block,Levi Hall (E),41.78899,-87.60127,1,1,1,route_switch 1,16:07,16:07,16:07,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8166, -87.5950)",41.8166,-87.59497,1,1,1,break 1,20:07,20:07,20:07,drove off,1,0
+leave,Apostolic/Drexel,Ellis Ave & 57th St,41.7915,-87.60139,1,1,1,route_switch 1,20:12,20:12,20:12,drove off,1,1
+leave,Friend Center/Metra,Operator garage,41.82002,-87.64194,1,1,1,shift_end 1,21:43,21:43,21:43,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8129, -87.5911)",41.81289,-87.5911,1,1,1,shift_end 1,22:00,22:00,22:00,Operator garage,1,0
+leave,North,Ellis Ave & 57th St,41.79142,-87.60159,1,1,1,shift_end 1,23:12,23:12,23:12,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8123, -87.5904)",41.8123,-87.59045,1,1,1,break 1,08:44,08:44,08:44,drove off,1,0
+leave,Downtown Campus Connector,590 m from S Michigan Ave/Roosevelt,41.86401,-87.61913,1,1,1,feed_drop 1,10:15,10:15,10:15,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8110, -87.5891)",41.81096,-87.58913,1,1,1,break 1,12:21,12:21,12:21,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8193, -87.6264)",41.81933,-87.62637,1,1,1,shift_end 1,13:10,13:10,13:10,drove off,1,0
+leave,South,Reynolds Club,41.79002,-87.59806,1,1,1,break 1,17:24,17:24,17:24,parked at Reynolds Club,1,1
+leave,Midway Metra,300 m from Stony Island Parking Lot,41.78838,-87.58512,1,1,1,break 1,17:36,17:36,17:36,drove off,1,1
+leave,Downtown Campus Connector,330 m from Gleacher Center,41.88679,-87.62104,1,1,1,break 1,18:47,18:47,18:47,parked at Gleacher Center,1,1
+leave,Friend Center/Metra,S Drexel Ave & 57th St,41.79088,-87.60373,1,1,1,route_switch 1,19:03,19:03,19:03,drove off,1,1
+leave,Downtown Campus Connector,270 m from S Lake Park Ave & E Hyde Park Blvd,41.80532,-87.58891,1,1,1,feed_drop 1,22:09,22:09,22:09,out of the feed,1,1
+leave,Central,55th Street & Blackstone,41.79559,-87.59013,1,1,0,feed_drop 1,21:04,21:04,21:04,out of the feed,1,1
+leave,Central,59th & Ellis,41.78727,-87.60124,1,1,0,shift_end 1,22:19,22:19,22:19,out of the feed,1,1
+leave,Midway Metra,Wyler Pavilion,41.7878,-87.60622,1,1,1,shift_end 1,07:50,07:50,07:50,out of the feed,1,1
+leave,Downtown Campus Connector,460 m from S Michigan Ave/Roosevelt,41.87205,-87.62413,1,1,1,shift_end 1,08:28,08:28,08:28,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8094, -87.5921)",41.80942,-87.59213,1,1,1,feed_drop 1,09:31,09:31,09:31,out of the feed,1,1
+leave,Apostolic,"Unnamed (41.8341, -87.6078)",41.83409,-87.60784,1,1,1,route_switch 1,11:23,11:23,11:23,drove off,1,0
+leave,Downtown Campus Connector,330 m from Regents Park Apartments,41.8027,-87.58163,1,1,1,break 1,17:28,17:28,17:28,drove off,1,0
+leave,Downtown Campus Connector,S (Upper) Wacker Dr & W Adams St,41.87913,-87.63709,1,1,1,shift_end 1,18:33,18:33,18:33,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8445, -87.6109)",41.84452,-87.61088,1,1,1,shift_end 1,19:23,19:23,19:23,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8253, -87.6003)",41.82533,-87.60034,1,1,1,shift_end 1,20:53,20:53,20:53,drove off,1,1
+leave,Downtown Campus Connector,270 m from E Randolph St & S Michigan Ave,41.88436,-87.62056,1,1,1,shift_end 1,21:06,21:06,21:06,drove off,1,1
+leave,South,Cottage Grove & 63rd,41.78087,-87.60585,1,1,1,feed_drop 1,21:18,21:18,21:18,out of the feed,1,1
+leave,Downtown Campus Connector,240 m from E Randolph St & S Michigan Ave,41.88435,-87.62093,1,1,1,feed_drop 1,22:14,22:14,22:14,out of the feed,1,1
+leave,Midway Metra,Logan Center for Arts,41.78589,-87.60399,1,1,1,route_switch 1,10:09,10:09,10:09,parked at Logan Center for Arts,1,0
+leave,Downtown Campus Connector,"Unnamed (41.8121, -87.5903)",41.81215,-87.59035,1,1,1,break 1,10:27,10:27,10:27,drove off,1,0
+leave,Apostolic,240 m from Garfield & Wabash (WB),41.79679,-87.62255,1,1,1,route_switch 1,15:38,15:38,15:38,parked at Reynolds Club,1,0
+leave,Downtown Campus Connector,360 m from E Randolph St & S Michigan Ave,41.8861,-87.62021,1,1,1,feed_drop 1,18:23,18:23,18:23,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8125, -87.5906)",41.81246,-87.59064,1,1,1,break 1,19:33,19:33,19:33,drove off,1,0
+leave,South,Rockefeller Chapel,41.78771,-87.59638,1,1,1,shift_end 1,21:51,21:51,21:51,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8252, -87.6009)",41.8252,-87.60089,1,1,1,feed_drop 1,22:15,22:15,22:15,out of the feed,1,1
+leave,South,Regenstein Library (N),41.79147,-87.59932,1,1,1,shift_end 1,23:49,23:49,23:49,drove off,1,1
+leave,Downtown Campus Connector,UCHICAGO Medicine - South Loop,41.87025,-87.64075,1,1,1,shift_end 1,11:00,11:00,11:00,out of the feed,1,1
+leave,Friend Center/Metra,57th Street & Drexel (NB),41.79133,-87.60395,1,1,1,shift_end 1,11:32,11:32,11:32,out of the feed,1,1
+leave,Downtown Campus Connector,57th St. & Metra (SB),41.79035,-87.58547,1,1,1,break 1,13:17,13:17,13:17,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8108, -87.5894)",41.81077,-87.58937,1,1,1,break 1,16:57,16:57,16:57,drove off,1,0
+leave,Downtown Campus Connector,"Unnamed (41.8122, -87.5904)",41.81218,-87.59041,1,1,1,shift_end 1,22:08,22:08,22:08,Operator garage,1,0
+leave,Downtown Campus Connector,Roosevelt Station,41.86735,-87.62647,1,1,1,shift_end 1,22:12,22:12,22:12,out of the feed,1,0
+leave,Downtown Campus Connector,Logan Center,41.78589,-87.6036,1,1,1,route_switch 1,06:25,06:25,06:25,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8126, -87.5908)",41.81261,-87.59077,1,1,1,break 1,09:24,09:24,09:24,drove off,1,0
+leave,Midway Metra,Burton-Judson Courts (NE Corner),41.78626,-87.6012,1,1,1,feed_drop 1,09:47,09:47,09:47,out of the feed,1,1
+leave,Downtown Campus Connector,280 m from Roosevelt CTA Station,41.8673,-87.6305,1,1,1,break 1,10:39,10:39,10:39,drove off,1,0
+leave,Downtown Campus Connector,Ellis Garage & Ratner Athletic (West),41.79502,-87.60162,1,1,1,feed_drop 1,10:39,10:39,10:39,out of the feed,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8096, -87.5920)",41.80963,-87.59201,1,1,1,break 1,18:02,18:02,18:02,drove off,1,1
+leave,North,Ellis/57th,41.79139,-87.60122,1,1,1,route_switch 1,19:45,19:45,19:45,drove off,1,1
+leave,Downtown Campus Connector,"Unnamed (41.8110, -87.5894)",41.81098,-87.58944,1,1,1,break 1,20:32,20:32,20:32,drove off,1,0
+add,Downtown Campus Connector,Rockefeller Chapel,41.7875,-87.59649,59,17,59,added_from_break 31 / added_from_garage 18 / added_from_route 8 / unknown 2,07:23,11:06,12:55,first report of the day,18,
+add,Apostolic/Drexel,Goldblatt Pavilion,41.78766,-87.60337,40,19,40,added_from_route 22 / added_from_break 12 / unknown 3 / added_from_garage 3,11:02,18:01,21:42,from Friend Center/Metra at Goldblatt Pavilion,15,
+add,Downtown Campus Connector,Gleacher Center,41.88925,-87.62158,38,17,38,added_from_garage 28 / added_from_break 7 / added_from_route 2 / unknown 1,06:37,06:48,14:15,first report of the day,12,
+add,Downtown Campus Connector,59th & Ellis,41.78773,-87.60146,30,16,30,added_from_garage 14 / added_from_break 11 / added_from_route 3 / unknown 2,10:32,13:41,13:58,first report of the day,11,
+add,Red Line/Arts Block,Logan Center,41.78589,-87.60347,18,13,18,unknown 9 / added_from_route 4 / added_from_break 3 / added_from_garage 2,06:36,10:22,19:13,from Red Line/Arts Block at Logan Center for Arts,8,
+add,Downtown Campus Connector,Midway Plaisance & Cottage Grove,41.78667,-87.6067,18,10,18,added_from_break 15 / added_from_route 2 / added_from_garage 1,11:19,12:13,12:43,from Downtown Campus Connector at Rockefeller Chapel,6,
+add,Downtown Campus Connector,60th St. & Woodlawn Ave (SE Corner),41.78658,-87.59701,18,13,18,added_from_garage 15 / added_from_break 2 / unknown 1,06:39,06:45,11:40,first report of the day,4,
+add,Downtown Campus Connector,Operator garage,41.8199,-87.64194,16,11,16,added_from_break 8 / unknown 4 / added_from_garage 4,13:11,15:20,16:04,first report of the day,10,
+add,Apostolic,Apostolic Lot,41.77927,-87.59324,15,11,15,added_from_garage 11 / unknown 2 / added_from_break 2,05:10,05:20,08:08,first report of the day,5,
+add,Downtown Campus Connector,Goldblatt Pavilion,41.78765,-87.60347,14,11,14,added_from_route 5 / added_from_garage 4 / added_from_break 3 / unknown 2,09:52,12:04,16:31,first report of the day,10,
+add,Red Line/Arts Block,Operator garage,41.81988,-87.64194,12,9,12,added_from_break 10 / added_from_garage 2,13:21,13:27,15:24,Operator garage,5,
+add,Red Line/Arts Block,Logan Center for Arts,41.78588,-87.60414,11,11,11,added_from_route 5 / added_from_garage 3 / added_from_break 2 / unknown 1,06:34,10:18,15:55,first report of the day,6,
+add,Apostolic/Drexel,59th & Ellis,41.78764,-87.60154,9,8,9,added_from_break 5 / added_from_garage 2 / added_from_route 1 / unknown 1,10:43,16:07,21:05,from Apostolic/Drexel at Kenwood & 63rd,6,
+add,53rd Street Express,Press Building,41.7861,-87.59039,9,8,9,added_from_garage 7 / unknown 1 / added_from_break 1,08:02,08:07,09:16,first report of the day,7,
+add,Central,Reynolds Club,41.79103,-87.59806,8,8,5,added_from_garage 4 / unknown 2 / added_from_route 1 / added_from_break 1,16:05,17:19,18:39,first report of the day,5,
+add,Downtown Campus Connector,N (Upper) Wacker Dr & W Madison St,41.88227,-87.63701,8,7,8,added_from_garage 5 / added_from_break 2 / unknown 1,06:54,09:38,12:37,first report of the day,8,
+add,East,Reynolds Club,41.79103,-87.59805,8,7,6,added_from_break 3 / unknown 2 / added_from_garage 2 / added_from_route 1,15:58,19:18,21:14,from East at Reynolds Club,6,
+add,Apostolic,Kenwood & 63rd,41.78068,-87.59307,7,6,7,added_from_garage 7,05:13,05:21,05:23,first report of the day,3,
+add,Drexel,Drexel Garage,41.78486,-87.60441,7,7,7,added_from_garage 6 / unknown 1,04:59,05:10,05:14,first report of the day,3,
+add,Downtown Campus Connector,UCHICAGO Medicine - River East,41.89152,-87.6187,7,6,7,added_from_garage 4 / added_from_break 2 / added_from_route 1,06:44,11:01,15:01,first report of the day,7,
+add,Drexel,Logan Center for Arts,41.78539,-87.60438,7,5,7,added_from_garage 4 / unknown 2 / added_from_route 1,04:58,05:50,06:36,first report of the day,5,
+add,Red Line/Arts Block,Garfield Green Line Station,41.7948,-87.61787,6,6,6,added_from_break 3 / unknown 2 / added_from_route 1,06:56,11:19,11:21,from Red Line/Arts Block at Logan Center for Arts,3,
+add,Red Line/Arts Block,Midway Plaisance & Cottage Grove,41.78643,-87.60632,6,6,6,added_from_break 3 / added_from_garage 3,06:33,12:03,15:46,first report of the day,2,
+add,Midway Metra,60th St. & Ellis (SE Corner),41.78588,-87.60162,6,6,6,added_from_garage 5 / added_from_route 1,06:49,06:50,11:40,first report of the day,4,
+add,Friend Center/Metra,Goldblatt Pavilion,41.78771,-87.60359,6,6,6,added_from_route 3 / added_from_break 2 / added_from_garage 1,09:21,12:30,17:54,from Apostolic/Drexel at Goldblatt Pavilion,5,
+add,Apostolic/Drexel,Operator garage,41.81997,-87.64192,6,3,6,added_from_break 4 / added_from_garage 1 / unknown 1,08:43,17:47,21:01,from Apostolic/Drexel at Goldblatt Pavilion,5,
+add,Red Line/Arts Block,Garfield & Wabash (EB),41.79434,-87.62423,6,6,6,added_from_route 2 / added_from_garage 2 / added_from_break 1 / unknown 1,06:58,12:15,17:47,from Midway Metra at 60th St. & Ellis,5,
+add,North,Reynolds Club,41.79123,-87.59806,5,5,3,added_from_garage 2 / unknown 2 / added_from_route 1,16:21,18:49,20:45,first report of the day,4,
+add,Downtown Campus Connector,Wyler Pavilion,41.788,-87.60598,5,5,5,added_from_garage 3 / added_from_route 2,07:07,10:06,13:41,first report of the day,5,
+add,Red Line/Arts Block,Garfield Red Line Station (WB),41.79458,-87.63105,5,3,5,unknown 2 / added_from_garage 2 / added_from_route 1,08:30,16:01,18:15,from Red Line/Arts Block at Garfield Red Line Station,4,
+add,Midway Metra,Press Building,41.7862,-87.59063,5,5,5,added_from_garage 4 / added_from_break 1,06:51,06:53,17:17,first report of the day,4,
+add,Midway Metra,Stony Island Parking Lot,41.78636,-87.58727,4,4,4,added_from_garage 3 / added_from_route 1,06:50,06:52,13:22,first report of the day,3,
+add,Apostolic/Drexel,Apostolic Lot,41.77978,-87.59318,4,4,4,added_from_route 3 / added_from_break 1,10:27,10:30,14:11,from Apostolic at Levi Hall,4,
+add,Midway Metra,60th St. & Woodlawn Ave (SE Corner),41.78596,-87.59682,4,4,4,added_from_garage 3 / unknown 1,09:58,16:00,16:07,first report of the day,4,
+add,53rd Street Express,60th St. & Woodlawn Ave (SE Corner),41.78596,-87.59691,4,4,4,added_from_garage 3 / unknown 1,07:49,07:53,07:58,first report of the day,2,
+add,Downtown Campus Connector,Booth School,41.7898,-87.59723,4,4,4,added_from_break 4,20:10,20:57,21:44,from Downtown Campus Connector at E Randolph St & S Michigan Ave,3,
+add,South,Burton-Judson Courts (NE Corner),41.7861,-87.60123,4,4,4,unknown 2 / added_from_break 1 / added_from_garage 1,17:40,21:05,21:43,from Midway Metra at Goldblatt Pavilion,4,
+add,Red Line/Arts Block,60th & Cottage Grove,41.78592,-87.60549,4,4,4,unknown 2 / added_from_route 1 / added_from_garage 1,15:47,17:23,19:03,parked at 60th & Cottage Grove,3,
+add,Red Line/Arts Block,59th & Ellis,41.78774,-87.60169,4,4,4,added_from_break 2 / added_from_garage 1 / unknown 1,16:20,18:48,20:24,Operator garage,3,
+add,Downtown Campus Connector,"Unnamed (41.8102, -87.5905)",41.81017,-87.59049,4,2,4,added_from_garage 2 / unknown 2,06:45,08:37,11:45,first report of the day,1,
+add,Downtown Campus Connector,Roosevelt Station,41.86735,-87.62666,3,3,3,added_from_garage 2 / unknown 1,07:14,07:35,07:47,first report of the day,3,
+add,Red Line/Arts Block,Ellis Garage & Ratner Athletic (West),41.79497,-87.60221,3,3,3,added_from_route 2 / added_from_garage 1,07:53,10:33,17:32,from Midway Metra at Goldblatt Pavilion,3,
+add,Downtown Campus Connector,Ellis Garage & Ratner Athletic (West),41.79502,-87.60072,3,3,3,added_from_route 1 / added_from_garage 1 / added_from_break 1,07:50,11:28,12:55,from Red Line/Arts Block at Logan Center for Arts,2,
+add,Downtown Campus Connector,UCHICAGO Medicine - South Loop,41.86967,-87.64008,3,3,3,added_from_break 2 / unknown 1,12:26,12:48,18:48,near N,2,
+add,Midway Metra,Goldblatt Pavilion,41.78771,-87.60392,3,3,3,unknown 2 / added_from_garage 1,15:50,16:02,18:00,first report of the day,2,
+add,Downtown Campus Connector,near Gleacher Center,41.89003,-87.62043,3,3,3,added_from_garage 2 / unknown 1,06:36,06:54,18:03,first report of the day,3,
+add,Downtown Campus Connector,S Lake Park & E 53rd St,41.79907,-87.58724,3,3,3,added_from_break 1 / unknown 1 / added_from_route 1,10:59,14:00,16:20,from Downtown Campus Connector at Gleacher Center,2,
+add,Midway Metra,57th St. & Metra (SB),41.79083,-87.58676,3,3,3,added_from_garage 2 / added_from_route 1,06:53,06:55,15:07,first report of the day,2,
+add,Downtown Campus Connector,55th Street & Blackstone,41.79478,-87.5906,3,3,3,added_from_garage 2 / added_from_break 1,07:01,07:22,10:47,first report of the day,3,
+add,Apostolic/Drexel,Drexel Garage,41.78425,-87.60394,3,3,3,added_from_break 3,15:37,15:38,17:05,from Apostolic/Drexel at 57th Street & Drexel,3,
+add,53rd Street Express,Operator garage,41.81991,-87.64197,3,3,3,added_from_break 3,13:21,15:20,15:22,from 53rd Street Express at Stony Island Parking Lot,3,
+add,Red Line/Arts Block,Burton-Judson Courts (NE Corner),41.78631,-87.60119,3,3,3,added_from_garage 2 / unknown 1,09:06,15:49,15:51,Operator garage,2,
+add,Apostolic,59th & Ellis,41.78749,-87.60106,3,3,3,added_from_garage 2 / added_from_route 1,05:13,05:24,05:31,Operator garage,3,
+add,Red Line/Arts Block,Garfield Red Line Station (EB),41.79435,-87.63226,3,3,3,added_from_garage 2 / unknown 1,07:36,10:36,15:03,first report of the day,2,
+add,Drexel,Goldblatt Pavilion,41.78774,-87.60338,3,3,3,added_from_garage 2 / added_from_route 1,05:54,07:55,09:13,from Midway Metra at Goldblatt Pavilion,3,
+add,Apostolic/Drexel,Bernard Mitchell Hospital,41.78922,-87.60494,3,3,3,added_from_route 1 / added_from_break 1 / unknown 1,16:18,18:43,19:14,from Friend Center/Metra at S Drexel Ave & 57th St,3,
+add,South,Rockefeller Chapel,41.78762,-87.59638,3,3,3,added_from_route 3,21:52,21:52,22:59,from North at Alumni House,2,
+add,Downtown Campus Connector,59th St & Kimbark / Lab School,41.78728,-87.59486,3,2,3,added_from_break 2 / added_from_route 1,08:07,12:14,15:19,from Downtown Campus Connector at Roosevelt Station,3,
+add,Downtown Campus Connector,S Lake Park Ave & E Hyde Park Blvd,41.80233,-87.58781,3,2,3,added_from_route 2 / added_from_break 1,10:25,10:42,11:32,from Midway Metra at Goldblatt Pavilion,3,
+add,Apostolic/Drexel,Wyler Pavilion,41.78891,-87.60486,3,3,3,unknown 2 / added_from_route 1,11:50,15:04,20:14,from Apostolic at Wyler Pavilion,3,
+add,Downtown Campus Connector,near Alumni House,41.79508,-87.59506,3,3,3,added_from_break 1 / added_from_route 1 / added_from_garage 1,07:56,10:30,11:42,from Red Line/Arts Block at Midway Plaisance & Cottage Grove,3,
+add,Downtown Campus Connector,Shoreland Building,41.79637,-87.57955,3,2,3,added_from_break 3,10:08,11:39,19:14,from Downtown Campus Connector at Roosevelt Station,1,
+add,Central,55th Street & Blackstone,41.79524,-87.59046,2,2,1,added_from_garage 1 / added_from_route 1,16:53,18:25,19:56,first report of the day,2,
+add,Drexel,60th & Cottage Grove,41.7858,-87.60547,2,2,2,added_from_garage 2,04:58,05:00,05:01,first report of the day,2,
+add,Apostolic,63rd & Ellis,41.78058,-87.60099,2,2,2,added_from_garage 1 / unknown 1,05:20,05:42,06:04,first report of the day,2,
+add,Downtown Campus Connector,S Michigan Ave/Roosevelt,41.86834,-87.62387,2,2,2,unknown 1 / added_from_garage 1,07:11,10:16,13:20,from Downtown Campus Connector at S Lake Park Ave & E Hyde Park Blvd,2,
+add,Friend Center/Metra,Wyler Pavilion,41.78782,-87.60529,2,2,2,unknown 1 / added_from_route 1,11:19,14:18,17:17,parked at Goldblatt Pavilion,2,
+add,East,Max Palevsky Residential Commons (NE Corner),41.79298,-87.60128,2,2,1,added_from_route 1 / added_from_garage 1,16:46,18:39,20:32,from Central at Reynolds Club,2,
+add,53rd Street Express,57th St. & Metra (SB),41.79116,-87.58671,2,2,2,added_from_garage 2,08:02,08:05,08:08,first report of the day,1,
+add,Red Line/Arts Block,Garfield & Wabash (WB),41.79467,-87.62505,2,2,2,added_from_break 1 / added_from_garage 1,11:47,13:29,15:10,from Red Line/Arts Block at Logan Center for Arts,2,
+add,Red Line/Arts Block,Rockefeller Chapel,41.7878,-87.59721,2,2,2,added_from_garage 1 / added_from_break 1,17:18,18:33,19:48,first report of the day,2,
+add,Apostolic/Drexel,Logan Center,41.78583,-87.60313,2,2,2,added_from_route 2,11:31,14:02,16:32,from Red Line/Arts Block at Logan Center for Arts,2,
+add,Apostolic,South Campus Resident Hall,41.78395,-87.60116,2,2,2,added_from_break 1 / added_from_garage 1,05:42,07:16,08:50,from Apostolic at 57th Street & Drexel,2,
+add,Midway Metra,Logan Center for Arts,41.78588,-87.60436,2,2,2,added_from_route 1 / added_from_garage 1,08:59,12:07,15:16,Operator garage,2,
+add,Apostolic/Drexel,South Campus Resident Hall,41.78411,-87.60098,2,2,2,added_from_break 1 / added_from_route 1,17:49,20:21,22:54,parked at Goldblatt Pavilion,2,
+add,Midway Metra,Operator garage,41.81991,-87.64207,2,2,2,added_from_garage 1 / added_from_break 1,07:43,13:26,19:09,first report of the day,2,
+add,Apostolic,Comer Children's Hospital,41.79057,-87.60371,2,2,2,unknown 1 / added_from_garage 1,05:40,06:01,06:22,parked at Apostolic Lot,1,
+add,53rd Street Express,Keller Center WB,41.7863,-87.59336,2,2,2,added_from_route 1 / added_from_garage 1,08:18,09:42,11:07,from Downtown Campus Connector at Roosevelt Station,2,
+add,Apostolic/Drexel,57th Street & Drexel (NB),41.79134,-87.60313,2,2,2,added_from_break 1 / added_from_route 1,16:23,17:34,18:46,parked at 170 m from Garfield & Wabash,2,
+add,Downtown Campus Connector,Law School (S),41.78653,-87.59822,2,2,2,added_from_garage 1 / added_from_break 1,08:00,09:58,11:55,first report of the day,1,
+add,Apostolic/Drexel,Logan Center for Arts,41.78576,-87.60433,2,2,2,added_from_route 1 / added_from_break 1,10:21,11:23,12:25,from Drexel at 57th Street & Drexel,1,
+add,Downtown Campus Connector,310 m from S Michigan Ave/Roosevelt,41.86733,-87.62035,2,2,2,added_from_route 1 / added_from_garage 1,09:35,10:31,11:26,from Red Line/Arts Block at Logan Center for Arts,2,
+add,Apostolic/Drexel,63rd & Ellis,41.78096,-87.60092,2,2,2,added_from_break 1 / added_from_route 1,10:49,12:59,15:10,from Red Line/Arts Block at Garfield Red Line Station,2,
+add,Downtown Campus Connector,57th St. & Metra (NB),41.79095,-87.58542,2,2,2,added_from_break 2,12:12,15:13,18:13,from Downtown Campus Connector at Roosevelt Station,2,
+add,Midway Metra,Rockefeller Chapel,41.7878,-87.59601,2,2,2,added_from_route 1 / added_from_garage 1,15:49,15:53,15:57,Operator garage,2,
+add,South,60th St. & Woodlawn Ave (SE Corner),41.7863,-87.59622,2,2,2,added_from_garage 1 / added_from_route 1,16:30,18:36,20:42,first report of the day,2,
+add,Apostolic/Drexel,Burton-Judson Courts (NE Corner),41.78668,-87.60124,2,2,2,added_from_break 1 / added_from_route 1,12:49,16:31,20:14,from Apostolic/Drexel at Bernard Mitchell Hospital,2,
+add,Apostolic,63rd & Woodlawn,41.78052,-87.59526,2,2,2,unknown 1 / added_from_garage 1,05:26,05:30,05:33,from Apostolic at Levi Hall,2,
+add,Downtown Campus Connector,190 m from E Randolph St & S Michigan Ave,41.88408,-87.62154,2,2,2,added_from_break 2,11:53,11:56,11:59,from Downtown Campus Connector at Goldblatt Pavilion,2,
+add,Midway Metra,59th St & Metra,41.78786,-87.58792,2,2,2,added_from_garage 1 / added_from_break 1,08:28,11:58,15:29,Operator garage,2,
+add,Apostolic/Drexel,58th Street & Drexel,41.78961,-87.60418,2,2,2,added_from_break 1 / added_from_garage 1,15:34,15:47,16:00,from Apostolic/Drexel at 57th Street & Drexel,2,
+add,Downtown Campus Connector,Burton-Judson Courts (NE Corner),41.78647,-87.60091,2,2,2,added_from_route 2,11:06,11:15,11:25,from Red Line/Arts Block at Midway Plaisance & Cottage Grove,1,
+add,Apostolic,Operator garage,41.81993,-87.64196,2,2,2,added_from_break 1 / added_from_garage 1,11:39,13:16,14:53,Operator garage,2,
+add,Downtown Campus Connector,460 m from S Lake Park Ave & E Hyde Park Blvd,41.80687,-87.58976,2,2,2,added_from_route 1 / added_from_break 1,11:31,12:24,13:17,from 53rd Street Express at Lake Park & 55th St.,2,
+add,Midway Metra,60th & Cottage Grove,41.78594,-87.60551,2,2,2,unknown 1 / added_from_garage 1,16:05,17:28,18:50,from Midway Metra at 60th & Cottage Grove,2,
+add,Friend Center/Metra,Bernard Mitchell Hospital,41.78921,-87.605,2,2,2,added_from_route 2,19:08,19:32,19:56,from Apostolic/Drexel at Wyler Pavilion,1,
+add,Downtown Campus Connector,near Regents Park,41.80421,-87.5825,2,2,2,added_from_break 2,18:20,19:53,21:25,parked at Roosevelt Station,2,
+add,East,300 m from S. Hyde Park Blvd/55th Street,41.7981,-87.58393,1,1,0,added_from_garage 1,16:29,16:29,16:29,first report of the day,1,
+add,East,Lake Park & 55th St. (SE Corner),41.79527,-87.58706,1,1,0,added_from_route 1,19:31,19:31,19:31,from North at 55th Street & University,1,
+add,Central,Levi Hall (E),41.78942,-87.60132,1,1,0,added_from_garage 1,19:57,19:57,19:57,first report of the day,1,
+add,Downtown Campus Connector,200 m from UCHICAGO Medicine - River East,41.89047,-87.6195,1,1,1,added_from_garage 1,06:33,06:33,06:33,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8083, -87.5909)",41.80829,-87.59087,1,1,1,unknown 1,07:00,07:00,07:00,near near Alumni House,1,
+add,53rd Street Express,S Lake Park & E 53rd St,41.79862,-87.58718,1,1,1,added_from_garage 1,08:44,08:44,08:44,first report of the day,1,
+add,Downtown Campus Connector,250 m from Roosevelt CTA Station,41.86734,-87.63013,1,1,1,unknown 1,09:25,09:25,09:25,near UCHICAGO Medicine - River East,1,
+add,Downtown Campus Connector,"Unnamed (41.8423, -87.6100)",41.84229,-87.61002,1,1,1,unknown 1,16:40,16:40,16:40,near Hyde Park Shopping Center,1,
+add,Downtown Campus Connector,230 m from S Michigan Ave/Roosevelt,41.86765,-87.62119,1,1,1,added_from_garage 1,16:41,16:41,16:41,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8441, -87.6109)",41.84405,-87.61092,1,1,1,unknown 1,17:40,17:40,17:40,near UCHICAGO Medicine - South Loop,1,
+add,Central,57th Street Metra Station (E),41.79147,-87.58686,1,1,1,unknown 1,19:05,19:05,19:05,from Central at 57th St. & Metra,1,
+add,Downtown Campus Connector,310 m from S (Upper) Wacker Dr & W Adams St,41.87679,-87.638,1,1,1,unknown 1,19:05,19:05,19:05,near 200 m from UCHICAGO Medicine - River East,1,
+add,South,60th & Cottage Grove,41.78493,-87.60602,1,1,1,added_from_route 1,21:41,21:41,21:41,from Regents Express at Law School,1,
+add,Downtown Campus Connector,170 m from S Michigan Ave/Roosevelt,41.86762,-87.62204,1,1,1,added_from_break 1,14:48,14:48,14:48,from Downtown Campus Connector at S Lake Park Ave & E Hyde Park Blvd,1,
+add,North,200 m from S. Drexel Ave & E 53rd St,41.80032,-87.60389,1,1,1,added_from_break 1,19:06,19:06,19:06,from Downtown Campus Connector at Gleacher Center,1,
+add,Red Line/Arts Block,230 m from Garfield Red Line Station (WB),41.79464,-87.62835,1,1,1,added_from_route 1,19:19,19:19,19:19,from Midway Metra at 60th St. & Ellis,1,
+add,South,Midway Plaisance & Cottage Grove,41.78713,-87.60542,1,1,1,added_from_route 1,21:49,21:49,21:49,from Regents Express at Regenstein Library,1,
+add,Drexel,Burton-Judson Courts (NE Corner),41.78666,-87.60197,1,1,1,added_from_garage 1,05:04,05:04,05:04,first report of the day,1,
+add,Apostolic,60th St. & Woodlawn Ave (SE Corner),41.7862,-87.59634,1,1,1,added_from_garage 1,05:14,05:14,05:14,first report of the day,1,
+add,Downtown Campus Connector,550 m from S (Upper) Wacker Dr & W Adams St,41.87517,-87.64024,1,1,1,added_from_garage 1,07:21,07:21,07:21,first report of the day,1,
+add,Downtown Campus Connector,E Randolph St & S Michigan Ave,41.88303,-87.62429,1,1,1,added_from_garage 1,07:22,07:22,07:22,first report of the day,1,
+add,Red Line/Arts Block,near Washington Park Arts Incubator,41.79477,-87.62061,1,1,1,added_from_garage 1,07:23,07:23,07:23,first report of the day,1,
+add,Midway Metra,Bernard Mitchell Hospital,41.78929,-87.60496,1,1,1,added_from_garage 1,07:23,07:23,07:23,first report of the day,1,
+add,Downtown Campus Connector,540 m from E Randolph St & S Michigan Ave,41.87947,-87.62425,1,1,1,added_from_break 1,10:34,10:34,10:34,parked at Goldblatt Pavilion,1,
+add,Apostolic/Drexel,60th St. & Ellis (SE Corner),41.78566,-87.60121,1,1,1,added_from_route 1,10:35,10:35,10:35,from Apostolic at Kenwood & 63rd,1,
+add,Red Line/Arts Block,290 m from Garfield Red Line Station (WB),41.79468,-87.62759,1,1,1,added_from_break 1,13:44,13:44,13:44,from Downtown Campus Connector at Goldblatt Pavilion,1,
+add,Downtown Campus Connector,"Unnamed (41.8761, -87.5822)",41.87612,-87.58224,1,1,1,added_from_garage 1,14:01,14:01,14:01,first report of the day,1,
+add,Downtown Campus Connector,Bernard Mitchell Hospital,41.78925,-87.60607,1,1,1,added_from_garage 1,15:53,15:53,15:53,first report of the day,1,
+add,East,Booth School,41.78984,-87.59645,1,1,1,added_from_route 1,20:52,20:52,20:52,from North at Alumni House,1,
+add,Central,Rockefeller Chapel,41.788,-87.59801,1,1,1,added_from_route 1,20:58,20:58,20:58,from North at Alumni House,1,
+add,South,63rd & Woodlawn,41.78048,-87.59753,1,1,1,added_from_route 1,21:33,21:33,21:33,from Regents Express at Law School,1,
+add,North,"Unnamed (41.8077, -87.5976)",41.80773,-87.59762,1,1,1,added_from_route 1,21:41,21:41,21:41,from Central at Reynolds Club,1,
+add,Apostolic,230 m from Kenwood & 63rd,41.78292,-87.59313,1,1,1,added_from_garage 1,05:31,05:31,05:31,first report of the day,1,
+add,Red Line/Arts Block,320 m from Washington Park Arts Incubator,41.7943,-87.61435,1,1,1,added_from_garage 1,07:07,07:07,07:07,first report of the day,1,
+add,Midway Metra,Logan Center,41.78588,-87.60359,1,1,1,added_from_garage 1,07:27,07:27,07:27,first report of the day,1,
+add,53rd Street Express,Lake Park & 55th St. (SE Corner),41.79446,-87.5876,1,1,1,added_from_garage 1,08:10,08:10,08:10,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8610, -87.6181)",41.86097,-87.61811,1,1,1,unknown 1,09:55,09:55,09:55,near Unnamed,1,
+add,Downtown Campus Connector,"Unnamed (41.8910, -87.6311)",41.89102,-87.6311,1,1,1,added_from_break 1,10:53,10:53,10:53,from Midway Metra at 59th & Ellis,1,
+add,Downtown Campus Connector,"Unnamed (41.8213, -87.5983)",41.82126,-87.59831,1,1,1,unknown 1,12:00,12:00,12:00,near 55th Street & University,1,
+add,Downtown Campus Connector,220 m from UCHICAGO Medicine - South Loop,41.87143,-87.64076,1,1,1,added_from_break 1,13:05,13:05,13:05,from Downtown Campus Connector at E Randolph St & S Michigan Ave,1,
+add,Red Line/Arts Block,300 m from Garfield Red Line Station (WB),41.79469,-87.62754,1,1,1,added_from_break 1,13:46,13:46,13:46,from Downtown Campus Connector at Goldblatt Pavilion,1,
+add,53rd Street Express,Ellis & 53rd St.,41.79786,-87.60127,1,1,1,added_from_garage 1,16:03,16:03,16:03,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8472, -87.6121)",41.84716,-87.61209,1,1,1,unknown 1,17:10,17:10,17:10,near S,1,
+add,Downtown Campus Connector,"Unnamed (41.8538, -87.6150)",41.85381,-87.61498,1,1,1,unknown 1,19:15,19:15,19:15,near UCHICAGO Medicine - South Loop,1,
+add,Downtown Campus Connector,190 m from UCHICAGO Medicine - South Loop,41.86805,-87.63923,1,1,1,unknown 1,20:50,20:50,20:50,near Unnamed,1,
+add,East,Operator garage,41.82011,-87.64191,1,1,1,added_from_garage 1,04:59,04:59,04:59,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8806, -87.6172)",41.88061,-87.61718,1,1,1,unknown 1,06:32,06:32,06:32,near Unnamed,1,
+add,Downtown Campus Connector,"Unnamed (41.8520, -87.6133)",41.852,-87.61333,1,1,1,added_from_route 1,10:25,10:25,10:25,parked at Goldblatt Pavilion,1,
+add,Downtown Campus Connector,320 m from S Michigan Ave/Roosevelt,41.86719,-87.62027,1,1,1,added_from_route 1,10:35,10:35,10:35,from Apostolic at 57th Street & Drexel,1,
+add,Friend Center/Metra,near Duchossois Center (DCAM),41.78945,-87.60771,1,1,1,added_from_garage 1,10:49,10:49,10:49,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8131, -87.5910)",41.81312,-87.59098,1,1,1,added_from_break 1,14:43,14:43,14:43,from Downtown Campus Connector at S Lake Park Ave & E Hyde Park Blvd,1,
+add,Downtown Campus Connector,57th St. & Metra (SB),41.79024,-87.58543,1,1,1,added_from_break 1,16:20,16:20,16:20,from Downtown Campus Connector at Roosevelt Station,1,
+add,Apostolic/Drexel,310 m from Stony Island Parking Lot,41.78849,-87.58506,1,1,1,added_from_route 1,21:10,21:10,21:10,from Downtown Campus Connector at Roosevelt Station,1,
+add,North,Regenstein Library (N),41.79145,-87.59936,1,1,0,added_from_garage 1,16:20,16:20,16:20,first report of the day,1,
+add,Downtown Campus Connector,310 m from E Randolph St & S Michigan Ave,41.88462,-87.62007,1,1,1,added_from_garage 1,06:30,06:30,06:30,first report of the day,1,
+add,Red Line/Arts Block,Ellis Garage & Ratner Athletic Center (East),41.79422,-87.60133,1,1,1,added_from_garage 1,06:45,06:45,06:45,first report of the day,1,
+add,Midway Metra,540 m from Washington Park Arts Incubator,41.79333,-87.61186,1,1,1,added_from_garage 1,06:45,06:45,06:45,first report of the day,1,
+add,Downtown Campus Connector,360 m from N (Upper) Wacker Dr & W Madison St,41.88523,-87.637,1,1,1,added_from_break 1,11:11,11:11,11:11,parked at 59th & Ellis,1,
+add,53rd Street Express,near Hyde Park Shopping Center,41.79662,-87.58726,1,1,1,added_from_break 1,12:28,12:28,12:28,parked at Goldblatt Pavilion,1,
+add,Downtown Campus Connector,"Unnamed (41.8536, -87.6142)",41.85361,-87.61415,1,1,1,added_from_garage 1,14:45,14:45,14:45,first report of the day,1,
+add,Downtown Campus Connector,510 m from S Lake Park Ave & E Hyde Park Blvd,41.8073,-87.59004,1,1,1,added_from_break 1,20:55,20:55,20:55,from Downtown Campus Connector at S Lake Park Ave & E Hyde Park Blvd,1,
+add,Apostolic,60th St. & Ellis (SE Corner),41.7855,-87.60118,1,1,1,added_from_garage 1,05:24,05:24,05:24,Operator garage,1,
+add,Downtown Campus Connector,"Unnamed (41.8782, -87.6242)",41.87818,-87.62423,1,1,1,added_from_garage 1,06:39,06:39,06:39,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8510, -87.6137)",41.85095,-87.61368,1,1,1,unknown 1,07:55,07:55,07:55,near UCHICAGO Medicine - River East,1,
+add,Downtown Campus Connector,530 m from Roosevelt CTA Station,41.86252,-87.62689,1,1,1,added_from_garage 1,09:27,09:27,09:27,first report of the day,1,
+add,Downtown Campus Connector,340 m from UCHICAGO Medicine - South Loop,41.86724,-87.63696,1,1,1,unknown 1,09:40,09:40,09:40,near S,1,
+add,Downtown Campus Connector,270 m from N (Upper) Wacker Dr & W Madison St,41.88436,-87.63677,1,1,1,added_from_break 1,10:44,10:44,10:44,from Downtown Campus Connector at UCHICAGO Medicine - River East,1,
+add,Downtown Campus Connector,"Unnamed (41.8401, -87.6090)",41.84011,-87.60901,1,1,1,added_from_route 1,11:34,11:34,11:34,from 53rd Street Express at Lake Park & 55th St.,1,
+add,53rd Street Express,Garfield Green Line Station,41.79476,-87.618,1,1,1,added_from_route 1,11:34,11:34,11:34,from Red Line/Arts Block at Smart Museum of Arts,1,
+add,Downtown Campus Connector,"Unnamed (41.8138, -87.5920)",41.81382,-87.59199,1,1,1,added_from_break 1,12:24,12:24,12:24,from Downtown Campus Connector at S Lake Park Ave & E Hyde Park Blvd,1,
+add,Downtown Campus Connector,"Unnamed (41.8097, -87.5919)",41.80966,-87.59191,1,1,1,unknown 1,12:55,12:55,12:55,near Ellis Garage & Ratner Athletic,1,
+add,Downtown Campus Connector,"Unnamed (41.8882, -87.6308)",41.88817,-87.63075,1,1,1,unknown 1,13:40,13:40,13:40,near S Michigan Ave/Roosevelt,1,
+add,Red Line/Arts Block,250 m from Washington Park Arts Incubator,41.79484,-87.61527,1,1,1,added_from_garage 1,16:07,16:07,16:07,first report of the day,1,
+add,Apostolic/Drexel,Ellis Ave & 57th St,41.79141,-87.60214,1,1,1,added_from_break 1,16:07,16:07,16:07,from Red Line/Arts Block at Garfield Red Line Station,1,
+add,Midway Metra,Wyler Pavilion,41.78777,-87.60554,1,1,1,unknown 1,16:11,16:11,16:11,near 59th & Ellis,1,
+add,Downtown Campus Connector,370 m from UCHICAGO Medicine - South Loop,41.86725,-87.63646,1,1,1,unknown 1,19:59,19:59,19:59,near S Lake Park & E 53rd St,1,
+add,Downtown Campus Connector,"Unnamed (41.8799, -87.6174)",41.87992,-87.61744,1,1,1,added_from_break 1,21:05,21:05,21:05,from Downtown Campus Connector at Roosevelt Station,1,
+add,Apostolic/Drexel,Levi Hall (W),41.78969,-87.60135,1,1,1,unknown 1,23:24,23:24,23:24,from Apostolic/Drexel at Levi Hall,1,
+add,Red Line/Arts Block,250 m from Garfield Red Line Station (WB),41.79464,-87.62806,1,1,1,added_from_break 1,11:21,11:21,11:21,from Red Line/Arts Block at Logan Center for Arts,1,
+add,Downtown Campus Connector,"Unnamed (41.8247, -87.6000)",41.82466,-87.60001,1,1,1,added_from_break 1,16:49,16:49,16:49,from Downtown Campus Connector at S Lake Park Ave & E Hyde Park Blvd,1,
+add,Central,Levi Hall (W),41.79006,-87.60113,1,1,1,added_from_route 1,18:34,18:34,18:34,from 53rd Street Express at 57th St. & Metra,1,
+add,Red Line/Arts Block,near Duchossois Center (DCAM),41.78964,-87.60767,1,1,1,added_from_route 1,19:50,19:50,19:50,from Midway Metra at 60th St. & Ellis,1,
+add,East,Regenstein Library (N),41.79141,-87.59919,1,1,1,unknown 1,19:59,19:59,19:59,from East at Alumni House,1,
+add,Friend Center/Metra,Ronald McDonald House & Friend Center,41.79528,-87.6041,1,1,1,added_from_garage 1,05:07,05:07,05:07,first report of the day,1,
+add,Apostolic,Midway Plaisance & Cottage Grove,41.78642,-87.60696,1,1,1,added_from_garage 1,05:08,05:08,05:08,first report of the day,1,
+add,Apostolic,near DuSable Black History Museum,41.79271,-87.60976,1,1,1,added_from_garage 1,05:08,05:08,05:08,first report of the day,1,
+add,Drexel,Bernard Mitchell Hospital,41.78943,-87.60619,1,1,1,added_from_route 1,05:08,05:08,05:08,from Friend Center/Metra at Bernard Mitchell Hospital,1,
+add,Friend Center/Metra,Logan Center for Arts,41.78537,-87.60438,1,1,1,added_from_route 1,06:08,06:08,06:08,from Drexel at Bernard Mitchell Hospital,1,
+add,Midway Metra,Keller Center EB,41.78608,-87.59235,1,1,1,added_from_garage 1,07:08,07:08,07:08,first report of the day,1,
+add,53rd Street Express,Max Palevsky Residential Commons (NE Corner),41.79346,-87.60136,1,1,1,added_from_garage 1,07:09,07:09,07:09,first report of the day,1,
+add,Downtown Campus Connector,260 m from UCHICAGO Medicine - South Loop,41.8674,-87.63924,1,1,1,added_from_garage 1,06:52,06:52,06:52,first report of the day,1,
+add,Apostolic/Drexel,Levi Hall (E),41.78904,-87.60139,1,1,1,added_from_route 1,10:20,10:20,10:20,from Apostolic at Levi Hall,1,
+add,Downtown Campus Connector,"Unnamed (41.8601, -87.6176)",41.86009,-87.6176,1,1,1,added_from_break 1,13:10,13:10,13:10,from Downtown Campus Connector at S Lake Park Ave & E Hyde Park Blvd,1,
+add,North,55th Street & University,41.79499,-87.59859,1,1,0,unknown 1,16:20,16:20,16:20,from North at Reynolds Club,1,
+add,East,200 m from Kimbark Plaza (NE Corner),41.79774,-87.59663,1,1,0,added_from_garage 1,16:22,16:22,16:22,first report of the day,1,
+add,East,Regents Park Apartments,41.80338,-87.58648,1,1,0,unknown 1,16:24,16:24,16:24,near Regents Park Apartments,1,
+add,Central,Burton-Judson Courts (NE Corner),41.78617,-87.60117,1,1,0,added_from_route 1,16:24,16:24,16:24,Operator garage,1,
+add,East,Smart Museum of Arts,41.79365,-87.60139,1,1,0,added_from_break 1,22:03,22:03,22:03,from East at Alumni House,1,
+add,Drexel,Midway Plaisance & Cottage Grove,41.78621,-87.60608,1,1,1,added_from_garage 1,05:01,05:01,05:01,first report of the day,1,
+add,Downtown Campus Connector,270 m from Gleacher Center,41.88766,-87.62019,1,1,1,added_from_garage 1,06:51,06:51,06:51,first report of the day,1,
+add,Red Line/Arts Block,Ronald McDonald House & Friend Center,41.79498,-87.60444,1,1,1,added_from_garage 1,07:05,07:05,07:05,first report of the day,1,
+add,Downtown Campus Connector,340 m from S Lake Park Ave & E Hyde Park Blvd,41.80585,-87.58917,1,1,1,added_from_route 1,10:40,10:40,10:40,from Apostolic at Goldblatt Pavilion,1,
+add,Downtown Campus Connector,Levi Hall (E),41.78944,-87.60134,1,1,1,added_from_break 1,11:32,11:32,11:32,from Red Line/Arts Block at Logan Center for Arts,1,
+add,Midway Metra,Midway Plaisance & Cottage Grove,41.78748,-87.6061,1,1,1,added_from_route 1,17:22,17:22,17:22,from Downtown Campus Connector at Goldblatt Pavilion,1,
+add,Downtown Campus Connector,near Roosevelt Station,41.86737,-87.62957,1,1,1,added_from_break 1,18:54,18:54,18:54,from Apostolic/Drexel at Goldblatt Pavilion,1,
+add,Downtown Campus Connector,"Unnamed (41.8629, -87.6188)",41.86293,-87.61882,1,1,1,added_from_garage 1,07:14,07:14,07:14,first report of the day,1,
+add,Downtown Campus Connector,near Center for Care and Discovery,41.79107,-87.606,1,1,1,added_from_garage 1,07:14,07:14,07:14,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8266, -87.6014)",41.82662,-87.6014,1,1,1,unknown 1,07:56,07:56,07:56,near 400 m from S,1,
+add,Downtown Campus Connector,"Unnamed (41.8896, -87.6311)",41.88959,-87.63114,1,1,1,unknown 1,09:06,09:06,09:06,near Unnamed,1,
+add,Downtown Campus Connector,340 m from N (Upper) Wacker Dr & W Madison St,41.88502,-87.63688,1,1,1,added_from_break 1,11:07,11:07,11:07,parked at Goldblatt Pavilion,1,
+add,Apostolic/Drexel,Kenwood & 63rd,41.78031,-87.59305,1,1,1,added_from_route 1,11:30,11:30,11:30,from Apostolic at Comer Children's Hospital,1,
+add,Downtown Campus Connector,"Unnamed (41.8741, -87.6243)",41.87412,-87.62427,1,1,1,added_from_garage 1,15:48,15:48,15:48,first report of the day,1,
+add,Downtown Campus Connector,near ISAC Museum,41.78907,-87.5982,1,1,1,added_from_break 1,21:42,21:42,21:42,from Downtown Campus Connector at Rockefeller Chapel,1,
+add,Apostolic,Levi Hall (W),41.79018,-87.60136,1,1,1,unknown 1,05:10,05:10,05:10,near 57th Street & Drexel,1,
+add,Downtown Campus Connector,"Unnamed (41.8588, -87.6170)",41.8588,-87.61698,1,1,1,added_from_break 1,09:18,09:18,09:18,from Downtown Campus Connector at S Lake Park Ave & E Hyde Park Blvd,1,
+add,Downtown Campus Connector,"Unnamed (41.8208, -87.5982)",41.82083,-87.59822,1,1,1,added_from_break 1,11:34,11:34,11:34,from Downtown Campus Connector at Roosevelt Station,1,
+add,Downtown Campus Connector,420 m from Gleacher Center,41.89168,-87.6263,1,1,1,unknown 1,14:15,14:15,14:15,parked at 340 m from UCHICAGO Medicine - River East,1,
+add,Red Line/Arts Block,Levi Hall (E),41.78942,-87.60126,1,1,1,added_from_garage 1,15:51,15:51,15:51,first report of the day,1,
+add,Midway Metra,near Social Science Research,41.78778,-87.59844,1,1,1,added_from_garage 1,16:48,16:48,16:48,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8471, -87.6118)",41.8471,-87.61178,1,1,1,added_from_break 1,20:12,20:12,20:12,from Downtown Campus Connector at Roosevelt Station,1,
+add,Downtown Campus Connector,"Unnamed (41.8878, -87.6336)",41.88775,-87.63364,1,1,1,added_from_garage 1,08:43,08:43,08:43,first report of the day,1,
+add,Downtown Campus Connector,59th St & Metra,41.78769,-87.58866,1,1,1,added_from_break 1,10:04,10:04,10:04,from Downtown Campus Connector at Roosevelt Station,1,
+add,Apostolic/Drexel,63rd & Woodlawn,41.7805,-87.59632,1,1,1,added_from_route 1,10:20,10:20,10:20,from Drexel at 57th Street & Drexel,1,
+add,Downtown Campus Connector,"Unnamed (41.8344, -87.6077)",41.83438,-87.60771,1,1,1,added_from_route 1,10:22,10:22,10:22,from Midway Metra at Goldblatt Pavilion,1,
+add,Downtown Campus Connector,Logan Center,41.7859,-87.60331,1,1,1,added_from_route 1,11:59,11:59,11:59,from Red Line/Arts Block at Logan Center for Arts,1,
+add,Downtown Campus Connector,"Unnamed (41.8878, -87.6310)",41.88776,-87.63105,1,1,1,added_from_garage 1,16:10,16:10,16:10,first report of the day,1,
+add,North,Ellis Ave & 57th St,41.79222,-87.6013,1,1,1,added_from_break 1,22:31,22:31,22:31,from Regents Express at Law School,1,
+add,Downtown Campus Connector,"Unnamed (41.8542, -87.6146)",41.85424,-87.6146,1,1,1,added_from_route 1,11:20,11:20,11:20,from Red Line/Arts Block at Midway Plaisance & Cottage Grove,1,
+add,Downtown Campus Connector,"Unnamed (41.8347, -87.6078)",41.83467,-87.60779,1,1,1,added_from_break 1,13:16,13:16,13:16,from Downtown Campus Connector at S Lake Park Ave & E Hyde Park Blvd,1,
+add,Downtown Campus Connector,near The Shoreland,41.79833,-87.58102,1,1,1,added_from_garage 1,14:50,14:50,14:50,first report of the day,1,
+add,Downtown Campus Connector,240 m from 57th St. & Metra (SB),41.78933,-87.58529,1,1,1,added_from_break 1,20:11,20:11,20:11,from Downtown Campus Connector at Gleacher Center,1,
+add,Central,near Powell's Books,41.79153,-87.58928,1,1,0,added_from_garage 1,16:02,16:02,16:02,first report of the day,1,
+add,Apostolic,Goldblatt Pavilion,41.78777,-87.60286,1,1,1,added_from_garage 1,05:25,05:25,05:25,first report of the day,1,
+add,Downtown Campus Connector,Roosevelt CTA Station,41.86737,-87.62711,1,1,1,added_from_garage 1,06:52,06:52,06:52,first report of the day,1,
+add,Downtown Campus Connector,310 m from Shoreland Building,41.79889,-87.58127,1,1,1,added_from_garage 1,07:18,07:18,07:18,first report of the day,1,
+add,Downtown Campus Connector,260 m from S Michigan Ave/Roosevelt,41.86751,-87.62095,1,1,1,unknown 1,09:23,09:23,09:23,near 330 m from S,1,
+add,Downtown Campus Connector,"Unnamed (41.8329, -87.6073)",41.83286,-87.60732,1,1,1,added_from_break 1,11:23,11:23,11:23,from Apostolic at Goldblatt Pavilion,1,
+add,Downtown Campus Connector,280 m from Roosevelt CTA Station,41.86732,-87.63041,1,1,1,added_from_break 1,11:24,11:24,11:24,from Apostolic at Goldblatt Pavilion,1,
+add,Downtown Campus Connector,"Unnamed (41.8455, -87.6115)",41.84553,-87.61148,1,1,1,unknown 1,13:33,13:33,13:33,near 320 m from S,1,
+add,Downtown Campus Connector,"Unnamed (41.8892, -87.6308)",41.88923,-87.63081,1,1,1,added_from_break 1,15:08,15:08,15:08,from Downtown Campus Connector at 59th & Ellis,1,
+add,Downtown Campus Connector,530 m from Gleacher Center,41.89178,-87.6277,1,1,1,added_from_break 1,16:53,16:53,16:53,from Downtown Campus Connector at 59th & Ellis,1,
+add,Red Line/Arts Block,Goldblatt Pavilion,41.78771,-87.60396,1,1,1,added_from_break 1,20:34,20:34,20:34,from Red Line/Arts Block at Logan Center for Arts,1,
+add,Downtown Campus Connector,270 m from UCHICAGO Medicine - River East,41.88956,-87.61751,1,1,1,added_from_break 1,22:03,22:03,22:03,from Downtown Campus Connector at Gleacher Center,1,
+add,Apostolic,170 m from 63rd & Woodlawn,41.78049,-87.59846,1,1,1,added_from_garage 1,05:09,05:09,05:09,first report of the day,1,
+add,Midway Metra,57th St. & Metra (NB),41.79151,-87.58636,1,1,1,added_from_garage 1,06:55,06:55,06:55,first report of the day,1,
+add,Downtown Campus Connector,540 m from S (Upper) Wacker Dr & W Adams St,41.87551,-87.64082,1,1,1,added_from_garage 1,07:01,07:01,07:01,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8620, -87.6184)",41.86197,-87.61835,1,1,1,added_from_break 1,09:48,09:48,09:48,from Downtown Campus Connector at S Lake Park Ave & E Hyde Park Blvd,1,
+add,Downtown Campus Connector,Logan Center for Arts,41.78646,-87.60487,1,1,1,added_from_break 1,12:20,12:20,12:20,from Downtown Campus Connector at Roosevelt Station,1,
+add,Red Line/Arts Block,60th St. & Ellis (SE Corner),41.78593,-87.60153,1,1,1,added_from_break 1,13:59,13:59,13:59,Operator garage,1,
+add,Downtown Campus Connector,"Unnamed (41.8251, -87.6011)",41.82509,-87.60113,1,1,1,added_from_garage 1,14:39,14:39,14:39,first report of the day,1,
+add,Midway Metra,International House,41.78739,-87.59155,1,1,1,unknown 1,15:42,15:42,15:42,parked at Goldblatt Pavilion,1,
+add,Red Line/Arts Block,Ellis Ave & 57th St,41.79167,-87.60131,1,1,1,added_from_garage 1,15:53,15:53,15:53,first report of the day,1,
+add,South,Drexel Garage,41.78408,-87.60425,1,1,1,added_from_route 1,21:09,21:09,21:09,from Regents Express at Law School,1,
+add,Central,Ellis/57th,41.7912,-87.60132,1,1,1,added_from_route 1,21:15,21:15,21:15,parked at Reynolds Club,1,
+add,South,Reynolds Club,41.79091,-87.59816,1,1,1,added_from_break 1,22:29,22:29,22:29,from South at Levi Hall,1,
+add,Downtown Campus Connector,"Unnamed (41.8889, -87.6311)",41.88893,-87.63112,1,1,1,added_from_garage 1,06:38,06:38,06:38,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8898, -87.6310)",41.8898,-87.631,1,1,1,added_from_garage 1,06:55,06:55,06:55,first report of the day,1,
+add,Downtown Campus Connector,Washington Park Arts Incubator,41.79445,-87.61702,1,1,1,added_from_garage 1,07:24,07:24,07:24,first report of the day,1,
+add,53rd Street Express,Smart Museum of Arts,41.79417,-87.60139,1,1,1,added_from_garage 1,08:25,08:25,08:25,first report of the day,1,
+add,Downtown Campus Connector,near Ronald McDonald House,41.79477,-87.6062,1,1,1,added_from_route 1,11:13,11:13,11:13,parked at Rockefeller Chapel,1,
+add,Downtown Campus Connector,Ronald McDonald House & Friend Center,41.79499,-87.60306,1,1,1,added_from_garage 1,14:40,14:40,14:40,first report of the day,1,
+add,Downtown Campus Connector,270 m from E 56th St & S Hyde Park Blvd (SW Corner),41.79255,-87.58091,1,1,1,added_from_break 1,14:59,14:59,14:59,from Downtown Campus Connector at E Randolph St & S Michigan Ave,1,
+add,Downtown Campus Connector,280 m from E Randolph St & S Michigan Ave,41.88484,-87.6205,1,1,1,unknown 1,06:42,06:42,06:42,near 260 m from E Randolph St & S Michigan Ave,1,
+add,53rd Street Express,Wyler Pavilion,41.7877,-87.60533,1,1,1,added_from_garage 1,09:40,09:40,09:40,first report of the day,1,
+add,Downtown Campus Connector,"Unnamed (41.8114, -87.5898)",41.81142,-87.58977,1,1,1,added_from_break 1,10:13,10:13,10:13,from Downtown Campus Connector at Roosevelt Station,1,
+add,Downtown Campus Connector,E 56th St & S Hyde Park Blvd (SW Corner),41.7927,-87.58408,1,1,1,added_from_break 1,12:40,12:40,12:40,from 53rd Street Express at Keller Center EB,1,
+add,Apostolic/Drexel,Comer Children's Hospital,41.79066,-87.60371,1,1,1,unknown 1,13:19,13:19,13:19,from Apostolic/Drexel at Comer Children's Hospital,1,
+add,Downtown Campus Connector,"Unnamed (41.8536, -87.6140)",41.85357,-87.61404,1,1,1,added_from_route 1,18:42,18:42,18:42,from Apostolic/Drexel at Goldblatt Pavilion,1,
+add,Downtown Campus Connector,"Unnamed (41.8579, -87.6165)",41.85788,-87.61649,1,1,1,added_from_break 1,19:02,19:02,19:02,from Downtown Campus Connector at S Lake Park Ave & E Hyde Park Blvd,1,
+add,Red Line/Arts Block,near DuSable Black History Museum,41.79279,-87.60993,1,1,1,added_from_route 1,19:27,19:27,19:27,from Midway Metra at 60th St. & Ellis,1,
+add,North,370 m from S. Drexel Ave & E 53rd St,41.80182,-87.60403,1,1,1,added_from_route 1,19:42,19:42,19:42,parked at Goldblatt Pavilion,1,

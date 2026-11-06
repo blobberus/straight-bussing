@@ -8,9 +8,12 @@
 // with their trip updates, so no arrival time comes from a bus the map does not show. The buses more than a block off
 // are still tracked: their clocks stay here and store.away lists them (the route page counts them), so a bus shows
 // again on its first report back within a block.
+// Trip updates of buses that left the feed 15 min ago or more while Passio still predicts them (core/transition.js: a
+// break, a shift end, another route) are dropped too, so nothing recommends a bus that has left its route.
 import { operatingBuses } from '../core/operating.js';
 import { offRouteStep, dropHidden, awayBuses } from '../core/offroute.js';
 import { idleStep } from '../core/idle.js';
+import { goneStep } from '../core/transition.js';
 
 /** Passio feed base URL. */
 export const BASE = 'https://passio3.com/chicago/passioTransit/gtfs/realtime/';
@@ -90,6 +93,7 @@ export function startLive(store, opts = {}) {
   let lastBuses = [], lastBusesAt = 0;    // the last poll that had buses (EMPTY_HOLD_S); [] once an empty is believed
   let offTracks = {}, offHidden = [];      // core/offroute.js clocks between polls; the vehicles it hides now
   let idleTracks = {}, idleHidden = [];    // core/idle.js still clocks between polls; the vehicles it hides now
+  let goneSeen = {}, goneIds = [];         // core/transition.js latest report times; the gone buses whose trip updates drop
 
   /** Paused: the page is hidden and nothing needs data in the background. */
   const hidden = () => !!(doc && doc.hidden) && !keepAlive();
@@ -137,6 +141,9 @@ export function startLive(store, opts = {}) {
     if (sa.status === 'fulfilled') patch.alerts = parseAlerts(sa.value);
     if (patch.buses) {
       const s = store.get();
+      const g = goneStep(goneSeen, patch.buses, patch.trips || s.trips, { feedTs: patch.feedTs, nowS: nowFn() });
+      goneSeen = g.seen;
+      goneIds = g.gone;
       patch.buses = operatingBuses(patch.buses, { routes: s.routes, service: s.service, trips: patch.trips || s.trips,
         feedTs: patch.feedTs, nowS: nowFn(), staticLoaded: s.staticLoaded });
       const off = offRouteStep(offTracks, patch.buses, { shapes: s.shapes, service: s.service, alerts: patch.alerts || s.alerts,
@@ -149,9 +156,9 @@ export function startLive(store, opts = {}) {
         nowS: nowFn(), feedTs: patch.feedTs });
       idleTracks = idle.tracks;
       idleHidden = idle.hidden;
-      if ((offHidden.length || idleHidden.length) && !patch.trips) patch.trips = s.trips;   // the store's trips still list a newly hidden bus
+      if ((offHidden.length || idleHidden.length || goneIds.length) && !patch.trips) patch.trips = s.trips;   // the store's trips still list a newly hidden bus
     }
-    const hiddenNow = idleHidden.length ? offHidden.concat(idleHidden) : offHidden;
+    const hiddenNow = offHidden.concat(idleHidden, goneIds);
     if (hiddenNow.length && (patch.buses || patch.trips)) {
       const d = dropHidden(patch.buses, patch.trips, hiddenNow);
       if (patch.buses) patch.buses = d.buses;

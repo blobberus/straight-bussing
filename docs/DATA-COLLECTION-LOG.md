@@ -321,6 +321,12 @@ mitigate them." Ranked by how likely each is and how much of the record it would
   14.6 vs 4.4 min (n = 22); Drexel 5.7 vs 2.5 min; not on 53rd Street Express, Midway Metra, Red Line, Central, South.
 - Impact: from now on every change is recorded live; past days are not backfilled on the data branch (the archive
   rebuilds `bus-changes-<day>` for each day it archives). Status: added.
+- Follow-up 2026-11-06 (RouteKnower E29): every change of Oct 10 to Nov 5 rebuilt from the raw polls and labeled with
+  what the bus did (break, shift end, another route, off the map, layover; joins from the garage, a break, another
+  route), where it left or joined and where it went, in `data/labeled/transitions/` (main; the data branch is not
+  touched). The forecast table gains the transition columns (`transition_min` ... `gone_rule`, docs/DATA.md); the app
+  drops the times of a bus gone from the feed for 15 min (`core/transition.js`). The replay agrees with this file on 411
+  of 425 events of Oct 30 to Nov 5.
 
 ### DC-019 Bug check 2026-10-29: loop-end predictions (DC-017), replay determinism, daylight saving (fixed)
 - Loop-end predictions dropped (DC-017's main case): `arrival_detector._candidates` (and `build_eta_dataset.shown`)

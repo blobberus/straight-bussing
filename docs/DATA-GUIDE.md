@@ -20,6 +20,7 @@ up to **Tuesday, October 13, 2026, 4:20 PM** (collection started Thursday, Octob
 | `eta-<day>.csv.gz` | Releases page, "Prediction data archive" | one minute x one bus x one stop it reaches in the next 45 min | **training** a better algorithm | Oct 10, 11, 12 (Passio from Oct 12) |
 | `data/eta/summary.csv` | `data` branch | one day x predictor x lead range x route | the daily scoreboard | Oct 10 to 12 |
 | `bus_changes.csv` | `data` branch, `data/ground_truth/` | one moment a line lost or gained a bus | finding the 2 to 1 bus transitions and the predictions around them | from Oct 30 (about 40 to 55 drops a weekday, 30 to 45 of them lasting) |
+| `transitions.csv` (+ spots, summary, windows) | main repo, `data/labeled/transitions/` | one bus leaving or joining a line, labeled (break, shift end, another line, off the map; from the garage, a break, another line) with where it happened and where it went | which buses go on break, where and when; testing predictions in transition time | Oct 10 to Nov 5: 1,926 events (about 40 leaves and 39 joins a weekday that are not layovers) |
 | `alerts.csv` | `data` branch, `data/ground_truth/` | one version of one announcement by the operator (detour, reduced service, phone help) | explaining odd days and big misses | from Oct 14 (3 announcements in the feed that evening) |
 | per-day / per-route copies, `latest.csv` | [github.com/blobberus/straight-bussing-data](https://github.com/blobberus/straight-bussing-data) | as `arrivals.csv` | browsing in GitHub | synced every 30 min |
 
@@ -281,6 +282,15 @@ Apostolic: typical miss 14.6 against 4.4 minutes; Drexel 5.7 against 2.5 minutes
 all lines there was no clear effect. The forecast table marks rows near a lasting drop (`bus_change_min`, `leaving_bus`)
 so a model can learn this.
 
+**The labeled log of every transition (since November 6):** `data/labeled/transitions/transitions.csv` in the main
+repo goes further for October 10 to November 5: for every bus that left or joined a line it says where (the last spot
+on the line, named after the nearest stop), what kind of change it was (`break`, `shift_end`, `route_switch` to
+another line, `feed_drop` = gone from the map mid-route, or a layover; for joins: from the garage, from a break, from
+another line), where the bus went or came from (the garage, a parked spot, off the map), how long it was away, where it
+came back, whether Passio kept showing times for it, and whether another bus replaced it. Its README explains every
+column; `transition_spots.csv` lists the usual places and times per line (for example the Apostolic bus 4322 that
+takes a half-hour break at South Campus Residence Hall at 8:43 AM).
+
 ## `alerts.csv`: what the operator announced
 
 The shuttle operator posts announcements in the same live feed ("the North route will run every 30 minutes",
@@ -328,6 +338,10 @@ that day).
 | `passio_epoch`, `passio_status` | What the feed showed at that minute (`shown`, `none`, or `previous_lap`: it belonged to the earlier lap). |
 | `passio_rel` | Its error as a share of the time left: -0.10 = the bus came 10% later than shown. **The 10% rule = between -0.10 and +0.10; band B (the working goal) = between -0.10 and +0.01.** |
 | `tt_rel`, `ttd_rel` | The same for the printed timetable, and for the timetable shifted by the bus's current delay. |
+| `transition_min`, `transition_kind` | Since November 6: minutes from the nearest change in the line's bus count (a bus leaving for good, or a new bus joining) to this minute; negative = it is still to come; `leave` or `add`. |
+| `bus_leaves_min`, `bus_leaves_within` | Minutes until **this** bus leaves the line for good (blank = not within 45); 10, 20 or 30 = it leaves within that many minutes, 0 = not within 30. What really happened, for testing; a phone cannot know it. |
+| `added_recently`, `break_window`, `leave_spot_dist_m` | What a phone could know: minutes since this bus joined the line; 1 = this time of day is one when a bus of this line usually leaves (`leave_windows.csv`); metres from the bus to that usual leave stop. |
+| `absent_s`, `gone_rule` | Seconds since the bus last sent its position; 1 = the app now hides this bus's times (no position for 15 minutes while other buses report). |
 
 **Do not average the rows**: one arrival appears up to 45 times.
 

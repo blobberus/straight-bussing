@@ -55,7 +55,16 @@ COLUMNS = ("query_epoch,query_local,service_day,dow,day_type,cal_regime,hour,veh
            "stop_id,stop_name,stop_index,visit_rank,next_trip,cur_trip_id,stops_away,dist_m,crosses_terminal,"
            "last_stop_id,last_arrival_epoch,last_age_s,speed_mps,standing_s,delay_s,actual_epoch,lead_s,label_status,"
            "passio_status,passio_epoch,passio_made_epoch,passio_seen_epoch,passio_age_s,passio_err_s,passio_rel,"
-           "tt_epoch,tt_err_s,tt_rel,ttd_epoch,ttd_err_s,ttd_rel,bus_change_min,leaving_bus").split(",")
+           "tt_epoch,tt_err_s,tt_rel,ttd_epoch,ttd_err_s,ttd_rel,bus_change_min,leaving_bus,"
+           "transition_min,transition_kind,bus_leaves_min,bus_leaves_within,added_recently,break_window,"
+           "leave_spot_dist_m,absent_s,gone_rule").split(",")
+# The transition columns (2026-11-06, RouteKnower E29, docs/DATA.md "Forecast snapshots"): ground truth for testing
+# models in bus count transitions (transition_min, transition_kind, bus_leaves_min, bus_leaves_within), what a phone
+# knows live (added_recently, break_window, leave_spot_dist_m from data/labeled/transitions/leave_windows.csv, absent_s)
+# and the app's gone rule (web/js/core/transition.js) as a flag.
+LEAVE_WINDOWS = L.ROOT / "data" / "labeled" / "transitions" / "leave_windows.csv"
+GONE_S, GONE_FRESH_S, GONE_SPARSE_S = 900, 300, 120     # core/transition.js GONE_S, FRESH_S, SPARSE_S
+ADDED_RECENT_S = 1800
 SUMMARY_COLUMNS = ("service_day,source,lead_bin,route,segment,targets,n,pass_10,pass_10_floor,late_1,early_10,"
                    "gross,gross_early,mae_s,median_err_s,pass_shrink,early_shrink").split(",")
 # pass_shrink / early_shrink (2026-10-17): the owner's current goal, the 10 minute shrink (arrivals_lib.shrink_tol:
@@ -317,8 +326,119 @@ def flag_bus_changes(rows, changes, window=HORIZON_S):
     return rows
 
 
-def build(day, arrivals, preds, raw=None, timetable=None, st=None, step=STEP_S, horizon=HORIZON_S, cal=(), changes=None):
-    """-> list of row dicts (COLUMNS) for one service day. changes: the day's bus_changes rows (flag_bus_changes)."""
+def load_leave_windows(path=LEAVE_WINDOWS):
+    """data/labeled/transitions/leave_windows.csv (E29: per line, day type and last stop, the clock windows in which a
+    bus that made its last stop there left the line on 3 days or more) -> list of dicts with minutes; [] if missing."""
+    out = []
+    p = Path(path) if path else None
+    if not p or not p.exists():
+        return out
+
+    def mins(x):
+        h, m = (int(v) for v in str(x).split(":"))
+        return h * 60 + m
+    with open(p, encoding="utf-8", newline="") as f:
+        for r in csv.DictReader(f):
+            try:
+                a, b = mins(r["from"]), mins(r["to"])
+                if a < 240:                       # the service-day clock: 00:30 after midnight = 24:30
+                    a, b = a + 1440, b + 1440
+                elif b < a:
+                    b += 1440
+                out.append({"route_id": str(r["route_id"]), "day_type": r["day_type"], "a": a, "b": b,
+                            "lat": float(r["lat"]), "lon": float(r["lon"])})
+            except (KeyError, TypeError, ValueError):
+                continue
+    return out
+
+
+def _service_min(epoch):
+    """Minutes since midnight of the SERVICE day (00:30 after midnight = 1470)."""
+    t = L.chicago(epoch)
+    m = t.hour * 60 + t.minute
+    return m + 1440 if t.hour < 4 else m
+
+
+def flag_transitions(rows, changes, raw=None, windows=None, window=HORIZON_S):
+    """The transition columns, in place (E29, docs/DATA.md). changes: bus_changes rows; raw: load_raw output; windows:
+    load_leave_windows output (None = no file: break_window / leave_spot_dist_m stay blank).
+      transition_min     minutes from the nearest TRANSITION on the row's route (a lasting drop, or an add that is not
+                         the end of a layover) to the query time, like bus_change_min: negative = still ahead; blank if
+                         none within 45 min; transition_kind = leave / add
+      bus_leaves_min     minutes from the query until this bus's own lasting drop from the row's route (0 to 45, blank
+                         if none); bus_leaves_within = 10 / 20 / 30 (the smallest that holds it), 0 = not within 30
+      added_recently     minutes since this bus joined the row's route (an add, not a layover's end), if within 30
+      break_window       1 if the query's service-day clock is inside a learned leave window of the row's route for its
+                         day type (weekday / sat / sun), else 0
+      leave_spot_dist_m  metres from the bus's latest position (a report at most 300 s old) to the nearest leave stop of
+                         those active windows
+      absent_s           seconds since the bus's latest report (any route); gone_rule = 1 when core/transition.js would
+                         drop its predictions (silent >= 15 min, the feed alive, its last two reports <= 120 s apart)
+    Rows without a route (Passio's phantom visits, label_status no_arrival) get only absent_s / gone_rule."""
+    trans, leaves, adds = defaultdict(list), defaultdict(list), defaultdict(list)
+    for c in changes or ():
+        try:
+            ep, rid, veh = int(float(c["epoch"])), str(c["route_id"]), str(c["vehicle_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if c.get("kind") == "drop" and str(c.get("lasting")) == "1":
+            trans[rid].append((ep, "leave"))
+            leaves[(rid, veh)].append(ep)
+        elif c.get("kind") == "add" and str(c.get("returning")) != "1":
+            trans[rid].append((ep, "add"))
+            adds[(rid, veh)].append(ep)
+    for v in list(trans.values()) + list(leaves.values()) + list(adds.values()):
+        v.sort()
+    raw = raw or {}
+    rkeys = {veh: [x[0] for x in v] for veh, v in raw.items()}
+    every = sorted(t for v in rkeys.values() for t in v)
+    groups = {}
+    for r in rows:
+        q, rid, veh = int(r["query_epoch"]), str(r.get("route_id") or ""), str(r.get("vehicle_id"))
+        ks = rkeys.get(veh)
+        i = bisect.bisect_right(ks, q) if ks else 0
+        if i:
+            r["absent_s"] = q - ks[i - 1]
+            k = bisect.bisect_left(every, q - GONE_FRESH_S)
+            alive = k < len(every) and every[k] <= q
+            regular = i < 2 or ks[i - 1] - ks[i - 2] <= GONE_SPARSE_S
+            r["gone_rule"] = int(alive and regular and q - ks[i - 1] >= GONE_S)
+        if not rid:
+            continue
+        lst = trans.get(rid)
+        if lst:
+            j = bisect.bisect_left(lst, (q, ""))
+            near = [lst[x] for x in (j - 1, j) if 0 <= x < len(lst) and abs(lst[x][0] - q) <= window]
+            if near:
+                ep, kind = min(near, key=lambda x: abs(x[0] - q))
+                r["transition_min"], r["transition_kind"] = round((q - ep) / 60, 1), kind
+        nxt = next((ep for ep in leaves.get((rid, veh), ()) if q <= ep <= q + window), None)
+        r["bus_leaves_min"] = "" if nxt is None else round((nxt - q) / 60, 1)
+        r["bus_leaves_within"] = next((w for w in (10, 20, 30) if nxt is not None and nxt - q <= w * 60), 0)
+        ad = [ep for ep in adds.get((rid, veh), ()) if 0 <= q - ep <= ADDED_RECENT_S]
+        if ad:
+            r["added_recently"] = round((q - max(ad)) / 60, 1)
+        if windows is not None:
+            day = r.get("service_day") or ""
+            if day not in groups:
+                try:
+                    wd = date.fromisoformat(day).weekday()
+                except ValueError:
+                    wd = 0
+                groups[day] = "sat" if wd == 5 else "sun" if wd == 6 else "weekday"
+            m = _service_min(q)
+            act = [w for w in windows if w["route_id"] == rid and w["day_type"] == groups[day] and w["a"] <= m <= w["b"]]
+            r["break_window"] = int(bool(act))
+            if act and i and q - ks[i - 1] <= REPORT_S:
+                p = raw[veh][i - 1]
+                r["leave_spot_dist_m"] = round(min(L.hav_m(p[1], p[2], w["lat"], w["lon"]) for w in act))
+    return rows
+
+
+def build(day, arrivals, preds, raw=None, timetable=None, st=None, step=STEP_S, horizon=HORIZON_S, cal=(), changes=None,
+          windows=None):
+    """-> list of row dicts (COLUMNS) for one service day. changes: the day's bus_changes rows (flag_bus_changes,
+    flag_transitions); windows: load_leave_windows() (None: the two window columns stay blank)."""
     st = st or L.Static()
     t0, t1 = day_bounds(day)
     raw = raw or {}
@@ -506,6 +626,7 @@ def build(day, arrivals, preds, raw=None, timetable=None, st=None, step=STEP_S, 
                                  passio_seen_epoch=e[0], passio_age_s=t - e[2]))
     rows.sort(key=lambda r: (r["query_epoch"], r["vehicle_id"], r["lead_s"]))
     flag_bus_changes(rows, changes)
+    flag_transitions(rows, changes, raw, windows)
     return rows
 
 
@@ -684,6 +805,10 @@ def main(argv=None):
     ap.add_argument("--step", type=int, default=STEP_S)
     ap.add_argument("--out", required=True, help="eta-<day>.csv or .csv.gz")
     ap.add_argument("--summary", help="also merge this day's aggregate rows into this summary CSV")
+    ap.add_argument("--changes", nargs="*", default=[], help="bus_changes rows (bus-changes-<day>.csv[.gz] or the data "
+                    "branch's bus_changes.csv) for the bus change and transition columns")
+    ap.add_argument("--leave-windows", default=str(LEAVE_WINDOWS), help="E29 leave windows for break_window and "
+                    "leave_spot_dist_m ('' = none)")
     a = ap.parse_args(argv)
     t0, t1 = day_bounds(a.day)
     st = L.Static(a.web_data)
@@ -692,8 +817,14 @@ def main(argv=None):
         cal = load_calendar(a.calendar)
     except Exception:
         cal = ()
+    changes = []
+    for p in a.changes:
+        with _open(p) as f:
+            changes += [c for c in csv.DictReader(f) if t0 - HORIZON_S <= int(float(c.get("epoch") or 0)) < t1 + HORIZON_S]
+    windows = load_leave_windows(a.leave_windows) if a.leave_windows else []
     rows = build(a.day, load_arrivals(a.arrivals, t0, t1 + HORIZON_S), load_pred_updates(a.pred, t0, t1 + HORIZON_S),
-                 load_raw(a.raw, t0, t1), load_timetable(a.gtfs), st, a.step, cal=cal)
+                 load_raw(a.raw, t0, t1), load_timetable(a.gtfs), st, a.step, cal=cal, changes=changes,
+                 windows=windows or None)
     write_rows(rows, a.out)
     shown = sum(1 for r in rows if r.get("passio_status") == "shown")
     print(f"{a.day}: {len(rows)} rows ({shown} with a Passio prediction shown) -> {a.out}")

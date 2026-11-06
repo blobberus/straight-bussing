@@ -131,6 +131,9 @@ export function closestOnLine(lines, lat, lon): {d, lat, lon}|null; inListedHour
 export const STILL_M = 80, IDLE_S = 1800, PARKED_S = 5400, LINGER_S = 180, PAST_PAD_S = 3600, FUTURE_S = 120, GAP_S = 600, SPOT_R = 120
 export function idleStep(tracks, buses, {trips, service, idle, nowS, feedTs}): {tracks, hidden: vehicleId[], why: {id: 'parked'|'idle'|'past'|'linger'}}   // pure; tracks kept by data/live.js
 export function lingerAt(idle, service, rid, lat, lon, t): entry|null; predictsAhead(trips, id, t): boolean; serviceClock(t): {min, iso, day, group}; hoursKey(service, rid, iso, day): string|null
+// core/transition.js (2026-11-06, owner): the trip updates of buses that left their route while Passio still predicts them are dropped (section "Buses that left their route")
+export const GONE_S = 900, FRESH_S = 300, SPARSE_S = 120, KEEP_S = 21600
+export function goneStep(seen, vehicles, trips, {feedTs, nowS}): {seen: {id: {t, dt, p?}}, gone: vehicleId[]}   // pure; vehicles = the feed as parsed (ghosts count); seen kept by data/live.js
 ```
 ```js
 // core/arrivals.js  (pure, takes state slices)
@@ -802,6 +805,47 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   `IdleTests` incl. the web's answers on the real polls (`Fixtures/idle_golden.json` = `web/tests/fixtures/idle_golden.json`).
 - Refresh the learned cutoffs (monthly, or after a timetable change): `fetch.py` then `endofservice.py --cache` then
   `idle_rules.py --write-idle web/data/idle.json` (RouteKnower.md E28 has the commands); sw cache bump.
+
+## Buses that left their route: no times, no recommendations (2026-11-06, owner: "add to the current display behavior of buses to avoid recommending routes on buses that are about to leave their routes")
+- Measured first (RouteKnower.md E29, `experiments/routeknower/E29-scripts/`, labeled data `data/labeled/transitions/`):
+  every bus count transition of Oct 10 to Nov 5 (1,926: 955 buses leaving a line, 971 joining), each labeled from what
+  the bus did next (break 231, shift_end 205, route_switch 160, feed_drop 178, layover 181; joins from the garage 289,
+  from a break 226, from another line 141). Passio kept showing times for 611 of the 774 buses that left for good, for a
+  median 20 min after a break and 14 min after a shift end: 4,164 stops promised by a bus that had already gone.
+- **Which bus is ABOUT to leave cannot be told reliably** from what a phone sees: per visit to a stop (82,569 visits,
+  0.6% of them a bus's last stop before leaving), the line's learned leave spot and time, the trip, Passio showing
+  nothing beyond the stop, time on the line, the number of buses, and a small network on all of them reach at best about
+  30% precision on held-out days (Oct 29 to Nov 5); the same bus at the same stop and time on earlier days reaches 91%
+  but on 11 visits in 8 days (not enough evidence; revisit with more weeks). So the app does not guess, flag or rank
+  buses as "leaving"; the map is unchanged.
+- **What ships: GONE buses.** `core/transition.js` (pure; tests `web/tests/core-transition.js`, real polls
+  `web/tests/fixtures/transition_golden.json` from `experiments/routeknower/E29-scripts/make_golden.py`): a bus is gone
+  when its latest report (any route; a ghost in the feed counts with its own report time) is at least `GONE_S` (15 min)
+  older than the feed, while the feed is alive (some vehicle reported within `FRESH_S`, 300 s) and the bus was reporting
+  normally before it fell silent (its last two reports at most `SPARSE_S`, 120 s, apart: a bus that reports only every
+  5 to 20 min, like 12647 on Oct 12, keeps driving unseen and the arrival log misses its stops). `data/live.js` runs
+  `goneStep` once per vehicle poll on the feed's list as parsed (before core/operating.js), keeps `goneSeen`, and
+  `dropHidden` takes the gone buses' trip updates out of the store with the off-route and idle ones. So arrivals,
+  Directions and trip options (the planner falls back to the next live bus or its headway estimate, shown "est."), the
+  Nearby next bus, bus alerts and the trip view never offer a time from a bus that left; a bus is back the moment it
+  reports again. A vehicle the app has not seen since it started gets its clock at the first poll that lists its
+  prediction (a late drop after a reload, never an early one); no fresh vehicle at all (outage, the empty overnight feed)
+  drops nothing; trip updates without a vehicle id are kept.
+- Numbers (26 days replayed per minute, `transition_rules.py`; a dropped prediction "never came true" when the bus did
+  not reach that stop by 15 min after the predicted time): 17,772 prediction-minutes dropped, 98.8% never came true
+  (650 phantom prediction-minutes removed a day, 7.8 that did come true lost a day); threshold chosen on Oct 10 to 28
+  (98.75% at 15 min; 12 min 96.0%, 10 min 91.0%), held-out Oct 29 to Nov 5: 99.2% (3.0 lost a day). By line: Downtown
+  Campus Connector 99.6%, East 99.4%, Central 95%, Apostolic 95%, Apostolic/Drexel 86% (long layovers out of the feed
+  that then served), South Loop Shuttle 8 of 23, the others 100%. Real polls through the JavaScript: Central 4317 (left at 22:21 on Oct 15, Passio
+  predicted it 47 min) dropped from 22:37; Downtown Campus Connector 12643 (left 18:01 on Nov 5) from 18:16; North
+  4322's 10 min layover out of the feed and 4314's 15 min one never; 12647 (reports every 5 to 20 min) never.
+- iOS: Kit `Transition.swift` (same rule and numbers), `LiveState.applying` (`goneSeen`, `goneIds`, before `Operating`);
+  `TransitionTests` incl. the web's answers on the real polls (`Fixtures/transition_golden.json` =
+  `web/tests/fixtures/transition_golden.json`).
+- For algorithm tests: the forecast table has the transition columns (`transition_min`, `transition_kind`,
+  `bus_leaves_min`, `bus_leaves_within`, `added_recently`, `break_window`, `leave_spot_dist_m`, `absent_s`,
+  `gone_rule`; docs/DATA.md), and the data repo's `algorithm-test/transitions.py` scores every model in transition
+  periods, normal periods and on the rows of a bus about to leave.
 
 ## Minutes to every station on the Current trip (2026-10-20, owner: "the distance in minutes away is shown on the right side of the station name")
 - Passio splits one bus's predictions over its trip updates (the trip it is on, often 1 to 4 stops left, and its next trip), so

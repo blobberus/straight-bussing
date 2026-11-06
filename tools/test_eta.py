@@ -248,6 +248,47 @@ def test_the_bus_s_next_lap_or_an_earlier_visit_never_fills_a_lead():
     assert _row(rows, arr - 600, "A", "T1")["passio_status"] == "none"
 
 
+def test_transition_columns_ground_truth_live_cues_and_the_gone_rule():
+    """E29 (2026-11-06): transition_min / transition_kind (nearest lasting drop or real add on the route), the bus's own
+    leave (bus_leaves_min / _within), added_recently, the learned leave windows and the app's gone rule."""
+    d = tmp()
+    wpath = d / "leave_windows.csv"
+    t5 = L.chicago(T)                              # 05:00 on a Tuesday: a weekday window 04:55 to 05:20 at stop A
+    wpath.write_text("route_id,route,day_type,stop_id,stop,lat,lon,from,to,days,leaves,visits_in_window,precision_in_sample\n"
+                     "R,Test Loop,weekday,A,Stop A,41.79,-87.6,04:55,05:20,3,3,6,0.5\n"
+                     "R,Test Loop,sat,A,Stop A,41.79,-87.6,04:55,05:20,3,3,6,0.5\n"
+                     "R,Test Loop,weekday,B,Stop B,41.79,-87.598,23:50,00:20,3,3,4,0.75\n", encoding="utf-8")
+    win = B.load_leave_windows(wpath)
+    assert t5.hour == 5 and len(win) == 3 and (win[2]["a"], win[2]["b"]) == (1430, 1460), win
+    changes = [{"route_id": "R", "kind": "drop", "vehicle_id": "V1", "epoch": T + 1200, "lasting": "1"},
+               {"route_id": "R", "kind": "drop", "vehicle_id": "V2", "epoch": T + 300, "lasting": "0"},     # a layover
+               {"route_id": "R", "kind": "add", "vehicle_id": "V3", "epoch": T - 600, "returning": "0"},
+               {"route_id": "R", "kind": "add", "vehicle_id": "V2", "epoch": T + 900, "returning": "1"}]     # its end
+    raw = {"V1": [[T - 30, 41.79, -87.60, 0.0, "T1", T - 30], [T - 20, 41.7905, -87.60, 0.0, "T1", T - 30]],
+           "V3": [[T - 2000, 41.79, -87.60, 5.0, "F", T - 2000], [T - 1990, 41.79, -87.60, 5.0, "F", T - 2000]],
+           "V4": [[T - 1500, 41.79, -87.60, 5.0, "F", T - 1500], [T - 1200, 41.79, -87.60, 5.0, "F", T - 1500]]}
+    mk = lambda veh, q, rid="R": {"query_epoch": q, "vehicle_id": veh, "route_id": rid, "service_day": DAY}
+    rows = [mk("V1", T), mk("V3", T), mk("V1", T + 1500), mk("V4", T), mk("V3", T, rid="")]
+    B.flag_transitions(rows, changes, raw, win)
+    r = rows[0]
+    assert (r["transition_min"], r["transition_kind"]) == (10.0, "add"), r          # the add 10 min ago is the nearest
+    assert (r["bus_leaves_min"], r["bus_leaves_within"]) == (20.0, 20), r
+    assert r["break_window"] == 1 and r["leave_spot_dist_m"] == 56 and r["absent_s"] == 20 and r["gone_rule"] == 0, r
+    assert "added_recently" not in r
+    assert rows[1]["added_recently"] == 10.0 and rows[1]["bus_leaves_within"] == 0 and rows[1]["bus_leaves_min"] == "", rows[1]
+    assert rows[1]["absent_s"] == 1990 and rows[1]["gone_rule"] == 1, "silent 33 min while V1 reports: gone"
+    assert "leave_spot_dist_m" not in rows[1], "no report in the last 300 s: no position"
+    assert (rows[2]["transition_min"], rows[2]["transition_kind"], rows[2]["bus_leaves_min"]) == (5.0, "leave", ""), rows[2]
+    assert rows[2]["break_window"] == 0 and "leave_spot_dist_m" not in rows[2], "05:25 is outside 04:55 to 05:20"
+    assert rows[3]["gone_rule"] == 0, "its last two reports 5 min apart: a sparse reporter is never gone"
+    assert "transition_min" not in rows[4] and rows[4]["absent_s"] == 1990, "no route: only the bus columns"
+    alive = {"V1": [[T + 1000, 41.79, -87.6, 0.0, "T1", T + 1000]],
+             "V5": [[T - 960, 41.79, -87.6, 5.0, "F", T - 960], [T - 950, 41.79, -87.6, 5.0, "F", T - 960]]}
+    g = B.flag_transitions([mk("V5", T + 1000)], [], alive, None)[0]
+    assert g["gone_rule"] == 1 and g["absent_s"] == 1950 and "break_window" not in g, g
+    assert B.load_leave_windows(d / "missing.csv") == []
+
+
 def test_written_table_round_trips():
     d, rows = built()
     B.write_rows(rows, d / "eta.csv.gz")
