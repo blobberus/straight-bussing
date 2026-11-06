@@ -42,6 +42,10 @@ public struct LiveState: Sendable, Equatable {
     /// `buses`, and their trip updates out of `trips`.
     public var offTracks: [String: OffRoute.Track] = [:]
     public var offHidden: [String] = []
+    /// `Idle` still clocks between polls (web data/live.js idleTracks) and the vehicles it hides now (idle, not in
+    /// service): left out of `buses`, and their trip updates out of `trips`.
+    public var idleTracks: [String: Idle.Track] = [:]
+    public var idleHidden: [String] = []
     public init() {}
 
     public func staleLevel(now: Double) -> StaleLevel {
@@ -64,7 +68,8 @@ extension LiveState {
     /// Merge a poll like data/live.js `run()`: success needs vehiclePositions + tripUpdates; alerts failing
     /// alone is tolerated; failure keeps the last good data and sets `failed`; each feed that did succeed
     /// is still applied; ONE empty vehicle answer in service keeps the last list (`emptyHoldS`); buses are
-    /// filtered to operating vehicles, then buses long off their route are dropped with their trip updates (`OffRoute`).
+    /// filtered to operating vehicles, then buses long off their route (`OffRoute`) and buses idle and not in service
+    /// (`Idle`) are dropped with their trip updates.
     public func applying(_ poll: FeedPoll, staticData: StaticData?, now: Double) -> LiveState {
         var s = self
         s.loaded = true
@@ -99,9 +104,14 @@ extension LiveState {
                                     alerts: s.alerts, routes: staticData?.routes ?? [:], now: now, feedTs: s.feedTs)
             s.offTracks = off.tracks
             s.offHidden = off.hidden
+            let idle = Idle.step(s.idleTracks, buses: s.buses, trips: s.trips, service: staticData?.service,
+                                 idle: staticData?.idle, now: now, feedTs: s.feedTs)
+            s.idleTracks = idle.tracks
+            s.idleHidden = idle.hidden
         }
-        if !s.offHidden.isEmpty && (newBuses != nil || tuOK) {
-            let d = OffRoute.dropHidden(buses: s.buses, trips: s.trips, hidden: s.offHidden)
+        let hiddenNow = s.idleHidden.isEmpty ? s.offHidden : s.offHidden + s.idleHidden
+        if !hiddenNow.isEmpty && (newBuses != nil || tuOK) {
+            let d = OffRoute.dropHidden(buses: s.buses, trips: s.trips, hidden: hiddenNow)
             s.buses = d.buses
             s.trips = d.trips
         }
