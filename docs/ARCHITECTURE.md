@@ -68,11 +68,12 @@ export function createStore(initial): { get(), set(patch), subscribe(fn)->off } 
   // static (data/static.js fills once)
   routes: {rid:{short,long,color,text_color}}, stops:{id:{name,lat,lon}}, shapes:{rid:[polyline,...]},
   routeStops:{rid:[stopId,...]}  /* first==last means loop */, stopRoutes:{stopId:[rid]}, addresses:{stopId:{address}},
+  idle:{linger, valid_until} /* idle.json, core/idle.js */, corridors:{routes:{rid:{shape:{n,m}, pts:[[lat,lon]]}}, valid_until} /* corridors.json, core/offroute.js (E27c) */,
   staticLoaded:false,
   // live (data/live.js fills every 10 s)
-  buses:[{vehicle:{id,label}, position:{latitude,longitude,bearing,speed}, trip:{trip_id,route_id}, timestamp, stop_id, current_stop_sequence}],   // OPERATING vehicles only (core/operating.js), minus buses more than a block off their route (core/offroute.js) and buses idle and not in service (core/idle.js); all applied in data/live.js
+  buses:[{vehicle:{id,label}, position:{latitude,longitude,bearing,speed}, trip:{trip_id,route_id}, timestamp, stop_id, current_stop_sequence}],   // OPERATING vehicles only (core/operating.js), minus buses off their route (core/offroute.js: drawn line or learned corridor) and buses idle and not in service (core/idle.js); all applied in data/live.js
   trips:[{trip:{trip_id,route_id}, vehicle:{id,label}, stop_time_update:[{stop_id, arrival:{time}, departure:{time}}]}],   // minus the trip updates of the buses core/offroute.js and core/idle.js hide
-  away:[bus],   // the buses core/offroute.js hides (more than a block off their route): still tracked, never counted as running; the route page counts them, the map removes their markers at once
+  away:[bus],   // the buses core/offroute.js hides (off their route): still tracked, never counted as running; the route page counts them, the map removes their markers at once
   alerts:[{header_text, description_text, active_period, informed_entity}],
   feedTs:0, lastOk:0, failed:false, liveLoaded:false,
   // user/prefs (persisted via storage.js where noted)
@@ -88,7 +89,7 @@ View-local state (picker query, directions fields) lives in that view module, no
 ## Data layer (B)
 ```js
 // data/static.js
-export async function loadStatic(store, {base?, fetch?}?): Promise<{failed:string[]}>   // never rejects   // fetch data/routes.json stops.json shapes.json route_stops.json (+ stop_addresses.json optional); derive stopRoutes; set staticLoaded
+export async function loadStatic(store, {base?, fetch?}?): Promise<{failed:string[]}>   // never rejects   // fetch data/routes.json stops.json shapes.json route_stops.json (+ optional stop_addresses.json, service.json, landmarks.json, idle.json, corridors.json); derive stopRoutes; set staticLoaded
 // data/live.js
 export function startLive(store, {intervalMs=10000, fetch?, keepAlive?, ...}): {stop(), pollNow(), failures(), delay()}   // polls the 3 Passio JSON feeds (BASE https://passio3.com/chicago/passioTransit/gtfs/realtime/<name>.json?_=ts, cache:'no-store'), sets live fields; failure keeps last data and sets failed:true; pause when document.hidden (unless keepAlive() is true: bus alerts with notifications allowed), poll on visible; fetch = the demo feed in demo mode
 // data/demo.js (demo mode only, 2026-10-10; port of the iOS Kit DemoFeed.swift)
@@ -121,12 +122,13 @@ export function silentService(state, nowS): boolean   // liveLoaded, no operatin
 export function scheduledNoLive(state, rid, nowS): boolean   // scheduled now, no operating bus on it (callers check liveUnknown first)
 export function noLiveStatus(state, rid, nowS): string|null  // 'Scheduled until 4:29 AM, no live location'
 export function silentText(state, rids, nowS, phone?): string   // plain text (escape it): names <= 3 routes + scheduled end, else counts; [] = hidden only
-// core/offroute.js (2026-11-06, owner; first version 2026-11-04): buses more than a block off their route are hidden, still tracked (section "Buses that do not follow their route")
-export const BLOCK_M = 250, CONFIRM_S = 45, HOURS_PAD_S = 1800, GAP_S = 600, DETOUR_RE
-export function offRouteStep(tracks, buses, {shapes, service, alerts, routes, nowS, feedTs}): {tracks, hidden: vehicleId[]}   // pure; tracks = {} at start ({rid, since, last, n} per bus), kept by the caller between polls (data/live.js), never modified
+// core/offroute.js (2026-11-07 E27c, 2026-11-06 E27b, first version 2026-11-04, owner): buses off their route are hidden, still tracked (section "Buses that do not follow their route")
+export const BLOCK_M = 250, CONFIRM_S = 45, FAST_M = 500, NEAR_M = 120, NEAR_S = 120, HOURS_PAD_S = 1800, GAP_S = 600, DETOUR_MAX_M = 3000, SHAPE_TOL = 0.01, DETOUR_RE
+export function offRouteStep(tracks, buses, {shapes, corridors, service, alerts, routes, nowS, feedTs}): {tracks, hidden: vehicleId[]}   // pure; tracks = {} at start ({rid, since, last, n, fs, fn, ff} per bus), kept by the caller between polls (data/live.js), never modified
 export function dropHidden(buses, trips, hidden): {buses, trips}   // trip updates matched by vehicle id only (shared trip ids)
 export function awayBuses(buses, hidden): bus[]; awayCount(away, rid): number; awayText(n): string   // store.away; "1 bus is away from the route and hidden from the map."
 export function closestOnLine(lines, lat, lon): {d, lat, lon}|null; inListedHours(service, rid, t, padS?): boolean|null; detourAlert(alerts, routes, rid, t): boolean
+export function shapeSig(lines): {n, m}; corridorFor(corridors, shapes, rid, t): [lat, lon][]|null; nearestPoint(pts, lat, lon): number; offDistance(lines, pts, lat, lon): number|null   // store.corridors = web/data/corridors.json (data/static.js cleanCorridors)
 // core/idle.js (2026-11-06, owner): buses idle and not in service are hidden (section "Idle buses that are not in service")
 export const STILL_M = 80, IDLE_S = 1800, PARKED_S = 5400, LINGER_S = 180, PAST_PAD_S = 3600, FUTURE_S = 120, GAP_S = 600, SPOT_R = 120
 export function idleStep(tracks, buses, {trips, service, idle, nowS, feedTs}): {tracks, hidden: vehicleId[], why: {id: 'parked'|'idle'|'past'|'linger'}}   // pure; tracks kept by data/live.js
@@ -713,7 +715,7 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   once (the map never shows buses while the pill says none report); a route the rider hides goes at once.
 - iOS: Kit `BusTrack.swift` (the same rules and numbers, `BusTrackTests` incl. a golden file the web JS computed on real reports) and App `Model/BusMotion.swift` (steps the badge along the path; `missingS` = MISSING_S); Kit `LiveState.emptyHoldS` = EMPTY_HOLD_S (`LiveHoldTests`); ios/README.md parity matrix.
 
-## Buses that do not follow their route (2026-11-06, owner: "If a bus is off it's route for more than a block, make the bus disappear from the map (so it does not confuse viewers of the route) as it is most likely not running anymore--still continue to track the bus." Replaced the 2026-11-04 rule: "If buses are not following their routes for a long period of time (measure this by the bus operation data and their listed hours), remove them from the map.")
+## Buses that do not follow their route (2026-11-06, owner: "If a bus is off it's route for more than a block, make the bus disappear from the map (so it does not confuse viewers of the route) as it is most likely not running anymore--still continue to track the bus." Replaced the 2026-11-04 rule: "If buses are not following their routes for a long period of time (measure this by the bus operation data and their listed hours), remove them from the map.") E27c 2026-11-07, owner: "the buses that are not driving on their designated routes are still showing sometimes (for example, the downtown connector still shows even if its not on its route)": measured against the streets the buses really drive, see the E27c bullets.
 - Measured first (RouteKnower.md E27b, `experiments/routeknower/E27-scripts/block_rule.py` on the per-report table of
   `offroute.py --cache`): 27 days of archived raw polls (Oct 10 to Nov 5, 1.70 M fresh reports, 4,809 bus-hours), each
   day's route lines and listed hours, the logged arrivals, Passio's predictions and the operator alerts. Inside the listed
@@ -766,6 +768,62 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   by `experiments/routeknower/E27-scripts/make_golden.py`, answers from `web/tests/offroute-golden.html` in headless Edge).
 - Experimental build: port `web/js/core/offroute.js` as is, the `data/live.js` lines (store.away), state.js `away`, main.js
   `away` ids, the layers.js removal line, the route page line, `web/tests/core-offroute.js` + the fixture; sw cache bump.
+- **E27c (2026-11-07, owner: "the buses that are not driving on their designated routes are still showing sometimes (for
+  example, the downtown connector still shows even if its not on its route)")**. Why they showed (RouteKnower E27c, 28 days
+  Oct 10 to Nov 6, replayed report by report with `experiments/routeknower/E27-scripts/corridor.py --eval`): under E27b
+  the Downtown Campus Connector was shown visibly off its drawn line (more than 40 m: the map draws a bus at its own fix
+  beyond map/track.js ON_M) 10,750 of its 86,582 shown bus-minutes, 3,244 of them more than 100 m off while not in service
+  (no arrival on its route 15 min before and 20 min after). Where: (a) Union Station, every lap: the drawn line turns
+  east at Van Buren, the buses go up Canal to Adams (the "S (Upper) Wacker Dr & W Adams St" stop) 125 to 340 m off, so
+  E27b blinked there; (b) the Gleacher Center layover; (c) Hyde Park, not serving: a break spot at Cottage Grove and 60th
+  Street (about 160 m off, 700 bus-min; the Nov 6 12:11 to 12:39 break of bus 12642, Passio predicting it the whole
+  time), 60th Street, buses parked inside the campus (Woodlawn, University and Ellis near 58th, about 200 m), garage
+  roads. All routes: 6,169 bus-min shown more than 100 m off and not serving. The experimental site still ran the
+  2026-11-04 rule (15 min clock, other-line and following exemptions); the iPhone app had E27b. The Oct 28 Goldblatt
+  reroute alert (no route named, "construction") kept 145 bus-min of garage runs of five routes shown, 115 of them more
+  than 2 km off. The standing "UGo Bus Route Assistance" alert does not match DETOUR_RE (checked in code and on all 26
+  logged alerts).
+- The rule now: WHERE THE ROUTE IS = its drawn line plus `web/data/corridors.json` (corridor.py --write): centers of 25 m
+  cells its buses drove in service (an arrival on the route at most 20 min before and after, consecutive reports joined)
+  on at least two thirds of the route's days by at least 5% of its laps, 80 to 400 m from the drawn line, learned only on
+  days with the route's current line. 311 points for the DCC (Union Station loop, Wacker, a Dearborn variant, the
+  Gleacher layover, Columbus Drive), 31 Apostolic, 24 South Loop Shuttle, 9 Friend Center/Metra, 6 Midway Metra, 2 South,
+  none for the rest (listed with an empty list: learned, the line is right). Farther than 400 m is another path (the
+  Apostolic 8 AM Metra run, 920 m): left out, so those runs stay hidden as in E27b (owner question below). Each route
+  stores its line's signature (points, meters); `corridorFor` drops a route whose line differs (Passio redraws a line,
+  Pages deploys the new one) and the whole file after `valid_until` (45 days after the last learned day): that route
+  falls back to E27b (no NEAR tier). The distance of a report = to the line or a corridor point, whichever is nearer.
+  HIDDEN when FAR > 250 m for 45 s on >= 2 distinct reports (E27b), FAST > 500 m on 2 distinct reports in a row (a bus at
+  the garage after an app start goes in 10 to 15 s; one far fix never hides a bus: in 28 days one jump of 4 reports came
+  straight back), or NEAR (routes with a usable corridor) > 120 m for 120 s on >= 2 reports (a street over for 2
+  minutes; a bus cutting through a block stays). The detour alert exemption now holds only within 3 km of the route
+  (the DCC's Lake Shore Drive detours ran up to 2.5 km off). store.away, the route page line, the dropped trip updates and
+  the map's at-once removal are unchanged. Refresh: rerun offroute.py --cache + corridor.py --write on the archived days
+  (RouteKnower E27c "Refresh"); the file must be rebuilt before valid_until or after Passio redraws a line.
+- Numbers (28 days in sample / Nov 1 to 6 with a corridor learned on Oct 10 to 31 out of sample), E27b -> E27c, bus-min:
+  hidden 12,005 -> 14,549 / 2,598 -> 2,988; hidden while in service 1,651 -> 1,783 / 285 -> 272 (the new ones mostly
+  buses moving 120 to 250 m off for over 2 min: detours without an alert, Apostolic/Drexel near 63rd and Kenwood);
+  hidden within 2 min of a logged arrival 116 -> 223 / 20 -> 36 (mostly buses returning to start service, hidden until
+  within 120 m of their route); hidden in the 10 min before the bus's next arrival 1,641 -> 1,987 / 291 -> 343; blinks
+  (hidden, back within 5 min) 438 -> 484 / 93 -> 93, while in service 237 -> 200 / 42 -> 22 (Union Station no longer
+  blinks); shown more than 100 m off its line and not serving 6,169 -> 3,756 / 1,185 -> 782 (DCC 3,244 -> 1,962 /
+  681 -> 389); shown more than 100 m off on another route's line (a bus filed under the wrong route) 5,265 -> 3,159;
+  shown farther than 250 m while the clock runs 1,336 -> 1,053.
+- Still visible by design: a bus within 120 m of its route or its corridor (a stop-side layover, one lane over), a bus
+  less than 2 min a street over, the DCC at Union Station and the Gleacher layover (in its corridor, but drawn off the
+  line until the line is fixed: proposal below), routes whose corridor is invalid (E27b only).
+- Proposal (owner decision, not done): redraw the DCC line downtown from the buses' track (Canal north to Adams, east on
+  Adams to Wacker) so its buses at Union Station sit on the line; the corridor keeps them shown either way. Our shapes come
+  from Passio's GTFS (tools/build_gtfs.py), so a fix is a patch on top of Passio's line or a report to Passio.
+- Owner questions still open, and how E27c touches them: (a) the bus the rider is on during a trip is not exempt (a
+  trip on a detour without an alert can lose its bus from the map after 2 min a street over, as after 45 s more than a
+  block off before); (b) known off-line service runs (Apostolic 8 AM to the 57th St Metra) stay hidden: the corridor is
+  capped at 400 m so it never learns them; a run that stays within 400 m of its line on most days (none found besides the
+  ones above) would become part of the corridor.
+- iOS: Kit `OffRoute.swift` = core/offroute.js (CorridorData parsed like cleanCorridors and loaded with the schedule
+  files, so the daily Pages download carries it), `LiveState.applying` passes `StaticData.corridors`; `OffRouteTests`
+  ports the web tests and replays `Fixtures/offroute_golden.json` (11 real cases with the real corridors). Experimental
+  build: one commit porting core/offroute.js + corridors.json + its static.js / live.js lines (see its notes).
 
 ## Idle buses that are not in service (2026-11-06, owner: buses parked "in front of Regenstein library" at 11:50 still showed "as traveling buses"; "avoid showing buses that are not active yet are idle", and "the app doesn't suggest these trips")
 - Measured first (RouteKnower.md E28, `experiments/routeknower/E28-scripts/`, labeled data `data/labeled/end_of_service/`):
