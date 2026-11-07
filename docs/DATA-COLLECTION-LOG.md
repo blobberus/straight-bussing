@@ -150,6 +150,14 @@ than 250 m off its line (E27b, `BLOCK_M`):
   mornings (item 3).
 - Handed to the dcc-offroute workstream (its progress log); no app code changed here.
 
+**5. Archived position polls can list one bus twice (accepted; documented).**
+- 65 of the 12,675 polls in `raw-polls-2026-11-06` hold one bus twice (312 doubled reports; Oct 30: 23 polls, Oct 31:
+  none). Both overlapping runs polled in the same second and got snapshots a few seconds apart (12:51:32 PM: 4313 at
+  report times 12:51:19 and 12:51:29); `archive_day.merge_raw` keeps every distinct (vehicle, report time), so the merged
+  poll lists both, not always in time order. The per-run artifacts have none, and the feed sent none.
+- Impact: none on the CSVs or the forecast table (`build_eta_dataset.load_raw` dedupes on vehicle + report time and
+  sorts); a reader that takes a poll as one snapshot of the fleet must do the same. docs/DATA.md says so now.
+
 ### DC-023 Checkup 2026-11-06: a 2-hour gap on Nov 5 (GitHub API errors) and the anomalies of Nov 2 to 5 (fixed / open)
 Owner (2026-11-06): "Check the data collection status and create a log on any anomalies." Times are Chicago (CST since
 Nov 1). Compared with the week before (Oct 26 to 30). Scripts and downloads stayed off the repo (job folder).
