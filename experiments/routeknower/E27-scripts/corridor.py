@@ -5,7 +5,7 @@ showing sometimes (for example, the downtown connector still shows even if its n
 
 Why: E27b (core/offroute.js, 2026-11-06) measures a bus's distance to its route's DRAWN line (shapes.json). The drawn
 line is wrong in places: the Downtown Campus Connector's line turns east at Van Buren while every bus goes north on
-Canal to Adams (Union Station) and then east, 125 to 340 m off the line on every lap, so E27b needed 250 m and still
+Adams and Clinton (Union Station), 125 to 350 m off the line on every lap, so E27b needed 250 m and still
 blinked there; with 250 m everything within a block or two of a line stays shown (DCC buses parked on 60th Street, at
 Cottage Grove, inside the campus, on garage roads).
 

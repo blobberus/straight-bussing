@@ -14,7 +14,7 @@
  *
  * WHERE THE ROUTE IS: its drawn line (store.shapes[rid]) and, where that line is off, the streets its buses really drive
  * (store.corridors = web/data/corridors.json, E27c): centers of 25 m cells driven in service on most days, 80 to 400 m
- * from the drawn line (the Downtown Campus Connector's line turns at Van Buren while every bus goes up Canal to Adams at
+ * from the drawn line (the Downtown Campus Connector's line takes Van Buren while every bus takes Adams and Clinton at
  * Union Station, 125 to 340 m off). A route's corridor is used only while its drawn line is the one it was learned
  * against (points and length, corridorFor) and before the file's valid_until; otherwise the route has its drawn line
  * only and no NEAR tier (the E27b rule). The distance of a report = to the line or a corridor point, whichever is nearer.

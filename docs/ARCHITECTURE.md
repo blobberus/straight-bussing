@@ -774,7 +774,7 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   the Downtown Campus Connector was shown visibly off its drawn line (more than 40 m: the map draws a bus at its own fix
   beyond map/track.js ON_M) 10,750 of its 86,582 shown bus-minutes, 3,244 of them more than 100 m off while not in service
   (no arrival on its route 15 min before and 20 min after). Where: (a) Union Station, every lap: the drawn line turns
-  east at Van Buren, the buses go up Canal to Adams (the "S (Upper) Wacker Dr & W Adams St" stop) 125 to 340 m off, so
+  along Van Buren, the buses take Adams and Clinton (from the "S (Upper) Wacker Dr & W Adams St" stop) 125 to 350 m off, so
   E27b blinked there; (b) the Gleacher Center layover; (c) Hyde Park, not serving: a break spot at Cottage Grove and 60th
   Street (about 160 m off, 700 bus-min; the Nov 6 12:11 to 12:39 break of bus 12642, Passio predicting it the whole
   time), 60th Street, buses parked inside the campus (Woodlawn, University and Ellis near 58th, about 200 m), garage
@@ -812,8 +812,8 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
 - Still visible by design: a bus within 120 m of its route or its corridor (a stop-side layover, one lane over), a bus
   less than 2 min a street over, the DCC at Union Station and the Gleacher layover (in its corridor, but drawn off the
   line until the line is fixed: proposal below), routes whose corridor is invalid (E27b only).
-- Proposal (owner decision, not done): redraw the DCC line downtown from the buses' track (Canal north to Adams, east on
-  Adams to Wacker) so its buses at Union Station sit on the line; the corridor keeps them shown either way. Our shapes come
+- Proposal (owner decision, not done): redraw the DCC line downtown from the buses' track (west on Adams from Wacker, south
+  on Clinton) so its buses at Union Station sit on the line; the corridor keeps them shown either way. Our shapes come
   from Passio's GTFS (tools/build_gtfs.py), so a fix is a patch on top of Passio's line or a report to Passio.
 - Owner questions still open, and how E27c touches them: (a) the bus the rider is on during a trip is not exempt (a
   trip on a detour without an alert can lose its bus from the map after 2 min a street over, as after 45 s more than a
