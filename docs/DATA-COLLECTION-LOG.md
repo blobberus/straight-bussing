@@ -128,27 +128,29 @@ the repo (job folder).
 
 **4. The Downtown Campus Connector against its drawn line (facts for the app's off-route work, workstream dcc-offroute).**
 Owner's report (2026-11-07): the Downtown Campus Connector still shows when it is not on its route. Moving reports of
-buses labeled with it, against its drawn line (`web/data/shapes.json`, route 5704); the app hides a bus that is more
-than 250 m off its line (E27b, `BLOCK_M`):
+buses labeled with it, against its drawn line (`web/data/shapes.json`, route 5704). At the time of the report the app
+hid a bus more than 250 m off its line (E27b, `BLOCK_M`); the rule that shipped later that day (RouteKnower E27c:
+learned driven corridors, 120 m for 2 min near them) was built on the same places:
 - Per day (Oct 30, Nov 2 to 6): within 40 m 85 to 90%, 40 to 125 m 4 to 6%, 125 to 250 m 2 to 5%, beyond 250 m 3 to 5%.
   The 40 to 250 m band, which stays on the map, is 1,070 to 2,246 reports a day (6 to 11%), about half downtown and
   half on campus.
 - Downtown, every trip, all day: after S (Upper) Wacker Dr & W Adams St the buses turn west on Adams St and south on
-  Clinton St, while the drawn line goes on south on Wacker to Jackson Blvd and west on Jackson: 125 to 353 m off (Nov 6:
+  Clinton St, while the drawn line goes on south on Wacker to Van Buren St and west on Van Buren: 125 to 353 m off (Nov 6:
   207 reports from 7 buses; Oct 30: 256 from 8; 6 AM to 9 PM). Only the corner at Clinton and Adams (about 290 to 350
   m) is beyond 250 m, for under a minute.
 - Some trips: Columbus Dr instead of Michigan Ave between about Monroe St and Roosevelt Rd (211 to 296 m; Nov 6 9:51 AM
   and 5:44 PM, Oct 30 4:31 PM); Lake Shore Dr (360 to 584 m, already hidden); one bus circling near Gleacher Center and
   River East (125 to 245 m, Oct 30 5:12 to 6:05 PM).
 - Campus: buses standing 125 to 250 m from the line with the frequency trip 874028 still attached, so on the map:
-  about 160 m south-west of Goldblatt Pavilion (41.7864, -87.6070; 12642 Nov 6 12:11 to 12:39 PM, 12643 and 12646 Oct 30
-  9:25 to 10:39 AM), near 58th St and Ellis Ave (41.7899, -87.5981; 12646 Oct 30 7:50 to 8:53 PM, 139 to 239 m), and at
+  Cottage Grove Ave and 60th St (41.7864, -87.6070, about 160 m off; 12642 Nov 6 12:11 to 12:39 PM, 12643 and 12646 Oct
+  30 9:25 to 10:39 AM), near 58th St and Ellis Ave (41.7899, -87.5981; 12646 Oct 30 7:50 to 8:53 PM, 139 to 239 m), and at
   41.7912, -87.6041 (4327 Nov 6 12:25 PM, Oct 30 11:22 AM).
 - Its label on a bus driving another line (item 3's test): Nov 6 12648 on Regents Express 5:20 to 6 PM; Nov 5 4315 on
   Apostolic/Drexel 12:50 to 1:20 PM; Oct 26 4331 and 12646 on Red Line/Arts Block (10:30 to 11:30 AM, 2:50 to 4:30 PM)
   and 12648 on Midway Metra (2:40 to 4:10 PM). The reverse, its service under another label, happens most weekday
   mornings (item 3).
-- Handed to the dcc-offroute workstream (its progress log); no app code changed here.
+- Shared with the dcc-offroute workstream (its progress log; it found the same Union Station and Cottage Grove places
+  and proposes redrawing the line downtown); no app code changed here.
 
 **5. Archived position polls can list one bus twice (accepted; documented).**
 - 65 of the 12,675 polls in `raw-polls-2026-11-06` hold one bus twice (312 doubled reports; Oct 30: 23 polls, Oct 31:
