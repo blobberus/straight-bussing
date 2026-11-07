@@ -1,9 +1,11 @@
-// Tests for core/offroute.js (buses more than a block off their route are hidden, still tracked) and its use in
-// data/live.js. Synthetic lines plus real bus reports from the archived raw polls (fixtures/offroute_golden.json, made by
-// experiments/routeknower/E27-scripts/make_golden.py; the iOS Kit OffRouteTests replays the same file).
+// Tests for core/offroute.js (buses off their route are hidden, still tracked: E27b, and E27c with the streets the buses
+// really drive, web/data/corridors.json) and its use in data/live.js. Synthetic lines plus real bus reports from the
+// archived raw polls (fixtures/offroute_golden.json, made by experiments/routeknower/E27-scripts/make_golden.py; the iOS
+// Kit OffRouteTests replays the same file).
 import { test, eq, ok } from "./lib.js";
-import { BLOCK_M, CONFIRM_S, HOURS_PAD_S, GAP_S, closestOnLine, inListedHours, detourAlert, offRouteStep, dropHidden,
-  awayBuses, awayCount, awayText } from "../js/core/offroute.js";
+import { BLOCK_M, CONFIRM_S, FAST_M, NEAR_M, NEAR_S, HOURS_PAD_S, GAP_S, DETOUR_MAX_M, SHAPE_TOL, closestOnLine, shapeSig,
+  corridorFor, nearestPoint, offDistance, inListedHours, detourAlert, offRouteStep, dropHidden, awayBuses, awayCount,
+  awayText } from "../js/core/offroute.js";
 import { startLive } from "../js/data/live.js";
 import { createStore } from "../js/core/store.js";
 
@@ -20,6 +22,10 @@ const service = { routes: { A: { days: week(day("07:00", "21:00")), exceptions: 
 const routes = { A: { short: "A", alias_ids: ["38734"] }, B: { short: "B" } };
 const GARAGE = [41.82, -87.64];      // about 3.6 km from A, 2.8 km from B
 const ON_A = [41.7902, -87.61];       // 22 m north of A
+const OFF300 = [41.7927, -87.61];     // 300 m north of A (FAR, not FAST)
+// corridors.json for A: learned against A's line as drawn above; points 300 m north of A at -87.61 (the Union Station
+// case: buses drive there every lap, the drawn line is off)
+const corridorsA = { valid_until: "2026-12-21", routes: { A: { shape: shapeSig(shapes.A), pts: [[41.7927, -87.61], [41.7927, -87.6097]] } } };
 const bus = (id, rid, [lat, lon], ts) => ({ vehicle: { id }, trip: { trip_id: "t-" + id, route_id: rid }, position: { latitude: lat, longitude: lon }, timestamp: ts });
 const ctx = (now, over = {}) => ({ shapes, service, routes, alerts: [], nowS: now, feedTs: now, ...over });
 
@@ -39,8 +45,37 @@ const firstHidden = (rows) => { const r = rows.find((x) => x[1]); return r ? r[0
 const feedAlerts = (c) => (c.alerts || []).map((a) => ({ header_text: a.header, description_text: a.description,
   informed_entity: a.routes.length ? a.routes.map((r) => ({ route_id: r })) : [{ agency_id: "1068" }], active_period: [{ start: a.start, end: a.end }] }));
 
-test("offroute: constants are the measured rule (RouteKnower E27b: more than a block = 250 m for 45 s)", () => {
-  eq([BLOCK_M, CONFIRM_S, HOURS_PAD_S, GAP_S], [250, 45, 1800, 600]);
+test("offroute: constants are the measured rule (E27b: 250 m for 45 s; E27c: 500 m twice, 120 m for 2 min, detours within 3 km)", () => {
+  eq([BLOCK_M, CONFIRM_S, FAST_M, NEAR_M, NEAR_S, HOURS_PAD_S, GAP_S, DETOUR_MAX_M, SHAPE_TOL], [250, 45, 500, 120, 120, 1800, 600, 3000, 0.01]);
+});
+
+test("offroute: a route's corridor is used only while its line is the learned one and before valid_until", () => {
+  const sig = shapeSig(shapes.A);
+  eq(sig.n, 3, "every point of every line");
+  ok(Math.abs(sig.m - 3313) < 5, "length in meters (haversine): " + sig.m);
+  eq(shapeSig(undefined), { n: 0, m: 0 });
+  eq(corridorFor(corridorsA, shapes, "A", NOON), corridorsA.routes.A.pts, "valid");
+  eq(corridorFor(corridorsA, shapes, "B", NOON), null, "a route not in the file: no corridor (E27b rule)");
+  eq(corridorFor(null, shapes, "A", NOON), null, "no file");
+  eq(corridorFor({ ...corridorsA, valid_until: "2026-10-13" }, shapes, "A", NOON), null, "past valid_until (the Chicago date)");
+  eq(corridorFor({ ...corridorsA, valid_until: "2026-10-14" }, shapes, "A", NOON), corridorsA.routes.A.pts, "on its last day: still valid");
+  const moved = { A: [[[41.79, -87.62], [41.79, -87.60], [41.80, -87.58]]] };
+  eq(corridorFor(corridorsA, moved, "A", NOON), null, "the line changed (longer): no corridor");
+  const more = { A: [[[41.79, -87.62], [41.79, -87.61], [41.79, -87.60], [41.79, -87.58]]] };
+  eq(corridorFor(corridorsA, more, "A", NOON), null, "the line was redrawn (other point count): no corridor");
+  const empty = { routes: { A: { shape: sig, pts: [] } } };
+  eq(corridorFor(empty, shapes, "A", NOON), [], "learned, nothing off the line: the NEAR tier applies");
+});
+
+test("offroute: distance to the route = to its line or a corridor point, whichever is nearer", () => {
+  const pts = corridorsA.routes.A.pts;
+  ok(nearestPoint(pts, 41.7927, -87.61) < 0.5, "on a corridor point");
+  eq(nearestPoint([], 41.79, -87.6), Infinity);
+  eq(nearestPoint(null, 41.79, -87.6), Infinity);
+  ok(Math.abs(offDistance(shapes.A, null, ...OFF300) - 300) < 3, "no corridor: the line, 300 m");
+  ok(offDistance(shapes.A, pts, ...OFF300) < 1, "with the corridor: 0 m");
+  ok(offDistance(shapes.A, pts, ...ON_A) < 25, "on the line");
+  eq(offDistance(undefined, pts, ...ON_A), null, "no line: nothing to measure");
 });
 
 test("offroute: closest point on a route's lines", () => {
@@ -75,34 +110,71 @@ test("offroute: detour alerts (named route, or no route and detour words)", () =
   ok(!detourAlert([], routes, "A", NOON) && !detourAlert(undefined, routes, "A", NOON));
 });
 
-test("offroute: a garage-bound bus is hidden 45 s after it is more than a block off, shown at once when back", () => {
-  const rows = drive("g", "A", () => GARAGE, NOON, NOON + 600);
-  eq(firstHidden(rows), NOON + CONFIRM_S, "hidden at 45 s (reports every 15 s: the fourth report)");
+test("offroute: a bus more than a block off is hidden after 45 s, shown at once when back", () => {
+  const rows = drive("g", "A", () => OFF300, NOON, NOON + 600);
+  eq(firstHidden(rows), NOON + CONFIRM_S, "300 m off: hidden at 45 s (reports every 15 s: the fourth report)");
   ok(rows.filter((r) => r[0] >= NOON + CONFIRM_S).every((r) => r[1]), "and stays hidden");
-  eq(firstHidden(drive("g", "A", () => GARAGE, NIGHT, NIGHT + 600)), NIGHT + CONFIRM_S, "outside the listed hours: the same 45 s");
+  eq(firstHidden(drive("g", "A", () => OFF300, NIGHT, NIGHT + 600)), NIGHT + CONFIRM_S, "outside the listed hours: the same 45 s");
   let tracks = {};
-  for (let t = NOON; t <= NOON + 300; t += 15) tracks = offRouteStep(tracks, [bus("g", "A", GARAGE, t)], ctx(t)).tracks;
-  ok(tracks.g && tracks.g.since === NOON && tracks.g.n === 21, "still tracked while hidden: " + JSON.stringify(tracks.g));
+  for (let t = NOON; t <= NOON + 300; t += 15) tracks = offRouteStep(tracks, [bus("g", "A", OFF300, t)], ctx(t)).tracks;
+  ok(tracks.g && tracks.g.since === NOON && tracks.g.n === 21 && tracks.g.fs === NOON && tracks.g.fn === 21 && tracks.g.ff === 0,
+    "still tracked while hidden: " + JSON.stringify(tracks.g));
   const back = offRouteStep(tracks, [bus("g", "A", ON_A, NOON + 310)], ctx(NOON + 310));
   eq(back.hidden, [], "back within a block: shown on that report");
   eq(Object.keys(back.tracks), [], "its clock is gone");
-  const again = offRouteStep(back.tracks, [bus("g", "A", GARAGE, NOON + 320)], ctx(NOON + 320));
+  const again = offRouteStep(back.tracks, [bus("g", "A", OFF300, NOON + 320)], ctx(NOON + 320));
   eq(again.hidden, [], "off again: a new 45 s clock");
 });
 
-test("offroute: a block is measured from the bus's OWN line only", () => {
-  eq(firstHidden(drive("y", "A", () => [41.7920, -87.60], NOON, NOON + 3600)), null, "222 m from its line (one street over): never hidden");
+test("offroute: FAST: two reports in a row more than 500 m off hide a bus at once (after a reload or an app start)", () => {
+  const rows = drive("g", "A", () => GARAGE, NOON, NOON + 600);
+  eq(firstHidden(rows), NOON + 15, "the garage: hidden at its second report, not after 45 s");
+  ok(rows.slice(1).every((r) => r[1]), "and stays hidden");
+  eq(firstHidden(drive("g", "A", () => GARAGE, NIGHT, NIGHT + 600)), NIGHT + 15, "outside the listed hours too");
+  const r1 = offRouteStep({}, [bus("g", "A", GARAGE, NOON)], ctx(NOON));
+  eq(r1.hidden, [], "one report is never enough (the first poll after a reload)");
+  const same = offRouteStep(r1.tracks, [bus("g", "A", GARAGE, NOON)], ctx(NOON + 10));
+  eq(same.hidden, [], "the same report repeated by the next poll counts once");
+  // 600 m, 300 m, 600 m: the run of far reports restarts
+  const zig = (t) => ((t - NOON) / 15 % 2 ? OFF300 : [41.7954, -87.61]);
+  const z = drive("z", "A", zig, NOON, NOON + 30);
+  eq(z.map((x) => x[1]), [false, false, false], "not two in a row beyond 500 m (and under 45 s more than a block off)");
+});
+
+test("offroute: distances are measured from the bus's OWN route only", () => {
+  eq(firstHidden(drive("y", "A", () => [41.7920, -87.60], NOON, NOON + 3600)), null, "222 m from its line, no corridors.json: never hidden (E27b)");
   eq(firstHidden(drive("z", "A", () => [41.7925, -87.61], NOON, NOON + 600)), NOON + CONFIRM_S, "278 m from its line: hidden");
-  eq(firstHidden(drive("x", "A", () => [41.8005, -87.60], NOON, NOON + 600)), NOON + CONFIRM_S, "on B's line but filed under A: hidden (the old other-line exemption is gone)");
+  eq(firstHidden(drive("x", "A", () => [41.8005, -87.60], NOON, NOON + 600)), NOON + 15, "on B's line but filed under A, 1.2 km off: hidden (FAST)");
   eq(firstHidden(drive("b", "B", () => [41.8005, -87.60], NOON, NOON + 3600)), null, "the same spot on its own line B: never");
 });
 
-test("offroute: one bad GPS fix (or two within 45 s) never hides a bus", () => {
-  // on the line, one fix 500 m off, back on the line: never hidden
-  const one = (t) => (t === NOON + 100 ? [41.7945, -87.61] : ON_A);
+test("offroute: NEAR (routes with a corridor): a street over for 2 minutes is hidden; the corridor keeps its own streets shown", () => {
+  const c = { corridors: corridorsA };
+  eq(firstHidden(drive("y", "A", () => [41.7920, -87.60], NOON, NOON + 600, 15, c)), NOON + NEAR_S, "222 m from its line: hidden at 2 min");
+  eq(firstHidden(drive("y", "A", () => [41.7915, -87.60], NOON, NOON + 600, 15, c)), NOON + NEAR_S, "167 m: hidden at 2 min");
+  eq(firstHidden(drive("y", "A", () => [41.7900, -87.60], NOON, NOON + 3600, 15, c)), null, "111 m: never (within NEAR_M)");
+  const cut = (t) => (t >= NOON + 60 && t < NOON + 150 ? [41.7915, -87.60] : ON_A);
+  eq(firstHidden(drive("y", "A", cut, NOON, NOON + 600, 15, c)), null, "a 90 s excursion one street over: never hidden");
+  eq(firstHidden(drive("u", "A", () => OFF300, NOON, NOON + 3600, 15, c)), null, "300 m from the drawn line on a corridor point (Union Station): never");
+  eq(firstHidden(drive("u", "A", () => [41.7930, -87.60], NOON, NOON + 600, 15, c)), NOON + CONFIRM_S, "333 m off and 840 m from the corridor points: FAR, 45 s");
+  const old = { corridors: { ...corridorsA, valid_until: "2026-10-01" } };
+  eq(firstHidden(drive("y", "A", () => [41.7920, -87.60], NOON, NOON + 3600, 15, old)), null, "an expired file: the E27b rule (222 m never)");
+  eq(firstHidden(drive("u", "A", () => OFF300, NOON, NOON + 600, 15, old)), NOON + CONFIRM_S, "an expired file: the corridor is gone too");
+  let tr = {};
+  for (let t = NOON; t <= NOON + 60; t += 15) tr = offRouteStep(tr, [bus("y", "A", [41.7920, -87.60], t)], ctx(t, c)).tracks;
+  eq([tr.y.since, tr.y.n, tr.y.fs, tr.y.fn], [NOON, 5, null, 0], "the NEAR clock runs, the FAR one does not");
+});
+
+test("offroute: one bad GPS fix never hides a bus; two in a row 500 m off do (28 days of real reports: one such jump)", () => {
+  // on the line, one fix 2 km off, back on the line: never hidden (with a corridor too)
+  const one = (t) => (t === NOON + 100 ? [41.808, -87.61] : ON_A);
   eq(firstHidden(drive("s", "A", one, NOON, NOON + 400, 10)), null, "a single spike");
-  const four = (t) => (t >= NOON + 100 && t <= NOON + 130 ? [41.7945, -87.61] : ON_A);
-  eq(firstHidden(drive("s", "A", four, NOON, NOON + 400, 10)), null, "four far fixes in a row over 30 s");
+  eq(firstHidden(drive("s", "A", one, NOON, NOON + 400, 10, { corridors: corridorsA })), null, "a single spike, corridor route");
+  const four = (t) => (t >= NOON + 100 && t <= NOON + 130 ? OFF300 : ON_A);
+  eq(firstHidden(drive("s", "A", four, NOON, NOON + 400, 10)), null, "four fixes 300 m off over 30 s: never");
+  const two = (t) => (t >= NOON + 100 && t <= NOON + 110 ? [41.808, -87.61] : ON_A);
+  const rows = drive("s", "A", two, NOON, NOON + 400, 10);
+  eq(rows.filter((r) => r[1]).map((r) => r[0]), [NOON + 110], "two fixes 2 km off in a row: hidden for that poll only");
   // the same report repeated by later polls (no new report time) is one report: it never hides the bus
   let tr = {};
   for (let h = NOON; h <= NOON + 300; h += 10) {
@@ -116,33 +188,37 @@ test("offroute: one bad GPS fix (or two within 45 s) never hides a bus", () => {
 test("offroute: a bus following its route on another street is hidden now; an operator detour alert keeps it shown inside the hours", () => {
   // 1.7 km south of A, moving east 4 km in 25 min (the Downtown Campus Connector off Lake Shore Drive): hidden at 45 s
   const pos = (t) => [41.775, -87.62 + 0.04 * Math.min(1, (t - NOON) / 1500)];
-  eq(firstHidden(drive("d", "A", pos, NOON, NOON + 2400)), NOON + CONFIRM_S, "no alert: hidden (the old following exemption is gone)");
+  eq(firstHidden(drive("d", "A", pos, NOON, NOON + 2400)), NOON + 15, "no alert: hidden (the old following exemption is gone; 1.7 km off: FAST)");
   const detour = [{ header_text: "Detour", description_text: "Shuttles are on a detour around 59th St", informed_entity: [{ agency_id: "1068" }], active_period: [] }];
   eq(firstHidden(drive("d", "A", pos, NOON, NOON + 2400, 15, { alerts: detour })), null, "a detour alert (no route named): shown");
   const named = [{ header_text: "North Route", description_text: "", informed_entity: [{ route_id: "38734" }], active_period: [] }];
   eq(firstHidden(drive("d", "A", pos, NOON, NOON + 2400, 15, { alerts: named })), null, "an alert naming A by Passio's id: shown");
-  eq(firstHidden(drive("d", "B", pos, NOON, NOON + 2400, 15, { alerts: named })), NOON + CONFIRM_S, "an alert naming another route: hidden");
-  eq(firstHidden(drive("a", "A", () => GARAGE, NIGHT, NIGHT + 600, 15, { alerts: detour })), NIGHT + CONFIRM_S, "outside the listed hours the alert does not count");
+  eq(firstHidden(drive("d", "B", pos, NOON, NOON + 2400, 15, { alerts: named })), NOON + 15, "an alert naming another route: hidden");
+  eq(firstHidden(drive("a", "A", () => OFF300, NIGHT, NIGHT + 600, 15, { alerts: detour })), NIGHT + CONFIRM_S, "outside the listed hours the alert does not count");
+  // the exemption holds only within DETOUR_MAX_M of the route (the Lake Shore Drive detours ran up to 2.5 km off); GARAGE is 3.6 km away
+  eq(firstHidden(drive("a", "A", () => [41.8125, -87.61], NOON, NOON + 600, 15, { alerts: detour })), null, "2.5 km off during a detour alert: shown");
+  eq(firstHidden(drive("a", "A", () => GARAGE, NOON, NOON + 600, 15, { alerts: detour })), NOON + 15, "the garage during a detour alert: hidden");
+  eq(firstHidden(drive("a", "A", () => GARAGE, NOON, NOON + 600, 15, { alerts: named })), NOON + 15, "the garage during an alert naming its route: hidden");
 });
 
 test("offroute: report gaps, route changes, missing polls and the phone clock", () => {
   let tr = offRouteStep({}, [bus("g", "A", GARAGE, NOON)], ctx(NOON)).tracks;
   tr = offRouteStep(tr, [bus("g", "A", GARAGE, NOON + 600)], ctx(NOON + 600)).tracks;
-  eq([tr.g.since, tr.g.n], [NOON, 2], "a 10 min gap continues");
+  eq([tr.g.since, tr.g.n, tr.g.ff], [NOON, 2, 2], "a 10 min gap continues");
   tr = offRouteStep(tr, [bus("g", "A", GARAGE, NOON + 1201)], ctx(NOON + 1201)).tracks;
-  eq([tr.g.since, tr.g.n], [NOON + 1201, 1], "more than 10 min without a report: a new clock");
+  eq([tr.g.since, tr.g.n, tr.g.ff], [NOON + 1201, 1, 1], "more than 10 min without a report: a new clock");
   tr = offRouteStep(tr, [bus("g", "B", GARAGE, NOON + 1231)], ctx(NOON + 1231)).tracks;
-  eq(tr.g.since, NOON + 1231, "a route change: a new clock");
+  eq([tr.g.since, tr.g.ff], [NOON + 1231, 1], "a route change: a new clock");
   const missing = offRouteStep(tr, [], ctx(NOON + 1500));
   eq(missing.tracks.g.since, NOON + 1231, "missing from one poll: the clock is kept");
   eq(missing.hidden, [], "a bus missing from the poll is not listed");
   eq(offRouteStep(tr, [], ctx(NOON + 1231 + GAP_S + 1)).tracks, {}, "dropped after GAP_S");
   // the clock runs on report times: a phone clock 3 h ahead changes nothing
   let t2 = {};
-  for (let t = NOON; t <= NOON + 30; t += 15) t2 = offRouteStep(t2, [bus("g", "A", GARAGE, t)], ctx(t, { nowS: t + 3 * 3600 })).tracks;
-  eq(offRouteStep(t2, [bus("g", "A", GARAGE, NOON + 40)], ctx(NOON + 40, { nowS: NOON + 3 * 3600 + 900 })).hidden, [], "40 s of reports: still shown");
+  for (let t = NOON; t <= NOON + 30; t += 15) t2 = offRouteStep(t2, [bus("g", "A", OFF300, t)], ctx(t, { nowS: t + 3 * 3600 })).tracks;
+  eq(offRouteStep(t2, [bus("g", "A", OFF300, NOON + 40)], ctx(NOON + 40, { nowS: NOON + 3 * 3600 + 900 })).hidden, [], "40 s of reports: still shown");
   const before = JSON.stringify(t2);
-  offRouteStep(t2, [bus("g", "A", GARAGE, NOON + 99)], ctx(NOON + 99));
+  offRouteStep(t2, [bus("g", "A", OFF300, NOON + 99)], ctx(NOON + 99));
   eq(JSON.stringify(t2), before, "the tracks passed in are not modified");
 });
 
@@ -175,7 +251,7 @@ test("offroute: away buses, their count per route and the route page's words", (
   eq(awayText(2), "2 buses are away from the route and hidden from the map.");
 });
 
-test("offroute real: garage runs hidden within a minute, buses on their line and a GPS spike never, a named-route alert keeps one shown", async () => {
+test("offroute real: garage runs hidden within a minute, buses on their routes and a GPS spike never, a named-route alert keeps one shown", async () => {
   const fx = await (await fetch("fixtures/offroute_golden.json", { cache: "no-store" })).json();
   const bad = [];
   const hiddenFrom = {};
@@ -184,7 +260,7 @@ test("offroute real: garage runs hidden within a minute, buses on their line and
     const alerts = feedAlerts(c);
     c.polls.forEach((p, i) => {
       const buses = p.v.map(([veh, rid, lat, lon, vt]) => ({ vehicle: { id: veh }, trip: { route_id: rid }, position: { latitude: lat, longitude: lon }, timestamp: vt }));
-      const r = offRouteStep(tracks, buses, { shapes: fx.shapes, service: fx.service, routes: fx.routes, alerts, nowS: p.h, feedTs: p.h });
+      const r = offRouteStep(tracks, buses, { shapes: fx.shapes, corridors: fx.corridors, service: fx.service, routes: fx.routes, alerts, nowS: p.h, feedTs: p.h });
       tracks = r.tracks;
       if (JSON.stringify(r.hidden) !== JSON.stringify(c.expect[i])) bad.push(`${c.name} poll ${i}: ${r.hidden} vs ${c.expect[i]}`);
       for (const v of r.hidden) hiddenFrom[c.name + ":" + v] = hiddenFrom[c.name + ":" + v] || p.h;
@@ -194,17 +270,21 @@ test("offroute real: garage runs hidden within a minute, buses on their line and
   const at = (k) => hiddenFrom[k] && new Date(hiddenFrom[k] * 1000).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hourCycle: "h23" });
   ok(/^00:01/.test(at("dc022:4325")), "Central to the garage after service (DC-022; the old rule: 00:11): " + at("dc022:4325"));
   ok(/^00:02/.test(at("dc022:4313")), "North (old: 00:23): " + at("dc022:4313"));
-  ok(/^00:09/.test(at("dc022:4327")), "East (old: 00:27): " + at("dc022:4327"));
-  ok(/^13:08/.test(at("garage:4324")), "parked at the garage inside its hours, 54 s after its first report (old: 13:22): " + at("garage:4324"));
-  ok(!Object.keys(hiddenFrom).some((k) => /^(online|spike|north_alert):/.test(k)), "never: buses on their line, the GPS spike, the alert");
-  ok(hiddenFrom["apostolic:4328"] && Object.keys(hiddenFrom).filter((k) => k.startsWith("dcc:")).length === 5,
-    "the trade-off the owner chose: the 8 AM Metra run and the Lake Shore Drive detour (no alert) are hidden now");
+  ok(/^00:08/.test(at("dc022:4327")), "East (E27b: 00:09; the 2026-11-04 rule: 00:27): " + at("dc022:4327"));
+  ok(/^13:07:4/.test(at("garage:4324")), "parked at the garage inside its hours, at its second report (E27b: 13:08; the 2026-11-04 rule: 13:22): " + at("garage:4324"));
+  ok(!Object.keys(hiddenFrom).some((k) => /^(online|spike|north_alert|union):/.test(k)),
+    "never: buses on their line, the GPS spike, the alert, the Downtown Campus Connector at Union Station (E27b hid it)");
+  ok(hiddenFrom["apostolic:4328"] && Object.keys(hiddenFrom).filter((k) => k.startsWith("dcc:")).length === 6,
+    "the trade-off the owner chose: the 8 AM Metra run and the Lake Shore Drive detour (no alert) are hidden");
+  ok(/^12:13/.test(at("hp_stray:12642")), "the Downtown Campus Connector on a break at Cottage Grove and 60th (Nov 6): hidden 2 min after it stopped there (E27b: never): " + at("hp_stray:12642"));
+  ok(/^20:10/.test(at("campus:4325")), "parked inside the campus, 200 m off (Nov 4): hidden (E27b: never): " + at("campus:4325"));
+  ok(/^10:29/.test(at("alert_far:4315")), "11 km off during the Oct 28 reroute alert: hidden (E27b kept it shown): " + at("alert_far:4315"));
   // the same North bus without its route's alert: hidden
   const north = fx.cases.find((c) => c.name === "north_alert");
   let tr = {}, hid = false;
   for (const p of north.polls) {
     const buses = p.v.map(([veh, rid, lat, lon, vt]) => ({ vehicle: { id: veh }, trip: { route_id: rid }, position: { latitude: lat, longitude: lon }, timestamp: vt }));
-    const r = offRouteStep(tr, buses, { shapes: fx.shapes, service: fx.service, routes: fx.routes, alerts: [], nowS: p.h, feedTs: p.h });
+    const r = offRouteStep(tr, buses, { shapes: fx.shapes, corridors: fx.corridors, service: fx.service, routes: fx.routes, alerts: [], nowS: p.h, feedTs: p.h });
     tr = r.tracks;
     hid = hid || r.hidden.length > 0;
   }
@@ -212,7 +292,7 @@ test("offroute real: garage runs hidden within a minute, buses on their line and
 });
 
 test("live: a bus more than a block off leaves store.buses and its trip updates, stays in store.away, comes back at once", async () => {
-  let now = NOON, pos = GARAGE;
+  let now = NOON, pos = OFF300;
   const feeds = () => ({
     vehiclePositions: { header: { timestamp: now }, entity: [{ vehicle: bus("g", "A", pos, now) }, { vehicle: bus("ok", "A", [41.79, -87.61], now) }] },
     tripUpdates: { header: { timestamp: now }, entity: [
@@ -247,4 +327,29 @@ test("live: a bus more than a block off leaves store.buses and its trip updates,
   eq(ids(), ["g", "ok"], "back within a block: shown at once");
   eq(tripVehs(), ["g", "ok"]);
   eq(awayIds(), [], "no longer away");
+});
+
+test("live: store.corridors reaches the rule (a bus on its learned street stays shown, a street over goes after 2 min)", async () => {
+  let now = NOON, pos = OFF300;
+  const feeds = () => ({
+    vehiclePositions: { header: { timestamp: now }, entity: [{ vehicle: bus("u", "A", pos, now) }] },
+    tripUpdates: { header: { timestamp: now }, entity: [] },
+    serviceAlerts: { header: { timestamp: now }, entity: [] },
+  });
+  const fetch = async (url) => {
+    const f = feeds(), name = Object.keys(f).find((k) => url.includes(k));
+    return { ok: true, status: 200, json: async () => f[name] };
+  };
+  const store = createStore({ routes, service, shapes, corridors: corridorsA, staticLoaded: true, buses: [], trips: [], alerts: [], away: [], feedTs: 0 });
+  const live = startLive(store, { fetch, intervalMs: 600000, now: () => now });
+  const ids = () => store.get().buses.map((b) => b.vehicle.id);
+  for (; now <= NOON + 300; now += 10) await live.pollNow();
+  eq(ids(), ["u"], "5 min 300 m off its drawn line, on its corridor: shown");
+  pos = [41.7920, -87.60];
+  for (; now < NOON + 300 + NEAR_S; now += 10) await live.pollNow();
+  eq(ids(), ["u"], "a street over (222 m), under 2 min: shown");
+  now += 10;
+  await live.pollNow();
+  live.stop();
+  eq([ids(), store.get().away.map((b) => b.vehicle.id)], [[], ["u"]], "2 min: hidden, still tracked");
 });
