@@ -13,6 +13,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 ## Checkups
 | When (Chicago) | Verdict | Coverage | Data | Notes |
 |---|---|---|---|---|
+| 2026-11-07 13:00 | healthy; nothing lost since the Nov 5 gap | 100% since Nov 6 12:58 (collecting 54%, idle with no bus 46%); 62 of 62 runs since Nov 5 12:39 PM succeeded, every chain hand-off went through on its first try; an idle run since 10:20 AM Sat, collecting from 3:15 PM for the 4 PM Saturday lines | arrivals: 3,987 on Fri Nov 6 (14 lines, 93 stations, 20 buses; Fridays Oct 16 / 23 / 30: 3,995 / 3,944 / 4,203), Sat Nov 7 none yet (service from 4 PM); 0 duplicates, 0 rows missing ids; Passio prediction on 85% of non-`gps` arrivals (Fridays 85 to 93%), `gps` rows back to 364 (Nov 4 / 5: 611 / 552); ~96,400 rows; timetable 708be9d370e2 unchanged (last seen Nov 7 05:30); archive complete through Nov 6 (by the schedule, 10:37 AM Nov 7); weather daily; data repo synced every 25 min | `collector-health` issue #1 still open for the Nov 5 gap only (closes itself on Nov 8); DC-024: buses driving another line than Passio's label measured over 12 days (Nov 6: 10 episodes, 7.2 bus-hours, the most of any day), the Downtown Campus Connector's real streets against its drawn line, archive polls holding one bus twice; backup verified (Nov 6, 151 files; not due) |
 | 2026-11-06 03:45 | degraded: one 2-hour gap on Thu Nov 5 (DC-023, fixed); otherwise healthy | 92% since Nov 5 03:43 (collecting 66%, idle with no bus 26%), the only gap 10:39 AM to 12:39 PM Nov 5; every collect run since Nov 2 succeeded; an idle run since 02:35, collecting from 4:15 AM | arrivals: 3,931 (Mon Nov 2), 4,148 (Tue), 4,080 (Wed), 3,656 (Thu, about 310 short in the gap); the week before 3,925 / 4,151 / 3,728 / 4,168 / 4,203; 13 lines and 92 stations each day, 0 duplicates, 0 rows missing ids; Passio prediction on 85% / 85% / 81% / 82% of non-`gps` arrivals (the week before 81 to 92%); ~89,400 rows; timetable 708be9d370e2 unchanged (last seen Nov 6 00:37); archive complete through Nov 4, Nov 5 dispatched by hand; weather daily; data repo synced every 25 min | `collector-health` issue #1 open for the Nov 5 gap (it closes itself once Nov 5 leaves the 2-day window, about Nov 8); the data repo's watchdog issue opened 12:12 PM and closed 1:03 PM Nov 5; owner's report of idle buses at Regenstein checked on the raw polls (DC-023 item 5); off-GitHub backup refreshed (151 files, 314 MB, verified; the one before was Nov 2) |
 | 2026-11-04 11:30 | healthy; no alert since Nov 2 | 100% since Nov 3 11:26 (collecting 84%, idle with no bus 16%); 13 buses live at 11:25 AM | arrivals: 4,148 on Tue Nov 3 (13 lines, 92 stations: the most of any day so far), 1,385 on Nov 4 by 10:32 AM, ~82,600 rows; 0 duplicates, 0 rows missing ids; prediction on 85% / 88% of non-`gps` arrivals; health.py data all clear; timetable 708be9d370e2 unchanged (last seen Nov 4 10:33); archive complete through Nov 2 | the daily archive's schedule fires 6 to 10 hours late (Nov 1 16:54Z, Nov 2 20:29Z, Nov 3 18:00Z for a 10:41Z cron), so Nov 3 was not archived yet at 11:30 AM: dispatched by hand (it catches up 85 days anyway, and the health check flags a day only after 2 days) |
 | 2026-11-03 04:00 | healthy; no alert in 24 h | 100% since Nov 2 03:42 (collecting 90%, idle with no bus 10%); every finished collect run succeeded; an idle run since 01:15, collecting again from 4:15 AM for the 5 AM buses | arrivals: 3,931 on Mon Nov 2 (13 lines, 92 stations; weekdays 3,700 to 4,200), ~80,400 rows; 0 duplicates, 0 rows missing ids; prediction on 85% of non-`gps` arrivals; health.py data all clear; timetable 708be9d370e2 still in use (last seen Nov 3 01:14); archive complete through Nov 1 (the first day on the new release data-archive-2026-11, built with the recorded timetable) | the DC-022 fix held: the same after-service pattern (buses listed on trips on their way to the garage, last arrival 00:06) raised no "buses but no rows" alert this time; no watchdog alert in the data repo |
@@ -31,6 +32,55 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 | 2026-10-14 17:33 | healthy | 100% of 33.9 h of actual logging time (job start to end), no gaps, 145/145 runs since Oct 11 succeeded | arrivals: 3,469 (Oct 12), 3,640 (Oct 13), 2,473 (Oct 14 so far); predictions.csv 46,386 rows since Oct 12 12:20; no duplicate rows; archive complete through Oct 13 | `monitor.py status` said DEGRADED: DC-004, DC-005 (both false or harmless); the data check found DC-006 to DC-011 |
 
 ## Errors
+
+### DC-024 Checkup 2026-11-07: healthy; buses on another line than their Passio label (open); the Downtown Campus Connector off its drawn line (facts)
+Owner (2026-11-07): "Run a data collection check." Times are Chicago (CST). Fri Nov 6 is compared with the Fridays Oct
+16, 23 and 30 and the weekdays Nov 2 to 5; Sat Nov 7 with the Saturdays Oct 10 to 31. Scripts and downloads stayed off
+the repo (job folder).
+
+**1. Collector: healthy, nothing lost since the Nov 5 gap (nothing to fix).**
+- Runs: all 62 collect and idle runs from Nov 5 12:39 PM to Nov 7 10:20 AM succeeded; the pre-flight self-test passed
+  in every one (tag `collector-ok` = main `30edd298`); the 53 logging runs had 0 processing errors, at most 2 of 420
+  feed reads failed, 0 alert polls failed. The DC-023 dispatch retries were never needed: no `dispatch failed` in any
+  run, 47 hand-offs on the first try, 15 runs (11 collect, 4 idle) stood down as followers when a cron backstop took
+  the lead.
+- Gate: collecting Fri 4:15 AM to Sat 1:57 AM (South Loop Shuttle 4328 was the last bus in the feed, to 1:24 AM; last
+  arrival 12:53 AM), idle 1:57 to 4:15 AM, a collect run 4:15 to 5:30 AM for Friend Center/Metra's 5 AM listing (it runs
+  weekdays only: 0 rows, known since Oct 25), idle since 5:30 AM (the cron backstops at 7:52 and 9:03 AM found no bus
+  and idled too). Next: Saturday lines at 4 PM, collecting from 3:15 PM. Coverage 100% since Nov 6 12:58 PM.
+- `collector-health` issue #1: only the Nov 5 gap, refreshed 10:37 AM Nov 7; Nov 5 leaves the 2-day data check on
+  Nov 8 and the issue closes itself at the next collect run after that.
+- Data repo: the sync chain ran every 25 min (46 runs checked, Nov 6 11:03 AM to Nov 7 12:39 PM, all succeeded; each
+  dispatch on its first try, 4 times a waiting run made it skip); `health.py watchdog` all clear in every run; the
+  secret `COLLECT_DISPATCH_TOKEN` is still unset (owner; DC-021). The weekly `findings.yml` ran once, by hand, Nov 6
+  1:32 PM (success): the workbook covers Oct 10 to Nov 5 (27 days, test week Oct 30 to Nov 5, no signal ready); its
+  first scheduled run is Mon Nov 9, 11:41 AM.
+- Archive complete Nov 1 to 6 (Nov 6 by the schedule at 10:37 AM Nov 7, 6 hours late as usual; nothing to dispatch);
+  weather context daily (Nov 7 10:53 AM); timetable 708be9d370e2 unchanged (valid Oct 31 to Dec 1); off-GitHub backup
+  verified (made Nov 6 4:14 AM, 151 files; next due about Nov 13 to 20). The only collector-side change since DC-023,
+  `f54c536a` (forecast-table transition columns), passed collector-tests.
+
+**2. Fri Nov 6: normal totals; the short line-hours are explained (accepted).**
+- 3,987 arrivals (Fridays 3,995 / 3,944 / 4,203), 14 lines, 93 stations, 20 buses, 0 duplicates, 0 rows missing ids,
+  17,677 prediction rows (Fri Oct 30 19,440; weekdays Nov 2 to 5 14,253 to 18,161); Passio prediction on 85.3% of
+  non-`gps` arrivals (Fridays 84.7 to 92.8%).
+- DC-023 item 4 (watch): `gps` rows back to 364 (Fridays 277 to 487; Nov 4 / 5 611 / 552), no bus with hours of
+  disagreeing feeds. Red Line/Arts Block 34% `gps` (frozen trips on 4319, 4315, 4331: DC-003's usual case), North 23% (26
+  rows of 4327).
+- Bus count changes 62 adds and 55 lasting drops (Nov 2 to 5: 40 to 53 and 34 to 50), 9 of the drops a bus moving to
+  another line: the most of any day, in step with item 3. Alerts: the NightRide notice ("every 30 minutes for the entire
+  evening", 3:15 PM to 12:00:34 AM), as on Nov 2, 3, 5.
+- Line-hours under half of the Fridays: Friend Center/Metra 11 AM (0 rows; no Friend Center/Metra bus was in the feed
+  from 10:52 to 11:57 AM, between 4319 leaving and 4313 coming: service, not collection), Midway Metra 3 PM (0; Fridays
+  29 / 1 / 31), Regents Express 5 PM (0; 1 / 10 / 11), Apostolic/Drexel 6 PM and 11 PM (18 and 28; 50 to 61 and 54 to
+  70): all three are buses labeled as another line (item 3). Friend Center/Metra's 35 rows after 9 PM (listed to 8:55
+  PM) are Apostolic/Drexel visits filed under it (item 3).
+- Feed: no report older than 5 min while its bus stayed in the feed, no two buses at identical coordinates, every route
+  id in the timetable. After hours: Central 4326 11:30 PM to 12:08 AM (the nightly Central pattern, DC-023 item 7);
+  Apostolic 4325 11:49 AM to 4:27 PM (out of the garage at 11:49, stood at Goldblatt Pavilion from 12:17 to 3:10 PM,
+  then drove Midway Metra under the Apostolic label); Drexel 4327 10:31 to 10:53 AM; Regents Express 12648 9:29 to
+  10:19 PM (then labeled North); Midway Metra 12646 and Friend Center/Metra 4313 / 4331 in the evening (item 3). The
+  NightRide buses left the feed at 12:05 to 12:10 AM like every night; the South Loop Shuttle (listed to 12:55 AM) last.
 
 ### DC-023 Checkup 2026-11-06: a 2-hour gap on Nov 5 (GitHub API errors) and the anomalies of Nov 2 to 5 (fixed / open)
 Owner (2026-11-06): "Check the data collection status and create a log on any anomalies." Times are Chicago (CST since
