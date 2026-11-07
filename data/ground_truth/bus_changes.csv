@@ -541,4 +541,5 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5704,Downtown Campus Connector,1794017395,2026-11-06 20:09:55,drop,3,2,12647,151792,N (Upper) Wacker Dr & W Madison St,1794017395,874028,12642;4324,6,6,0,,,1,
 5704,Downtown Campus Connector,1794017729,2026-11-06 20:15:29,drop,2,1,4324,132964,UCHICAGO Medicine - River East,1794017729,874028,12642,6,6,0,,,1,
 5704,Downtown Campus Connector,1794018680,2026-11-06 20:31:20,add,1,2,12645,,,1794018989,874028,12642,6,6,0,,,,0
-5699,Red Line/Arts Block,1794020038,2026-11-06 20:53:58,drop,2,1,4315,67600,Smart Museum of Arts,1794020038,690481,4319,2,2,0,,,,
+5699,Red Line/Arts Block,1794020038,2026-11-06 20:53:58,drop,2,1,4315,67600,Smart Museum of Arts,1794020038,690481,4319,2,2,0,,,1,
+5704,Downtown Campus Connector,1794020995,2026-11-06 21:09:55,add,2,3,12647,,,1794021295,874028,12642;12645,6,6,0,,,,0
