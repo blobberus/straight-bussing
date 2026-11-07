@@ -322,6 +322,7 @@ final class OffRouteTests: XCTestCase {
         pos = LatLon(lat: 41.7920, lon: -87.60)
         while t < noon + 300 + OffRoute.nearS { s = s.applying(poll(t), staticData: stat, now: t); t += 10 }
         XCTAssertEqual(s.buses.map(\.vehicle.id), ["u"], "a street over, under 2 min: shown")
+        t += 10                                             // first report a street over at noon + 310: 2 min later
         s = s.applying(poll(t), staticData: stat, now: t)
         XCTAssertEqual(s.buses.map(\.vehicle.id), [], "2 min: hidden")
         XCTAssertEqual(s.awayBuses.map(\.vehicle.id), ["u"], "still tracked")
