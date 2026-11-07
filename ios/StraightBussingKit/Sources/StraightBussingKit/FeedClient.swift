@@ -111,8 +111,9 @@ extension LiveState {
             let ctx = Operating.Context(routes: staticData?.routes ?? [:], service: staticData?.service ?? ServiceData(),
                                         trips: s.trips, feedTs: s.feedTs, now: now, staticLoaded: !(staticData?.isEmpty ?? true))
             s.buses = Operating.operatingBuses(newBuses, ctx)
-            let off = OffRoute.step(s.offTracks, buses: s.buses, shapes: staticData?.shapes ?? [:], service: staticData?.service,
-                                    alerts: s.alerts, routes: staticData?.routes ?? [:], now: now, feedTs: s.feedTs)
+            let off = OffRoute.step(s.offTracks, buses: s.buses, shapes: staticData?.shapes ?? [:], corridors: staticData?.corridors,
+                                    service: staticData?.service, alerts: s.alerts, routes: staticData?.routes ?? [:], now: now,
+                                    feedTs: s.feedTs)
             s.offTracks = off.tracks
             s.offHidden = off.hidden
             s.awayBuses = OffRoute.awayBuses(s.buses, hidden: off.hidden)
