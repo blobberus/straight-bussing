@@ -50,7 +50,7 @@ the repo (job folder).
   and idled too). Next: Saturday lines at 4 PM, collecting from 3:15 PM. Coverage 100% since Nov 6 12:58 PM.
 - `collector-health` issue #1: only the Nov 5 gap, refreshed 10:37 AM Nov 7; Nov 5 leaves the 2-day data check on
   Nov 8 and the issue closes itself at the next collect run after that.
-- Data repo: the sync chain ran every 25 min (46 runs checked, Nov 6 11:03 AM to Nov 7 12:39 PM, all succeeded; each
+- Data repo: the sync chain ran every 25 min (46 runs checked, Nov 6 5:03 PM to Nov 7 12:39 PM, all succeeded; each
   dispatch on its first try, 4 times a waiting run made it skip); `health.py watchdog` all clear in every run; the
   secret `COLLECT_DISPATCH_TOKEN` is still unset (owner; DC-021). The weekly `findings.yml` ran once, by hand, Nov 6
   1:32 PM (success): the workbook covers Oct 10 to Nov 5 (27 days, test week Oct 30 to Nov 5, no signal ready); its
@@ -157,6 +157,19 @@ than 250 m off its line (E27b, `BLOCK_M`):
   poll lists both, not always in time order. The per-run artifacts have none, and the feed sent none.
 - Impact: none on the CSVs or the forecast table (`build_eta_dataset.load_raw` dedupes on vehicle + report time and
   sorts); a reader that takes a poll as one snapshot of the fleet must do the same. docs/DATA.md says so now.
+
+**6. `monitor.py status` warned "no new arrivals merged for 3 h" at each service start (fixed).**
+- What: at 4:11 PM Sat the status said DEGRADED, "buses are running but no new arrivals merged for 3 h": the 4 Saturday
+  buses (North, South, Central, East) had just started, the newest arrival was last night's (12:53 AM), and the first
+  collect run of the stretch (started 3:17 PM by the idle run) merges its rows only at its end (4:27 PM). The same false
+  warning shows for about the first 80 min after every idle pause (weekday 5 AM starts, weekend afternoons); the check
+  was off from about Nov 4 until DC-023's fix on Nov 6 (item 2 there), which is why no checkup had met it lately.
+- Impact: none on the data; a checkup could chase a problem that is not there.
+- Fix: `first_merge_due` in tools/monitor.py: while the current stretch of collect runs (back to the last idle run or
+  a 10-min hole) is younger than one run plus 15 min, status prints "this stretch's first merge is due by HH:MM"
+  instead of the warning; after that, or with no collect run active, the warning stands. Test
+  `test_first_merge_due_after_an_idle_pause` (the Saturday start, a chain collecting for hours, a hole before the
+  stretch, an idle run only); test_monitor 11/11, collector_selftest ok. The collect runs do not use it.
 
 ### DC-023 Checkup 2026-11-06: a 2-hour gap on Nov 5 (GitHub API errors) and the anomalies of Nov 2 to 5 (fixed / open)
 Owner (2026-11-06): "Check the data collection status and create a log on any anomalies." Times are Chicago (CST since

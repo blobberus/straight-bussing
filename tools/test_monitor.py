@@ -243,6 +243,29 @@ def test_last_start_queued_run():
     assert m.last_start([mk(95 * 60, "in_progress")], now, lambda r: None) == now - 95 * 60
 
 
+def test_first_merge_due_after_an_idle_pause():
+    """2026-11-07: buses started at 4 PM after the Saturday-morning idle runs; at 4:11 PM the newest arrival was last
+    night's because the stretch's first run (started 3:17 PM) merges only at its end. No warning until that merge is due;
+    a chain that has collected for hours gets none of this grace."""
+    m = load_monitor(TOOLS.parent)
+    iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+    now = 1_800_000_000
+    def run(start_min, end_min=None, idle=False):
+        st = "in_progress" if end_min is None else "completed"
+        return dict(run_started_at=iso(now - start_min * 60), created_at=iso(now - start_min * 60),
+                    updated_at=iso(now - (end_min or 0) * 60), status=st, conclusion=None if end_min is None else "success",
+                    display_title="Collector idle: no buses running" if idle else "Collect ground truth")
+    sat = [run(14), run(54), run(73, 54, idle=True), run(170, 73, idle=True)]
+    assert m.first_merge_due(sat, now) == now - 54 * 60 + m.RUN_S + 15 * 60
+    assert m.first_merge_due(sat, now + 40 * 60) is None              # 94 min in: the merge is overdue, warn again
+    steady = [run(10), run(50), run(90, 20), run(130, 60), run(170, 100), run(210, 140)]
+    assert m.first_merge_due(steady, now) is None                      # collecting for 3.5 h
+    gap = [run(20), run(60), run(300, 230)]                            # a 2.8-hour hole before the current stretch
+    assert m.first_merge_due(gap, now) == now - 60 * 60 + m.RUN_S + 15 * 60
+    assert m.first_merge_due([run(30, idle=True), run(200, 30)], now) is None   # only an idle run: no grace
+    assert m.first_merge_due([], now) is None and m.first_merge_due(None, now) is None
+
+
 def test_local_end_to_end():
     d, bare, repo = make_env()
     r = monitor(repo, "local", "--hours", "0.005", "--chunk-min", "0.1")

@@ -247,6 +247,27 @@ def last_start(runs, now, window_of):
     return last
 
 
+def first_merge_due(runs, now):
+    """When buses started again after an idle pause and the current stretch of collect runs has not merged yet: the
+    time its first merge is due (its first run's start + RUN_S + 15 min), else None. Each run merges its rows only at
+    its end, so for the first ~80 min of service the newest arrival is still last night's (2026-11-07: Saturday buses
+    from 4 PM, the first run of the stretch started 3:17 PM and merged at 4:27 PM, and status said "no new arrivals
+    merged for 3 h" at 4:11 PM). runs: newest first. A stretch ends going back at an idle run or a gap of 10 min."""
+    since = None
+    for r in runs or []:
+        if idle_run(r):
+            break
+        s = epoch(r.get("run_started_at") or r["created_at"])
+        e = epoch(r["updated_at"]) if r["status"] == "completed" else now
+        if since is not None and e < since - 600:
+            break
+        since = s if since is None else min(since, s)
+    if since is None or not any(not idle_run(r) and r["status"] in ("in_progress", "queued") for r in (runs or [])[:6]):
+        return None
+    due = since + RUN_S + 15 * 60
+    return due if now < due else None
+
+
 def coverage(runs, now, complete, window=86400, idle=True):
     """-> (window_start, fraction covered, [(gap_start, gap_end)]) from successful/in-progress runs.
     A run with r["log_window"] = (start, end) (from log_window(), set for parked runs) uses it as is.
@@ -427,7 +448,11 @@ def status(ctx, a):
                        else f"{db['size'] / 1e6:.2f} MB, {'' if db['rows_exact'] else '~'}{db['rows']:,} rows{nw}")
             print(f"data      last commit {age(db['commit_age'])} ago ({db['msg']}); arrivals.csv {csv_txt}")
             if vehicles and db.get("newest") and now - db["newest"] > 3 * 3600:
-                issues.append((1, "buses are running but no new arrivals merged for 3 h", "read the last runs' logs"))
+                due = first_merge_due(runs, now)
+                if due:
+                    print(f"          buses started after an idle pause; this stretch's first merge is due by {ts(due)[11:16]}")
+                else:
+                    issues.append((1, "buses are running but no new arrivals merged for 3 h", "read the last runs' logs"))
     except Exception as e:
         print(f"data      could not read the data branch: {e}")
     pid, st = read_pid(ctx), load_state(ctx)
