@@ -15,7 +15,7 @@ the more-than-a-block rule waits CONFIRM_S = 45 s, so every report counts):
   north_alert Oct 14 19:00 to 19:40: North 4317 300 m to 800 m off its line while the operator's "North Route" alert
               (Passio id 38734) was active: never hidden (alerts in the case)
 E27c (2026-11-07, the fixture also carries web/data/corridors.json, the streets the buses really drive):
-  union       Oct 22 17:48 to 18:02: Downtown Campus Connector 12642 up Canal to Adams at Union Station, up to 317 m off
+  union       Oct 22 17:48 to 18:02: Downtown Campus Connector 12642 on Adams and Clinton at Union Station, up to 317 m off
               its drawn line for 2.3 min while in service: E27b hid it (a blink every few laps), never hidden now
   hp_stray    Nov 6 12:05 to 12:45: Downtown Campus Connector 12642 on a 26 min break at Cottage Grove and 60th Street,
               about 160 m off its line (Passio kept predicting it): E27b showed it, hidden 2 min after it stopped there
