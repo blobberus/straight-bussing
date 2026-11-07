@@ -2,12 +2,13 @@
 // Failure keeps the last good data and sets failed:true so the UI can show it.
 // store.buses holds only vehicles that are operating (core/operating.js): ghosts that stopped
 // reporting, unknown routes and buses on out-of-service routes without predictions are dropped here,
-// so the map, route detail, counts, alerts and planner never show them. Buses more than a block off their route
-// (core/offroute.js: garage runs, parked off the line, owner 2026-11-06) and buses that are idle and not in service
+// so the map, route detail, counts, alerts and planner never show them. Buses off their route (core/offroute.js:
+// garage runs, parked off the line, owner 2026-11-06; measured against the drawn line and, where it is off, the streets
+// the route's buses really drive, store.corridors, owner 2026-11-07) and buses that are idle and not in service
 // (core/idle.js: parked for a long time, past their listed hours, lingering at the end of a shift) are dropped too,
-// with their trip updates, so no arrival time comes from a bus the map does not show. The buses more than a block off
-// are still tracked: their clocks stay here and store.away lists them (the route page counts them), so a bus shows
-// again on its first report back within a block.
+// with their trip updates, so no arrival time comes from a bus the map does not show. The buses off their route are
+// still tracked: their clocks stay here and store.away lists them (the route page counts them), so a bus shows again
+// on its first report back on its route.
 // Trip updates of buses that left the feed 15 min ago or more while Passio still predicts them (core/transition.js: a
 // break, a shift end, another route) are dropped too, so nothing recommends a bus that has left its route.
 // store.busNums: "Bus 1", "Bus 2" on lines with 2 or more buses for this list (core/busnum.js numberStep: a bus left
@@ -150,8 +151,8 @@ export function startLive(store, opts = {}) {
       goneIds = g.gone;
       patch.buses = operatingBuses(patch.buses, { routes: s.routes, service: s.service, trips: patch.trips || s.trips,
         feedTs: patch.feedTs, nowS: nowFn(), staticLoaded: s.staticLoaded });
-      const off = offRouteStep(offTracks, patch.buses, { shapes: s.shapes, service: s.service, alerts: patch.alerts || s.alerts,
-        routes: s.routes, nowS: nowFn(), feedTs: patch.feedTs });
+      const off = offRouteStep(offTracks, patch.buses, { shapes: s.shapes, corridors: s.corridors, service: s.service,
+        alerts: patch.alerts || s.alerts, routes: s.routes, nowS: nowFn(), feedTs: patch.feedTs });
       offTracks = off.tracks;
       offHidden = off.hidden;
       const away = awayBuses(patch.buses, offHidden);   // still tracked, not shown (never counted as running)

@@ -12,6 +12,7 @@ export const STATIC_FILES = Object.freeze([
   ['service', 'service.json', false],
   ['landmarks', 'landmarks.json', false],   // map labels (tools/build_landmarks.py): an array, see cleanLandmarks
   ['idle', 'idle.json', false],             // learned linger spots (RouteKnower E28; core/idle.js): see cleanIdle
+  ['corridors', 'corridors.json', false],   // streets the buses really drive (RouteKnower E27c; core/offroute.js): see cleanCorridors
 ]);
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -72,6 +73,9 @@ export function cleanSlice(key, v) {
     } else if (key === 'idle') {
       if (id === 'linger') out.linger = cleanLinger(x);
       else if (id === 'valid_until' || id === 'from' || id === 'to') out[id] = String(x);
+    } else if (key === 'corridors') {
+      if (id === 'routes') out.routes = cleanCorridors(x);
+      else if (id === 'valid_until' || id === 'from' || id === 'to') out[id] = String(x);
     } else out[id] = x;
   }
   return out;
@@ -95,6 +99,31 @@ function cleanLinger(v) {
     if (!hours.length) continue;
     out.push({ route: String(e.route), spot: String(e.spot ?? ''), lat, lon, r: Number.isFinite(r) && r > 0 ? r : 120,
       after: String(e.after), days: e.days, hours, seen: Number.isFinite(num(e.seen)) ? num(e.seen) : 0 });
+  }
+  return out;
+}
+
+/**
+ * Keep only well-formed route entries of corridors.json ({rid: {shape: {n, m}, pts: [[lat, lon], ...]}}): a route with
+ * a bad shape signature is dropped (it keeps the E27b rule), bad points are dropped; core/offroute.js corridorFor uses
+ * them.
+ * @param {any} v corridors.routes
+ * @returns {object}
+ */
+function cleanCorridors(v) {
+  const out = {};
+  if (!isObj(v)) return out;
+  for (const [rid, e] of Object.entries(v)) {
+    if (!isObj(e) || !isObj(e.shape) || !Array.isArray(e.pts)) continue;
+    const n = num(e.shape.n), m = num(e.shape.m);
+    if (!(n > 0) || !(m > 0)) continue;
+    const pts = [];
+    for (const p of e.pts) {
+      if (!Array.isArray(p)) continue;
+      const lat = num(p[0]), lon = num(p[1]);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) pts.push([lat, lon]);
+    }
+    out[rid] = { shape: { n, m }, pts };
   }
   return out;
 }
