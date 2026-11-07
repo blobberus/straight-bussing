@@ -82,6 +82,74 @@ the repo (job folder).
   10:19 PM (then labeled North); Midway Metra 12646 and Friend Center/Metra 4313 / 4331 in the evening (item 3). The
   NightRide buses left the feed at 12:05 to 12:10 AM like every night; the South Loop Shuttle (listed to 12:55 AM) last.
 
+**3. Buses driving another line than their Passio label, measured over 12 days (DC-003 item 4; open, the owner's call).**
+- How: each bus's moving reports (speed 2 m/s or more, or moved 15 m since its last report) per 10 min against every
+  line's drawn shape (within about 40 m); a stretch counts when under 30% of the reports lie on the labeled line and 85%
+  or more on one other line, for 30 min or more. Archived raw polls of Oct 23 to Nov 6.
+- Bus-hours off their label per weekday: Oct 23 2.8, Oct 26 7.3, 27 3.2, 28 3.8, 29 4.7, 30 2.0, Nov 2 3.3, 3 5.3, 4 1.7,
+  5 0.5 (2-hour gap), 6 7.2 (10 episodes, the most); the Saturdays and the Sunday 0. Passio relabels most of these buses
+  later to the line they were driving (4331 on Nov 6 after 72 min), so the label lags; the path is not unknown.
+- Recurring:
+  - About 5 PM the Apostolic/Drexel bus takes over Friend Center/Metra's loop and keeps the Apostolic/Drexel label for 40
+    to 170 min: 9 of 11 weekdays (4331 on Oct 23, 27, 28, 29, 30, Nov 3, 4, 6; 4315 on Oct 26). At the same time the
+    Friend Center/Metra bus drove Apostolic/Drexel's loop under its own label on Oct 29 and 30 (4325) and Nov 6 (4313):
+    the two buses swap at the hospital stops.
+  - 9:10 to 11:50 AM, buses of the morning lines drive the Downtown Campus Connector's line under their old label
+    (Midway Metra 4315 Oct 27 and 28, 4538 Nov 3; Apostolic 4322 Oct 28, 4317 and 4328 Nov 2; Red Line 12648 Oct 28 and
+    Nov 3).
+  - Around the end of Midway Metra's evening service (6:55 PM) its bus drives Red Line/Arts Block, Apostolic/Drexel or
+    Friend Center/Metra for 30 to 50 min under the Midway Metra label: 6 of 11 weekdays (Oct 26, 27, Nov 2, 3, 4, 6).
+  - A line's first trips run under the bus's previous label: Regents Express (Nov 6, 12648 labeled Downtown Campus
+    Connector 5:20 to 6 PM), East (Oct 23, 12646 labeled 53rd Street Express; Nov 6, 4322 labeled Red Line 4 to 4:30 PM),
+    South Loop Shuttle (Nov 6, 4328 labeled 53rd Street Express 7 to 7:30 PM).
+- Fri Nov 6 in full: 4331 (Red Line label) on Apostolic/Drexel's loop 3:00 to 4:37 PM; 4325 (Apostolic) on Midway Metra
+  3:18 to 4:27 PM; 4322 (Red Line) on East 4:00 to 4:30 PM; 12648 (Downtown Campus Connector) on Regents Express 5:20 to
+  6:00 PM; at about 5:55 PM 4331 (Apostolic/Drexel label) and 4313 (Friend Center/Metra) swapped loops, 4331 was
+  relabeled at 7:07 PM, 4313 kept its label on Apostolic/Drexel's loop until it left at 12:08 AM; 4328 (53rd Street
+  Express) on South Loop Shuttle 7:00 to 7:30 PM; 12646 (Midway Metra) on Red Line 7:10 to 7:50 PM and on
+  Apostolic/Drexel 8:40 to 9:20 PM.
+- Impact on the rows: a visit is logged under the label's line where both lines have the stop, and missed where only the
+  driven line has it. Nov 6: 63 rows of 4313 filed as Friend Center/Metra at the hospital-loop stops (S Drexel Ave &
+  57th St, Wyler Pavilion, Bernard Mitchell Hospital, 58th Street & Drexel, Comer Children's Hospital, Goldblatt
+  Pavilion) were Apostolic/Drexel visits; 16 rows of 4331 filed as Apostolic/Drexel were Friend Center/Metra visits;
+  the short line-hours of item 2. About 2 to 7 bus-hours a weekday, a few percent of the stop visits. For riders such a
+  bus is on the map as the wrong line, with that line's times, and the off-route rule (E27b, 250 m) can hide a bus that
+  is serving another line.
+- The detector's own check (`GPS_WRONG_ROUTE`, off since DC-003): Nov 6 replayed twice from the release files (one pass,
+  read-only; the plain replay matched 99.0% of the live rows). With the check on: +29 rows, none removed; 4322 as East
+  (7) and 12646 as Red Line/Arts Block (7) are right, 4331 as Friend Center/Metra (15, 3:22 to 4:35 PM) is wrong (it drove
+  Apostolic/Drexel: the two lines share the hospital loop under different stop ids), and the other 7 episodes give
+  nothing (where the labeled line has most of the stops, Passio's route explains the visits). 2 of 10 found, 1 misfiled:
+  it stays off.
+- Follow-up (owner's call; nothing changed today): the line-share test above finds these from the GPS alone. It could
+  mark the affected rows so scoring leaves them out, refile the visits under the line driven (a replay, only with the
+  owner's go-ahead), and give the app the line a bus is really on. For RouteKnower: the 5 PM Apostolic/Drexel to Friend
+  Center/Metra handover recurs almost daily.
+
+**4. The Downtown Campus Connector against its drawn line (facts for the app's off-route work, workstream dcc-offroute).**
+Owner's report (2026-11-07): the Downtown Campus Connector still shows when it is not on its route. Moving reports of
+buses labeled with it, against its drawn line (`web/data/shapes.json`, route 5704); the app hides a bus that is more
+than 250 m off its line (E27b, `BLOCK_M`):
+- Per day (Oct 30, Nov 2 to 6): within 40 m 85 to 90%, 40 to 125 m 4 to 6%, 125 to 250 m 2 to 5%, beyond 250 m 3 to 5%.
+  The 40 to 250 m band, which stays on the map, is 1,070 to 2,246 reports a day (6 to 11%), about half downtown and
+  half on campus.
+- Downtown, every trip, all day: after S (Upper) Wacker Dr & W Adams St the buses turn west on Adams St and south on
+  Clinton St, while the drawn line goes on south on Wacker to Jackson Blvd and west on Jackson: 125 to 353 m off (Nov 6:
+  207 reports from 7 buses; Oct 30: 256 from 8; 6 AM to 9 PM). Only the corner at Clinton and Adams (about 290 to 350
+  m) is beyond 250 m, for under a minute.
+- Some trips: Columbus Dr instead of Michigan Ave between about Monroe St and Roosevelt Rd (211 to 296 m; Nov 6 9:51 AM
+  and 5:44 PM, Oct 30 4:31 PM); Lake Shore Dr (360 to 584 m, already hidden); one bus circling near Gleacher Center and
+  River East (125 to 245 m, Oct 30 5:12 to 6:05 PM).
+- Campus: buses standing 125 to 250 m from the line with the frequency trip 874028 still attached, so on the map:
+  about 160 m south-west of Goldblatt Pavilion (41.7864, -87.6070; 12642 Nov 6 12:11 to 12:39 PM, 12643 and 12646 Oct 30
+  9:25 to 10:39 AM), near 58th St and Ellis Ave (41.7899, -87.5981; 12646 Oct 30 7:50 to 8:53 PM, 139 to 239 m), and at
+  41.7912, -87.6041 (4327 Nov 6 12:25 PM, Oct 30 11:22 AM).
+- Its label on a bus driving another line (item 3's test): Nov 6 12648 on Regents Express 5:20 to 6 PM; Nov 5 4315 on
+  Apostolic/Drexel 12:50 to 1:20 PM; Oct 26 4331 and 12646 on Red Line/Arts Block (10:30 to 11:30 AM, 2:50 to 4:30 PM)
+  and 12648 on Midway Metra (2:40 to 4:10 PM). The reverse, its service under another label, happens most weekday
+  mornings (item 3).
+- Handed to the dcc-offroute workstream (its progress log); no app code changed here.
+
 ### DC-023 Checkup 2026-11-06: a 2-hour gap on Nov 5 (GitHub API errors) and the anomalies of Nov 2 to 5 (fixed / open)
 Owner (2026-11-06): "Check the data collection status and create a log on any anomalies." Times are Chicago (CST since
 Nov 1). Compared with the week before (Oct 26 to 30). Scripts and downloads stayed off the repo (job folder).
