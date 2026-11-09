@@ -1032,6 +1032,29 @@ def build_gtfs_gives_each_route_the_shape_ids_passio_alerts_use():
     assert BG.route_aliases(trips, routes) == {"1075": ["38734"], "5703": ["38731", "38809"]}, BG.route_aliases(trips, routes)
 
 
+@test
+def build_gtfs_lists_departures_at_each_routes_reference_stop():
+    # the route page's "Schedule by hour" (web core/schedule.js hourlyHeadways): the stop most trips leave from (a trip's
+    # last stop never counts), times between timepoints interpolated, frequency trips expanded, after midnight + 24 h
+    import build_gtfs as BG
+    trips = [{"trip_id": f"t{i}", "route_id": "L"} for i in range(3)] + [{"trip_id": "f", "route_id": "F"}]
+    sched = {}
+    for i, start in enumerate((16 * 3600, 23 * 3600 + 30 * 60, 30 * 60)):   # 4:00 PM, 11:30 PM, 12:30 AM (written 00:30)
+        sched[f"t{i}"] = [(1, "A", start, start, None), (2, "B", None, None, None), (3, "C", start + 600, start + 600, None),
+                          (4, "A", start + 900, start + 900, None)]      # a loop: A again as the last stop
+    sched["f"] = [(1, "X", 6 * 3600, 6 * 3600, None), (2, "Y", 6 * 3600 + 120, 6 * 3600 + 120, None), (3, "Z", 6 * 3600 + 300, 6 * 3600 + 300, None)]
+    refs = BG.ref_stops(trips, sched, {"L": ["A", "B", "C", "A"], "F": ["X", "Y", "Z"]})
+    assert refs == {"L": "A", "F": "X"}, refs                          # A (3 trips) ties B, C: the earliest in order
+    freqs = [{"trip_id": "f", "start_time": "06:30:00", "end_time": "07:30:00", "headway_secs": "1200"}]
+    dep = BG.trip_departures(trips, sched, freqs, {"L": "B", "F": "Y"})
+    assert dep["t0"] == [16 * 3600 + 300], dep                          # B interpolated halfway between A and C
+    assert dep["f"] == [6 * 3600 + 30 * 60 + 120 + 1200 * k for k in range(3)], dep
+    assert BG.dep_list([16 * 3600, 23 * 3600 + 1800, 1800, 1800], 16 * 60) == [960, 450, 60], "deduped, 12:30 AM = 24:30"
+    day = BG.day_summary([(16 * 3600, 16 * 3600 + 900), (1800, 2700)], [16 * 3600, 1800])
+    assert day["spans"][0][0] == "16:00" and day["dep"] == [960, 510], day
+    assert "dep" not in BG.day_summary([(0, 60)]), "no departures known: no dep list"
+
+
 
 # ---------------------------------------------------------------- DC-003: the GPS sweep
 def square_static():

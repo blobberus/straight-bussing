@@ -149,8 +149,69 @@ def trip_intervals(trips, sched, freqs):
     return out
 
 
-def day_summary(intervals):
-    """[(start,end)] for one route on one service day -> {first,last,trips,buses[24]} or None."""
+def ref_stops(trips, sched, route_stops):
+    """route_id -> the stop most of its trips leave from (a trip's last stop never counts: the bus ends or turns there),
+    ties to the earliest stop in route_stops order. The route page's "Schedule by hour" reads its departures there."""
+    cnt = defaultdict(Counter)
+    for t in trips:
+        seq = sorted(sched.get(t["trip_id"], ()), key=lambda x: x[0])
+        for sid in {x[1] for x in (seq[:-1] if len(seq) > 1 else seq)}:
+            cnt[t["route_id"]][sid] += 1
+    out = {}
+    for rid, c in cnt.items():
+        order = route_stops.get(rid) or []
+        out[rid] = min(c, key=lambda sid: (-c[sid], order.index(sid) if sid in order else len(order), sid))
+    return out
+
+
+def trip_departures(trips, sched, freqs, refs):
+    """trip_id -> departure seconds (service day) at its route's reference stop (ref_stops): the first visit that is not
+    the trip's last stop, times between timepoints interpolated; frequency trips expand from their template like
+    trip_intervals. Trips that never leave the reference stop are left out."""
+    by_trip = defaultdict(list)
+    for f in freqs:
+        by_trip[f["trip_id"]].append(f)
+    out = {}
+    for t in trips:
+        tid, ref = t["trip_id"], refs.get(t["route_id"])
+        raw = sorted(sched.get(tid, ()), key=lambda x: x[0])
+        seq = interpolate(raw) or raw
+        body = seq[:-1] if len(seq) > 1 else seq
+        hit = next((x[3] for x in body if x[1] == ref and x[3] is not None), None)
+        if hit is None:
+            continue
+        fs = by_trip.get(tid)
+        if not fs:
+            out[tid] = [hit]
+            continue
+        start = min(x for st in raw for x in (st[2], st[3]) if x is not None)
+        inst = []
+        for f in fs:
+            a, b = hms(f.get("start_time")), hms(f.get("end_time"))
+            try:
+                hw = int(f.get("headway_secs") or 0)
+            except ValueError:
+                hw = 0
+            if a is None or b is None or hw <= 0:
+                continue
+            t0 = a
+            while t0 < b:
+                inst.append(t0 + hit - start)
+                t0 += hw
+        out[tid] = inst or [hit]
+    return out
+
+
+def dep_list(deps, day0):
+    """Departure seconds -> sorted service-day minutes, delta coded: [first, gap, gap, ...]. Minutes before the day's
+    start (day0, minutes) are after midnight (a night route writes 00:30 for its 12:30 AM trip) and get + 24 h."""
+    ms = sorted({(m if m >= day0 else m + 1440) for m in ((s // 60) % 1440 for s in deps)})
+    return [b - a for a, b in zip([0] + ms, ms)]
+
+
+def day_summary(intervals, deps=()):
+    """[(start,end)] for one route on one service day (+ departure seconds at its reference stop) ->
+    {first,last,trips,buses[24],spans,dep} or None. dep = dep_list (web core/schedule.js hourlyHeadways)."""
     iv = [(a, b) for a, b in intervals if b >= a]
     if not iv:
         return None
@@ -169,8 +230,12 @@ def day_summary(intervals):
     for a, b in iv:                         # zero-length trips still mean a bus that hour
         buses[(a // 3600) % 24] = max(buses[(a // 3600) % 24], 1)
     spans = service_spans(iv)
-    return {"first": spans[0][0], "last": spans[-1][1], "trips": len(iv), "buses": buses,
-            "spans": [list(x) for x in spans]}
+    out = {"first": spans[0][0], "last": spans[-1][1], "trips": len(iv), "buses": buses,
+           "spans": [list(x) for x in spans]}
+    if deps:
+        h, m = spans[0][0].split(":")
+        out["dep"] = dep_list(deps, int(h) * 60 + int(m))
+    return out
 
 
 def service_spans(iv, min_gap=60):
@@ -220,8 +285,9 @@ def service_spans(iv, min_gap=60):
     return [(hhmm((a - base) * 60), hhmm((b - base) * 60)) for a, b in out]
 
 
-def build_service(z, trips, sched, freqs, today=None):
-    """Per-route hours by weekday, scheduled buses per hour, calendar_dates changes in the feed window."""
+def build_service(z, trips, sched, freqs, today=None, route_stops=None):
+    """Per-route hours by weekday, scheduled buses per hour, departures at the route's reference stop ("at"),
+    calendar_dates changes in the feed window."""
     info = (rows(z, "feed_info.txt") or [{}])[0]
     today = today or datetime.now(timezone.utc).date()
     w0 = ymd(info.get("feed_start_date", "")) or today
@@ -239,9 +305,13 @@ def build_service(z, trips, sched, freqs, today=None):
         if d and w0 <= d <= w1 and r.get("exception_type", "").strip() in ("1", "2"):
             cdates[d][r["service_id"]] = int(r["exception_type"])
     iv = trip_intervals(trips, sched, freqs)
+    refs = ref_stops(trips, sched, route_stops or {})
+    dep = trip_departures(trips, sched, freqs, refs)
     by_route = defaultdict(lambda: defaultdict(list))   # rid -> service_id -> [(s,e)]
+    dep_route = defaultdict(lambda: defaultdict(list))  # rid -> service_id -> [departure s at refs[rid]]
     for t in trips:
         by_route[t["route_id"]][t.get("service_id", "")] += iv.get(t["trip_id"], [])
+        dep_route[t["route_id"]][t.get("service_id", "")] += dep.get(t["trip_id"], [])
 
     def active(svcs, d):
         k = DAY_KEYS[d.weekday()]
@@ -253,10 +323,10 @@ def build_service(z, trips, sched, freqs, today=None):
 
     out = {}
     for rid, svcs in sorted(by_route.items()):
-        days = {}
+        days, deps = {}, dep_route[rid]
         for k in DAY_KEYS:
             on = [s for s in svcs if s in cal and k in cal[s]["days"]]
-            days[k] = day_summary([x for s in on for x in svcs[s]])
+            days[k] = day_summary([x for s in on for x in svcs[s]], [x for s in on for x in deps[s]])
         exc = []
         for d in sorted(cdates):
             k = DAY_KEYS[d.weekday()]
@@ -264,12 +334,14 @@ def build_service(z, trips, sched, freqs, today=None):
             now_on = active(svcs, d)
             if now_on == regular:
                 continue
-            got = day_summary([x for s in now_on for x in svcs[s]])
+            got = day_summary([x for s in now_on for x in svcs[s]], [x for s in now_on for x in deps[s]])
             reg_trips = days[k]["trips"] if days[k] else 0
             e = {"date": d.isoformat(), "type": "removed" if (got["trips"] if got else 0) < reg_trips else "added", "days": k}
-            e["hours"] = {"first": got["first"], "last": got["last"], "trips": got["trips"], "spans": got["spans"]} if got else None
+            e["hours"] = got   # with buses + dep: the route page's bars and Schedule by hour follow a changed day too
             exc.append(e)
         out[rid] = {"days": days, "exceptions": exc}
+        if rid in refs:
+            out[rid]["at"] = refs[rid]
     return {"generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "feed": {"start": w0.isoformat(), "end": w1.isoformat()}, "routes": out}
 
@@ -412,7 +484,7 @@ def main(argv=None):
     # build everything first, then write: a failure part-way leaves the committed web/data/*.json intact
     out = {"routes.json": routes, "stops.json": stops, "shapes.json": dict(shapes), "route_stops.json": route_stops,
            "segments.json": {"v": 1, "routes": build_segments(trips, route_stops, sched, rows(z, "frequencies.txt"))},
-           "service.json": build_service(z, trips, sched, rows(z, "frequencies.txt")),
+           "service.json": build_service(z, trips, sched, rows(z, "frequencies.txt"), route_stops=route_stops),
            "meta.json": {"generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "source": URL}}
     for name, obj in out.items():
         dump(name, obj)
