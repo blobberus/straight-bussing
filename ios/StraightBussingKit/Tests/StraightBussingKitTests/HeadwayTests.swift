@@ -56,12 +56,32 @@ final class HeadwayTests: XCTestCase {
         for t in stride(from: 413, through: 657, by: 20) { red += [t, t + 4] }
         XCTAssertEqual(lines(red), ["About every 10 min, 6:30 to 10:57 AM"])
         let mid = Schedule.departures(ServiceDay(dep: [341, 10, 11, 9, 12, 8, 13, 7, 14, 6, 15, 5, 16, 4, 18, 2, 19, 1, 20, 20, 1, 19, 2, 18, 3]))
-        XCTAssertEqual(lines(mid), ["About every 10 min, 5:41 to 9:54 AM"])
+        XCTAssertEqual(lines(mid), ["About every 11 min, 5:41 to 9:54 AM"], "10.5 min on average")
         XCTAssertEqual(lines([600, 610, 610, 620, 630]), ["Every 10 min, 10:00 to 10:30 AM"], "two trips at the same minute count once")
-        XCTAssertEqual(lines([600, 612, 632, 652]), ["About every 15 min, 10:00 to 10:52 AM"], "17.3 min average")
-        XCTAssertEqual(lines([600, 612, 632, 652, 664, 684, 704]), ["About every 15 min, 10:00 to 11:04 AM", "About every 20 min, 11:04 to 11:44 AM"])
+        XCTAssertEqual(lines([600, 612, 632, 652]), ["About every 17 min, 10:00 to 10:52 AM"], "17.3 min average")
+        XCTAssertEqual(lines([600, 615, 635, 655]), ["About every 20 min, 10:00 to 10:55 AM"], "18.3 min average")
+        XCTAssertEqual(lines([600, 612, 632, 652, 664, 684, 704]), ["About every 16 min, 10:00 to 11:04 AM", "About every 20 min, 11:04 to 11:44 AM"])
         XCTAssertEqual(lines([600, 603, 609, 612, 618, 621, 627]), ["About every 5 min, 10:00 to 10:27 AM"])
         XCTAssertEqual(lines([600, 602, 606, 608, 612, 614, 618]), ["About every 3 min, 10:00 to 10:18 AM"])
+    }
+
+    func testTidyNeighboursOfTheSamePaceReadAsOneLine() {
+        XCTAssertEqual(lines([600, 604, 620, 624, 640, 644] + every(660, 10, 11)), ["About every 10 min, 10:00 AM to 12:40 PM"])
+        XCTAssertEqual(lines(every(420, 10, 10) + every(517, 10, 10)), ["Every 10 min, 7:00 to 10:07 AM"])
+        XCTAssertEqual(lines(every(420, 10, 10) + every(530, 10, 10)), ["About every 11 min, 7:00 to 10:20 AM"], "a hole of twice the pace is not hidden")
+        XCTAssertEqual(lines([600, 606, 624, 630, 648, 654] + every(672, 10, 8)), ["About every 11 min, 10:00 AM to 12:22 PM"])
+        XCTAssertEqual(lines(every(600, 10, 7) + every(673, 13, 7)), ["Every 10 min, 10:00 to 11:00 AM", "Every 13 min, 11:00 AM to 12:31 PM"])
+    }
+
+    func testTidyABurstJoinsAndAtMostSixLines() {
+        XCTAssertEqual(lines(every(600, 10, 7) + [665, 670, 675, 680] + every(690, 10, 10)), ["About every 9 min, 10:00 AM to 1:00 PM"])
+        var alt: [Int] = [], t = 300
+        for k in 0..<8 { let gap = k % 2 == 1 ? 30 : 10; for _ in 0..<(k % 2 == 1 ? 4 : 10) { alt.append(t); t += gap } }
+        alt.append(t)
+        let out = Schedule.hourlyHeadways(alt)
+        XCTAssertLessThanOrEqual(out.filter { $0.kind == .every || $0.kind == .about }.count, 6)
+        XCTAssertEqual([out.first?.from, out.last?.to], [300, t], "the whole stretch is still covered")
+        XCTAssertEqual(lines([360] + every(397, 20, 6)).first, "1 trip, 6:00 AM")
     }
 
     func testSingleTripsTwoTripsAndBreaks() {

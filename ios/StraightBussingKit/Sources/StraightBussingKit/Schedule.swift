@@ -341,9 +341,9 @@ public enum Schedule {
     static func total(_ g: [Int], _ a: Int, _ b: Int) -> Int { (a..<b).reduce(0) { $0 + g[$1] } }
     /// t / c in whole minutes, half up (integers only, so every platform agrees).
     static func roundDiv(_ t: Int, _ c: Int) -> Int { Int((2 * t + c).floorDiv(2 * c)) }
-    /// An uneven stretch's average gap: to 5 minutes from 7.5 up, else to the minute (at least 1).
+    /// An uneven stretch's average gap: to the minute (at least 1), to 5 minutes from 17.5 up ("About every 25 min").
     static func aboutMin(_ t: Int, _ c: Int) -> Int {
-        2 * t >= 15 * c ? 5 * (2 * t + 5 * c).floorDiv(10 * c) : Swift.max(1, roundDiv(t, c))
+        2 * t >= 35 * c ? 5 * (2 * t + 5 * c).floorDiv(10 * c) : Swift.max(1, roundDiv(t, c))
     }
 
     private struct Run { var a: Int; var b: Int; var steady: Bool; var drop = false }
@@ -379,10 +379,10 @@ public enum Schedule {
             runs[k].drop = true
             k += 1
         }
-        var out: [Headway] = []
-        if runs[0].drop { out.append(Headway(kind: .trips, from: d[0], to: d[0], n: 1)) }   // a lone first bus before a steady run
+        var out: [Piece] = []
+        if runs[0].drop { out.append(Piece(h: Headway(kind: .trips, from: d[0], to: d[0], n: 1), g: 0)) }   // a lone first bus before a steady run
         for r in runs where !r.drop {
-            if r.steady || spread(g, r.a, r.b) <= 1 { out.append(Headway(kind: .every, from: d[r.a], to: d[r.b], min: head(r))); continue }
+            if r.steady || spread(g, r.a, r.b) <= 1 { out.append(Piece(h: Headway(kind: .every, from: d[r.a], to: d[r.b], min: head(r)), g: r.b - r.a)); continue }
             // uneven: "About every N min" hour by hour (a one-gap hour joins the hour before, else after), equal neighbours merged
             var hrs: [HourGroup] = []
             for x in r.a..<r.b {
@@ -396,20 +396,83 @@ public enum Schedule {
                 hrs.remove(at: m)   // the next group moves into m
             }
             for x in hrs {
-                let mm = aboutMin(total(g, x.a, x.b), x.b - x.a)
-                if let last = out.last, last.kind == .about, last.min == mm, last.to == d[x.a] { out[out.count - 1].to = d[x.b] }
-                else { out.append(Headway(kind: .about, from: d[x.a], to: d[x.b], min: mm)) }
+                out.append(Piece(h: Headway(kind: .about, from: d[x.a], to: d[x.b], min: aboutMin(total(g, x.a, x.b), x.b - x.a)), g: x.b - x.a))
             }
         }
-        if runs.count > 1, runs[runs.count - 1].drop { out.append(Headway(kind: .trips, from: d[n - 1], to: d[n - 1], n: 1)) }   // a lone last bus
-        return out
+        if runs.count > 1, runs[runs.count - 1].drop { out.append(Piece(h: Headway(kind: .trips, from: d[n - 1], to: d[n - 1], n: 1), g: 0)) }   // a lone last bus
+        tidy(&out)
+        return out.map(\.h)
+    }
+
+    /// A range shorter than this (minutes) joins a neighbour (a short burst of extra buses is not a schedule of its own).
+    static let fragmentMin = 30
+    /// At most this many "Every" / "About every" lines per stretch of service; closest paces merge first.
+    static let maxRanges = 6
+
+    /// A range while a stretch is being tidied: `g` = the gaps it spans.
+    struct Piece { var h: Headway; var g: Int }
+    static func paced(_ p: Piece?) -> Bool { p.map { $0.h.kind == .every || $0.h.kind == .about } ?? false }
+    /// How different two ranges' paces are, as a fraction >= 1 (num, den), integers so every platform agrees.
+    static func paceRatio(_ a: Piece, _ b: Piece) -> (Int, Int) {
+        let x = (a.h.to - a.h.from) * b.g, y = (b.h.to - b.h.from) * a.g
+        return x >= y ? (x, y) : (y, x)
+    }
+    static func below(_ p: (Int, Int), _ q: (Int, Int)) -> Bool { p.0 * q.1 < q.0 * p.1 }
+    /// Neighbours that read as one pace: a minute apart, two when either is an average ("About").
+    static func samePace(_ a: Piece, _ b: Piece) -> Bool {
+        abs((a.h.min ?? 0) - (b.h.min ?? 0)) <= (a.h.kind == .about || b.h.kind == .about ? 2 : 1)
+    }
+    /// Two neighbouring ranges as one: "Every N" when both are and only an odd gap under 2 N sits between, else "About every".
+    static func joinRanges(_ a: Piece, _ b: Piece) -> Piece {
+        let hole = a.h.to < b.h.from ? b.h.from - a.h.to : 0, g = a.g + b.g + (hole > 0 ? 1 : 0)
+        if a.h.kind == .every, b.h.kind == .every, let m = a.h.min, b.h.min == m, hole < 2 * m {
+            return Piece(h: Headway(kind: .every, from: a.h.from, to: b.h.to, min: m), g: g)
+        }
+        return Piece(h: Headway(kind: .about, from: a.h.from, to: b.h.to, min: aboutMin(b.h.to - a.h.from, g)), g: g)
+    }
+
+    /// Keep a stretch's list short and readable (web core/schedule.js tidy), merging neighbours: first ones of the same
+    /// pace, then the shortest range under `fragmentMin` into its neighbour of closer pace, then, while more than
+    /// `maxRanges` remain, the two neighbours of closest pace. Lone "1 trip" lines stay.
+    static func tidy(_ out: inout [Piece]) {
+        while true {
+            var at = -1
+            var i = 0
+            while i + 1 < out.count && at < 0 {
+                if paced(out[i]) && paced(out[i + 1]) && samePace(out[i], out[i + 1]) { at = i }
+                i += 1
+            }
+            if at < 0 {
+                var f = -1
+                for k in 0..<out.count {
+                    let s = out[k], len = s.h.to - s.h.from
+                    let left: Piece? = k > 0 ? out[k - 1] : nil, right: Piece? = k + 1 < out.count ? out[k + 1] : nil
+                    if paced(s) && len < fragmentMin && (paced(left) || paced(right)) && (f < 0 || len < out[f].h.to - out[f].h.from) { f = k }
+                }
+                if f >= 0 {
+                    let left: Piece? = f > 0 ? out[f - 1] : nil, right: Piece? = f + 1 < out.count ? out[f + 1] : nil
+                    if !paced(left) { at = f }
+                    else if !paced(right) { at = f - 1 }
+                    else if let l = left, let r = right { at = below(paceRatio(out[f], r), paceRatio(l, out[f])) ? f : f - 1 }
+                }
+            }
+            if at < 0 && out.filter({ paced($0) }).count > maxRanges {
+                var best: (Int, Int)? = nil
+                for k in 0..<Swift.max(0, out.count - 1) where paced(out[k]) && paced(out[k + 1]) {
+                    let q = paceRatio(out[k], out[k + 1])
+                    if best.map({ below(q, $0) }) ?? true { best = q; at = k }
+                }
+            }
+            if at < 0 { return }
+            out.replaceSubrange(at...(at + 1), with: [joinRanges(out[at], out[at + 1])])
+        }
     }
 
     /// How often the timetable sends a bus over one service day, as ranges (owner 2026-11-09; web core/schedule.js
     /// hourlyHeadways, both checked against web/tests/fixtures/headways_golden.json). Steady stretches (4 or more buses,
     /// gaps within a minute) read "Every N min" from the first to the last of those buses; uneven ones "About every N
     /// min" hour by hour; a lone bus "1 trip" (two alone: "2 trips"); a gap of `headwayBreakMin` or more is "No service"
-    /// between two stretches. Duplicates and negative minutes are ignored.
+    /// between two stretches; then each stretch is tidied (`tidy`). Duplicates and negative minutes are ignored.
     public static func hourlyHeadways(_ deps: [Int]) -> [Headway] {
         let d = Array(Set(deps.filter { $0 >= 0 })).sorted()
         var out: [Headway] = []
