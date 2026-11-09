@@ -285,8 +285,10 @@ recomputed on zoom, honoring reduced motion (static), never intercepting taps.
 { generated:'ISO', feed:{start:'YYYY-MM-DD', end:'YYYY-MM-DD'},
   routes: { rid: {
     days: { mon|tue|wed|thu|fri|sat|sun: null | { first:'HH:MM', last:'HH:MM' /* may be >= 24:00 */, trips:int,
-            buses:[24 ints] /* scheduled vehicles in service per local hour = max concurrent trips */ } },
-    exceptions: [{ date:'YYYY-MM-DD', type:'removed'|'added', days?:dayKey }],   // calendar_dates in feed window
+            buses:[24 ints] /* scheduled vehicles in service per local hour = max concurrent trips */,
+            spans:[['HH:MM','HH:MM']], dep?:[first, gap, ...] /* 2026-11-09: departures at `at`, delta-coded service-day minutes */ } },
+    exceptions: [{ date:'YYYY-MM-DD', type:'removed'|'added', days?:dayKey, hours: null | day entry (with buses + dep since 2026-11-09) }],   // calendar_dates in feed window
+    at?: stop_id,   // 2026-11-09: the reference stop of the dep lists (the stop most trips leave from)
   } } }
 ```
 ```js
@@ -300,6 +302,13 @@ upcomingChanges(service, rid, unixS, horizonDays=30): [{date, label:'Thu, Nov 26
 serviceHoursAt(service, rid, unixS): {hours, dayKey, yesterday}|null   // the service day's hours (after midnight: yesterday's while in its tail; 2026-10-11)
 isScheduledNow(service, rid, unixS): boolean|null
 scheduledUntil(service, rid, unixS): 'HH:MM'|null   // end of the window running now (may be >= 24:00; clock12 formats it)
+// 2026-11-09, Schedule by hour (section "Schedule by hour on the route page" below)
+scheduleDay(service, rid, unixS): {day, key, today, yesterday, exception?}|null   // the bars' and the list's day
+hourBuses(day): [{hour, buses}]                     // busesByHour of one day entry
+departures(day): number[]                           // dep decoded: sorted service-day minutes ([] when missing / junk)
+hourlyHeadways(deps): [{kind:'every'|'about'|'trips'|'none', from, to, min?, n?}]
+headwayLine(seg, fmt = clockMin): {text:'Every 30 min', when:'7:00 to 10:00 AM', say:'Every 30 minutes, 7:00 to 10:00 AM'}
+// core/time.js clockOfDay(min): the device's 12 / 24 hour clock for a timetable minute (no zone shift)
 ```
 
 ### Ownership for v2.1 (in addition to the table above; never edit files you do not own)
@@ -1426,3 +1435,45 @@ sb-v2-97).
   transfer, field by field.
 - **iPhone app:** keeps its interface; only the two owner changes of 2026-11-05 (yellow favorite stars; route search
   results right under the field) were made there too.
+
+## Schedule by hour on the route page (2026-11-09, owner: "Clicking on a particular line and going to the bottom should display it's schedule by hour (i.e.: Every 30 minutes between x times). This time specification should have a disclaimer that the bus schedules don't often follow this schedule. This schedule should be listed for the line below the bus count for each hour as text showing how often a bus will show.")
+
+- **Data.** `tools/build_gtfs.py` `ref_stops` picks each route's reference stop (the stop most of its trips leave from;
+  a trip's last stop never counts, ties to the earliest stop in route order) and `trip_departures` / `dep_list` add the
+  departures there to every service.json day entry and calendar change as `dep` (delta-coded service-day minutes: after
+  midnight + 24 h, frequency trips expanded, times between timepoints interpolated, duplicates dropped); the route entry
+  gets `at`. Calendar changes now also carry `buses`. service.json 11 KB to 21 KB (1.1 KB gzipped); the daily refresh
+  (pages.yml) is unchanged. data/static.js keeps `at`. Test: tools/test_truth.py
+  `build_gtfs_lists_departures_at_each_routes_reference_stop`.
+- **Rule** (`core/schedule.js hourlyHeadways`, Kit `Schedule.hourlyHeadways`, the same golden file): a gap of 90 min or
+  more ends a stretch of service ("No service, 9:54 AM to 3:41 PM" between two stretches of one day). In a stretch,
+  runs of 3 or more gaps within a minute of each other are steady: "Every N min" from the first to the last of those
+  buses (neighbouring steady runs one minute apart join: timetable rounding). Other gaps are uneven: "About every N min",
+  the average gap (to 5 min from 7.5 up, else to the minute), hour by hour with equal hours merged (a one-gap hour joins
+  its neighbour). A lone gap between two steady runs is the hand-over (no line; the next line starts at its bus) unless
+  it is within a minute of a neighbour's pace; a lone first or last bus reads "1 trip, 7:00 PM"; a stretch of two buses
+  "2 trips, 11:00 and 11:40 PM". Integer arithmetic only, so web and Swift agree to the minute.
+- **Day** (`scheduleDay`, Kit `Schedule.scheduleDay`): the current service day (after midnight a night route is still on
+  yesterday's: "Wednesday"), calendar changes applied (an extra day shows its own timetable as "today"; a cancelled day
+  that weekday's regular one: "Thursdays"), else the first weekday with service ("Mondays"). The "Scheduled buses by
+  hour" bars use the same day now; before, a holiday showed the regular weekday's bars as "today".
+- **View** (`ui/views/route.js renderHeadways`, css/route.css `.r-freq`): inside Hours & service, right after the bars
+  (shown even when the bars are not: one bus all day), so a closed route shows it first too: "Schedule by hour, today",
+  a card with one row per range (how often semibold on the left, the times right-aligned in tabular numbers, wrapping
+  under at large text; "No service" in regular weight), times in the device's 12 / 24 hour style (`core/time.js
+  clockOfDay`). Screen readers hear one sentence per row (`.v-sr` "Every 30 minutes, 7:00 to 10:00 AM", the visible
+  halves aria-hidden). The card's last row is the disclaimer (info glyph, footnote, label 2): `headwayNote` "Timetable
+  only, times at <reference stop>. Buses often don't keep to this schedule, so go by the live times when buses are
+  running." No departures known (an older cached service.json): no card. sw `sb-v2-145`.
+- **Real examples** (timetable of 2026-11-08): Red Line/Arts Block weekdays "About every 10 min, 6:30 to 11:28 AM",
+  "Every 20 min, 11:28 AM to 3:48 PM", "About every 10 min, 3:48 to 4:28 PM", "Every 10 min, 4:28 to 9:08 PM" (at
+  Garfield Red Line Station (WB)); 53rd Street Express "Every 30 min, 7:00 to 8:00 AM", "Every 15 min, 8:00 to 10:30 AM",
+  "Every 30 min, 10:30 AM to 6:00 PM", "1 trip, 7:00 PM"; Downtown Campus Connector "Every 25 min, 6:30 AM to 9:55 PM";
+  North "Every 15 min, 4:00 to 11:00 PM", "Every 30 min, 11:00 PM to 4:00 AM"; Midway Metra "About every 10 min, 5:41 to
+  9:54 AM", "No service, 9:54 AM to 3:41 PM", "Every 10 min, 3:41 to 6:51 PM".
+- **Tests:** web/tests/route-schedule.js (rule, words, clock, scheduleDay, real data, the golden file),
+  web/tests/route-hourly.js (the section: order, closed route, spoken rows, disclaimer, calendar changes, escaping,
+  320 px at 200% text), web/tests/data-static.js (`at` kept); golden web/tests/fixtures/headways_golden.json (made by
+  web/tests/headways-golden.html; an identical copy in the Kit's test Fixtures); Kit HeadwayTests.
+- **iPhone:** RouteDetailView `RouteScheduleView.headways` + `HeadwayRow` (times under the words at accessibility sizes,
+  one VoiceOver element per row), Kit `RouteText.headways` / `headwayNote` / `scheduleWhen`, `TimeFmt.clockOfDay`.
