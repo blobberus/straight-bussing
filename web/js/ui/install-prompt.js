@@ -46,6 +46,8 @@ export const SHOW_AFTER_MS = 4000;
 export const MAX_WAIT_MS = 12000;
 /** A due popup that has to wait tries again this often. */
 export const RETRY_MS = 5000;
+/** The timings in use (tests shorten them in the app's own module instance, like tests/e2e-expose.js does for views). */
+export const installTimings = { showAfterMs: SHOW_AFTER_MS, maxWaitMs: MAX_WAIT_MS, retryMs: RETRY_MS };
 export const CLOSE_LABEL = "Close";
 export const NEVER_LABEL = "Don't show again";
 export const OTHERS_LABEL = "Other phones and browsers";
@@ -123,7 +125,7 @@ export const isInstallPromptOpen = () => !!current?.isOpen();
  * @returns {{open(o?:object):boolean, close(how?:string):void, isOpen():boolean, platform:string, stop():void}|null}
  */
 export function startInstallPrompt({ store, ctx, install = { event: null, installed: false }, env, now = () => Date.now(),
-  showAfterMs = SHOW_AFTER_MS, maxWaitMs = MAX_WAIT_MS, retryMs = RETRY_MS, host } = {}) {
+  showAfterMs = installTimings.showAfterMs, maxWaitMs = installTimings.maxWaitMs, retryMs = installTimings.retryMs, host } = {}) {
   current?.stop();
   const E = env || installEnv();
   if (isInstalled(E) || install.installed) return null;
