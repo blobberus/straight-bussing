@@ -43,3 +43,5 @@ jobs:
           python tools/test_replay.py
           python tools/test_monitor.py
           python tools/test_dst.py
+      - name: Timetable for Directions' Leave at (tools/build_gtfs.py build_timetable -> web/data/timetable.json)
+        run: python tools/test_timetable.py

@@ -346,6 +346,103 @@ def build_service(z, trips, sched, freqs, today=None, route_stops=None):
             "feed": {"start": w0.isoformat(), "end": w1.isoformat()}, "routes": out}
 
 
+def feed_calendar(z, today=None):
+    """The feed window and its calendars: (w0, w1, {service_id: {"days": "1111100" Mon..Sun, "start", "end"}},
+    {date: {service_id: 1 added | 2 removed}}). Same rules as build_service: calendars not in effect during the feed
+    window are left out, calendar_dates only inside it."""
+    info = (rows(z, "feed_info.txt") or [{}])[0]
+    today = today or datetime.now(timezone.utc).date()
+    w0 = ymd(info.get("feed_start_date", "")) or today
+    w1 = ymd(info.get("feed_end_date", "")) or (w0 + timedelta(days=60))
+    cal = {}
+    for c in rows(z, "calendar.txt"):
+        a, b = ymd(c.get("start_date", "")), ymd(c.get("end_date", ""))
+        if a and b and (b < w0 or a > w1):
+            continue
+        cal[c["service_id"]] = {"days": "".join("1" if c.get(col, "0").strip() == "1" else "0" for col in CAL_COLS),
+                                "start": a.isoformat() if a else None, "end": b.isoformat() if b else None}
+    dates = defaultdict(dict)
+    for r in rows(z, "calendar_dates.txt"):
+        d = ymd(r.get("date", ""))
+        if d and w0 <= d <= w1 and r.get("exception_type", "").strip() in ("1", "2"):
+            dates[d.isoformat()][r["service_id"]] = int(r["exception_type"])
+    return w0, w1, cal, dict(sorted(dates.items()))
+
+
+def build_timetable(z, trips, sched, freqs, today=None):
+    """Scheduled times at every stop, for planning a trip at a chosen start time (Directions' "Leave at", owner
+    2026-11-09). Loaded by the app only when a rider picks a start time (web data/timetable.js, iOS Kit Timetable).
+
+    {v:1, generated, feed:{start, end},
+     services: {service_id: {days:"1111100" (Mon..Sun), start:"YYYY-MM-DD"|null, end}},
+     dates: {"YYYY-MM-DD": {service_id: 1 added | 2 removed}},     calendar_dates inside the feed window
+     routes: {rid: [{stops:[stop ids in trip order], t:[seconds after the trip's start at each stop],
+                     starts:{service_id: [trip start, seconds after the service day's midnight]}}]}}
+
+    One entry per stop pattern + timing; t comes from the timepoints, the stops between them interpolated by shape
+    distance (interpolate). Arrival = departure (the feed has no dwell). Frequency trips are expanded from their
+    template (start_time <= start < end_time, every headway_secs). Night routes write their after-midnight trips as
+    00:xx of the same service day (service_spans): a start before the service day's first window (the first start
+    after its longest gap, the hours service.json lists) is moved past 24:00, so 12:10 AM after Friday's service is
+    Friday 24:10, as core/schedule.js reads the hours."""
+    w0, w1, cal, dates = feed_calendar(z, today)
+    by_trip = defaultdict(list)
+    for f in freqs:
+        by_trip[f["trip_id"]].append(f)
+    pats = defaultdict(dict)               # rid -> (stops, t) -> {sid: set(starts)}
+    spans_iv = defaultdict(list)           # (rid, sid) -> [(start, end)] for the service day's first window
+    for t in trips:
+        sid = t.get("service_id", "")
+        if sid not in cal:
+            continue
+        seq = interpolate(sorted(sched.get(t["trip_id"], ()), key=lambda x: x[0]))
+        if not seq:
+            continue
+        t0 = seq[0][2]
+        offs = tuple(x[2] - t0 for x in seq)
+        if any(b < a for a, b in zip(offs, offs[1:])):
+            continue                       # times running backwards: not a usable trip
+        stops = tuple(x[1] for x in seq)
+        starts = [t0]
+        fs = by_trip.get(t["trip_id"])
+        if fs:
+            starts = []
+            for f in fs:
+                a, b = hms(f.get("start_time")), hms(f.get("end_time"))
+                try:
+                    hw = int(f.get("headway_secs") or 0)
+                except ValueError:
+                    hw = 0
+                if a is None or b is None or hw <= 0:
+                    continue
+                s = a
+                while s < b:
+                    starts.append(s)
+                    s += hw
+        if not starts:
+            continue
+        pats[t["route_id"]].setdefault((stops, offs), defaultdict(set))[sid].update(starts)
+        spans_iv[(t["route_id"], sid)] += [(s, s + offs[-1]) for s in starts]
+    def first_window(iv):                  # seconds of the service day's first window start
+        h, m = service_spans(iv)[0][0].split(":")
+        return int(h) * 3600 + int(m) * 60
+    day0 = {k: first_window(v) for k, v in spans_iv.items()}
+    out = {}
+    for rid in sorted(pats):
+        lst = []
+        for (stops, offs), by_sid in pats[rid].items():
+            st = {}
+            for sid, v in sorted(by_sid.items()):
+                d0 = day0.get((rid, sid), 0)
+                st[sid] = sorted({s + 86400 if s < 86400 and s < d0 else s for s in v})
+            lst.append({"stops": list(stops), "t": list(offs), "starts": st})
+        lst.sort(key=lambda p: (-sum(len(v) for v in p["starts"].values()), p["stops"]))   # most trips first
+        out[rid] = lst
+    return {"v": 1, "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "feed": {"start": w0.isoformat(), "end": w1.isoformat()},
+            "services": {sid: cal[sid] for sid in sorted(cal)}, "dates": dates, "routes": out}
+
+
 def route_variants(trips, stimes, route_stops, min_trips=3):
     """Per route, the other stop patterns (>= min_trips trips) that serve stops route_stops.json lacks: Midway
     Metra's afternoon loop (from 3:30 PM) runs through 57th St. & Metra (NB), which its morning pattern (the one
@@ -485,6 +582,7 @@ def main(argv=None):
     out = {"routes.json": routes, "stops.json": stops, "shapes.json": dict(shapes), "route_stops.json": route_stops,
            "segments.json": {"v": 1, "routes": build_segments(trips, route_stops, sched, rows(z, "frequencies.txt"))},
            "service.json": build_service(z, trips, sched, rows(z, "frequencies.txt"), route_stops=route_stops),
+           "timetable.json": build_timetable(z, trips, sched, rows(z, "frequencies.txt")),   # Directions' "Leave at"
            "meta.json": {"generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "source": URL}}
     for name, obj in out.items():
         dump(name, obj)

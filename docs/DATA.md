@@ -181,6 +181,19 @@ day's stop lists from it). **Days before 2026-11-01:** the timetable live on day
 `gtfs-<D - 1>.zip` (downloaded during D's morning); for Oct 25, 2026 use `gtfs-2026-10-24.zip`, not
 `gtfs-2026-10-25.zip`.
 
+## The app's timetable: `web/data/timetable.json` (added 2026-11-09)
+Not collected data: the published timetable as the app uses it when a rider picks a trip start time in Directions
+("Leave at", owner 2026-11-09). `tools/build_gtfs.py build_timetable` writes it with the other web/data files (every
+Pages deploy and the daily refresh rebuild it from Passio's zip; the iPhone app's daily schedule check downloads it
+with the set). About 11 kB; the website fetches it only when a start time is chosen (precached by the service worker).
+`services` = calendar.txt rows in effect during the feed (`days` Mon..Sun as "1111100", `start`, `end`), `dates` =
+calendar_dates inside the feed window (1 added, 2 removed), `routes` = per route the stop patterns: `stops` (trip
+order), `t` (seconds after the trip's start at each stop: timepoints, the stops between them interpolated by shape
+distance as in segments.json) and `starts` per service id (seconds after the service day's midnight; frequency trips
+expanded; a night route's after-midnight trips moved past 24:00, the same reading as service.json's hours). It is the
+timetable as published, with its oddities (Oct-Nov 2026: some morning Midway Metra loops grow 10 min longer every
+trip); the planner takes, among the next departures, the one that gets there first.
+
 ## Forecast snapshots for training and analysis: `eta-<day>.csv.gz` (added 2026-10-12)
 `tools/build_eta_dataset.py`. **One row = (query minute t, bus, one of that bus's arrivals in (t, t + 45 min])**, plus
 rows for a visit Passio showed at t that no arrival matches (`label_status` no_arrival: a bus going out of service, a
