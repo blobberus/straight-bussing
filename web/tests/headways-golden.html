@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>headways golden (running)</title></head>
+<body>
+<!-- Not a test page (the suite runs *.test.html): opened once in headless Edge to write fixtures/headways_golden.json, the
+     answers of web/js/core/schedule.js departures / hourlyHeadways / headwayLine (12-hour clockMin) on hand-made cases
+     and on every distinct day of data/service.json. The web test route-schedule.js and the iOS Kit HeadwayTests (a copy
+     in ios/StraightBussingKit/Tests/StraightBussingKitTests/Fixtures) check against it. To refresh: open this page via
+     python -m http.server in web/, copy the JSON in the page to both files. -->
+<pre id="result">running...</pre>
+<script type="module">
+import { departures, hourlyHeadways, headwayLine } from "../js/core/schedule.js";
+const every = (from, gap, n) => Array.from({ length: n }, (_, i) => from + gap * i);
+const red = [390, 397];
+for (let t = 413; t <= 657; t += 20) red.push(t, t + 4);
+const hand = [
+  ["constant every 30", every(420, 30, 7)],
+  ["hourly is not a break", every(1080, 60, 7)],
+  ["15 then 10 min to 12:30 AM", [...every(600, 15, 20), ...every(900, 10, 58)]],
+  ["53rd pattern with a lone last trip", departures({ dep: [420, 30, 30, ...Array(10).fill(15), ...Array(15).fill(30), 60] })],
+  ["lone odd gap between steady runs", [...every(420, 15, 5), 502, ...every(532, 30, 4)]],
+  ["lone gap within a minute joins", [...every(420, 10, 6), 481, ...every(511, 30, 4)]],
+  ["timetable rounding stays one run", [420, 429, 439, 448, 458, 468, 479, 489, 500]],
+  ["bunched pairs about every 10", red],
+  ["17.3 min average", [600, 612, 632, 652]],
+  ["hour by hour", [600, 612, 632, 652, 664, 684, 704]],
+  ["4.5 min average", [600, 603, 609, 612, 618, 621, 627]],
+  ["3 min average", [600, 602, 606, 608, 612, 614, 618]],
+  ["slower second hour", [600, 604, 620, 624, 640, 644, 660, 690, 722, 750, 782]],
+  ["one trip", [1380]],
+  ["two trips", [1380, 1420]],
+  ["two trips across noon", [690, 760]],
+  ["three even", [1380, 1410, 1440]],
+  ["three uneven", [1380, 1420, 1445]],
+  ["break between stretches", [...every(341, 10, 26), ...every(941, 10, 19)]],
+  ["89 min is one stretch", [600, 689]],
+  ["90 min is a break", [600, 690]],
+  ["a lone first bus", [360, ...every(397, 20, 6)]],
+  ["after midnight", every(1410, 30, 4)],
+  ["duplicates count once", [600, 610, 610, 620, 630]],
+  ["junk skipped", [450, 420, 480, 480, 510, -3]],
+  ["empty", []],
+];
+const cases = hand.map(([name, deps]) => ({ name, deps }));
+const svc = await (await fetch("../data/service.json", { cache: "no-store" })).json();
+const seen = new Set();
+for (const [rid, r] of Object.entries(svc.routes)) {
+  for (const [k, day] of Object.entries(r.days)) {
+    if (!day || !day.dep || seen.has(JSON.stringify(day.dep))) continue;
+    seen.add(JSON.stringify(day.dep));
+    cases.push({ name: `service.json ${rid} ${k}`, dep: day.dep, deps: departures(day) });
+  }
+}
+for (const c of cases) {
+  c.segs = hourlyHeadways(c.deps);
+  c.lines = c.segs.map((s) => headwayLine(s));
+}
+const out = { note: "web/js/core/schedule.js hourlyHeadways + headwayLine (12-hour clock) answers; made by web/tests/headways-golden.html", cases };
+document.getElementById("result").textContent = JSON.stringify(out);
+document.title = "TESTS pass=1 fail=0";
+</script>
+</body>
+</html>

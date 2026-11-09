@@ -261,3 +261,15 @@ test("schedule: real data/service.json departures make sense (dep + at)", async 
   }
   ok(n > 0, "some days carry departures");
 });
+
+// The shared golden file (web/tests/headways-golden.html wrote it; the iOS Kit HeadwayTests read a copy): the same answers
+// on hand-made cases and on every distinct day of data/service.json when it was made
+test("headways: the shared golden file (iOS Kit parity)", async () => {
+  const fx = await (await fetch("fixtures/headways_golden.json", { cache: "no-store" })).json();
+  ok(fx.cases.length > 20, "cases");
+  for (const c of fx.cases) {
+    if (c.dep) eq(departures({ dep: c.dep }), c.deps, c.name + " departures");
+    eq(hourlyHeadways(c.deps), c.segs, c.name);
+    eq(c.segs.map((s) => headwayLine(s)), c.lines, c.name + " words");
+  }
+});
