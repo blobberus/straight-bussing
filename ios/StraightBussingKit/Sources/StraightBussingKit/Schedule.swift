@@ -346,8 +346,8 @@ public enum Schedule {
         2 * t >= 35 * c ? 5 * (2 * t + 5 * c).floorDiv(10 * c) : Swift.max(1, roundDiv(t, c))
     }
 
-    private struct Run { var a: Int; var b: Int; var steady: Bool; var drop = false }
-    private struct HourGroup { var h: Int; var a: Int; var b: Int }
+    private struct GapRun { var a: Int; var b: Int; var steady: Bool; var drop = false }
+    private struct HourSlice { var h: Int; var a: Int; var b: Int }
 
     /// One stretch of service (no gap of `headwayBreakMin` or more) -> ranges.
     static func stretchHeadways(_ d: [Int]) -> [Headway] {
@@ -358,18 +358,18 @@ public enum Schedule {
         for i in 1..<n { g.append(d[i] - d[i - 1]) }
         // runs of gaps within a minute of each other (greedy): 3 or more = steady, shorter = loose; loose neighbours join,
         // and so do steady neighbours one minute apart (9 to 10 then 10 to 11: timetable rounding)
-        var runs: [Run] = []
+        var runs: [GapRun] = []
         var i = 0
         while i < g.count {
             var j = i + 1
             while j < g.count && spread(g, i, j + 1) <= 1 { j += 1 }
             let steady = j - i >= steadyGaps
             if let last = runs.last, last.steady == steady, !steady || spread(g, last.a, j) <= 2 { runs[runs.count - 1].b = j }
-            else { runs.append(Run(a: i, b: j, steady: steady)) }
+            else { runs.append(GapRun(a: i, b: j, steady: steady)) }
             i = j
         }
         // a lone loose gap: part of a steady neighbour within a minute of its headway (the one before first), else a transition
-        func head(_ q: Run) -> Int { roundDiv(total(g, q.a, q.b), q.b - q.a) }
+        func head(_ q: GapRun) -> Int { roundDiv(total(g, q.a, q.b), q.b - q.a) }
         var k = 0
         while k < runs.count {
             let r = runs[k]
@@ -384,10 +384,10 @@ public enum Schedule {
         for r in runs where !r.drop {
             if r.steady || spread(g, r.a, r.b) <= 1 { out.append(Piece(h: Headway(kind: .every, from: d[r.a], to: d[r.b], min: head(r)), g: r.b - r.a)); continue }
             // uneven: "About every N min" hour by hour (a one-gap hour joins the hour before, else after), equal neighbours merged
-            var hrs: [HourGroup] = []
+            var hrs: [HourSlice] = []
             for x in r.a..<r.b {
                 let h = d[x].floorDiv(60)
-                if let last = hrs.last, last.h == h { hrs[hrs.count - 1].b = x + 1 } else { hrs.append(HourGroup(h: h, a: x, b: x + 1)) }
+                if let last = hrs.last, last.h == h { hrs[hrs.count - 1].b = x + 1 } else { hrs.append(HourSlice(h: h, a: x, b: x + 1)) }
             }
             var m = 0
             while m < hrs.count && hrs.count > 1 {

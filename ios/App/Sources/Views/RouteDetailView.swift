@@ -317,7 +317,7 @@ struct RouteScheduleView: View, Equatable {
         if let h = RouteText.headways(svc, rid: rid, now: t, stops: model.staticData.stops) {
             SectionTitle(text: "Schedule by hour, \(h.when)")
             Card {
-                ForEach(Array(h.lines.enumerated()), id: \.offset) { _, line in HeadwayRow(line: line) }
+                ForEach(Array(h.lines.enumerated()), id: \.offset) { item in HeadwayRow(line: item.element) }
                 Divider()
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Image(systemName: "info.circle").font(.footnote).foregroundStyle(Palette.text2).accessibilityHidden(true)
