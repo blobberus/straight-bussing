@@ -39,6 +39,26 @@ export function clock(unixS) {
   }
 }
 
+let dayClockFmt = null;
+
+/**
+ * A timetable time (minutes into a service day, wraps after midnight: 1470 = 12:30 AM) as clock text in the device's
+ * 12 / 24 hour style, like clock(): '7:00 AM' or '07:00'. No date or zone (it is already Chicago wall time), so no
+ * daylight-saving shift. The route page's "Schedule by hour" (core/schedule.js headwayLine).
+ * @param {number} min
+ * @returns {string}
+ */
+export function clockOfDay(min) {
+  const t = ((Math.round(Number(min) || 0) % 1440) + 1440) % 1440;
+  try {
+    if (!dayClockFmt) dayClockFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+    return dayClockFmt.format(new Date(Date.UTC(2001, 0, 1, 0, t)));
+  } catch (e) {
+    const h = Math.floor(t / 60);
+    return ((h + 11) % 12 + 1) + ":" + String(t % 60).padStart(2, "0") + (h < 12 ? " AM" : " PM");
+  }
+}
+
 /**
  * Chicago calendar date of a unix time: 'Oct 12', or 'Oct 12, 2026' with the year. '' for invalid input.
  * @param {number} unixS

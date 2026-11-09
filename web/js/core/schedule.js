@@ -5,7 +5,8 @@
  * never throws. All dates/times are America/Chicago. This is SCHEDULE data: live service may differ.
  *
  * service.json day entry: {first:'HH:MM', last:'HH:MM' (may be >= 24:00, after midnight), trips,
- * buses:[24] scheduled vehicles per local hour, spans?:[['HH:MM','HH:MM']] service windows}.
+ * buses:[24] scheduled vehicles per local hour, spans?:[['HH:MM','HH:MM']] service windows,
+ * dep?:[first, gap, ...] departures at the route's reference stop (route entry "at"), delta-coded service-day minutes}.
  */
 
 export const DAY_KEYS = Object.freeze(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
@@ -181,7 +182,16 @@ export function weekSummary(service, rid) {
  * @returns {{hour:number, buses:number}[]} hours with service only
  */
 export function busesByHour(service, rid, key) {
-  const r = routeService(service, rid), day = r && r.days[key];
+  const r = routeService(service, rid);
+  return hourBuses(r && r.days[key]);
+}
+
+/**
+ * Scheduled buses per local hour of one day entry (a weekday's or a calendar change's), in service-day order.
+ * @param {object|null} day service.json day entry
+ * @returns {{hour:number, buses:number}[]} hours with service only
+ */
+export function hourBuses(day) {
   if (!day || !Array.isArray(day.buses)) return [];
   const start = Math.floor((mins(spansOf(day)[0]?.[0]) || 0) / 60) % 24;
   const out = [];
@@ -283,4 +293,178 @@ export function groupHours(list) {
 export function hourLabel(h) {
   h = ((h % 24) + 24) % 24;
   return h === 0 ? "12 AM" : h === 12 ? "12 PM" : (h % 12) + (h < 12 ? " AM" : " PM");
+}
+
+/**
+ * The day the route page's "Scheduled buses by hour" and "Schedule by hour" show: the current service day (after
+ * midnight a night route is still on yesterday's; calendar changes applied, so a holiday or extra service shows its own
+ * timetable), else that weekday's regular timetable (a calendar change with no service), else the first weekday with
+ * service. Same rule as the iOS Kit Schedule.scheduleDay.
+ * @param {object} service
+ * @param {string} rid
+ * @param {number} unixS
+ * @returns {{day:object, key:string, today:boolean, yesterday:boolean, exception?:'removed'|'added'}|null}
+ *   today: the service day of unixS (else a weekday's regular timetable); null = no service on any day or no data
+ */
+export function scheduleDay(service, rid, unixS) {
+  const r = routeService(service, rid);
+  if (!r) return null;
+  const p = localParts(unixS), today = isoDate(p), prev = isoDate(p, -1);
+  const has = (day, m) => spansOf(day).some(([a, b]) => m >= mins(a) && m < mins(b));
+  const tail = !has(dayFor(r, today).day, p.min) && has(dayFor(r, prev).day, p.min + 1440);
+  const iso = tail ? prev : today, key = keyOfIso(iso), { day, exception } = dayFor(r, iso);
+  if (spansOf(day).length) return { day, key, today: true, yesterday: tail, ...(exception ? { exception } : {}) };
+  for (const k of [key, ...DAY_KEYS]) if (spansOf(r.days[k]).length) return { day: r.days[k], key: k, today: false, yesterday: false };
+  return null;
+}
+
+/* Schedule by hour (owner 2026-11-09: "Every 30 minutes between x times"): how often the timetable sends a bus, from a
+   day's departures at the route's reference stop. Timetable only: buses often don't keep to it (the route page says so). */
+
+/** A gap this long (minutes) or longer between two departures is a break in service ("No service" between). */
+export const HEADWAY_BREAK_MIN = 90;
+/** Gaps (all within a minute of each other) that make a steady run: "Every N min". */
+const STEADY_GAPS = 3;
+
+/**
+ * Departures of a day entry: service.json "dep" (delta coded) -> sorted service-day minutes (>= 1440 after midnight).
+ * @param {object|null} day
+ * @returns {number[]} [] when missing or malformed
+ */
+export function departures(day) {
+  const d = day && Array.isArray(day.dep) ? day.dep : [], out = [];
+  let t = 0;
+  for (const x of d) {
+    if (!Number.isInteger(x) || x < 0 || x > 2880) return [];
+    out.push((t += x));
+  }
+  return out;
+}
+
+const spread = (g, a, b) => { let lo = Infinity, hi = -Infinity; for (let i = a; i < b; i++) { lo = Math.min(lo, g[i]); hi = Math.max(hi, g[i]); } return hi - lo; };
+const total = (g, a, b) => { let s = 0; for (let i = a; i < b; i++) s += g[i]; return s; };
+/** t / c in whole minutes, half up (integers only, so every platform agrees). */
+const roundDiv = (t, c) => Math.floor((2 * t + c) / (2 * c));
+/** An uneven stretch's average gap: to 5 minutes from 7.5 up, else to the minute (at least 1). */
+const aboutMin = (t, c) => (2 * t >= 15 * c ? 5 * Math.floor((2 * t + 5 * c) / (10 * c)) : Math.max(1, roundDiv(t, c)));
+
+/** One stretch of service (no gap of HEADWAY_BREAK_MIN or more) -> segments. */
+function stretchHeadways(d) {
+  const n = d.length;
+  if (n === 1) return [{ kind: "trips", n: 1, from: d[0], to: d[0] }];
+  if (n === 2) return [{ kind: "trips", n: 2, from: d[0], to: d[1] }];
+  const g = [];
+  for (let i = 1; i < n; i++) g.push(d[i] - d[i - 1]);
+  // runs of gaps within a minute of each other (greedy): 3 or more = steady, shorter = loose; loose neighbours join,
+  // and so do steady neighbours one minute apart (9 to 10 then 10 to 11: timetable rounding)
+  const runs = [];
+  for (let i = 0; i < g.length;) {
+    let j = i + 1;
+    while (j < g.length && spread(g, i, j + 1) <= 1) j++;
+    const steady = j - i >= STEADY_GAPS, last = runs[runs.length - 1];
+    if (last && last.steady === steady && (!steady || spread(g, last.a, j) <= 2)) last.b = j;
+    else runs.push({ a: i, b: j, steady });
+    i = j;
+  }
+  // a lone loose gap: part of a steady neighbour within a minute of its headway (the one before first), else a transition
+  const head = (q) => roundDiv(total(g, q.a, q.b), q.b - q.a);
+  for (let k = 0; k < runs.length; k++) {
+    const r = runs[k];
+    if (r.steady || r.b - r.a !== 1) continue;
+    const prev = runs[k - 1], next = runs[k + 1];
+    if (prev && prev.steady && Math.abs(g[r.a] - head(prev)) <= 1) { prev.b = r.b; runs.splice(k--, 1); }
+    else if (next && next.steady && Math.abs(g[r.a] - head(next)) <= 1) { next.a = r.a; runs.splice(k--, 1); }
+    else r.drop = true;
+  }
+  const out = [];
+  if (runs[0].drop) out.push({ kind: "trips", n: 1, from: d[0], to: d[0] });   // a lone first bus before a steady run
+  for (const r of runs) {
+    if (r.drop) continue;
+    if (r.steady || spread(g, r.a, r.b) <= 1) { out.push({ kind: "every", min: head(r), from: d[r.a], to: d[r.b] }); continue; }
+    // uneven: "About every N min" hour by hour (a one-gap hour joins the hour before, else after), equal neighbours merged
+    const hrs = [];
+    for (let i = r.a; i < r.b; i++) {
+      const h = Math.floor(d[i] / 60), last = hrs[hrs.length - 1];
+      if (last && last.h === h) last.b = i + 1;
+      else hrs.push({ h, a: i, b: i + 1 });
+    }
+    for (let k = 0; k < hrs.length && hrs.length > 1; k++) {
+      if (hrs[k].b - hrs[k].a > 1) continue;
+      if (k > 0) hrs[k - 1].b = hrs[k].b; else hrs[k + 1].a = hrs[k].a;
+      hrs.splice(k--, 1);
+    }
+    for (const x of hrs) {
+      const min = aboutMin(total(g, x.a, x.b), x.b - x.a), last = out[out.length - 1];
+      if (last && last.kind === "about" && last.min === min && last.to === d[x.a]) last.to = d[x.b];
+      else out.push({ kind: "about", min, from: d[x.a], to: d[x.b] });
+    }
+  }
+  if (runs.length > 1 && runs[runs.length - 1].drop) out.push({ kind: "trips", n: 1, from: d[n - 1], to: d[n - 1] });   // a lone last bus
+  return out;
+}
+
+/**
+ * How often the timetable sends a bus over one service day, as ranges (owner 2026-11-09). Steady stretches (4 or more
+ * buses, gaps within a minute) read "Every N min" from the first to the last of those buses; uneven ones "About every
+ * N min" (the average gap, to 5 minutes from 7.5 up), hour by hour with equal hours merged; a lone bus "1 trip" (two
+ * alone: "2 trips"); a gap of HEADWAY_BREAK_MIN or more is "No service" between two stretches. Same as the iOS Kit
+ * Schedule.hourlyHeadways (both test the shared golden file web/tests/fixtures/headways_golden.json).
+ * @param {number[]} deps departures, service-day minutes (departures(day)); duplicates and junk ignored
+ * @returns {{kind:'every'|'about'|'trips'|'none', from:number, to:number, min?:number, n?:number}[]}
+ *   from / to service-day minutes (headwayLine words them); min = minutes between buses; n = trips
+ */
+export function hourlyHeadways(deps) {
+  const d = [...new Set((Array.isArray(deps) ? deps : []).filter((x) => Number.isInteger(x) && x >= 0))].sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i < d.length;) {
+    let j = i + 1;
+    while (j < d.length && d[j] - d[j - 1] < HEADWAY_BREAK_MIN) j++;
+    if (i > 0) out.push({ kind: "none", from: d[i - 1], to: d[i] });
+    out.push(...stretchHeadways(d.slice(i, j)));
+    i = j;
+  }
+  return out;
+}
+
+/**
+ * Minute of a day as a 12-hour clock: 1470 -> '12:30 AM' (headwayLine's default; the app passes core/time.js clockOfDay).
+ * @param {number} min service-day minutes, may be >= 1440 (after midnight)
+ * @returns {string}
+ */
+export function clockMin(min) {
+  const t = ((Math.round(min) % 1440) + 1440) % 1440, h = Math.floor(t / 60);
+  return ((h + 11) % 12 + 1) + ":" + String(t % 60).padStart(2, "0") + (h < 12 ? " AM" : " PM");
+}
+
+const PERIOD = /[   ](AM|PM)$/;
+/** '7:00 to 10:00 AM' / '10:00 AM to 3:00 PM': the first AM / PM is dropped when both are the same. */
+function clockPair(a, b, fmt, join) {
+  const x = fmt(a), y = fmt(b), px = PERIOD.exec(x), py = PERIOD.exec(y);
+  return (px && py && px[1] === py[1] ? x.slice(0, px.index) : x) + join + y;
+}
+
+/**
+ * Words for one hourlyHeadways segment: text "Every 30 min" | "About every 20 min" | "1 trip" | "2 trips" | "No service";
+ * when "7:00 to 10:00 AM" | "11:00 PM" | "6:00 and 7:00 PM"; say = what a screen reader hears ("Every 30 minutes, 7:00
+ * to 10:00 AM"). Same words as the iOS Kit Schedule.headwayLine.
+ * @param {{kind:string, from:number, to:number, min?:number, n?:number}} seg
+ * @param {(min:number) => string} [fmt] service-day minutes -> clock text (default clockMin, 12-hour)
+ * @returns {{text:string, when:string, say:string}}
+ */
+export function headwayLine(seg, fmt = clockMin) {
+  const minutes = (m) => `${m} minute${m === 1 ? "" : "s"}`;
+  let text, say, when;
+  if (seg.kind === "every" || seg.kind === "about") {
+    const lead = seg.kind === "about" ? "About every" : "Every";
+    text = `${lead} ${seg.min} min`;
+    say = `${lead} ${minutes(seg.min)}`;
+    when = clockPair(seg.from, seg.to, fmt, " to ");
+  } else if (seg.kind === "trips") {
+    text = say = seg.n === 1 ? "1 trip" : `${seg.n} trips`;
+    when = seg.n === 1 ? fmt(seg.from) : clockPair(seg.from, seg.to, fmt, " and ");
+  } else {
+    text = say = "No service";
+    when = clockPair(seg.from, seg.to, fmt, " to ");
+  }
+  return { text, when, say: `${say}, ${when}` };
 }
