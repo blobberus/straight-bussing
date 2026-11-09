@@ -12,6 +12,9 @@ import {
   FB_THANKS, FB_SILENCED, FEEDBACK_BTN_OFF_KEY, buttonShown, pingBlocker, nextPingIn, panelHTML, startFeedbackButton,
   feedbackButton, testOff, crowds, CROWD_GAP,
 } from "../js/ui/feedback-button.js";
+import { A2HS_OFF_KEY } from "../js/ui/install-prompt.js";
+// test seam: the Add to Home Screen card (ui/install-prompt.js) never shows by itself in these flows (install.test.html covers it)
+try { sessionStorage.setItem(A2HS_OFF_KEY, "1"); } catch (e) { /* blocked storage */ }
 
 test("feedback button: steps aside when it would cover or touch the lower-right group (crowds, 8 pt gap)", () => {
   const box = (left, top, w, h) => ({ left, top, right: left + w, bottom: top + h, width: w, height: h });

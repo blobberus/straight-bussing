@@ -16,8 +16,9 @@
  *   on the map, so at most 6 surfaces blur (12.1). Hidden at the full detent (the expanded sheet starts under Row B).
  * - Ping: two soft ring pulses on the badge (PING_MS), first after the app has been open PING_FIRST_MS, then every
  *   PING_EVERY_MS, at most PING_MAX per visit (page load). A ping that is due waits (PING_RETRY_MS) while a trip is in
- *   progress, the sheet is expanded, the Settings-style overlay or any dialog is open, a text field has focus or the
- *   page is hidden (pingBlocker). Reduced motion: no movement at all, only the static badge.
+ *   progress, the sheet is expanded, the Settings-style overlay or any dialog is open, a text field has focus, the
+ *   page is hidden or the Add to Home Screen card is on screen (pingBlocker; never two prompts at once, and that card
+ *   in turn waits while a ping runs). Reduced motion: no movement at all, only the static badge.
  * - Tap: a panel in the Settings overlay's shell (ui/settings-overlay.js kind "feedback": same head with Done, card,
  *   scrim; Back, Escape, Done and a scrim tap close it): the feedback card (FEEDBACK_LEAD, FEEDBACK_BODY), Send
  *   feedback (a real link to the form in a new tab), a note that the button then disappears, and under it the quiet
@@ -92,8 +93,8 @@ export function crowds(fb, group, gap = CROWD_GAP) {
 
 /**
  * Why a due ping has to wait ("" = it may run now). Pure.
- * @param {{shown?:boolean, crowded?:boolean, pageHidden?:boolean, trip?:boolean, detent?:string|null, overlay?:boolean, dialog?:boolean, typing?:boolean}} s
- *   crowded: the circle stepped aside for the lower-right group (crowds)
+ * @param {{shown?:boolean, crowded?:boolean, pageHidden?:boolean, trip?:boolean, detent?:string|null, overlay?:boolean, dialog?:boolean, typing?:boolean, installCard?:boolean}} s
+ *   crowded: the circle stepped aside for the lower-right group (crowds); installCard: the Add to Home Screen card is open
  * @returns {string}
  */
 export function pingBlocker(s = {}) {
@@ -105,6 +106,7 @@ export function pingBlocker(s = {}) {
   if (s.overlay) return "menu open";
   if (s.dialog) return "dialog open";
   if (s.typing) return "typing";
+  if (s.installCard) return "install card open";
   return "";
 }
 
@@ -184,6 +186,7 @@ export function startFeedbackButton({ store, ctx, button, schedule, now = () => 
       shown, crowded, pageHidden: document.hidden, trip: !!(s.journey && s.journey.kind === "plan"),
       detent: document.getElementById("sheet")?.dataset.detent || null, overlay: isSettingsOpen(),
       dialog: !!document.querySelector("dialog[open]") || !!(dlg && !dlg.hidden), typing: isTyping(),
+      installCard: !!document.querySelector('#a2hs[data-state="open"]'),   // ui/install-prompt.js
     });
   };
   const plan = (ms) => { clearTimeout(timer); timer = ms == null || stopped || !shown ? 0 : setTimeout(tick, ms); };

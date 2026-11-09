@@ -29,7 +29,7 @@ import { initFrame, initTextSize, initGlassLite } from "./ui/frame.js";
 import { isSettingsOpen, closeSettingsOverlay } from "./ui/settings-overlay.js";
 import { startTripMap } from "./ui/tripmap.js";
 import { createCompass, mayAskCompass } from "./ui/compass.js";
-import { rememberInstall } from "./core/install.js";
+import { rememberInstall, installedNow } from "./core/install.js";
 
 /** Every view module; each calls registerView() at import time ("timepick" only registers its actions: Lines by Time is an overlay). */
 export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes", "settings", "timepick"]);
@@ -557,6 +557,9 @@ async function boot() {
   // the feedback circle under Settings, until the rider gives feedback or silences it (owner 2026-11-02; glass spec Q7,
   // owner 2026-11-04); the only feedback prompt since the beta welcome popup was removed (owner 2026-11-04)
   import("./ui/feedback-button.js").then((m) => m.startFeedbackButton({ store, ctx })).catch((e) => console.warn("feedback button", e));
+  // Add to Home Screen (owner 2026-11-07/09): only outside the installed app, never in demo mode; it shows by itself only
+  // after the live feed first answered (the next bus comes first) and waits for trips, menus and the feedback ping
+  if (!DEMO && !installedNow()) import("./ui/install-prompt.js").then((m) => m.startInstallPrompt({ store, ctx, install })).catch((e) => console.warn("install prompt", e));
   // anonymous usage statistics (owner 2026-10-27; data/usage.js): nothing at all until a receiver is set, never in demo mode
   if (!DEMO) import("./data/usage.js").then((m) => m.usageConfigured() && import("./ui/views/about.js").then((a) => m.startUsage(store, { ver: a.APP_VERSION })))
     .catch((e) => console.warn("usage statistics", e));

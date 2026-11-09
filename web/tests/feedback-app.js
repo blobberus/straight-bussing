@@ -8,6 +8,9 @@ import { test, eq, ok } from "./lib.js";
 import { WELCOME_LOG_KEY, FEEDBACK_DONE_KEY, FEEDBACK_URL } from "../js/ui/feedback.js";
 import { FEEDBACK_BTN_OFF_KEY, crowds } from "../js/ui/feedback-button.js";
 import { OVERLAY_ID } from "../js/ui/settings-overlay.js";
+import { A2HS_OFF_KEY } from "../js/ui/install-prompt.js";
+// test seam: the Add to Home Screen card (ui/install-prompt.js) never shows by itself in these flows (install.test.html covers it)
+try { sessionStorage.setItem(A2HS_OFF_KEY, "1"); } catch (e) { /* blocked storage */ }
 
 const OLD_TITLE = "Welcome to the beta version of Straight Bussing!";   // the removed popup's title
 const OLD_SEEN_KEY = "sb-welcome-seen";   // the removed popup's per-session flag: without it the old app showed the popup

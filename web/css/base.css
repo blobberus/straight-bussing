@@ -112,6 +112,63 @@ h1:focus, [tabindex="-1"]:focus { outline: none; }
   background: var(--tint-bg); -webkit-backdrop-filter: none; backdrop-filter: none;
 }
 
+/* Add to Home Screen card (owner 2026-11-07/09; js/ui/install-prompt.js): a non-modal card on the map, under Row B (or
+   under the trip chip), in the leading column so the Settings and feedback circles keep their own; its height stops 8
+   above the collapsed sheet (the next bus) and scrolls; never over the status banner (it moves down with Row B).
+   Solid in the glass family (glass spec 5.1: content is solid; 12.1 has no blur budget for a card this size): the
+   glass-solid surface with the rim, edge and shadow. Hidden while the sheet is expanded. Text on it: label / label-2
+   (a solid surface, AA in both themes). */
+.a2hs {
+  --a2-top: var(--row-b-top);
+  position: fixed; z-index: var(--z-chip);
+  top: var(--a2-top); left: calc(var(--safe-l) + var(--inset-chrome));
+  width: min(360px, calc(var(--app-w) - 2 * var(--inset-chrome) - var(--chrome-btn) - var(--gap-chrome) - var(--safe-l) - var(--safe-r)));
+  max-height: calc(var(--app-h) - var(--a2-top) - var(--v-peek-vis) - var(--gap-chrome));
+  overflow-y: auto; overscroll-behavior: contain;
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4); border-radius: var(--r-glass);
+  background: var(--glass-solid); box-shadow: var(--glass-rim), var(--glass-edge), var(--glass-shadow);
+  color: var(--label);
+  transition: opacity var(--m-standard) var(--ease-standard), visibility 0s linear 0s;
+}
+.a2hs.is-in { animation: a2hs-in var(--m-materialize) var(--ease-standard); }
+@keyframes a2hs-in { from { opacity: 0; transform: translateY(-8px) scale(.97); } }
+#app:has(#ctxbar:not([hidden])) .a2hs { --a2-top: calc(var(--ctx-top) + 36px + var(--gap-chrome)); }
+#app:has(.sheet[data-detent="full"]) .a2hs { visibility: hidden; opacity: 0; transition: opacity var(--m-exit) var(--ease-exit), visibility 0s linear var(--m-exit); }
+.a2hs-head { display: flex; align-items: flex-start; gap: var(--s-2); }
+.a2hs-title { flex: 1; min-width: 0; padding-top: var(--s-2); font: var(--t-row-title); color: var(--label); text-wrap: balance; }
+/* Close: a 44 target with a 32 fill circle drawn inside it (iOS sheet close buttons) */
+.a2hs-close {
+  position: relative; flex: none; width: var(--tap); height: var(--tap); border-radius: 50%;
+  display: grid; place-items: center; color: var(--label-2);
+  transition: opacity var(--m-press) var(--ease-out);
+}
+.a2hs-close::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--fill); }
+.a2hs-close .ic { position: relative; }
+.a2hs-close:active::before { background: var(--fill-pressed); }
+.a2hs-why { margin: var(--s-1) var(--s-2) var(--s-2) 0; font: var(--t-footnote); color: var(--label-2); }
+.a2hs-for { margin: var(--s-3) var(--s-2) var(--s-1) 0; font: var(--t-section); color: var(--label-2); }
+.a2hs-steps { list-style: none; counter-reset: a2step; margin: 0 var(--s-2) 0 0; padding: 0; font: var(--t-row-detail); color: var(--label); }
+.a2hs-steps li { counter-increment: a2step; position: relative; padding: var(--s-1) 0 var(--s-1) calc(1.6em + var(--s-2)); }
+.a2hs-steps li::before {
+  content: counter(a2step); position: absolute; left: 0; top: var(--s-1);
+  width: 1.6em; height: 1.6em; border-radius: 50%; display: grid; place-items: center;
+  background: var(--fill); color: var(--label); font: var(--t-caption);
+}
+/* the browser's own button, drawn at text size in a key-like chip so it reads as "this button" */
+.a2hs-glyph {
+  display: inline-grid; place-items: center; width: 1.5em; height: 1.4em; margin: 0 .1em; vertical-align: -.35em;
+  border-radius: var(--r-tag); background: var(--fill); color: var(--label);
+}
+.a2hs-glyph .ic { width: 1.05em; height: 1.05em; }
+.a2hs .a2hs-install { margin: var(--s-3) 0 var(--s-2); width: calc(100% - var(--s-2)); }
+.a2hs-other { margin: var(--s-2) var(--s-2) 0 0; }
+.a2hs-other summary { min-height: var(--tap); display: flex; align-items: center; gap: var(--s-1); cursor: pointer; color: var(--tint); font: var(--t-button); list-style: none; }
+.a2hs-other summary::-webkit-details-marker { display: none; }
+.a2hs-other summary .ic { transition: transform var(--m-standard) var(--ease-standard); }
+.a2hs-other[open] summary .ic { transform: rotate(180deg); }
+.a2hs-steps-h { margin: var(--s-3) 0 var(--s-1); font: var(--t-section); color: var(--label-2); }
+.a2hs .a2hs-never { display: flex; margin: 0 auto 0 calc(-1 * var(--s-2)); font: var(--t-footnote); font-weight: var(--w-semibold); }
+
 /* status banner and simulated-buses chip (8.1, DESIGN-SPEC 10.3): the same words, icons and actions, two forms.
    Never color alone: an icon and words every time. ui/pill.js sets data-form="chip" or "banner" (the default).
    Compact banner (owner 2026-11-04: "Reduce the size of the reconnecting notification."): one 44 pt line in the footnote
@@ -356,19 +413,21 @@ html[data-text="ax"] .tabcap .bn-label { position: absolute; width: 1px; height:
 @media (min-width: 768px) and (max-height: 559px) {
   .statuspill, .ctxbar { left: calc(var(--panel-w) + 24px); right: calc(var(--safe-r) + 68px); max-width: 520px; }
   .statuspill[data-form="chip"] { right: auto; }
+  .a2hs { left: calc(var(--panel-w) + 24px); max-height: calc(var(--app-h) - var(--a2-top) - 24px); }
   .bottomrow { right: auto; width: var(--panel-w); left: calc(var(--safe-l) + 12px); bottom: 12px; }
   .toast, #app:has(.sheet[data-detent="full"]) .toast { left: calc(var(--panel-w) + 24px + (var(--app-w) - var(--panel-w) - 24px) / 2); bottom: 24px; transform: translate(-50%, 0); }
 }
 
 @media (forced-colors: active) {
-  .glass, .statuspill, .ctxbar, .toast { border: 1px solid CanvasText; }
+  .glass, .statuspill, .ctxbar, .toast, .a2hs { border: 1px solid CanvasText; }
+  .a2hs-glyph, .a2hs-close { border: 1px solid ButtonText; }
   .fbfab .fbfab-dot, .fbfab .fbfab-dot::after { forced-color-adjust: none; background: CanvasText; box-shadow: none; }
   .tabcap button[aria-current="page"] { outline: 2px solid Highlight; }
   .statuspill .pillbtn, .ctxbar .ctx-btn { border: 1px solid ButtonText; }
   .statuspill .pillslot::before { border: 1px solid ButtonText; }
 }
 @media (prefers-contrast: more) {
-  .statuspill, .toast { outline: 1px solid var(--label); }
+  .statuspill, .toast, .a2hs { outline: 1px solid var(--label); }
 }
 
 /* reduced motion (spec 9, glass spec 7): no slides, springs, swells or overshoot; 150 ms crossfades; press feedback is

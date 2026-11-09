@@ -5,6 +5,9 @@
 // themselves, the live path and the experimental path are covered in usage-core.js (realSite).
 import { test, eq, ok } from "./lib.js";
 import { FEEDBACK_BTN_OFF_KEY } from "../js/ui/feedback-button.js";
+import { A2HS_OFF_KEY } from "../js/ui/install-prompt.js";
+// test seam: the Add to Home Screen card (ui/install-prompt.js) never shows by itself in these flows (install.test.html covers it)
+try { sessionStorage.setItem(A2HS_OFF_KEY, "1"); } catch (e) { /* blocked storage */ }
 import { OVERLAY_ID } from "../js/ui/settings-overlay.js";
 import { LOC_ZONE_NOTE } from "../js/ui/views/settings.js";
 

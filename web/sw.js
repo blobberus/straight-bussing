@@ -84,6 +84,7 @@ const PRECACHE = [
   'js/ui/feedback.js',
   'js/ui/frame.js',
   'js/ui/icons.js',
+  'js/ui/install-prompt.js',
   'js/ui/notifier.js',
   'js/ui/pill.js',
   'js/ui/router.js',

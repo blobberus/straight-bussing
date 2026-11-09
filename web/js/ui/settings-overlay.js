@@ -248,7 +248,7 @@ export function openSettingsOverlay(ctx, content, opts = {}) {
   scrim.classList.add("is-in");
   // the app behind (the map with its credit links, the status banner, its sheet, the glass controls, the bottom row) must
   // not be reachable while Settings is on top: the scrim covers it all, so a screen reader must not walk into it either
-  for (const id of ["map", "pill", "sheetHead", "content", "tabs", "mapctl", "bottomrow", "topbar", "ctxbar"]) {
+  for (const id of ["map", "pill", "sheetHead", "content", "tabs", "mapctl", "bottomrow", "topbar", "ctxbar", "a2hs"]) {
     const n = $(id);
     if (n && !n.inert) { n.inert = true; sess.inerted.push(n); }
   }

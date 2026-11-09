@@ -12,6 +12,9 @@ import { backNavE2E } from "./e2e-backnav.js";
 import { tripStartE2E } from "./e2e-tripstart.js";
 import { FEEDBACK_BTN_OFF_KEY } from "../js/ui/feedback-button.js";
 import { localParts } from "../js/core/schedule.js";
+import { A2HS_OFF_KEY } from "../js/ui/install-prompt.js";
+// test seam: the Add to Home Screen card (ui/install-prompt.js) never shows by itself in these flows (install.test.html covers it)
+try { sessionStorage.setItem(A2HS_OFF_KEY, "1"); } catch (e) { /* blocked storage */ }
 
 holdRun();
 
