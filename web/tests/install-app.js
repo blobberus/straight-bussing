@@ -91,3 +91,59 @@ test("real app, ?demo=1: the browser's install offer is left alone (no popup in 
     ok(!e.defaultPrevented, "not prevented in demo mode");
   } finally { f.remove(); }
 });
+
+test("Settings > Add to Home Screen: a quiet row outside the installed app (never in it, never in demo mode)", async () => {
+  const { a2hsRowHTML, A2HS_ROW, renderSettings } = await import("../js/ui/views/settings.js");
+  const d = document.createElement("div");
+  d.innerHTML = a2hsRowHTML(false);
+  const row = d.querySelector('button.v-row[data-action="install:open"]');
+  ok(row, "a row button that runs install:open");
+  eq(row.querySelector(".v-prim").textContent, A2HS_ROW);
+  eq(A2HS_ROW, "Add to Home Screen");
+  eq(row.getAttribute("aria-haspopup"), "dialog");
+  eq(a2hsRowHTML(true), "", "installed app: no row");
+  const s = document.createElement("div");
+  s.innerHTML = renderSettings({ notify: {}, stops: {}, routes: {}, alerts: [] });
+  const rows = [...s.querySelectorAll(".v-card > .v-row")].map((b) => b.dataset.action || b.dataset.st);
+  ok(rows.indexOf("install:open") >= 0 && rows.indexOf("install:open") === rows.indexOf("about:open") - 1, "in Settings, right above About: " + rows.join(","));
+});
+
+test("real app: Settings > Add to Home Screen closes Settings and opens the popup (focus on its heading); Close goes back to Settings' circle", async () => {
+  sessionStorage.setItem("sb-a2hs-off", "1");   // the seam: it never shows by itself here, Settings opens it anyway
+  let v = null;
+  try {
+    v = await openApp({ ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1" });
+    const { w, d } = v;
+    d.getElementById("settingsBtn").click();
+    const row = await waitFor(() => d.querySelector('#settingsOverlay[data-state="open"] [data-action="install:open"]'), "the Settings row");
+    row.click();
+    const card = await waitFor(() => d.querySelector('#a2hs[data-state="open"]'), "the popup");
+    await waitFor(() => d.getElementById("settingsOverlay").dataset.state === "closed", "Settings closed");
+    eq(d.activeElement && d.activeElement.id, "a2hsTitle", "focus on its heading");
+    eq(card.dataset.platform, "ios-safari", "iPhone Safari steps for this user agent");
+    card.querySelector('[data-a2hs="close"]').click();
+    ok(card.hidden, "closed");
+    eq(d.activeElement && d.activeElement.id, "settingsBtn", "focus back on Settings' circle");
+    eq(w.__e2e.errors, [], "no console errors");
+  } finally {
+    v?.f.remove();
+    localStorage.removeItem(MEM);
+  }
+});
+
+test("real app opened from the home screen: no popup and no Settings row", async () => {
+  sessionStorage.removeItem("sb-a2hs-off");
+  localStorage.removeItem(MEM);
+  let v = null;
+  try {
+    v = await openApp({ ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1", standalone: true });
+    const { w, d } = v;
+    await waitFor(() => w.__st.get().liveLoaded, "live data");
+    await sleep(6000);   // past SHOW_AFTER_MS
+    eq(d.getElementById("a2hs"), null, "no popup in the Home Screen app");
+    d.getElementById("settingsBtn").click();
+    await waitFor(() => d.querySelector('#settingsOverlay[data-state="open"] [data-action="about:open"]'), "Settings");
+    eq(d.querySelector('#settingsOverlay [data-action="install:open"]'), null, "no Add to Home Screen row");
+    eq(localStorage.getItem(MEM), null, "nothing stored");
+  } finally { v?.f.remove(); sessionStorage.setItem("sb-a2hs-off", "1"); }
+});

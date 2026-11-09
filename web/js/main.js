@@ -467,6 +467,11 @@ function registerCoreActions() {
   registerAction("locate", () => locate(), fb);
   registerAction("retry", () => (live ? live.pollNow() : undefined), fb);
   registerAction("detent", (ds) => sheet.setDetent(ds.id), fb);
+  // Settings > Add to Home Screen: Settings closes, the Add to Home Screen popup opens on the map (focus on its heading)
+  registerAction("install:open", () => {
+    if (isSettingsOpen()) closeSettingsOverlay({ focus: "none" });
+    import("./ui/install-prompt.js").then((m) => m.openInstallPrompt({ store, ctx, install })).catch(reportError);
+  }, fb);
 }
 /* Open a stop / route (the sheet goes to the view's detent). Only choosing a route frames the map: stop and
    bus taps keep the user's map view (owner request 2026-10-09). */

@@ -11,7 +11,8 @@
  * system notification in the background when allowed, ui/notifier.js deliveryFor; wording as iOS SettingsView),
  * trip alerts (2026-10-13: during a started trip, before the bus comes and before you get off, with the count
  * the Current trip card and the map show; the 2 stops / 1 stop / minutes choices apply to both),
- * the iPhone-only Live Activity preference, About, and last a Credits button that expands the credits list
+ * the iPhone-only Live Activity preference, Add to Home Screen (only outside the installed app and demo mode: it reopens
+ * the Add to Home Screen popup, ui/install-prompt.js, owner 2026-11-07/09), About, and last a Credits button that expands the credits list
  * (owner 2026-10-16; collapsed on every open, nothing stored). Owns its DOM after mount (regions patched in
  * place, focus kept) so the station search field and checkboxes never lose a tap or keystroke.
  * The router view id "settings" is kept only as a compatibility shim: navigating to it goes back and
@@ -37,6 +38,7 @@ import { openSettingsOverlay, closeSettingsOverlay, isSettingsOpen, overlayKind 
 import { locPlatform, locEnv, LOC_STEPS, LOC_ORDER, locResultText } from "../../core/lochelp.js";
 import { feedbackLinkHTML, noteFeedbackOpened, FEEDBACK_LEAD, FEEDBACK_ICON, FEEDBACK_NOTE } from "../feedback.js";
 import { usageConfigured, cleanUsage, lastSend } from "../../data/usage.js";
+import { installedNow } from "../../core/install.js";
 import { bus } from "../../core/events.js";
 import { svg } from "../icons.js";
 
@@ -50,6 +52,20 @@ export function feedbackHTML() {
     + `<p class="v-sec st-intro">${esc(FEEDBACK_LINE)}</p>`
     + feedbackLinkHTML("Give feedback", { cls: "v-btn v-btn--primary v-btn--block st-fbbtn", attrs: 'data-key="feedback"', icon: true })
     + `<p class="v-fine st-fbnote">${esc(FEEDBACK_NOTE)}</p></div>`;
+}
+
+/** Settings > Add to Home Screen: a quiet row that reopens the Add to Home Screen popup (action install:open, main.js),
+ * so a closed popup is never a dead end. Only outside the installed app (core/install.js) and demo mode. */
+export const A2HS_ROW = "Add to Home Screen";
+export const A2HS_ROW_SUB = "Open it full screen like an app: the steps for this browser";
+/**
+ * @param {boolean} [installed] this page is the installed app (default: asked now)
+ * @returns {string} '' in the installed app and in demo mode
+ */
+export function a2hsRowHTML(installed = installedNow()) {
+  if (installed || DEMO) return "";
+  return `<div class="v-card st-a2hs"><button type="button" class="v-row" data-action="install:open" aria-haspopup="dialog">`
+    + `<span class="v-grow"><span class="v-prim">${esc(A2HS_ROW)}</span><span class="v-sec">${esc(A2HS_ROW_SUB)}</span></span></button></div>`;
 }
 
 /** The location promise in Settings (owner 2026-10-12: "no user location data will be collected"); matches privacy.html. */
@@ -335,6 +351,7 @@ ${usageConfigured() ? `<h3 class="v-h">Usage statistics</h3><div data-region="us
 <div data-region="perm">${DEMO ? "" : permHTML()}</div>
 <p class="v-sec st-note">${esc(ALERTS_NOTE)}</p>
 <h3 class="v-h">iPhone app</h3><div class="v-card st-ios">${sw("liveActivity", "Trip status on lock screen", "Live Activity with a minute counter and next stop. Coming to the iPhone app; your choice is saved for later.", n.liveActivity)}</div>
+${a2hsRowHTML()}
 <div class="v-card st-about"><button type="button" class="v-row" data-action="about:open"><span class="v-grow"><span class="v-prim">About this app</span><span class="v-sec">Unofficial. Privacy, official contact</span></span></button></div>
 ${creditsHTML(false)}
 </div>`;

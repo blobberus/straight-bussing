@@ -164,6 +164,8 @@
 /* About and Credits: two lone cards at the end, each one section gap below what comes before (About used to sit 12
    under the iPhone app card, as if part of it, while Credits sat 24 under About) */
 .st-about { margin-top: var(--s-6); }
+.st-a2hs { margin-top: var(--s-6); }
+.st-a2hs + .st-about { margin-top: var(--s-3); }
 .st-steps-h { margin: var(--s-3) 0 var(--s-1); font: var(--t-row-title); color: var(--label); }
 .st-steps { margin: 0 0 var(--s-3); padding-left: 1.4em; color: var(--label); font: var(--t-row-detail); }
 .st-steps li { margin: 0 0 var(--s-2); }
