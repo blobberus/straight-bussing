@@ -330,3 +330,10 @@ test("real app: never during a trip, never in demo mode, never under the tests' 
     eq(f.contentWindow.document.getElementById("a2hs"), null, "demo mode: never");
   } finally { v?.f.remove(); f?.remove(); sessionStorage.setItem("sb-a2hs-off", "1"); localStorage.removeItem(MEM); }
 });
+
+test("privacy: privacy.html lists the popup's memory as a setting kept on the device, and says nothing about it is sent", async () => {
+  const page = (await (await fetch("../privacy.html", { cache: "no-store" })).text()).replace(/\s+/g, " ");
+  ok(page.includes("on the web also when the &ldquo;Add this website as a home screen app!&rdquo; popup last appeared, when you closed it, and whether you chose &ldquo;Don&rsquo;t show again&rdquo; or installed the app from this browser"), "the memory, in Your settings");
+  ok(page.includes("reads which browser and device this is, on your device only; that and your install choice are never sent"), "the user agent stays on the device");
+  ok(/Effective November (9|[12]\d|30), 2026\./.test(page), "an effective date on or after the change");
+});
