@@ -210,6 +210,11 @@ more noticable"): a route color under 3:1 against the dark land is drawn lighter
 and the street fill with AA badge text (lines, stop rings, buses, planned legs; core/routecolor.js = Kit RouteColor;
 numbers in ARCHITECTURE "Route colors on the dark map"). Never an outline; the light map and the sheet's chips keep the
 published colors.
+Add to Home Screen card (owner 2026-11-07/09, website only): a non-modal card on the map under Row B, in the leading
+column (the Settings and feedback circles keep theirs), never over the status banner or the collapsed sheet; solid in
+the glass family (`--glass-solid` with the glass rim, edge and shadow, `--r-glass`), heading in the row-title role, a
+44 Close, numbered steps with the browser's own glyphs in key-like `--fill` chips, one primary button where the browser
+can install. Details in ARCHITECTURE "Add to Home Screen prompt".
 
 ### Layers (z-index tokens in `css/tokens.css`, unchanged by the redesign)
 

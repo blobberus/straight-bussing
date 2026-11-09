@@ -430,7 +430,8 @@ button) is the iPhone app's and the pre-glass web's.
   - Ping: two soft ring pulses on the badge (`PING_MS` 2.6 s, transform + opacity), the first `PING_FIRST_MS` (20 s)
     after start, then every `PING_EVERY_MS` (3 min), at most `PING_MAX` (4) per page load. A due ping waits
     (`PING_RETRY_MS` 15 s) while a trip is in progress, the sheet is at the full detent, the overlay or any dialog is
-    open, a text field has focus or the page is hidden (`pingBlocker`, pure; `nextPingIn`, pure). Reduced motion: no
+    open, a text field has focus, the page is hidden or the Add to Home Screen card is open (since 2026-11-09)
+    (`pingBlocker`, pure; `nextPingIn`, pure). Reduced motion: no
     class is added (and base.css stops the animation): only the static badge.
   - Panel: the Settings overlay shell (`openSettingsOverlay` kind `feedback`, title "Beta feedback", Done; Back,
     Escape, Done or a scrim tap close it (the scrim also covers the button, so tapping it again closes the panel;
@@ -1122,6 +1123,86 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   stop still stacks), tests/e2e-backnav.js in e2e.test.html (3, the real app with real map line taps: My Routes >
   Central > 53rd Street Express > Back or browser back = the custom route page, unchanged; Routes list > line > map tap
   on another line > Back = Routes list; a single line > Back and browser back). sw `sb-v2-80`.
+
+## Add to Home Screen prompt (2026-11-09, owner 2026-11-07/09: "If the app/website is not opened from the home screen, create a popup that clearly shows how the user could add the app to their home screen. This notification should be closable but make the top of the notification clearly say: Add this website as a home screen app!. The instructions should use the actual apple safari or chrome symbols to make it as intuitive as possible. if there is a way that you could do it for the user where they just press a button, do so. If the app is opened from the home screen, do not show this notification.")
+Website only (the iPhone app is a native app). Modules: `core/install.js` (the shared check, browser detection, the
+show rules, the memory), `core/installsteps.js` (the words and steps), `ui/install-prompt.js` (the card), main.js (the
+install event, start, the Settings action), `views/settings.js a2hsRowHTML`, css/base.css `.a2hs*`.
+- **Installed = never.** One check, `isInstalled(installEnv())`: `navigator.standalone` (iPhone / iPad Home Screen apps)
+  or a display mode only an installed web app has (standalone, fullscreen, minimal-ui, window-controls-overlay). In the
+  installed app main.js never loads the popup and Settings has no row. `core/lochelp.js locEnv` and `data/usage.js
+  appKind` use the same check (the usage rows keep app = "home-screen" / "browser"; the install choice is not reported).
+- **When it shows by itself** (`autoBlocker`, pure): not installed, not in demo mode, not under the tests' seam
+  (sessionStorage `sb-a2hs-off` = "1", set by every real-app test page), a browser that can install (`installPlatform`
+  is not "none", or the browser offered its own install), never after an install from this browser or "Don't show
+  again", and at most once every 14 days counted from the later of the last show and the last close (`RESHOW_DAYS`;
+  a rider who leaves it open is not asked again on a reload either). Timing, rider safety first: `SHOW_AFTER_MS` 4 s
+  after the live feed first answered (store liveLoaded or failed: the next bus is on screen first), `MAX_WAIT_MS` 12 s
+  at the latest; a due card waits (`RETRY_MS` 5 s, `waitReason`) during a trip (journey.kind "plan"), with the sheet
+  expanded, Settings / Lines by Time or a dialog open, a focused text field, a hidden page, or while the feedback button
+  pings. The feedback button in turn never pings while the card is open (`pingBlocker` "install card open",
+  `#a2hs[data-state="open"]`). A trip started while it is up: it closes quietly (no close remembered).
+- **The card** (`#a2hs`, inserted after `#ctxbar`, so the focus order is the top rows, the card, the sheet): a non-modal
+  `role="dialog"` (aria-modal false, labelled by its heading, described by the why line); no focus taken when it shows by
+  itself. Under Row B (or under the trip chip), in the leading column so the Settings and feedback circles keep theirs
+  (width min(360, screen - 24 - 44 - 8)); its height stops 8 above the collapsed sheet (the next bus) and scrolls; it
+  moves down with Row B when the status banner shows, so a stale-feed warning is never covered; hidden while the sheet is
+  expanded; inert under Settings. Solid in the glass family (glass spec 5.1: content is solid; 12.1 has no blur budget for
+  a card this size): `--glass-solid` with the glass rim, edge and shadow, `--r-glass`, `--z-chip`; text label / label-2
+  (contrast tested >= 4.5:1). Entrance: 220 ms rise and fade (reduced motion: none).
+- **Words** (`core/installsteps.js`): heading `INSTALL_TITLE` "Add this website as a home screen app!" (exactly the
+  owner's), then one line on why: iPhone "It opens full screen like an app, one tap from your Home Screen. There, bus
+  alerts can also arrive as notifications (iOS 16.4 or later) while the app is open or was just used."; Android "It
+  opens full screen like an app, one tap from your home screen."; computers "It opens in its own window like an app, one
+  click away." Close = a 44 button named "Close" (a 32 fill circle with a cross; Escape inside the card does the same);
+  last a small "Don't show again". Toasts: "Add to Home Screen stays in Settings." (Close), "It won't show again. Add to
+  Home Screen stays in Settings.", "Added. Open Straight Bussing from your Home Screen." / "Installed. Open Straight
+  Bussing from your apps."
+- **One button where the browser can install for the rider.** Chrome, Edge and Samsung Internet (Android and computers)
+  fire `beforeinstallprompt`: main.js prevents it (no mini-infobar) and keeps it from its first module run; the card
+  then shows ONE primary button, "Add to Home Screen" on phones, "Install app" on computers, whose tap calls `prompt()`
+  synchronously; accepted (or `appinstalled` from the address bar or menu, recorded by main.js even before the card
+  exists) = installed for good, dismissed = a close. The steps fold away under "Other ways to add it". An offer that
+  comes while the steps show swaps in the button. iPhone and iPad have no programmatic install: always steps.
+- **Steps with the browsers' own glyphs** for the browser in hand (`installPlatform`, user agent read on the device only),
+  numbered, each glyph inline at text size in a key-like chip with alternative text (`INSTALL_ICONS`: "Share button",
+  "More button", "Add to Home Screen", "Menu button", "Install button", "App available button"); the other browsers fold
+  away under "Other phones and browsers". Glyphs are Lucide lookalikes in ui/icons.js (`share` = square and arrow up,
+  `square-plus`, `ellipsis`, `ellipsis-vertical`, `monitor-down`, `menu`, and a drawn `apps-plus` for Edge): Apple's SF
+  Symbols license does not allow them on the web; Lucide (ISC) is already in Settings > Credits and About.
+  - iPhone / iPad Safari: "Tap Share. Don't see it? Tap More next to the address bar first, then Share." / "Scroll down
+    and tap Add to Home Screen. Not in the list? Tap "View More" first." / "If you see "Open as Web App", leave it on.
+    Then tap Add." This covers iOS 26 and later in the default compact tab layout (Share sits behind the More button at
+    the end of the address bar), the Bottom / Top layouts and iOS 17 and 18 (Share in the bottom toolbar on iPhone, at
+    the top on iPad), the share sheet's "View More", and iOS 26's "Open as Web App" switch (on by default; earlier
+    versions have none). Apple's guide lists iOS 27 as current; no change to this flow was found for it.
+  - Chrome on iPhone: Share at the right end of the address bar, Add to Home Screen, Add. Other iPhone browsers: their
+    menu, Share, Add to Home Screen, else Safari. In-app browsers (Instagram, the Google app, a web view): open in
+    Safari first.
+  - Android: Chrome's menu (three upright dots), "Add to Home screen" or "Install app" (the words differ between
+    versions), "Install"; Samsung Internet's menu, "Add page to", "Home screen"; Firefox's menu; in-app: open in Chrome.
+  - Computers: Chrome's install icon at the right end of the address bar, or the menu, "Cast, save, and share", "Install
+    page as app"; Edge's "App available", or the menu, "Apps", "Install this site as an app"; Safari on a Mac (macOS
+    Sonoma or later): Share or File, "Add to Dock". Firefox on a computer cannot install: no card (unless an install
+    event comes).
+  - Sources (checked 2026-11-09): MacRumors "iOS 26: Add Web App or Bookmark to iPhone Home Screen" (three dots right of
+    the address bar, Share, Add to Home Screen, Open as Web App, Add); iPhone Life "How to Add a Website to Your Home
+    Screen" (tested on iOS 26.4: More, Share, maybe View More, Add to Home Screen); Apple Support "Turn a website into an
+    app in Safari on iPhone" and "Bookmark a website in Safari on iPhone"; Google Chrome Help "Create shortcuts for
+    websites" (iPhone) and "Use web apps" (Android, computer); Microsoft Learn "Use Progressive Web Apps in Microsoft
+    Edge"; Samsung Internet guides (menu, Add page to, Home screen). To confirm on a real iPhone (owner QA).
+- **Memory** (`core/install.js`, core/storage.js, so demo writes stay in memory): localStorage `sb:a2hs` =
+  `{shownAt, closedAt, never, installedAt}` (ms); blocked storage = this page load only. privacy.html "Your settings"
+  (effective November 9, 2026) lists it and says the browser / device is read on the device only and nothing is sent.
+- **Settings > Add to Home Screen**: a quiet row right above About ("Open it full screen like an app: the steps for this
+  browser"), only outside the installed app and demo mode; action `install:open` (main.js) closes Settings and opens the
+  card with focus on its heading (Close returns focus to the Settings circle). So a closed card is never a dead end.
+- Tests: core.test.html core-install.js (the check, the user agents, the rules, the memory) and core-installsteps.js
+  (words, glyphs, steps per browser); install.test.html install-prompt.js (the card: words, glyphs, button, waits,
+  Close / Escape / Don't show again / installs, 14 days) and install-app.js (the real app: the install event kept and
+  remembered, demo untouched, the Settings row, the Home Screen app, an iPhone Safari first visit with placement,
+  contrast and no blur, the stale banner, the expanded sheet, Close and 14 days, Don't show again, the one-tap button,
+  trip / demo / seam, privacy.html). sw `sb-v2-147`. Not yet seen on a real iPhone or Android phone.
 
 ## Route search on the Routes list (2026-11-04, owner: "You should be able to search routes from the routes menu which will bring them to the top. Allow keywords and smart search such as allowing 53rdst -> 53rd Street or 53rd St -> 53rd Street etc.")
 - Logic `core/routesearch.js` (pure; iOS Kit `RouteSearch.swift` ports it 1:1):
