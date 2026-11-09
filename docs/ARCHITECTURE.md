@@ -1166,8 +1166,9 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   now), `TimetableNote`, `AppModel.planStart` / `setStartTime` / `DirectionsState.at` + `planMode`. Tests: web
   core-timetable.js (14, the shared golden file included), data-timetable.js (4), views-tripstart.js (8),
   e2e-tripstart.js; tools/test_timetable.py (7); Kit TimetableTests (the same cases + `Fixtures/tripstart_golden.json`,
-  a copy of web/tests/fixtures/tripstart_golden.json written by web/tests/tripstart-golden.html: 48 plans on the committed
-  data; refresh both when web/data/timetable.json is regenerated in the repo).
+  a copy of web/tests/fixtures/tripstart_golden.json written by web/tests/tripstart-golden.html: 48 plans with the stops,
+  route stops and timetable they were made from, replayed on those, so a data refresh never breaks it; refresh both
+  copies only when the planner changes).
 - Examples on the committed timetable (Tue Nov 10, 2026): Regenstein to Vue53 at noon = the 53rd Street Express from Ellis
   Ave & 57th St at 12:07 PM round the loop (its 12:30 PM trip) to 53rd St & Kenwood at 12:31 PM, 32 min door to door,
   walking 3.6 min, "Faster to walk" (15 min) under it; at 5:40 PM = East from Regenstein Library (N) at 5:45 PM to 53 &

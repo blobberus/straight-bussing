@@ -4,10 +4,10 @@
 <body>
 <!-- Not a test page (the suite runs *.test.html): opened once in headless Edge to write fixtures/tripstart_golden.json, the
      answers of web/js/core/planner.js in timetable mode (a chosen trip start time, owner 2026-11-09) and of
-     web/js/core/timetable.js on the committed data (stops.json, route_stops.json, timetable.json). The web test
-     core-timetable.js and the iOS Kit TimetableTests (a copy in ios/StraightBussingKit/Tests/StraightBussingKitTests/Fixtures)
-     check against it. To refresh after web/data/timetable.json changes: serve web/ (python -m http.server), open this page,
-     copy the JSON in the page to both files. -->
+     web/js/core/timetable.js on the committed data (stops.json, route_stops.json, timetable.json), with those inputs
+     inside it. The web test core-timetable.js and the iOS Kit TimetableTests (a copy in
+     ios/StraightBussingKit/Tests/StraightBussingKitTests/Fixtures) replay it on its own inputs, so a data refresh never
+     breaks them; refresh it (serve web/, open this page, copy the JSON to both files) only when the planner changes. -->
 <pre id="result">running...</pre>
 <script type="module">
 import { plan } from "../js/core/planner.js";
@@ -55,8 +55,9 @@ const helpers = {
   modes: [[null, t1], [t1 + 120, t1], [t1 + 599, t1], [t1 + 600, t1], [t1 - 1, t1]].map(([a, n]) => ({ at: a, now: n, mode: startMode(a, n) })),
   days: leaveDays(t1, tt).map((d) => [d.iso, d.text, d.say]),
 };
-const out = { note: "web/js/core/planner.js timetable mode + core/timetable.js answers on the committed web/data; made by web/tests/tripstart-golden.html",
-  generated: tt.generated, cases, helpers };
+// the inputs travel with the answers, so a later refresh of web/data never breaks the parity tests
+const out = { note: "web/js/core/planner.js timetable mode + core/timetable.js answers on the inputs below (web/data when made); made by web/tests/tripstart-golden.html",
+  generated: tt.generated, inputs: { stops, routeStops, timetable: raw }, cases, helpers };
 document.getElementById("result").textContent = JSON.stringify(out);
 document.title = "TESTS pass=1 fail=0";
 </script>

@@ -211,11 +211,10 @@ test("timetable: the control's words, its days and its values", () => {
 });
 
 // The shared golden file (web/tests/tripstart-golden.html wrote it; the iOS Kit TimetableTests read a copy): the planner's
-// timetable-mode answers and the timetable helpers on the committed web/data
+// timetable-mode answers and the timetable helpers, replayed on the inputs stored in it
 test("timetable: the shared golden file (iOS Kit parity)", async () => {
   const fx = await (await fetch("fixtures/tripstart_golden.json", { cache: "no-store" })).json();
-  const { data: d, tt } = await real();
-  eq(fx.generated, tt.generated, "made from the committed timetable.json (refresh both copies when it changes)");
+  const d = { stops: fx.inputs.stops, routeStops: fx.inputs.routeStops, trips: [], buses: [] }, tt = cleanTimetable(fx.inputs.timetable);   // its own inputs
   ok(fx.cases.length >= 40, "cases");
   const r6 = (x) => Math.round(x * 1e6) / 1e6;
   const leg = (l) => l.type === "walk" ? { type: "walk", m: l.m, min: r6(l.min) }

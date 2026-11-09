@@ -206,11 +206,20 @@ final class TimetableTests: XCTestCase {
         XCTAssertNil(TimetableData.parse(Data("[1]".utf8)))
     }
 
-    /// The web's answers (web/tests/tripstart-golden.html) on the committed web/data, replayed here.
+    /// The web's answers (web/tests/tripstart-golden.html), replayed here on the inputs stored with them.
     func testTheSharedGoldenFile() throws {
-        let fx = try XCTUnwrap(try JSONSerialization.jsonObject(with: TS.fixture("tripstart_golden")) as? [String: Any])
-        let tt = try XCTUnwrap(TS.real.data.timetable)
-        XCTAssertEqual(fx["generated"] as? String, tt.generated, "made from the committed timetable.json (refresh both copies)")
+        let raw = try TS.fixture("tripstart_golden")
+        let fx = try XCTUnwrap(try JSONSerialization.jsonObject(with: raw) as? [String: Any])
+        // its own inputs (stops, route stops, timetable as they were), so a refresh of web/data never breaks the replay
+        let inputs = try XCTUnwrap(fx["inputs"] as? [String: Any])
+        let files: [String: Data] = try [
+            "stops.json": JSONSerialization.data(withJSONObject: XCTUnwrap(inputs["stops"])),
+            "route_stops.json": JSONSerialization.data(withJSONObject: XCTUnwrap(inputs["routeStops"])),
+            "timetable.json": JSONSerialization.data(withJSONObject: XCTUnwrap(inputs["timetable"])),
+        ]
+        let S = StaticLoader.parse(files).data
+        let tt = try XCTUnwrap(S.timetable)
+        let goldenData = PlannerData(stops: S.stops, routeStops: S.routeStops, routeOrder: S.routeStopIds)
         let cases = try XCTUnwrap(fx["cases"] as? [[String: Any]])
         XCTAssertGreaterThanOrEqual(cases.count, 40)
         func pt(_ v: Any?) -> LatLon { let o = v as? [String: Double] ?? [:]; return LatLon(lat: o["lat"] ?? 0, lon: o["lon"] ?? 0) }
@@ -218,7 +227,7 @@ final class TimetableTests: XCTestCase {
         for c in cases {
             let name = c["name"] as? String ?? "?"
             let t0 = c["t0"] as? Double ?? 0
-            let r = Planner.plan(from: pt(c["from"]), to: pt(c["to"]), now: t0, data: realData, timetable: tt)
+            let r = Planner.plan(from: pt(c["from"]), to: pt(c["to"]), now: t0, data: goldenData, timetable: tt)
             XCTAssertEqual(Rank.walkPlace(r) != nil, c["walkListed"] as? Bool, "\(name): walk listed")
             let want = c["options"] as? [[String: Any]] ?? []
             let got = Rank.listedOptions(r)
