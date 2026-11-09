@@ -90,6 +90,7 @@ View-local state (picker query, directions fields) lives in that view module, no
 ```js
 // data/static.js
 export async function loadStatic(store, {base?, fetch?}?): Promise<{failed:string[]}>   // never rejects   // fetch data/routes.json stops.json shapes.json route_stops.json (+ optional stop_addresses.json, service.json, landmarks.json, idle.json, corridors.json); derive stopRoutes; set staticLoaded
+// data/timetable.js (2026-11-09): loadTimetable({base?, fetch?}): Promise<object|null> (lazy: only when a trip start time is chosen; one request in flight; null on failure, retried next call), cleanTimetable(v), timetableNow(), _setTimetable(v) for tests
 // data/live.js
 export function startLive(store, {intervalMs=10000, fetch?, keepAlive?, ...}): {stop(), pollNow(), failures(), delay()}   // polls the 3 Passio JSON feeds (BASE https://passio3.com/chicago/passioTransit/gtfs/realtime/<name>.json?_=ts, cache:'no-store'), sets live fields; failure keeps last data and sets failed:true; pause when document.hidden (unless keepAlive() is true: bus alerts with notifications allowed), poll on visible; fetch = the demo feed in demo mode
 // data/demo.js (demo mode only, 2026-10-10; port of the iOS Kit DemoFeed.swift)
@@ -148,11 +149,12 @@ export const predict: { ready: Promise<void>, rideMinutes(rid, fromStopId, toSto
 // core/walk.js
 export async function walkRoute(from, to): Promise<{m, min, coords:[[lat,lon]], source:'router'|'estimate'}>   // FOSSGIS OSRM foot primary, Valhalla fallback, 3 s timeout each, straight*1.2 estimate fallback, cache by 4dp, <=6 concurrent
 // core/planner.js
-export function plan({from, to, now, data:{stops,routes,routeStops,trips,buses}, predict?, walkMins?}): {options:[Option], walkOnly:{m,min}}   // pass predict explicitly (no implicit fallback)
-export async function refineWalking(option, {walkRoute, now, data, from, to, predict?}): Promise<Option|null>   // replaces walk-leg coords/min with router results, recomputes totals/arrive/walkMin/walkM; a router walk is never shorter than the straight line; if the bus would be missed it re-plans (same route, replanned:true) or resolves null (drop it)
+export function plan({from, to, now, data:{stops,routes,routeStops,trips,buses}, predict?, walkMins?, timetable?}): {options:[Option], walkOnly:{m,min}, timetable?:true}   // pass predict explicitly (no implicit fallback); timetable = plan at `now` from data/timetable.json ("Trip start time" below)
+export async function refineWalking(option, {walkRoute, now, data, from, to, predict?, timetable?}): Promise<Option|null>   // replaces walk-leg coords/min with router results, recomputes totals/arrive/walkMin/walkM; a router walk is never shorter than the straight line; if the bus would be missed it re-plans (same route, replanned:true) or resolves null (drop it)
 // Option = {key, total:minFloat, totalMin:int, arrive:unixS, t0:unixS, walkMin:minFloat, walkM:int, meets:string[], legs:[WalkLeg|BusLeg]}   // total/arrive include every walk (to the boarding stop, transfers, to the destination); walkMin/walkM = sums over the walk legs
 // WalkLeg = {type:'walk', from:{lat,lon,name}, to:{lat,lon,name}, m, min, coords?:[[lat,lon]], source?:'router'|'estimate'}
-// BusLeg  = {type:'bus', rid, board:{id,name,lat,lon}, alight:{id,name,lat,lon}, path:[{lat,lon}], stopsPassed, wait, waitLive, ride, source:'live'|'learned'|'schedule'|'estimate', conf, boardT, alightT, tripId}   // tripId: live trip update's trip_id, null for a headway guess
+// BusLeg  = {type:'bus', rid, board:{id,name,lat,lon}, alight:{id,name,lat,lon}, path:[{lat,lon}], stopsPassed, wait, waitLive, waitSched?, ride, source:'live'|'learned'|'schedule'|'estimate'|'timetable', conf, boardT, alightT, tripId}   // tripId: live trip update's trip_id, null for a headway guess; waitSched + 'timetable': a scheduled departure (trip start time)
+// core/timetable.js (2026-11-09, "Trip start time"): LIVE_SOON_MIN 10, LAYOVER_MAX_S 1800, AHEAD_S 4 h; startMode(at, now): 'now'|'live'|'timetable'; servicesOn(tt, iso); serviceUnix(iso, sec); outsideTimetable(tt, at); instancesBetween(tt, from, to, rids?); departureIndex(instances); instAt / nextInstance / reachAt; leaveLabel / leaveDays / leaveValues / leaveUnix / leaveDefault; copy LEAVE_NOW, TT_TITLE, TT_DISCLAIMER, TT_SOON, TT_START_LATER, TT_NONE_TITLE, TT_OUTSIDE, TT_LOADING, TT_FAILED
 ```
 Planner rules (port from v1, keep behaviors): walk 80 m/min x1.2 detour estimate (WALK_M_PER_MIN, WALK_DETOUR in core/geo.js), max walk 800 m each end, widened to 1600 m (MAX_WALK_FAR) when no option exists within 800 m; every walk costs m/80 min however short (only walks under 1 m get no step); wait counts from when you reach the stop (t0 + walk), and for the second bus from after the transfer walk; direct + one transfer (transfer walk <= 150 m), loop routes wrap, ride time prefers same-trip live prediction (tripUpdates at alight stop minus at board stop), then `predict.rideMinutes`, then distance/18 km/h; wait = live next arrival at board stop after you arrive, else headway estimate; discard options absurdly longer than walking (max(2 x walking, walking + 15 min)) except the least-walking long way around ("The long way around" below); direct trips contribute, per route, the best (board, alight) pair for EACH criterion below; ranked by `core/rank.js`; max 4 options (`PLANNER.MAX_OPTS`); every number is an estimate.
 
@@ -1109,6 +1111,68 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   `criteriaLine`; DirectionsView puts the walk card first or after the first option (`dirWalkSecond`) and OptionCard
   shows `criteriaLine`. Tests: web core-rank.js "long way" (5), core-planner.js "long way" (3, the real 53rd loop and
   timetable), views-flows.js (the cards); Kit LongWayTests (the same cases), BusNumbersTests walk first.
+
+## Trip start time (2026-11-09, owner: "Additionally, when deciding a destination, the user should have an optional trip start time. This trip start time should schedule the arrivals based on the scheduled arrival time (this should have a larger disclaimer saying that most buses tend to run late on schedule and currently the UGo shuttles don't have a way of adjusting to this issue.")
+- The control: under the Start / Destination fields (`ui/views/directions.js` `whenHTML`, region `dir-when`, css `.v-dwhen*`)
+  a fill capsule "Leave now" with the clock in tint and a chevron (36 tall, 44 hit area, press state, reduced motion). A
+  chosen time reads "Leave at 5:40 PM" (today), "Leave tomorrow at 5:40 PM" or "Leave Wed Nov 11 at 5:40 PM"
+  (`core/timetable.js leaveLabel`) and gets a clear button ("Clear the start time and leave now", `dir:when-clear`) that
+  goes back to Leave now in one tap. The time lives in `D.at` for this visit only: never in the store, localStorage or
+  sessionStorage (tested); a time that has passed goes back to Leave now at the next plan. A new start time ends a started
+  trip, like a new endpoint.
+- The wheels (`ui/views/leavepick.js`, `dir:when`): the Lines by Time sheet (`ui/settings-overlay.js`, kind `leave`, title
+  "Trip start time", Cancel / Set, Escape, scrim, swipe down, browser back): a day wheel (Today, Tomorrow, then the dates
+  through the timetable's last date, at least a week, at most 31; `leaveDays`), the alarm-style hour / minute / AM-PM wheels
+  (`ui/wheel.js`), a live line saying what Set will do (`previewText`), the rule in one sentence, a "Leave now" button
+  that resets, the official contact. It starts at the chosen time, else now rounded up to 5 minutes; opening it starts
+  loading the timetable.
+- What a start time means (`core/timetable.js startMode`, Kit `Timetable.startMode`): none or already past = **now** (live,
+  unchanged); less than `LIVE_SOON_MIN` (10) minutes away = **live** times planned from that time (the live predictions beat
+  the timetable this close; the results say "Your start time is less than 10 minutes away, so these are live times from
+  then."; Start stays); later = **timetable**. Why not the timetable for a time a few minutes off: Passio's live
+  predictions already cover the next half hour better than the published times, which run late (docs/TEN-PERCENT-SHORTFALLS.md),
+  and switching mode exactly when Start becomes useful keeps one rule: a plan you can start is live.
+- Timetable plans (`core/planner.js plan({timetable})`, Kit `Planner.plan(timetable:)`): wait = scheduled departure minus
+  your arrival at the stop, ride = scheduled arrival minus scheduled departure, walks unchanged. Of the next departures (at
+  most 6, within an hour of the first) the planner takes the one that gets to your stop first: the published timetable
+  has trips a later bus overtakes (Oct-Nov 2026: Midway Metra's morning loops grow 10 min longer every trip) and short
+  trips that never reach the stop. A loop ride past the loop's end goes on with the route's trip that starts there within
+  30 min (the 53rd from Ellis Ave & 57th St to 53rd St & Kenwood). Live trips, live buses and headway guesses are not used,
+  so the idle / off-route / transition filters do not apply; listed hours and service days do (the timetable has no trip
+  outside them; calendar_dates add and remove services; a night route's after-midnight trips belong to the evening
+  before). The long way around, least walking first and walk first are unchanged. Bus legs say `source: 'timetable'`,
+  `waitSched: true`, `tripId` = "rid:service date:pattern:start"; the result says `timetable: true`, Directions' `mode`.
+  `refineWalking` keeps a scheduled departure fixed and re-plans with the next one when a longer sidewalk walk misses it.
+  A timetable plan is not re-planned on live updates until its start time is under 10 minutes away (then live takes over).
+- The larger disclaimer (`ttNoteHTML`, css `.v-ttnote`): a warnBg card above the options (more visible than the est. notes,
+  not an alarm: a clock with an alert mark in warn, never red or green): "Scheduled times, not live" and "Planned from the
+  timetable. Most buses run later than scheduled, and the campus shuttles currently have no way to adjust these times for
+  that, so leave extra time. For live times, plan with Leave now." (`TT_TITLE`, `TT_DISCLAIMER`; the app's own words say
+  "the campus shuttles", never "UGo", owner decision 2026-10-15), the outside-the-timetable note when the date is past the
+  timetable's own dates (weekly pattern, holidays unknown, as Lines by Time), then "Unofficial." and the official contact.
+  Every time reads as scheduled: "Scheduled bus at X 5:45 PM est.", "from the timetable", the card line "Scheduled bus 5:45
+  PM at X, est." (no live dot, no bus number); the per-plan stale note is not shown (no live data used; the status banner
+  still flags the feed). Instead of Start: "Start appears 10 minutes before your start time, when live times take over."
+  (no trip, so no alerts or notifications for a plan for later). Nothing on the timetable then: "No scheduled shuttle
+  trip" with the walk; the timetable not loaded: "The timetable could not be loaded. Check your connection, or plan with
+  Leave now." with a Leave now button.
+- Data: `web/data/timetable.json` (tools/build_gtfs.py `build_timetable`, about 11 kB; docs/DATA.md), loaded by
+  `data/timetable.js loadTimetable` only when a start time is chosen or the sheet opens (never at boot: not in
+  STATIC_FILES, so first paint never waits for it), precached by the service worker; the daily Pages deploy rebuilds it;
+  the iPhone app bundles it and its daily schedule check downloads it with the set (`StaticLoader.files`).
+- iOS (same rules and words, Kit `Timetable` = core/timetable.js + data/timetable.js): `TimetableData.parse`,
+  `Planner.plan(timetable:)`, `BusLeg.waitSched`, `RideSource.timetable`, `TripInfo` "Scheduled bus at"; App
+  `LeaveTimeRow` in the Directions card, `LeaveTimeView` (day wheel + hour / minute / AM-PM wheel, Cancel / Set, Leave
+  now), `TimetableNote`, `AppModel.planStart` / `setStartTime` / `DirectionsState.at` + `planMode`. Tests: web
+  core-timetable.js (14, the shared golden file included), data-timetable.js (4), views-tripstart.js (8),
+  e2e-tripstart.js; tools/test_timetable.py (7); Kit TimetableTests (the same cases + `Fixtures/tripstart_golden.json`,
+  a copy of web/tests/fixtures/tripstart_golden.json written by web/tests/tripstart-golden.html: 48 plans on the committed
+  data; refresh both when web/data/timetable.json is regenerated in the repo).
+- Examples on the committed timetable (Tue Nov 10, 2026): Regenstein to Vue53 at noon = the 53rd Street Express from Ellis
+  Ave & 57th St at 12:07 PM round the loop (its 12:30 PM trip) to 53rd St & Kenwood at 12:31 PM, 32 min door to door,
+  walking 3.6 min, "Faster to walk" (15 min) under it; at 5:40 PM = East from Regenstein Library (N) at 5:45 PM to 53 &
+  Kimbark (EB) at 5:48 PM, 10 min, then three more East / Central / North options (the 53rd's 6:00 PM trip is a 55 min
+  loop that night, too slow).
 
 ## Line replaces line: Back after a line opened from a line (2026-11-02, owner: "Pressing back after selecting a specific line to view should not shift to the previous line but rather go to the previous menu view entirely")
 - `ui/router.js navigate`: a view registered with `replaceSelf: true` (only `route`, ui/views/route.js) that is opened
