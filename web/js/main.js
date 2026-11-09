@@ -29,6 +29,7 @@ import { initFrame, initTextSize, initGlassLite } from "./ui/frame.js";
 import { isSettingsOpen, closeSettingsOverlay } from "./ui/settings-overlay.js";
 import { startTripMap } from "./ui/tripmap.js";
 import { createCompass, mayAskCompass } from "./ui/compass.js";
+import { rememberInstall } from "./core/install.js";
 
 /** Every view module; each calls registerView() at import time ("timepick" only registers its actions: Lines by Time is an overlay). */
 export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes", "settings", "timepick"]);
@@ -77,6 +78,27 @@ window.addEventListener("error", (e) => {
   reportError(e.error || e.message);
 });
 window.addEventListener("unhandledrejection", (e) => reportError(e.reason));
+
+/* ---------------- Add to Home Screen: the browser's own one-tap install (owner 2026-11-07/09) ----------------
+   Chrome, Edge and Samsung Internet announce that they can install the app with beforeinstallprompt: it is kept (no
+   browser mini-infobar) for the Add to Home Screen popup's one button (ui/install-prompt.js calls prompt()). An install
+   from anywhere (that button, the address bar's install icon, the browser menu) fires appinstalled: remembered, so the
+   popup never shows again in this browser. iPhone and iPad Safari have no such event (the popup shows steps there).
+   Listening from the first module run: the event can come before boot finishes. Not in demo mode (no popup there). */
+const install = { event: null, installed: false };
+if (!DEMO) {
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    install.event = e;
+    bus.emit("install:offer", {});
+  });
+  window.addEventListener("appinstalled", () => {
+    install.event = null;
+    install.installed = true;
+    rememberInstall({ installedAt: Date.now() });
+    bus.emit("install:done", {});
+  });
+}
 
 /* ---------------- map (with a no-op fallback) ---------------- */
 function nullMap() {
