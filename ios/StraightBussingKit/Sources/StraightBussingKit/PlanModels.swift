@@ -28,7 +28,8 @@ public struct WalkLeg: Codable, Hashable, Sendable {
 }
 
 /// Where a ride time came from.
-public enum RideSource: String, Codable, Sendable { case live, learned, schedule, estimate }
+/// `timetable`: a trip at a chosen start time (owner 2026-11-09), scheduled departure and arrival (`Timetable`).
+public enum RideSource: String, Codable, Sendable { case live, learned, schedule, estimate, timetable }
 
 /// Bus leg (docs/ARCHITECTURE.md BusLeg). `stopIds` (board ... alight in travel order) is native-only: the
 /// web derives it from `path`.
@@ -55,6 +56,8 @@ public struct BusLeg: Codable, Hashable, Sendable {
     public var vehicleId: String? = nil
     public var p10: Double?
     public var p90: Double?
+    /// A scheduled departure (timetable mode, a chosen trip start time): fixed like a live one, never live.
+    public var waitSched: Bool = false
 }
 
 /// A trip leg.

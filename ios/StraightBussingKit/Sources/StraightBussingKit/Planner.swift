@@ -15,6 +15,10 @@ import Foundation
 ///  - options slower than max(2 x walking, walking + 15 min) are dropped, except the least-walking long way around
 ///    (`Rank.longWay*`, owner 2026-11-06), kept up to 60 min door to door.
 ///  - ranked by `Rank` (least walking > earliest arrival > shortest wait > criteria met); max 4.
+///  - timetable mode (owner 2026-11-09, a start time chosen in Directions, `Timetable`): `plan(..., timetable:)` waits for
+///    the next scheduled departure after you walk to the stop and rides to its scheduled arrival (of the next few
+///    departures, the one that gets there first; a loop ride goes on with the trip that starts at the loop's end); live
+///    trips, live buses and headway guesses are not used. Walks, the long way around and ranking are unchanged.
 public enum Planner {
     public static let maxWalk = 800.0
     public static let maxWalkFar = 1600.0
@@ -26,6 +30,9 @@ public enum Planner {
     public static let graceS = 15.0
     public static let headwayCap = 30.0
     static let xferGainMin = 2.0
+    /// Timetable mode: of the next departures (at most `schedTry`, within `schedLookS` of the first), the one that gets there first.
+    static let schedTry = 6
+    static let schedLookS = 3600.0
 
     struct Seq { var ids: [String]; var loop: Bool }
 
@@ -58,9 +65,15 @@ public enum Planner {
         return out
     }
 
-    struct Wait { var min: Double; var live: Bool; var t: Double; var tu: TripUpdate? }
+    /// sched: a timetable departure (`inst` = its instance, `list` / `i` = the stop's departures and its place, `ready` = when
+    /// you reach the stop).
+    struct Wait {
+        var min: Double; var live: Bool; var t: Double; var tu: TripUpdate?
+        var sched = false; var inst: Int? = nil; var ready = 0.0; var list: [Timetable.Departure] = []; var i = 0
+    }
     struct RideCore { var min: Double; var source: RideSource; var conf: Double; var p10: Double?; var p90: Double? }
-    struct Ride { var core: RideCore; var alightT: Double }
+    /// board: timetable mode only, the departure actually taken (when a later one gets there first).
+    struct Ride { var core: RideCore; var alightT: Double; var board: Wait? = nil }
     struct WalkCand { var i: Int; var id: String; var m: Double; var min: Double }
     struct RideKey: Hashable { var rid: String; var from: Int; var to: Int }
 
@@ -75,12 +88,23 @@ public enum Planner {
         /// Keyed by route + first and last path index: `pathIdx` makes the path from those alone.
         var rideCache: [RideKey: RideCore] = [:]
         var cycleCache: [String: Double] = [:]
+        /// Timetable mode: the scheduled trips from t0 and their departures by "rid|stop"; nil = live mode.
+        let schedInst: [Timetable.Instance]?
+        let schedIdx: [String: [Timetable.Departure]]
 
-        init(data: PlannerData, predict: RidePredictor?, walkMins: [String: Double]) {
+        init(data: PlannerData, predict: RidePredictor?, walkMins: [String: Double], timetable: TimetableData? = nil, t0: Double = 0) {
             stops = data.stops
             over = walkMins
             self.predict = predict
             service = data.service
+            if let timetable {
+                let inst = Timetable.instancesBetween(timetable, t0, t0 + Timetable.aheadS, rids: data.routeOrder.filter { data.routeStops[$0] != nil })
+                schedInst = inst
+                schedIdx = Timetable.departureIndex(inst)
+                return   // no live trip, no live bus, no headway guess
+            }
+            schedInst = nil
+            schedIdx = [:]
             for tu in data.trips {
                 guard let rid = tu.trip.routeId else { continue }
                 for u in tu.stopTimeUpdates {
@@ -130,6 +154,11 @@ public enum Planner {
 
         /// Wait to board rid at stopId when ready at readyT, or nil.
         func wait(_ rid: String, _ seq: Seq, _ stopId: String, _ readyT: Double) -> Wait? {
+            if schedInst != nil {
+                guard let list = schedIdx[rid + "|" + stopId], let i = list.firstIndex(where: { $0.t >= readyT - Planner.graceS }) else { return nil }
+                return Wait(min: max(0, (list[i].t - readyT) / 60), live: false, t: list[i].t, tu: nil, sched: true, inst: list[i].inst,
+                            ready: readyT, list: list, i: i)
+            }
             if let arr = live[rid + "|" + stopId], let L = arr.first(where: { $0.t >= readyT - Planner.graceS }) {
                 return Wait(min: max(0, (L.t - readyT) / 60), live: true, t: L.t, tu: L.tu)
             }
@@ -139,9 +168,26 @@ public enum Planner {
             return Wait(min: min, live: false, t: readyT + min * 60, tu: nil)
         }
 
-        /// Ride along path after boarding with `w`.
-        func ride(_ rid: String, _ seq: Seq, _ path: [Int], _ w: Wait) -> Ride {
+        /// Ride along path after boarding with `w`. Timetable mode: the scheduled arrival on the departure (of the next few)
+        /// that gets there first, `board` = that departure; nil when none does.
+        func ride(_ rid: String, _ seq: Seq, _ path: [Int], _ w: Wait) -> Ride? {
             let a = seq.ids[path[0]], b = seq.ids[path[path.count - 1]]
+            if w.sched, let inst = schedInst {
+                var best: (k: Int, tb: Double)? = nil
+                var k = w.i
+                while k < w.list.count && k < w.i + Planner.schedTry && w.list[k].t <= w.t + Planner.schedLookS {
+                    let d = w.list[k]
+                    if let tb = Timetable.reachAt(inst, d.inst, b, depT: d.t), best == nil || tb < best!.tb { best = (k, tb) }
+                    k += 1
+                }
+                guard let best else { return nil }
+                var board = w
+                if best.k != w.i {
+                    let d = w.list[best.k]
+                    board.min = max(0, (d.t - w.ready) / 60); board.t = d.t; board.inst = d.inst; board.i = best.k
+                }
+                return Ride(core: RideCore(min: max(1, (best.tb - board.t) / 60), source: .timetable, conf: 0.5), alightT: best.tb, board: board)
+            }
             if w.live, let tu = w.tu, let tb = tripAt(tu, b, w.t) {
                 return Ride(core: RideCore(min: max(1, (tb - w.t) / 60), source: .live, conf: 0.8), alightT: tb)
             }
@@ -175,10 +221,11 @@ public enum Planner {
 
         func busLeg(_ rid: String, _ seq: Seq, _ path: [Int], _ w: Wait, _ r: Ride) -> BusLeg {
             let ids = path.map { seq.ids[$0] }
+            let tripId = w.sched ? w.inst.flatMap { schedInst?[$0].id } : w.tu?.trip.tripId
             return BusLeg(rid: rid, board: pt(ids[0]), alight: pt(ids[ids.count - 1]), stopIds: ids,
                           path: ids.map { stops[$0]!.coord }, stopsPassed: ids.count - 1, wait: w.min, waitLive: w.live,
                           ride: r.core.min, source: r.core.source, conf: r.core.conf, boardT: w.t, alightT: r.alightT,
-                          tripId: w.tu?.trip.tripId, vehicleId: w.tu?.vehicle.id, p10: r.core.p10, p90: r.core.p90)
+                          tripId: tripId, vehicleId: w.tu?.vehicle.id, p10: r.core.p10, p90: r.core.p90, waitSched: w.sched)
         }
     }
 
@@ -220,8 +267,8 @@ public enum Planner {
                 guard let w = C.wait(rid, seq, b.id, t0 + b.min * 60) else { continue }
                 for a in al {
                     guard let path = pathIdx(seq, b.i, a.i) else { continue }
-                    let r = C.ride(rid, seq, path, w)
-                    let x = Pick(arr: r.alightT + a.min * 60, wm: b.min + a.min, b: b, a: a, path: path, w: w, r: r)
+                    guard let r = C.ride(rid, seq, path, w) else { continue }   // timetable mode: no scheduled trip goes there
+                    let x = Pick(arr: r.alightT + a.min * 60, wm: b.min + a.min, b: b, a: a, path: path, w: r.board ?? w, r: r)
                     for k in 0..<3 where best[k] == nil || better(k, x, best[k]!) { best[k] = x }
                 }
             }
@@ -250,9 +297,8 @@ public enum Planner {
             for b in near[A]!.bo {
                 guard let w = C.wait(A, sa, b.id, t0 + b.min * 60) else { continue }
                 for k in 0..<sa.ids.count {
-                    guard let path = pathIdx(sa, b.i, k) else { continue }
-                    let r = C.ride(A, sa, path, w)
-                    if atK[k] == nil || r.alightT < atK[k]!.r.alightT { atK[k] = AtK(b: b, w: w, r: r, path: path) }
+                    guard let path = pathIdx(sa, b.i, k), let r = C.ride(A, sa, path, w) else { continue }
+                    if atK[k] == nil || r.alightT < atK[k]!.r.alightT { atK[k] = AtK(b: b, w: r.board ?? w, r: r, path: path) }
                 }
             }
             for B in rids {
@@ -268,9 +314,9 @@ public enum Planner {
                         let xm = C.xferMin(ida, idb, d)
                         guard let wb = C.wait(B, sb, idb, x.r.alightT + xm * 60) else { continue }
                         for a in near[B]!.al {
-                            guard let pb = pathIdx(sb, m, a.i) else { continue }
-                            let rb = C.ride(B, sb, pb, wb), arr = rb.alightT + a.min * 60
-                            if best == nil || arr < best!.arr { best = XBest(arr: arr, x: x, d: d, xm: xm, wb: wb, rb: rb, pb: pb, a: a) }
+                            guard let pb = pathIdx(sb, m, a.i), let rb = C.ride(B, sb, pb, wb) else { continue }
+                            let arr = rb.alightT + a.min * 60
+                            if best == nil || arr < best!.arr { best = XBest(arr: arr, x: x, d: d, xm: xm, wb: rb.board ?? wb, rb: rb, pb: pb, a: a) }
                         }
                     }
                 }
@@ -291,15 +337,17 @@ public enum Planner {
     /// Plan trips from `from` to `to`. Totals include every walk.
     /// - Parameter walkMins: router minute overrides keyed 'start:<stopId>', 'end:<stopId>', 'xfer:<a>><b>'
     ///   (used by `refineWalking`; normal callers omit it).
+    /// - Parameter timetable: plan at `now` from the timetable (a start time chosen in Directions; `Timetable.startMode`
+    ///   `.timetable`): scheduled waits and rides, live trips and buses ignored; bus legs say `.timetable`, `waitSched`.
     public static func plan(from: LatLon?, to: LatLon?, now: Double, data: PlannerData?, predict: RidePredictor? = nil,
-                            walkMins: [String: Double] = [:]) -> PlanResult {
+                            walkMins: [String: Double] = [:], timetable: TimetableData? = nil) -> PlanResult {
         var result = PlanResult(now: now, options: [], walkOnlyM: 0, walkOnlyMin: 0)
         guard let from, let to, from.isValid, to.isValid else { return result }
         let wm = Geo.hav(from, to) * Geo.walkDetour
         result.walkOnlyM = Int(JS.round(wm))
         result.walkOnlyMin = wm / Geo.walkMetersPerMin
         guard let data else { return result }
-        let C = Ctx(data: data, predict: predict, walkMins: walkMins)
+        let C = Ctx(data: data, predict: predict, walkMins: walkMins, timetable: timetable, t0: now)
         let rids = data.routeOrder.filter { data.routeStops[$0] != nil }
         var seqs: [String: Seq] = [:]
         for rid in rids { seqs[rid] = seqOf(data.routeStops[rid] ?? [], C.stops) }

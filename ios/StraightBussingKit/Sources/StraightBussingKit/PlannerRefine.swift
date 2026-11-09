@@ -24,7 +24,7 @@ extension Planner {
     /// exists (drop the card). Never throws (core/planner.js refineWalking).
     public static func refineWalking(_ option: TripOption, walkRoute: WalkRouter?, now: Double? = nil, data: PlannerData?,
                                      from: LatLon? = nil, to: LatLon? = nil, predict: RidePredictor? = nil,
-                                     depth: Int = 0) async -> TripOption? {
+                                     timetable: TimetableData? = nil, depth: Int = 0) async -> TripOption? {
         let t0 = now ?? option.t0
         var legs = option.legs
         if let walkRoute {
@@ -53,13 +53,13 @@ extension Planner {
             case .walk(let w):
                 t += w.min * 60
             case .bus(var b):
-                if b.waitLive {
+                if b.waitLive || b.waitSched {   // a live or scheduled departure is fixed: a longer walk can miss it
                     if t > b.boardT + graceS { missed = true; break }
                     b.wait = max(0, (b.boardT - t) / 60)
                 } else {
                     b.boardT = t + b.wait * 60
                 }
-                if !(b.source == .live && b.alightT > b.boardT) { b.alightT = b.boardT + b.ride * 60 }
+                if !((b.source == .live || b.source == .timetable) && b.alightT > b.boardT) { b.alightT = b.boardT + b.ride * 60 }
                 t = b.alightT
                 legs[i] = .bus(b)
             }
@@ -71,10 +71,10 @@ extension Planner {
             let f: LatLon? = (from?.isValid ?? false) ? from : first?.walk?.from.coord ?? first?.bus?.board.coord
             let d: LatLon? = (to?.isValid ?? false) ? to : last?.walk?.to.coord ?? last?.bus?.alight.coord
             guard let f, let d, f.isValid, d.isValid, let data else { return nil }
-            let again = plan(from: f, to: d, now: t0, data: data, predict: predict, walkMins: overridesOf(legs))
+            let again = plan(from: f, to: d, now: t0, data: data, predict: predict, walkMins: overridesOf(legs), timetable: timetable)
             guard let same = again.options.first(where: { $0.key == option.key }) else { return nil }
             guard var r = await refineWalking(same, walkRoute: walkRoute, now: t0, data: data, from: f, to: d,
-                                              predict: predict, depth: depth + 1) else { return nil }
+                                              predict: predict, timetable: timetable, depth: depth + 1) else { return nil }
             r.replanned = true
             return r
         }

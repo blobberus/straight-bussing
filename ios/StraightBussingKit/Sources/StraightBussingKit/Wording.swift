@@ -11,6 +11,7 @@ public enum TripInfo {
         case .learned: return "learned from past rides"
         case .schedule: return "from schedule"
         case .estimate: return "distance estimate"
+        case .timetable: return "from the timetable"
         }
     }
 
@@ -96,7 +97,8 @@ public enum TripInfo {
         guard let fb = o.legs.firstIndex(where: { $0.bus != nil }), let bus = o.legs[fb].bus, let tb = times[fb] else { return nil }
         let board = bus.board.name.isEmpty ? "the stop" : bus.board.name
         let num = BusNumbers.legName(bus, numbers: numbers)
-        let busAt = num.isEmpty ? "bus " + TimeFmt.clock(tb.b) : "\(num) at \(TimeFmt.clock(tb.b))"
+        // a trip at a chosen start time (timetable mode): the scheduled departure, never a bus number
+        let busAt = bus.waitSched ? "scheduled bus " + TimeFmt.clock(tb.b) : num.isEmpty ? "bus " + TimeFmt.clock(tb.b) : "\(num) at \(TimeFmt.clock(tb.b))"
         let l1 = o.legs[0].walk.map { "Walk \(walkMins($0.min)) min to \(board) · \(busAt)" } ?? "Board at \(board), no walk · \(busAt)"
         let wt = walkTotal(o), leave = leaveInfo(o, now: now, level: level)
         let incl = wt > 0 ? "includes \(walkMins(wt)) min walking" : "no walking"
@@ -159,7 +161,7 @@ public enum TripInfo {
                 guard let t = times[i] else { continue }
                 let w = Int(JS.round(b.wait)), r = mins(b.ride), sp = max(1, b.stopsPassed)
                 out.append(Step(kind: .bus(b.rid),
-                                title: [Run((BusNumbers.legName(b, numbers: numbers).isEmpty ? "Bus" : BusNumbers.legName(b, numbers: numbers)) + " arrives at "),
+                                title: [Run(b.waitSched ? "Scheduled bus at " : (BusNumbers.legName(b, numbers: numbers).isEmpty ? "Bus" : BusNumbers.legName(b, numbers: numbers)) + " arrives at "),
                                         Run(b.board.name, bold: true), Run(" "), Run(TimeFmt.clock(t.b), bold: true)],
                                 tag: b.waitLive && !lastKnown ? "live" : "est.",
                                 sub: "Wait ~\(w < 1 ? "<1" : String(w)) min, then ride ~\(r) min (\(sp) stop\(sp > 1 ? "s" : "")) to \(b.alight.name), \(TimeFmt.clock(t.a)) · \(sourceText(b.source))",
@@ -184,7 +186,8 @@ public enum TripInfo {
         let names = o.busLegs.map { routes[$0.rid]?.short.isEmpty == false ? routes[$0.rid]!.short : $0.rid }.joined(separator: " then ")
         let lines = optionLines(o, now: now, level: level, numbers: numbers).map { "\($0.first). \($0.second)" } ?? ""
         let crit = criteria.isEmpty ? "" : " (" + criteria + ")"
-        let s = "Option \(index + 1)\(crit): about \(o.totalMin) minutes including \(wt > 0 ? walkMins(wt) + " minutes walking" : "no walking"), arrive \(TimeFmt.clock(o.arrive))\(names.isEmpty ? "" : ", take " + names). \(lines) Estimate."
+        let sched = o.busLegs.contains { $0.waitSched }
+        let s = "Option \(index + 1)\(crit): about \(o.totalMin) minutes including \(wt > 0 ? walkMins(wt) + " minutes walking" : "no walking"), arrive \(TimeFmt.clock(o.arrive))\(names.isEmpty ? "" : ", take " + names). \(lines) \(sched ? "Scheduled times, estimate." : "Estimate.")"
         return s.replacingOccurrences(of: "<1 min", with: "under 1 min")
     }
 }

@@ -191,7 +191,7 @@ extension Planner {
     /// times can change who walks least) and the walk-only line is routed too. Without a router the plan is
     /// returned unchanged. `missedAll` is set when every option was dropped.
     public static func refinePlan(_ r: PlanResult, from: LatLon, to: LatLon, walkRoute: WalkRouter?, data: PlannerData?,
-                                  predict: RidePredictor? = nil) async -> PlanResult {
+                                  predict: RidePredictor? = nil, timetable: TimetableData? = nil) async -> PlanResult {
         guard let walkRoute else { return r }
         let top = Array(r.options.prefix(maxOpts)), now = r.now
         let walkAll = Task<WalkResult?, Never> { try? await walkRoute(from, to) }
@@ -199,7 +199,7 @@ extension Planner {
             for (i, o) in top.enumerated() {
                 group.addTask {
                     let x = await Planner.refineWalking(o, walkRoute: walkRoute, now: now, data: data, from: from, to: to,
-                                                        predict: predict)
+                                                        predict: predict, timetable: timetable)
                     return (i, x)
                 }
             }

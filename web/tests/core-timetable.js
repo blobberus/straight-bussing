@@ -209,3 +209,28 @@ test("timetable: the control's words, its days and its values", () => {
   eq(leaveDefault(TUE(17, 40), now), TUE(17, 40), "the chosen time");
   ok(TT_DISCLAIMER.includes("Most buses run later than scheduled") && !/UGo/.test(TT_DISCLAIMER), "the app's own words never say UGo");
 });
+
+// The shared golden file (web/tests/tripstart-golden.html wrote it; the iOS Kit TimetableTests read a copy): the planner's
+// timetable-mode answers and the timetable helpers on the committed web/data
+test("timetable: the shared golden file (iOS Kit parity)", async () => {
+  const fx = await (await fetch("fixtures/tripstart_golden.json", { cache: "no-store" })).json();
+  const { data: d, tt } = await real();
+  eq(fx.generated, tt.generated, "made from the committed timetable.json (refresh both copies when it changes)");
+  ok(fx.cases.length >= 40, "cases");
+  const r6 = (x) => Math.round(x * 1e6) / 1e6;
+  const leg = (l) => l.type === "walk" ? { type: "walk", m: l.m, min: r6(l.min) }
+    : { type: "bus", rid: l.rid, board: l.board.id, alight: l.alight.id, stopsPassed: l.stopsPassed, boardT: l.boardT, alightT: l.alightT,
+        wait: r6(l.wait), ride: r6(l.ride), source: l.source, waitSched: !!l.waitSched, tripId: l.tripId };
+  for (const c of fx.cases) {
+    const r = plan({ from: c.from, to: c.to, now: c.t0, data: d, timetable: tt });
+    eq(r.options.some((o) => o.walkOnly), c.walkListed, c.name + " walk listed");
+    eq(r.options.filter((o) => !o.walkOnly).map((o) => ({ key: o.key, total: r6(o.total), totalMin: o.totalMin, arrive: r6(o.arrive),
+      walkMin: r6(o.walkMin), walkM: o.walkM, meets: o.meets, legs: o.legs.map(leg) })), c.options, c.name);
+  }
+  const h = fx.helpers, inst = instancesBetween(tt, h.t0, h.t0 + 3600, ["4346", "1077"]);
+  eq(inst.map((x) => ({ rid: x.rid, id: x.id, start: x.start, end: x.end })), h.instances, "instances");
+  const idx = departureIndex(inst);
+  for (const [k, v] of Object.entries(h.departures)) eq((idx.get(k) || []).map((x) => x.t), v, k);
+  for (const m of h.modes) eq(startMode(m.at, m.now), m.mode, JSON.stringify(m));
+  eq(leaveDays(h.t0, tt).map((x) => [x.iso, x.text, x.say]), h.days, "days");
+});

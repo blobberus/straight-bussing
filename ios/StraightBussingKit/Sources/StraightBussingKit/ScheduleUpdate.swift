@@ -213,7 +213,7 @@ extension ScheduleStore {
 }
 
 /// Checks the GitHub Pages copy of web/data for newer schedule files (one tiny conditional request for
-/// meta.json; the 7 schedule files, about 20 KB compressed, only when it says there is newer data) and, at most
+/// meta.json; the schedule files, timetable.json included, about 25 KB compressed, only when it says there is newer data) and, at most
 /// weekly, places.json. Sends nothing about the rider: plain GETs of public files, no location, no search text,
 /// no identifiers, no cookies. Off in `-demo`. Never throws.
 public struct ScheduleUpdater: Sendable {

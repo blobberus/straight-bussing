@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>trip start golden (running)</title></head>
+<body>
+<!-- Not a test page (the suite runs *.test.html): opened once in headless Edge to write fixtures/tripstart_golden.json, the
+     answers of web/js/core/planner.js in timetable mode (a chosen trip start time, owner 2026-11-09) and of
+     web/js/core/timetable.js on the committed data (stops.json, route_stops.json, timetable.json). The web test
+     core-timetable.js and the iOS Kit TimetableTests (a copy in ios/StraightBussingKit/Tests/StraightBussingKitTests/Fixtures)
+     check against it. To refresh after web/data/timetable.json changes: serve web/ (python -m http.server), open this page,
+     copy the JSON in the page to both files. -->
+<pre id="result">running...</pre>
+<script type="module">
+import { plan } from "../js/core/planner.js";
+import { cleanTimetable } from "../js/data/timetable.js";
+import { chicagoUnix } from "../js/core/timeactive.js";
+import { instancesBetween, departureIndex, startMode, leaveDays, isoOf } from "../js/core/timetable.js";
+const [stops, routeStops, raw] = await Promise.all(["stops", "route_stops", "timetable"].map((n) => fetch("../data/" + n + ".json", { cache: "no-store" }).then((r) => r.json())));
+const tt = cleanTimetable(raw);
+const data = { stops, routeStops, trips: [], buses: [] };
+const r6 = (x) => Math.round(x * 1e6) / 1e6;
+const at = (y, m, d, h, mi) => chicagoUnix(y, m, d, h, mi);
+const off = (id, dLat = 0.0004, dLon = 0) => ({ lat: stops[id].lat + dLat, lon: stops[id].lon + dLon });
+const REG = { lat: 41.79216, lon: -87.59994 }, VUE53 = { lat: 41.79981, lon: -87.59366 };
+const places = [
+  ["Regenstein to Vue53", REG, VUE53],
+  ["Vue53 to Regenstein", VUE53, REG],
+  ["Logan Center to Harper Court", off("8589"), off("8596", -0.0004)],
+  ["Ellis Garage to Press Building", off("8629", 0, 0.0004), off("8594")],
+  ["Levi Hall to Kimbark Plaza", off("8630", 0, -0.0005), off("8628", -0.0003)],
+  ["Goldblatt to 60th & Woodlawn", off("8612"), off("8632", 0.0003)],
+];
+const times = [
+  ["Tue 7:00 AM", at(2026, 11, 10, 7, 0)], ["Tue noon", at(2026, 11, 10, 12, 0)], ["Tue 5:40 PM", at(2026, 11, 10, 17, 40)],
+  ["Tue 6:30 PM", at(2026, 11, 10, 18, 30)], ["Tue 11:00 PM", at(2026, 11, 10, 23, 0)], ["Wed 12:30 AM", at(2026, 11, 11, 0, 30)],
+  ["Sat 1:00 PM", at(2026, 11, 14, 13, 0)], ["Sun 3:00 AM", at(2026, 11, 15, 3, 0)],
+];
+const leg = (l) => l.type === "walk" ? { type: "walk", m: l.m, min: r6(l.min) }
+  : { type: "bus", rid: l.rid, board: l.board.id, alight: l.alight.id, stopsPassed: l.stopsPassed, boardT: l.boardT, alightT: l.alightT,
+      wait: r6(l.wait), ride: r6(l.ride), source: l.source, waitSched: !!l.waitSched, tripId: l.tripId };
+const cases = [];
+for (const [pn, from, to] of places) {
+  for (const [tn, t0] of times) {
+    const r = plan({ from, to, now: t0, data, timetable: tt });
+    cases.push({ name: `${pn}, ${tn}`, from, to, t0, walkOnlyMin: r6(r.walkOnly.min),
+      walkListed: r.options.some((o) => o.walkOnly),
+      options: r.options.filter((o) => !o.walkOnly).map((o) => ({ key: o.key, total: r6(o.total), totalMin: o.totalMin, arrive: r6(o.arrive),
+        walkMin: r6(o.walkMin), walkM: o.walkM, meets: o.meets, legs: o.legs.map(leg) })) });
+  }
+}
+// the timetable helpers on the real file: instances and departures at a few stops
+const t1 = at(2026, 11, 10, 17, 40), inst = instancesBetween(tt, t1, t1 + 3600, ["4346", "1077"]), idx = departureIndex(inst);
+const helpers = {
+  t0: t1, instances: inst.map((x) => ({ rid: x.rid, id: x.id, start: x.start, end: x.end })),
+  departures: Object.fromEntries(["4346|138837", "1077|8630", "4346|8596"].map((k) => [k, (idx.get(k) || []).map((d) => d.t)])),
+  modes: [[null, t1], [t1 + 120, t1], [t1 + 599, t1], [t1 + 600, t1], [t1 - 1, t1]].map(([a, n]) => ({ at: a, now: n, mode: startMode(a, n) })),
+  days: leaveDays(t1, tt).map((d) => [d.iso, d.text, d.say]),
+};
+const out = { note: "web/js/core/planner.js timetable mode + core/timetable.js answers on the committed web/data; made by web/tests/tripstart-golden.html",
+  generated: tt.generated, cases, helpers };
+document.getElementById("result").textContent = JSON.stringify(out);
+document.title = "TESTS pass=1 fail=0";
+</script>
+</body>
+</html>
