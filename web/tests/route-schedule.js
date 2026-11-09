@@ -154,7 +154,7 @@ test("headways: a change of pace starts a new line at the bus where it changes",
   eq(lines([420, 429, 439, 448, 458, 468, 479, 489, 500]), ["Every 10 min, 7:00 to 8:20 AM"]);
 });
 
-test("headways: uneven gaps read 'About every N min', hour by hour, equal hours merged", () => {
+test("headways: uneven gaps read 'About every N min', hour by hour, hours of the same pace merged", () => {
   // Red Line/Arts Block mornings: two patterns 4 and 16 min apart = a bus about every 10 min
   const red = [390, 397];
   for (let t = 413; t <= 657; t += 20) red.push(t, t + 4);
@@ -162,14 +162,45 @@ test("headways: uneven gaps read 'About every N min', hour by hour, equal hours 
   eq(hourlyHeadways(red)[0].kind, "about");
   // Midway Metra mornings: two patterns drifting through each other (10, 11, 8, 12 ... min)
   const mid = departures({ dep: [341, 10, 11, 9, 12, 8, 13, 7, 14, 6, 15, 5, 16, 4, 18, 2, 19, 1, 20, 20, 1, 19, 2, 18, 3] });
-  eq(lines(mid), ["About every 10 min, 5:41 to 9:54 AM"]);
+  eq(lines(mid), ["About every 11 min, 5:41 to 9:54 AM"], "10.5 min on average");
   eq(lines([600, 610, 610, 620, 630]), ["Every 10 min, 10:00 to 10:30 AM"], "two trips at the same minute count once");
-  // the average rounds to 5 min from 7.5 up, else to the minute; a slower hour gets its own line
-  eq(lines([600, 612, 632, 652]), ["About every 15 min, 10:00 to 10:52 AM"], "17.3 min average");
-  eq(lines([600, 612, 632, 652, 664, 684, 704]), ["About every 15 min, 10:00 to 11:04 AM", "About every 20 min, 11:04 to 11:44 AM"], "hour by hour");
+  // the average rounds to the minute, to 5 min from 17.5 up; a slower hour gets its own line
+  eq(lines([600, 612, 632, 652]), ["About every 17 min, 10:00 to 10:52 AM"], "17.3 min average");
+  eq(lines([600, 615, 635, 655]), ["About every 20 min, 10:00 to 10:55 AM"], "18.3 min average");
+  eq(lines([600, 612, 632, 652, 664, 684, 704]), ["About every 16 min, 10:00 to 11:04 AM", "About every 20 min, 11:04 to 11:44 AM"], "hour by hour");
   eq(lines([600, 603, 609, 612, 618, 621, 627]), ["About every 5 min, 10:00 to 10:27 AM"], "4.5 min average");
   eq(lines([600, 602, 606, 608, 612, 614, 618]), ["About every 3 min, 10:00 to 10:18 AM"], "3 min average");
   eq(lines([600, 604, 620, 624, 640, 644, 660, 690, 722, 750, 782]), ["About every 10 min, 10:00 to 11:00 AM", "About every 30 min, 11:00 AM to 1:02 PM"]);
+});
+
+// Long or noisy timetables (CTA's) are tidied: neighbours of the same pace merge, short bursts join a neighbour, at most
+// 6 lines a stretch. The campus shuttles' lists stay as they are.
+test("headways: tidy, neighbours of the same pace read as one line", () => {
+  // bunched pairs (About every 10) and then a steady 10: one "About every 10" line
+  eq(lines([600, 604, 620, 624, 640, 644, ...every(660, 10, 11)]), ["About every 10 min, 10:00 AM to 12:40 PM"]);
+  // a steady 10, one odd gap (7 min, the hand-over), a steady 10 again: still "Every 10"
+  eq(lines([...every(420, 10, 10), ...every(517, 10, 10)]), ["Every 10 min, 7:00 to 10:07 AM"]);
+  // a hole of twice the pace or more is not hidden: "About every"
+  eq(lines([...every(420, 10, 10), ...every(530, 10, 10)]), ["About every 11 min, 7:00 to 10:20 AM"]);
+  // an uneven hour about 12 min next to a steady 10: two minutes apart is the same pace for an average
+  eq(lines([600, 606, 624, 630, 648, 654, ...every(672, 10, 8)]), ["About every 11 min, 10:00 AM to 12:22 PM"]);
+  // steady 10 then steady 13: different (exact paces a minute apart only)
+  eq(lines([...every(600, 10, 7), ...every(673, 13, 7)]), ["Every 10 min, 10:00 to 11:00 AM", "Every 13 min, 11:00 AM to 12:31 PM"], "the 13 min gap after 11:00 joins the 13s");
+});
+
+test("headways: tidy, a burst under 30 min joins its neighbour, at most 6 lines a stretch", () => {
+  // 4 extra buses 5 min apart for 20 min between two steady 10s: no line of its own
+  eq(lines([...every(600, 10, 7), 665, 670, 675, 680, ...every(690, 10, 10)]), ["About every 9 min, 10:00 AM to 1:00 PM"]);
+  // 8 long steady stretches alternating 10 and 30 min: closest paces merge until 6 lines remain
+  const alt = [];
+  let t = 300;
+  for (let k = 0; k < 8; k++) { const gap = k % 2 ? 30 : 10; for (let i = 0; i < (k % 2 ? 4 : 10); i++) { alt.push(t); t += gap; } }
+  alt.push(t);
+  const out = hourlyHeadways(alt);
+  ok(out.filter((x) => x.kind === "every" || x.kind === "about").length <= 6, JSON.stringify(out));
+  eq(out[0].from, 300); eq(out[out.length - 1].to, t, "the whole stretch is still covered");
+  // a lone first or last bus is never merged away
+  eq(lines([360, ...every(397, 20, 6)])[0], "1 trip, 6:00 AM");
 });
 
 test("headways: single trips, two trips, and breaks in service", () => {

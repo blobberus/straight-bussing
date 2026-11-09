@@ -345,8 +345,8 @@ const spread = (g, a, b) => { let lo = Infinity, hi = -Infinity; for (let i = a;
 const total = (g, a, b) => { let s = 0; for (let i = a; i < b; i++) s += g[i]; return s; };
 /** t / c in whole minutes, half up (integers only, so every platform agrees). */
 const roundDiv = (t, c) => Math.floor((2 * t + c) / (2 * c));
-/** An uneven stretch's average gap: to 5 minutes from 7.5 up, else to the minute (at least 1). */
-const aboutMin = (t, c) => (2 * t >= 15 * c ? 5 * Math.floor((2 * t + 5 * c) / (10 * c)) : Math.max(1, roundDiv(t, c)));
+/** An uneven stretch's average gap: to the minute (at least 1), to 5 minutes from 17.5 up ("About every 25 min"). */
+const aboutMin = (t, c) => (2 * t >= 35 * c ? 5 * Math.floor((2 * t + 5 * c) / (10 * c)) : Math.max(1, roundDiv(t, c)));
 
 /** One stretch of service (no gap of HEADWAY_BREAK_MIN or more) -> segments. */
 function stretchHeadways(d) {
@@ -380,7 +380,7 @@ function stretchHeadways(d) {
   if (runs[0].drop) out.push({ kind: "trips", n: 1, from: d[0], to: d[0] });   // a lone first bus before a steady run
   for (const r of runs) {
     if (r.drop) continue;
-    if (r.steady || spread(g, r.a, r.b) <= 1) { out.push({ kind: "every", min: head(r), from: d[r.a], to: d[r.b] }); continue; }
+    if (r.steady || spread(g, r.a, r.b) <= 1) { out.push({ kind: "every", min: head(r), from: d[r.a], to: d[r.b], g: r.b - r.a }); continue; }
     // uneven: "About every N min" hour by hour (a one-gap hour joins the hour before, else after), equal neighbours merged
     const hrs = [];
     for (let i = r.a; i < r.b; i++) {
@@ -393,21 +393,69 @@ function stretchHeadways(d) {
       if (k > 0) hrs[k - 1].b = hrs[k].b; else hrs[k + 1].a = hrs[k].a;
       hrs.splice(k--, 1);
     }
-    for (const x of hrs) {
-      const min = aboutMin(total(g, x.a, x.b), x.b - x.a), last = out[out.length - 1];
-      if (last && last.kind === "about" && last.min === min && last.to === d[x.a]) last.to = d[x.b];
-      else out.push({ kind: "about", min, from: d[x.a], to: d[x.b] });
-    }
+    for (const x of hrs) out.push({ kind: "about", min: aboutMin(total(g, x.a, x.b), x.b - x.a), from: d[x.a], to: d[x.b], g: x.b - x.a });
   }
   if (runs.length > 1 && runs[runs.length - 1].drop) out.push({ kind: "trips", n: 1, from: d[n - 1], to: d[n - 1] });   // a lone last bus
+  tidy(out);
+  for (const s of out) delete s.g;
   return out;
+}
+
+/** A range shorter than this (minutes) joins a neighbour (a short burst of extra buses is not a schedule of its own). */
+const FRAGMENT_MIN = 30;
+/** At most this many "Every" / "About every" lines per stretch of service; closest paces merge first. */
+const MAX_RANGES = 6;
+const paced = (s) => !!s && (s.kind === "every" || s.kind === "about");
+/** How different two ranges' paces are, as a fraction >= 1 [num, den] (integers, so every platform agrees). */
+const paceRatio = (a, b) => { const x = (a.to - a.from) * b.g, y = (b.to - b.from) * a.g; return x >= y ? [x, y] : [y, x]; };
+const below = (p, q) => p[0] * q[1] < q[0] * p[1];
+/** Neighbours that read as one pace: a minute apart, two when either is an average ("About"). */
+const samePace = (a, b) => Math.abs(a.min - b.min) <= (a.kind === "about" || b.kind === "about" ? 2 : 1);
+/** Two neighbouring ranges as one: "Every N" when both are and only an odd gap under 2 N sits between, else "About every". */
+function joinRanges(a, b) {
+  const hole = a.to < b.from ? b.from - a.to : 0, g = a.g + b.g + (hole ? 1 : 0);
+  if (a.kind === "every" && b.kind === "every" && a.min === b.min && hole < 2 * a.min) return { kind: "every", min: a.min, from: a.from, to: b.to, g };
+  return { kind: "about", min: aboutMin(b.to - a.from, g), from: a.from, to: b.to, g };
+}
+
+/**
+ * Keep a stretch's list short and readable (in place), merging neighbours: first ones of the same pace (samePace: "About
+ * every 10" next to "Every 10", "Every 15" next to "Every 16", "About every 11" next to "About every 9"), then the
+ * shortest range under FRAGMENT_MIN
+ * into its neighbour of closer pace, then, while more than MAX_RANGES remain, the two neighbours of closest pace. Lone
+ * "1 trip" lines stay. A merged range's number is its own average, so it never claims more precision than the timetable.
+ */
+function tidy(out) {
+  for (;;) {
+    let at = -1;   // merge out[at] and out[at + 1]
+    for (let i = 0; i + 1 < out.length && at < 0; i++) if (paced(out[i]) && paced(out[i + 1]) && samePace(out[i], out[i + 1])) at = i;
+    if (at < 0) {
+      let f = -1;
+      for (let i = 0; i < out.length; i++) {
+        const s = out[i], len = s.to - s.from;
+        if (paced(s) && len < FRAGMENT_MIN && (paced(out[i - 1]) || paced(out[i + 1])) && (f < 0 || len < out[f].to - out[f].from)) f = i;
+      }
+      if (f >= 0) at = !paced(out[f - 1]) ? f : !paced(out[f + 1]) ? f - 1 : below(paceRatio(out[f], out[f + 1]), paceRatio(out[f - 1], out[f])) ? f : f - 1;
+    }
+    if (at < 0 && out.filter(paced).length > MAX_RANGES) {
+      let best = null;
+      for (let i = 0; i + 1 < out.length; i++) {
+        if (!paced(out[i]) || !paced(out[i + 1])) continue;
+        const q = paceRatio(out[i], out[i + 1]);
+        if (!best || below(q, best)) { best = q; at = i; }
+      }
+    }
+    if (at < 0) return;
+    out.splice(at, 2, joinRanges(out[at], out[at + 1]));
+  }
 }
 
 /**
  * How often the timetable sends a bus over one service day, as ranges (owner 2026-11-09). Steady stretches (4 or more
  * buses, gaps within a minute) read "Every N min" from the first to the last of those buses; uneven ones "About every
- * N min" (the average gap, to 5 minutes from 7.5 up), hour by hour with equal hours merged; a lone bus "1 trip" (two
- * alone: "2 trips"); a gap of HEADWAY_BREAK_MIN or more is "No service" between two stretches. Same as the iOS Kit
+ * N min" (the average gap, to the minute, to 5 minutes from 17.5 up), hour by hour; a lone bus "1 trip" (two alone: "2 trips"); a gap
+ * of HEADWAY_BREAK_MIN or more is "No service" between two stretches. Then each stretch is tidied (tidy: neighbours of
+ * the same pace, bursts under 30 min and lists over 6 lines merge, CTA timetables need it). Same as the iOS Kit
  * Schedule.hourlyHeadways (both test the shared golden file web/tests/fixtures/headways_golden.json).
  * @param {number[]} deps departures, service-day minutes (departures(day)); duplicates and junk ignored
  * @returns {{kind:'every'|'about'|'trips'|'none', from:number, to:number, min?:number, n?:number}[]}
