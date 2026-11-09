@@ -35,7 +35,7 @@ import { rankOptions, criteriaLine, walkFirst, uniqueOptions, WALK_CAPTION } fro
 import { walkRoute } from "../../core/walk.js";
 import { createThrottle } from "../../core/throttle.js";
 import { predict } from "../../core/predict.js";
-import { routeChip, emptyState, skeleton, OFFICIAL_PHONE } from "../components.js";
+import { routeChip, emptyState, skeleton, officialLinks, OFFICIAL_PHONE } from "../components.js";
 import { matchStations, ICONS } from "./pick.js";
 import { noBusHelpHTML } from "./alerts.js";   // the operator's own words + who to call when no bus reports (rider safety)
 import { createPlaceSearch, assumeNoteHTML, setHTMLKeepFocus, focusNote } from "./placesearch.js";
@@ -46,7 +46,7 @@ import { DEMO } from "../../core/demo.js";
 import { bus } from "../../core/events.js";
 import { WALK_IC, tag, mins, walkMins, walkTotal, optionLines, stepsHTML as stepsFor } from "./tripinfo.js";
 import { svg } from "../icons.js";
-import { startMode, leaveLabel, LEAVE_NOW } from "../../core/timetable.js";
+import { startMode, leaveLabel, outsideTimetable, LEAVE_NOW, TT_TITLE, TT_DISCLAIMER, TT_SOON, TT_START_LATER, TT_NONE_TITLE, TT_OUTSIDE, TT_LOADING, TT_FAILED } from "../../core/timetable.js";
 import { loadTimetable, timetableNow } from "../../data/timetable.js";
 import { openLeavePick } from "./leavepick.js";
 
@@ -158,8 +158,9 @@ function optionHTML(o, i, now, state) {
   const crit = (D.result?.options?.length || 0) > 1 ? criteriaLine(o, walkArrive) : "";
   const critHTML = crit ? `<span class="j-crit">${esc(crit)}</span>` : "";
   const routesTxt = o.legs.filter((l) => l.type === "bus").map((l) => state.routes?.[l.rid]?.short || l.rid).join(" then ");
-  const aria = `Option ${i + 1}${crit ? " (" + crit + ")" : ""}: about ${minutesWords(o.totalMin)} including ${wt > 0 ? minutesWords(walkMins(wt)) + " walking" : "no walking"}, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. ${lines.text} Estimate.`.replace(/<1 min/g, "under 1 min");
-  const start = on && !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Shows only this trip&rsquo;s routes on the map. Follow the bus stop by stop in Current trip.</p>' : "";
+  const tt = D.result?.mode === "timetable";
+  const aria = `Option ${i + 1}${crit ? " (" + crit + ")" : ""}: about ${minutesWords(o.totalMin)} including ${wt > 0 ? minutesWords(walkMins(wt)) + " walking" : "no walking"}, arrive ${clock(o.arrive)}${routesTxt ? ", take " + routesTxt : ""}. ${lines.text} ${tt ? "Scheduled times, estimate." : "Estimate."}`.replace(/<1 min/g, "under 1 min");
+  const start = !on ? "" : tt ? startLaterHTML() : !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Shows only this trip&rsquo;s routes on the map. Follow the bus stop by stop in Current trip.</p>' : "";
   // the total and its "est." stay together (no "~" in front of an est. number: spec O4); the arrival clock on the right
   return `<div class="v-opt${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}">${critHTML}<span class="v-otop"><span class="v-otot">${o.totalMin}<small> min</small>${tag("est.")}</span><span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span><span class="v-osum">${legStrip(o, state)}</span>${lines.html}</button>${on ? stepsHTML(o, now, state) + start : ""}</div>`;
 }
@@ -173,10 +174,29 @@ function optionHTML(o, i, now, state) {
 function walkOptionHTML(o, i, now, state) {
   const on = i === D.sel, l = o.legs[0] || {}, cap = WALK_CAPTION[o.why] || WALK_CAPTION.close;
   const aria = `Option ${i + 1}: walk the whole way, ${minutesWords(walkMins(o.walkMin))}, ${Math.round(o.walkM || 0)} meters, arrive ${clock(o.arrive)}. ${cap}.`;
-  const start = on && !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Follow your walk in Current trip.</p>' : "";
+  const start = !on ? "" : D.result?.mode === "timetable" ? startLaterHTML() : !isPlanJourney(state) && planJourney(o) ? '<button type="button" class="v-btn v-btn--primary v-btn--block j-start" data-action="dir:start">Start</button><p class="v-fine j-starthint">Follow your walk in Current trip.</p>' : "";
   return `<div class="v-opt v-opt--walk${on ? " is-on" : ""}"><button type="button" class="v-optmain" data-action="dir:opt" data-i="${i}" aria-pressed="${on}" aria-label="${esc(aria)}">`
     + `<span class="j-crit">${esc(cap)}</span><span class="v-otop"><span class="j-walkic" aria-hidden="true">${svg("walk", 20)}</span><span class="v-otot">${esc(walkMins(o.walkMin))}<small> min walk</small></span><span class="v-oarr">Arrive ${esc(clock(o.arrive))}</span></span>`
     + `<span class="v-sec j-oline">${esc(walkDetail(o.walkM, l.source))}</span></button>${on ? stepsHTML(o, now, state) + start : ""}</div>`;
+}
+
+/** Instead of Start on a plan for later (timetable mode): when Start comes (live times take over 10 minutes before). */
+const startLaterHTML = () => `<p class="v-fine j-starthint j-later">${esc(TT_START_LATER)}</p>`;
+
+/**
+ * The larger disclaimer over a plan for a chosen start time (owner 2026-11-09: "this should have a larger disclaimer saying
+ * that most buses tend to run late on schedule and currently the ... shuttles don't have a way of adjusting to this issue"):
+ * a warnBg card above the options, more visible than the est. notes, not an alarm (a clock, no red), with the outside-the-
+ * timetable note when it applies and the official contact. Trusted HTML.
+ * @param {number} at the chosen start
+ * @returns {string}
+ */
+export function ttNoteHTML(at) {
+  const tt = timetableNow(), outside = tt && outsideTimetable(tt, at);
+  return `<section class="v-ttnote" aria-labelledby="ttNoteH">${svg("clock-alert", 20)}<span class="v-grow">`
+    + `<b class="v-ttnote-h" id="ttNoteH">${esc(TT_TITLE)}</b><span class="v-ttnote-b">${esc(TT_DISCLAIMER)}</span>`
+    + (outside ? `<span class="v-ttnote-b">${esc(TT_OUTSIDE)}</span>` : "")
+    + `<span class="v-ttnote-off">Unofficial. ${officialLinks()}</span></span></section>`;
 }
 
 /** "605 m on sidewalks" (a routed walk) or "605 m, walking estimate" (straight line); the iPhone app's WalkOptionCard. */
@@ -217,15 +237,23 @@ export function resHTML(state, now = nowS()) {
     if (!D.from && !state.user && !(D.active === "from" && D.sugs.some((s) => s.kind === "me"))) h +='<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="dir:me" data-key="from">Start from my location</button>';
     return h;
   }
+  if (D.tt === "failed") return cov + emptyState(TT_FAILED, "", { icon: "wifi-off" }) + `<button type="button" class="v-btn v-btn--secondary v-btn--block" data-action="dir:when-clear">${esc(LEAVE_NOW)}</button>`;
+  if (D.tt === "loading") return cov + `<p class="v-hint" role="status">${esc(TT_LOADING)}</p>` + skeleton(2);
   if (!state.staticLoaded || !D.result) return cov + skeleton(2);
-  const r = D.result, w = r.walkOnly || { m: 0, min: 0 }, level = staleLevel(state, now);
-  let h = tripBarHTML(state) + (level ? `<p class="v-stale" role="status">${esc(staleNote(level, "Bus times may be off."))}</p>` : "") + cov;
+  const r = D.result, w = r.walkOnly || { m: 0, min: 0 }, tt = r.mode === "timetable", t0 = r.t0 || now;
+  const level = tt ? "" : staleLevel(state, now);   // a timetable plan uses no live data: the status banner still flags the feed
+  let h = tripBarHTML(state) + (level ? `<p class="v-stale" role="status">${esc(staleNote(level, "Bus times may be off."))}</p>` : "") + cov
+    + (tt ? ttNoteHTML(t0) : r.mode === "live" ? `<p class="v-hint v-soon">${esc(TT_SOON)}</p>` : "");
+  if (!r.options.length && tt) {   // nothing on the timetable then: say so, offer the walk (no live help: nothing live was asked)
+    h += emptyState(TT_NONE_TITLE, `The timetable has no shuttle that goes close to both places around ${clock(t0)}.`, { icon: "route" });
+    return h + `<div class="v-opt v-opt--walk is-on"><div class="v-optmain"><span class="v-otop"><span class="j-walkic" aria-hidden="true">${svg("walk", 20)}</span><span class="v-otot">${mins(w.min)}<small> min walk</small></span><span class="v-oarr">Arrive ${esc(clock(t0 + (w.min || 0) * 60))}</span></span><span class="v-sec j-oline">${esc(walkDetail(w.m, w.source))}</span></div></div>`;
+  }
   if (!r.options.length) {
     const running = (state.buses || []).length > 0;
     h += liveUnknown(state, now) ? emptyState("Can't plan shuttle trips right now", "The live shuttle feed can't be reached, so we can't tell which buses are running.", { icon: "wifi-off" })   // feed outage != no service
       : emptyState("No practical shuttle route right now", D.missed ? "The next buses leave before you could reach the stop." : running ? "Nothing runs close enough to both places."
         : silentService(state, now) ? silentText(state, scheduledRoutes(state, now, { hidden: effectiveHidden(state) }), now, OFFICIAL_PHONE) : "No shuttles are running right now.", { icon: "route" });   // empty feed, routes scheduled
-    h += `<div class="v-opt v-opt--walk is-on"><div class="v-optmain"><span class="v-otop"><span class="j-walkic" aria-hidden="true">${svg("walk", 20)}</span><span class="v-otot">${mins(w.min)}<small> min walk</small></span><span class="v-oarr">Arrive ${esc(clock(now + (w.min || 0) * 60))}</span></span><span class="v-sec j-oline">${esc(walkDetail(w.m, w.source))}</span></div></div>`;
+    h += `<div class="v-opt v-opt--walk is-on"><div class="v-optmain"><span class="v-otop"><span class="j-walkic" aria-hidden="true">${svg("walk", 20)}</span><span class="v-otot">${mins(w.min)}<small> min walk</small></span><span class="v-oarr">Arrive ${esc(clock(t0 + (w.min || 0) * 60))}</span></span><span class="v-sec j-oline">${esc(walkDetail(w.m, w.source))}</span></div></div>`;
     return h + (running ? "" : noBusHelpHTML(state, now));
   }
   h += r.options.slice(0, PLANNER.MAX_OPTS).map((o, i) => (o.walkOnly ? walkOptionHTML(o, i, now, state) : optionHTML(o, i, now, state))).join("");

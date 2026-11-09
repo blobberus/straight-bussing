@@ -4,7 +4,8 @@
  * Makes walking visible: the walk to the first stop and from the last stop are always named in the
  * option card and step list (or "no walk needed" when the planner dropped a leg under 25 m), totals say they
  * include walking, and "Leave now / Leave in N min" guidance is derived from the walking estimate.
- * Every derived time here is an estimate and is labeled so.
+ * Every derived time here is an estimate and is labeled so. A bus leg planned from the timetable (a chosen trip start time,
+ * leg.waitSched, source 'timetable') reads "Scheduled bus at X 5:45 PM est." and "from the timetable", never live.
  */
 import { esc, safeColor } from "../../core/esc.js";
 import { clock } from "../../core/time.js";
@@ -15,7 +16,8 @@ import { svg } from "../icons.js";
 import { legBusName } from "../../core/busnum.js";
 
 /** Ride-time source wording for bus steps. */
-export const SRC = { live: "from live bus prediction", learned: "learned from past rides", schedule: "from schedule", estimate: "distance estimate" };
+export const SRC = { live: "from live bus prediction", learned: "learned from past rides", schedule: "from schedule", estimate: "distance estimate",
+  timetable: "from the timetable" };   // timetable: a trip at a chosen start time (owner 2026-11-09), scheduled departure and arrival
 /** Walking person icon (decorative). */
 export const WALK_IC = svg("walk", 15);
 
@@ -112,7 +114,8 @@ export function optionLines(o, now, level = "", state = null) {
     const text = num ? `${go} for ${num}, ${busAt} at ${board}` : `${go}, bus ${busAt} at ${board}`;
     return { text, html: `<span class="v-sec j-oline${leave.kind === "now" ? " j-now" : ""}">${esc(text)}<span class="${level === "late" ? "dot-live late" : "v-livedot"} j-live" aria-hidden="true"></span></span>` };
   }
-  const text = `${num || "Bus"} about ${busAt} at ${board}, est.`;
+  // a trip at a chosen start time (timetable mode): the scheduled departure, never the live dot or a bus number
+  const text = bus.waitSched ? `Scheduled bus ${busAt} at ${board}, est.` : `${num || "Bus"} about ${busAt} at ${board}, est.`;
   return { text, html: `<span class="v-sec j-oline">${esc(text)}</span>` };
 }
 
@@ -159,7 +162,8 @@ export function stepsHTML(o, now, state, { fromLabel, toLabel } = {}) {
     }
     const t = times[i], w = Math.round(l.wait || 0), r = mins(l.ride), sp = l.stopsPassed || 1;
     const color = safeColor(state.routes?.[l.rid]?.color);
-    steps.push(li(routeChip(l.rid, state.routes, { small: true }), `${esc(legBusName(state, l) || "Bus")} arrives at <b>${esc(l.board?.name || "")}</b> <b class="v-clock">${esc(clock(t.b))}</b>${l.waitLive && !lastKnown ? "" : tag("est.")}`
+    const head = l.waitSched ? "Scheduled bus at" : `${esc(legBusName(state, l) || "Bus")} arrives at`;   // timetable mode: scheduled, never live
+    steps.push(li(routeChip(l.rid, state.routes, { small: true }), `${head} <b>${esc(l.board?.name || "")}</b> <b class="v-clock">${esc(clock(t.b))}</b>${l.waitLive && !lastKnown ? "" : tag("est.")}`
       + (l.waitLive ? (level ? `<span class="v-sec v-stepsub v-steplive">${liveLabel(level).html}</span>` : LIVE_LINE) : "")
       + sub(`Wait ~${w < 1 ? "&lt;1" : w} min, then ride ~${r} min (${sp} stop${sp > 1 ? "s" : ""}) to ${esc(l.alight?.name || "")}, ${esc(clock(t.a))} &middot; ${esc(SRC[l.source] || "estimate")},${tag("est.")}`), "j-bus", color));
   });

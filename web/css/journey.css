@@ -46,6 +46,21 @@ html[data-text="ax"] .j-placename { display: block; -webkit-line-clamp: unset; o
 .v-cover .v-grow { display: flex; flex-direction: column; gap: 2px; }
 .v-cover b { color: var(--label); font-weight: var(--w-semibold); }
 .v-note.v-cover { background: var(--warn-bg); color: var(--label); align-items: flex-start; }
+/* the larger disclaimer over a plan for a chosen start time (owner 2026-11-09): warnBg like the stale-data note, a clock with
+   an alert mark in warn (never red, never green), the title in rowTitle, the text in rowDetail label (AA on warnBg in both
+   themes), the official contact last */
+.v-ttnote {
+  display: flex; gap: var(--s-3); align-items: flex-start; margin: 0 0 var(--s-3); padding: var(--s-4) var(--inset-content);
+  border-radius: var(--r-card); background: var(--warn-bg); color: var(--label);
+}
+.v-ttnote > .ic { flex: none; width: 20px; height: 20px; margin-top: 2px; color: var(--warn); }
+.v-ttnote .v-grow { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.v-ttnote-h { font: var(--t-row-title); color: var(--label); }
+.v-ttnote-b { font: var(--t-row-detail); color: var(--label); }
+.v-ttnote-off { margin-top: var(--s-1); font: var(--t-footnote); color: var(--label); }
+.v-ttnote-off .official { display: inline; margin: 0; font: inherit; color: var(--label); }
+.v-soon { margin-top: 0; }
+@media (prefers-contrast: more) { .v-ttnote { box-shadow: inset 0 0 0 1px var(--warn); } }
 /* option lines: criteria (caption, label2, not the accent), the leave line */
 .j-crit { display: block; font: var(--t-caption); color: var(--label-2); }
 .j-oline { display: block; }
