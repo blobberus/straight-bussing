@@ -573,3 +573,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 1077,East,1794193952,2026-11-08 21:12:32,drop,2,1,4317,8635,Ellis Garage & Ratner Athletic Center (East),1794193952,540648,4322,1,1,0,,,1,
 1078,Central,1794193963,2026-11-08 21:12:43,drop,2,1,4325,8579,Reynolds Club,1794193963,540726,4318,1,1,0,,,1,
 5701,Drexel,1794223912,2026-11-09 05:31:52,add,1,2,4319,,,1794224213,501394,4324,2,2,0,,,,0
+5704,Downtown Campus Connector,1794228085,2026-11-09 06:41:25,add,1,2,12647,,,1794228390,874028,4318,2,4,1,,,,0
