@@ -41,6 +41,7 @@ import { hav } from "../core/geo.js";
 import { ZONE } from "../core/time.js";
 import { load, save, remove } from "../core/storage.js";
 import { bus } from "../core/events.js";
+import { installEnv, isInstalled } from "../core/install.js";
 
 /** The receiver: the owner's Apps Script web app (tools/usage/Code.gs; docs/USAGE-STATS.md). Empty: nothing is ever sent. */
 export const USAGE_URL = "https://script.google.com/macros/s/AKfycbzNBpOOftjp3sVA_UuyIGgFGsKFhMo3e_iP0u9NFwUJT3FeR8b6NwSgJMiBo7UGzWUr/exec";
@@ -181,10 +182,10 @@ function saveVisit(st, v, lastActive) {
   try { if (st && v) st.setItem(VISIT_KEY, JSON.stringify({ ...v, lastActive })); } catch (e) { /* private mode, quota */ }
 }
 
-/** The installed home-screen app, or a browser tab. */
+/** The installed home-screen app, or a browser tab (the one shared check, core/install.js isInstalled). */
 function appKind() {
   try {
-    if (window.matchMedia?.("(display-mode: standalone)")?.matches || (cfg.nav || navigator).standalone === true) return "home-screen";
+    if (isInstalled(installEnv(cfg.nav || navigator))) return "home-screen";
   } catch (e) { /* */ }
   return "browser";
 }

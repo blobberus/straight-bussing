@@ -31,6 +31,7 @@ const PRECACHE = [
   'js/core/demo.js',
   'js/core/esc.js',
   'js/core/lochelp.js',
+  'js/core/install.js',
   'js/core/events.js',
   'js/core/geo.js',
   'js/core/idle.js',

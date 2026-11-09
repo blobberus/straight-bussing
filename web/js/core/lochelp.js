@@ -8,6 +8,7 @@
  * Pure data + string functions; rendered by ui/views/settings.js and ui/views/nearby.js. Menu names checked
  * 2026-10-12 against Apple's Location Services guide and current browser menus.
  */
+import { installEnv, isInstalled } from "./install.js";
 
 /**
  * Which instructions fit this device.
@@ -30,12 +31,12 @@ export function locPlatform({ ua = "", maxTouchPoints = 0, standalone = false } 
   return "other";
 }
 
-/** The current browser's environment for locPlatform (safe outside a browser). */
+/** The current browser's environment for locPlatform (safe outside a browser). standalone = the installed app, by
+ * the one shared check (core/install.js isInstalled: navigator.standalone or an installed display mode). */
 export function locEnv() {
   if (typeof navigator === "undefined") return {};
-  let standalone = navigator.standalone === true;
-  try { standalone = standalone || (typeof matchMedia === "function" && matchMedia("(display-mode: standalone)").matches); } catch (e) { /* */ }
-  return { ua: navigator.userAgent || "", maxTouchPoints: navigator.maxTouchPoints || 0, standalone };
+  const env = installEnv();
+  return { ua: env.ua, maxTouchPoints: env.maxTouchPoints, standalone: isInstalled(env) };
 }
 
 const IOS_SYSTEM = [
