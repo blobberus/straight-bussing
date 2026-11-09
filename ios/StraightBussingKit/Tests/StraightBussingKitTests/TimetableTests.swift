@@ -181,6 +181,12 @@ final class TimetableTests: XCTestCase {
         XCTAssertEqual(Timetable.leaveDefault(tue(17, 40), now: now), tue(17, 40))
         XCTAssertTrue(Timetable.disclaimer.contains("Most buses run later than scheduled") && !Timetable.disclaimer.contains("UGo"))
         XCTAssertEqual(TripInfo.sourceText(.timetable), "from the timetable")
+        // the sheet's live line (web leavepick.js previewText)
+        XCTAssertEqual(Timetable.previewText(now - 600, now: now, Self.tt1), "That time has passed, so trips are planned from now. Bus times are live.")
+        XCTAssertEqual(Timetable.previewText(now, now: now, Self.tt1), "Leave now. Bus times are live.")
+        XCTAssertEqual(Timetable.previewText(now + 300, now: now, Self.tt1), "Leave at \(TimeFmt.clock(now + 300)). Less than 10 minutes away, so bus times stay live.")
+        XCTAssertEqual(Timetable.previewText(tue(17, 40), now: now, Self.tt1), "Leave at \(TimeFmt.clock(tue(17, 40))). Bus times will come from the timetable.")
+        XCTAssertTrue(Timetable.previewText(at(2026, 12, 20, 9, 0), now: now, Self.tt1).hasSuffix(Timetable.outside), "outside the timetable's dates")
     }
 
     func testParseDropsBadParts() throws {

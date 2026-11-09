@@ -102,6 +102,9 @@ struct RootView: View {
         .sheet(isPresented: $model.showSettings) { SettingsView() }
         .onChange(of: model.mapCovered) { _, _ in model.mapCoverChanged() }   // no bus glides behind a sheet
         .sheet(isPresented: $model.showTimePick) { TimePickView(start: model.routeState.timeView?.at ?? Date().timeIntervalSince1970) }
+        .sheet(isPresented: $model.showLeavePick) {   // Directions' trip start time (owner 2026-11-09)
+            LeaveTimeView(at: model.dir.at, now: Date().timeIntervalSince1970, timetable: model.staticData.timetable)
+        }
         .sheet(isPresented: $model.showFeedback) { FeedbackSheet() }
         .sheet(isPresented: $model.showLiveActivityPreview) {
             NavigationStack { LiveActivityPreviewView() }

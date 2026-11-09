@@ -327,6 +327,16 @@ extension AppModel {
         replan()
     }
 
+    /// Set the trip start time (owner 2026-11-09; nil or a time already past = Leave now) and re-plan. A new start time is a
+    /// new trip, like a new endpoint: a started one ends.
+    func setStartTime(_ at: Double?) {
+        let keep: Double? = Timetable.startMode(at, now: Date().timeIntervalSince1970) == .now ? nil : at
+        if keep == dir.at { return }
+        if activeTrip != nil { endTrip() }
+        dir.at = keep
+        replan()
+    }
+
     func swapEndpoints() {
         if activeTrip != nil { endTrip() }
         let f = dir.from
@@ -389,8 +399,9 @@ extension AppModel {
         dir.selected = 0
         let task = Task { [weak self] in
             guard let self else { return }
-            let r = await self.computePlan(from: f.coord, to: t.coord)
+            let (r, mode) = await self.computePlan(from: f.coord, to: t.coord)
             guard !Task.isCancelled, self.dir.from == f, self.dir.to == t else { return }
+            self.dir.planMode = mode
             self.dir.result = r
             self.dir.selected = 0
             if let o = r.options.first { self.fit(self.planPoints(o)) }
@@ -407,8 +418,8 @@ extension AppModel {
     func refineDirections(_ r: PlanResult, from f: Endpoint, to t: Endpoint) async {
         guard let router = walkCache?.router else { return }
         dir.refining = true
-        let data = plannerData, predict = predictor
-        let refined = await Planner.refinePlan(r, from: f.coord, to: t.coord, walkRoute: router, data: data, predict: predict)
+        let data = plannerData, predict = predictor, tt = dir.planMode == .timetable ? staticData.timetable : nil
+        let refined = await Planner.refinePlan(r, from: f.coord, to: t.coord, walkRoute: router, data: data, predict: predict, timetable: tt)
         guard !Task.isCancelled, dir.from == f, dir.to == t, let cur = dir.result else { return }
         let opts = cur.options
         let oldKey = opts.indices.contains(dir.selected) ? opts[dir.selected].key : nil
@@ -433,18 +444,22 @@ extension AppModel {
               dirRefreshTask == nil, !liveState.failed else { return }
         let wall = Date().timeIntervalSince1970
         guard wall - lastDirRefresh >= Self.dirRefreshS else { return }
+        // a timetable plan uses no live data: nothing to refresh until its start time is near (then live times take over)
+        if dir.planMode == .timetable && Timetable.startMode(dir.at, now: wall) == .timetable { return }
         lastDirRefresh = wall
         dirRefreshTask = Task { [weak self] in
             guard let self else { return }
-            var r = await self.computePlan(from: f.coord, to: t.coord)
+            let (r0, mode) = await self.computePlan(from: f.coord, to: t.coord)
+            var r = r0
             if let router = self.walkCache?.router {   // cached sidewalk routes: the walks stay routed
                 r = await Planner.refinePlan(r, from: f.coord, to: t.coord, walkRoute: router, data: self.plannerData,
-                                             predict: self.predictor)
+                                             predict: self.predictor, timetable: mode == .timetable ? self.staticData.timetable : nil)
             }
             self.dirRefreshTask = nil
             // Drop it if the endpoints changed meanwhile (a fresh plan is coming) or Directions closed.
             guard self.page == .directions, self.dir.from == f, self.dir.to == t, let old = self.dir.result else { return }
             let key = old.options.indices.contains(self.dir.selected) ? old.options[self.dir.selected].key : nil
+            self.dir.planMode = mode
             self.dir.result = r
             self.dir.selected = key.flatMap { k in r.options.firstIndex { $0.key == k } } ?? min(self.dir.selected, max(0, r.options.count - 1))
             // a live re-plan never moves the boarding stop of a started trip; only another set of routes replaces it
@@ -457,12 +472,27 @@ extension AppModel {
         }
     }
 
-    /// `Planner.plan` off the main thread (its inputs are Sendable value snapshots).
-    func computePlan(from: LatLon, to: LatLon) async -> PlanResult {
-        let data = plannerData, predict = predictor, t = Date().timeIntervalSince1970
-        return await Task.detached(priority: .userInitiated) {
-            Planner.plan(from: from, to: to, now: t, data: data, predict: predict)
+    /// When the plan starts and how (owner 2026-11-09, Kit `Timetable.startMode`): now; a chosen time under 10 minutes away
+    /// (live times from then); later (the timetable). A chosen time already past goes back to Leave now.
+    func planStart() -> (t0: Double, mode: Timetable.Mode) {
+        let wall = Date().timeIntervalSince1970
+        if dir.at != nil, Timetable.startMode(dir.at, now: wall) == .now { dir.at = nil }
+        let mode = Timetable.startMode(dir.at, now: wall)
+        return (mode == .now ? wall : dir.at ?? wall, mode)
+    }
+
+    /// `Planner.plan` off the main thread (its inputs are Sendable value snapshots), from `planStart`: a timetable plan
+    /// reads `staticData.timetable` (none loaded = no options; DirectionsView says the timetable could not load).
+    func computePlan(from: LatLon, to: LatLon) async -> (PlanResult, Timetable.Mode) {
+        let start = planStart(), data = plannerData, predict = predictor
+        let tt = start.mode == .timetable ? staticData.timetable : nil
+        if start.mode == .timetable && tt == nil {
+            return (Planner.plan(from: from, to: to, now: start.t0, data: nil), start.mode)   // walking only
+        }
+        let r = await Task.detached(priority: .userInitiated) {
+            Planner.plan(from: from, to: to, now: start.t0, data: data, predict: predict, timetable: tt)
         }.value
+        return (r, start.mode)
     }
 
     /// Everything the map draws for an option (sidewalk walks, road-following bus legs), for framing it.
@@ -627,6 +657,7 @@ extension AppModel {
     /// for, this is when iOS asks (the documented flow: at the first armed alert or at Start, never at launch); the
     /// first alerts wait for the answer.
     func startTrip(_ o: TripOption, label: String) {
+        if page == .directions && dir.planMode == .timetable { return }   // a plan for later: Start comes with live times
         guard let j = TripJourney.plan(o, to: label) else { return }
         activeTrip = ActiveTrip(option: o, label: label, startedAt: now, journey: j)
         routeState.journey = Journey(rids: j.rids, label: j.label, kind: .plan)

@@ -44,16 +44,20 @@ struct DirectionsCard: View {
 
     var body: some View {
         @Bindable var ui = ui
-        HStack(spacing: 8) {
-            VStack(spacing: 0) {
-                field(.from, text: $ui.fromText, placeholder: "Start")
-                Divider().padding(.leading, 28)
-                field(.to, text: $ui.toText, placeholder: "Destination")
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                VStack(spacing: 0) {
+                    field(.from, text: $ui.fromText, placeholder: "Start")
+                    Divider().padding(.leading, 28)
+                    field(.to, text: $ui.toText, placeholder: "Destination")
+                }
+                Button { model.swapEndpoints(); ui.sync(model) } label: {
+                    Image(systemName: "arrow.up.arrow.down").font(.body.weight(.semibold)).tapTarget()
+                }
+                .accessibilityLabel("Swap start and destination")
             }
-            Button { model.swapEndpoints(); ui.sync(model) } label: {
-                Image(systemName: "arrow.up.arrow.down").font(.body.weight(.semibold)).tapTarget()
-            }
-            .accessibilityLabel("Swap start and destination")
+            // the optional trip start time (owner 2026-11-09): Leave now, or a chosen time with a clear button
+            LeaveTimeRow().padding(.bottom, 2)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 4)
@@ -214,12 +218,32 @@ struct DirectionsView: View {
                 .secondaryButtonStyle()
             }
         } else if let r = model.dir.result {
+            let timetable = model.dir.planMode == .timetable
             TripBar()
-            if let note = LiveText.staleNote(model.staleLevel, "Bus times may be off.") {
+            // a timetable plan uses no live data: the status pill still flags the feed
+            if !timetable, let note = LiveText.staleNote(model.staleLevel, "Bus times may be off.") {
                 Text(note).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.warn)
             }
             coverNote
-            if r.options.isEmpty {
+            if timetable {
+                TimetableNote(at: r.now)   // the larger disclaimer, above the options (owner 2026-11-09)
+            } else if model.dir.planMode == .live {
+                Hint(Timetable.soon)
+            }
+            if r.options.isEmpty && timetable {
+                if model.staticData.timetable == nil {
+                    EmptyStateView(title: Timetable.failed, message: "", showOfficial: true)
+                } else {
+                    EmptyStateView(title: Timetable.noneTitle, message: Timetable.noneText(r.now))
+                }
+                Button { model.setStartTime(nil) } label: {
+                    Text(Timetable.leaveNow).frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .secondaryButtonStyle()
+                .accessibilityIdentifier("leaveNowFromEmpty")
+                walkOnlyCard(r)
+                refiningNote
+            } else if r.options.isEmpty {
                 let running = !model.buses.isEmpty
                 if model.liveOutage {   // a feed outage is not "no shuttles running" (rider safety)
                     EmptyStateView(title: "Can't plan shuttle trips right now",
@@ -306,7 +330,7 @@ struct DirectionsView: View {
                     Text(caption).font(.caption.weight(.semibold)).foregroundStyle(Palette.text2)
                 }
                 let mins = Text("\(TripInfo.mins(r.walkOnlyMin))").font(.title2.weight(.bold)).monospacedDigit()
-                let arrive = Text("Arrive \(TimeFmt.clock(model.now + r.walkOnlyMin * 60))").font(.subheadline.weight(.semibold))
+                let arrive = Text("Arrive \(TimeFmt.clock(r.now + r.walkOnlyMin * 60))").font(.subheadline.weight(.semibold))   // from the plan's start
                 ViewThatFits(in: .horizontal) {   // large text: the arrival under the minutes, never broken inside the clock
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         mins
@@ -413,7 +437,11 @@ struct OptionCard: View {
             if selected {
                 Divider()
                 StepList(option: option)
-                if model.activeTrip == nil, !option.busLegs.isEmpty {
+                if model.dir.planMode == .timetable, !option.busLegs.isEmpty {
+                    Text(Timetable.startLater).font(.caption).foregroundStyle(Palette.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("startLater")
+                } else if model.activeTrip == nil, !option.busLegs.isEmpty {
                     Button {
                         model.startTrip(option, label: model.dir.to?.label ?? "destination")
                     } label: { Text("Start").font(.headline).frame(maxWidth: .infinity, minHeight: 44) }

@@ -116,6 +116,18 @@ public enum Timetable {
     public static let outside = "This date is outside the published timetable, so the regular weekly pattern is used. Holidays and breaks are not included."
     public static let loading = "Loading the timetable\u{2026}"
     public static let failed = "The timetable could not be loaded. Check your connection, or plan with Leave now."
+    /// The start time sheet (web ui/views/leavepick.js LEAVE_TITLE, LEAVE_NOTE, previewText).
+    public static let pickerTitle = "Trip start time"
+    public static let pickerNote = "Up to 10 minutes from now, bus times stay live. Later times come from the timetable, and most buses run later than scheduled."
+    public static let passed = "That time has passed, so trips are planned from now."
+    /// What Set would do, in one sentence (the live line under the wheels).
+    public static func previewText(_ at: Double, now: Double, _ tt: TimetableData?, locale: Locale = .current) -> String {
+        switch startMode(at, now: now) {
+        case .now: return at < now - 59 ? "That time has passed, so trips are planned from now. Bus times are live." : "\(leaveNow). Bus times are live."
+        case .live: return "\(leaveLabel(at, now: now, locale: locale)). Less than 10 minutes away, so bus times stay live."
+        case .timetable: return "\(leaveLabel(at, now: now, locale: locale)). Bus times will come from the timetable." + (outsideTimetable(tt, at) ? " " + outside : "")
+        }
+    }
     /// "The timetable has no shuttle that goes close to both places around 5:40 PM."
     public static func noneText(_ at: Double) -> String { "The timetable has no shuttle that goes close to both places around \(TimeFmt.clock(at))." }
 

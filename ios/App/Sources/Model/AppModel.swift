@@ -55,6 +55,12 @@ struct DirectionsState {
     var selected = 0
     /// Sidewalk routes are being fetched for `result` ("Checking sidewalk routes…").
     var refining = false
+    /// The chosen trip start (owner 2026-11-09; nil = Leave now). Never stored: this launch only; a time that has passed
+    /// goes back to Leave now (`AppModel.planStart`).
+    var at: Double? = nil
+    /// How `result` was planned (Kit `Timetable.startMode` when it was made): `.timetable` = scheduled times, the larger
+    /// disclaimer, no Start.
+    var planMode: Timetable.Mode = .now
 }
 
 /// A started trip (Directions > option > Start). `journey` is what the timeline follows (web store.journey).
@@ -282,6 +288,8 @@ final class AppModel {
     var showSettings = false
     /// Lines by Time (the clock next to the gear; Views/TimePickView.swift).
     var showTimePick = false
+    /// Directions' trip start time sheet (Views/LeaveTimeView.swift, owner 2026-11-09).
+    var showLeavePick = false
     var showLiveActivityPreview = false
     /// The map feedback button's sheet (Views/FeedbackViews.swift, owner 2026-11-02).
     var showFeedback = false
@@ -294,7 +302,7 @@ final class AppModel {
     /// A sheet covers the map (Settings, Lines by Time, the Live Activity preview, the feedback sheet): the bus markers
     /// stop gliding and move at once until it closes (nothing to see, and no main-thread work for a map nobody looks
     /// at). RootView calls `mapCoverChanged` when it flips.
-    var mapCovered: Bool { showSettings || showTimePick || showLiveActivityPreview || showFeedback }
+    var mapCovered: Bool { showSettings || showTimePick || showLeavePick || showLiveActivityPreview || showFeedback }
     var editingOrder = false
     /// The bus whose own times its route page shows instead of the next bus at each stop (owner 2026-10-30): set by
     /// tapping a bus on the map or its row on the route page (again = unpick); cleared when that page closes or the map
