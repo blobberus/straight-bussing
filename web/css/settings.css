@@ -242,6 +242,11 @@
 .tp-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-top: var(--s-2); }
 .tp-trip { color: var(--label); }
 .tp-disc .v-h { margin-top: var(--s-4); }
+/* Directions' trip start time (views/leavepick.js, owner 2026-11-09): the same sheet and wheels, a day column wide enough
+   for "Wed Nov 11", the live line, the note, then Leave now as a secondary button */
+.wh-col--day { width: 168px; }
+.lp-result { margin-top: var(--s-3); }
+.lp-now { margin: var(--s-2) 0 var(--s-3); }
 @media (prefers-contrast: more) {
   .wh-band { box-shadow: inset 0 0 0 1px var(--label); }
   .wh-item { color: var(--label); }

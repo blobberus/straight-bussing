@@ -95,6 +95,7 @@ const PRECACHE = [
   'js/ui/views/alerts.js',
   'js/ui/views/directions.js',
   'js/ui/views/journey.js',
+  'js/ui/views/leavepick.js',
   'js/ui/views/myroutes-patch.js',
   'js/ui/views/myroutes-swipe.js',
   'js/ui/views/myroutes.js',

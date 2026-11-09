@@ -48,6 +48,7 @@ import { WALK_IC, tag, mins, walkMins, walkTotal, optionLines, stepsHTML as step
 import { svg } from "../icons.js";
 import { startMode, leaveLabel, LEAVE_NOW } from "../../core/timetable.js";
 import { loadTimetable, timetableNow } from "../../data/timetable.js";
+import { openLeavePick } from "./leavepick.js";
 
 /** The required estimate note under the options. */
 export const NOTE = "Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.";
@@ -603,6 +604,12 @@ registerAction("dir:clear", (ds, ev, ctx) => {
   el.focus({ preventScroll: true });
 });
 registerAction("dir:start", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; startTrip(); });
+/** The start time control: the wheels (./leavepick.js); Set re-plans from the chosen time, focus back on the control. */
+registerAction("dir:when", (ds, ev, ctx) => {
+  ctxRef = ctx || ctxRef;
+  const trigger = ev?.target?.closest?.("[data-action]") || undefined;
+  openLeavePick(ctx, { at: D.at, trigger, onSet: (at) => { setStartTime(at); fq('[data-action="dir:when"]')?.focus({ preventScroll: true }); } });
+});
 /** The start time's clear button: back to Leave now; focus stays on the control. */
 registerAction("dir:when-clear", (ds, ev, ctx) => {
   ctxRef = ctx || ctxRef;
