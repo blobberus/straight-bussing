@@ -1,7 +1,10 @@
 // core/install.js: is this page the installed app, and which install steps fit the browser (owner 2026-11-07/09: the
-// Add to Home Screen popup shows only outside the installed app).
+// Add to Home Screen popup shows only outside the installed app), and when the popup may show by itself.
 import { test, eq, ok } from "./lib.js";
-import { INSTALLED_MODES, isInstalled, installEnv, installedNow, installPlatform } from "../js/core/install.js";
+import {
+  INSTALLED_MODES, isInstalled, installEnv, installedNow, installPlatform, RESHOW_DAYS, RESHOW_MS, MEMORY_KEY, cleanMemory,
+  autoBlocker, waitReason, loadMemory, rememberInstall, _resetInstallMemory,
+} from "../js/core/install.js";
 
 export const UA = Object.freeze({
   iphone: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1",
@@ -23,6 +26,8 @@ export const UA = Object.freeze({
   mac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15",
   macchrome: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
 });
+
+const DAY = 86400000;
 
 test("install: installed = navigator.standalone or an installed display mode; a browser tab is not", () => {
   ok(isInstalled({ standalone: true }), "iPhone Safari's Home Screen app");
@@ -76,4 +81,76 @@ test("install: the location help and the usage statistics use the same check (on
   ok(/from "\.\/install\.js"/.test(lochelp) && /isInstalled\(env\)/.test(lochelp), "core/lochelp.js locEnv uses isInstalled");
   ok(/from "\.\.\/core\/install\.js"/.test(usage) && /isInstalled\(installEnv\(/.test(usage), "data/usage.js appKind uses isInstalled");
   ok(!/display-mode: standalone/.test(lochelp + usage), "no second, narrower display-mode check left");
+});
+
+test("install: memory is cleaned; junk = nothing remembered", () => {
+  eq(MEMORY_KEY, "a2hs");
+  eq(cleanMemory(null), { shownAt: 0, closedAt: 0, never: false, installedAt: 0 });
+  eq(cleanMemory("x"), { shownAt: 0, closedAt: 0, never: false, installedAt: 0 });
+  eq(cleanMemory({ shownAt: 5, closedAt: -1, never: "yes", installedAt: NaN }), { shownAt: 5, closedAt: 0, never: false, installedAt: 0 });
+  eq(cleanMemory({ closedAt: 7, never: true, installedAt: 9 }), { shownAt: 0, closedAt: 7, never: true, installedAt: 9 });
+});
+
+test("install: shows by itself only in a browser that can install, outside demo and tests, and not again for 14 days", () => {
+  const now = Date.UTC(2026, 10, 9, 18);
+  const base = { installed: false, demo: false, testOff: false, platform: "ios-safari", canPrompt: false, memory: null, now };
+  eq(autoBlocker(base), "", "a first visit in iPhone Safari");
+  eq(autoBlocker({ ...base, installed: true }), "installed", "opened from the home screen: never");
+  eq(autoBlocker({ ...base, demo: true }), "demo");
+  eq(autoBlocker({ ...base, testOff: true }), "test");
+  eq(autoBlocker({ ...base, platform: "none" }), "no way to install here", "Firefox on a computer");
+  eq(autoBlocker({ ...base, platform: "none", canPrompt: true }), "", "any browser that offers the one-tap install");
+  eq(autoBlocker({ ...base, memory: { installedAt: now - 99 * DAY } }), "installed before", "installed from this browser: never again");
+  eq(autoBlocker({ ...base, memory: { never: true } }), "don't show again");
+  eq(RESHOW_DAYS, 14);
+  eq(RESHOW_MS, 14 * DAY);
+  eq(autoBlocker({ ...base, memory: { closedAt: now - 13 * DAY } }), "shown recently", "closed 13 days ago");
+  eq(autoBlocker({ ...base, memory: { closedAt: now - 14 * DAY } }), "", "closed 14 days ago: once more");
+  eq(autoBlocker({ ...base, memory: { shownAt: now - 2 * DAY } }), "shown recently", "shown and left open 2 days ago counts as seen");
+  eq(autoBlocker({ ...base, memory: { shownAt: now - 20 * DAY, closedAt: now - 3 * DAY } }), "shown recently", "the later of shown and closed");
+  eq(autoBlocker({ ...base, memory: { shownAt: now - 15 * DAY, closedAt: now - 15 * DAY } }), "");
+  eq(autoBlocker({ ...base, installed: true, memory: { never: true }, demo: true }), "installed", "installed is the first reason");
+  eq(autoBlocker(), "no way to install here", "nothing known");
+});
+
+test("install: waits while a trip, the expanded sheet, a menu, a dialog, typing, a hidden page or the feedback ping is on", () => {
+  eq(waitReason({}), "");
+  eq(waitReason(), "");
+  eq(waitReason({ pageHidden: true }), "page hidden");
+  eq(waitReason({ trip: true }), "trip in progress");
+  eq(waitReason({ sheetFull: true }), "sheet expanded");
+  eq(waitReason({ overlay: true }), "menu open");
+  eq(waitReason({ dialog: true }), "dialog open");
+  eq(waitReason({ typing: true }), "typing");
+  eq(waitReason({ feedbackPing: true }), "feedback ping");
+  eq(waitReason({ trip: true, typing: true }), "trip in progress", "the first reason");
+});
+
+test("install: rememberInstall merges into localStorage sb:a2hs; blocked storage keeps it for the page load", () => {
+  const key = "sb:" + MEMORY_KEY, saved = localStorage.getItem(key);
+  try {
+    localStorage.removeItem(key);
+    _resetInstallMemory();
+    eq(loadMemory(), cleanMemory(null));
+    rememberInstall({ shownAt: 10 });
+    rememberInstall({ closedAt: 20 });
+    eq(JSON.parse(localStorage.getItem(key)), { shownAt: 10, closedAt: 20, never: false, installedAt: 0 });
+    eq(loadMemory().closedAt, 20);
+    localStorage.setItem(key, "{not json");
+    _resetInstallMemory();
+    eq(loadMemory(), cleanMemory(null), "unreadable = nothing remembered");
+    // storage that throws: the page-load copy still answers
+    const orig = Storage.prototype.setItem;
+    Storage.prototype.setItem = function () { throw new Error("quota"); };
+    try {
+      localStorage.removeItem(key);
+      _resetInstallMemory();
+      rememberInstall({ never: true });
+      ok(loadMemory().never, "remembered for this page load");
+      eq(localStorage.getItem(key), null, "nothing written");
+    } finally { Storage.prototype.setItem = orig; }
+  } finally {
+    if (saved === null) localStorage.removeItem(key); else localStorage.setItem(key, saved);
+    _resetInstallMemory();
+  }
 });
