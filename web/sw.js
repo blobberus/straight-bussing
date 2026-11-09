@@ -49,6 +49,7 @@ const PRECACHE = [
   'js/core/throttle.js',
   'js/core/time.js',
   'js/core/timeactive.js',
+  'js/core/timetable.js',
   'js/core/transition.js',
   'js/core/tripprogress.js',
   'js/core/tripyou.js',
