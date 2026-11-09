@@ -2,7 +2,8 @@
 // text (owner 2026-11-07/09).
 import { test, eq, ok } from "./lib.js";
 import {
-  INSTALL_TITLE, platformFamily, INSTALL_WHY, whyText, INSTALL_ICONS, INSTALL_STEPS, INSTALL_ORDER, stepsFor, stepParts,
+  INSTALL_TITLE, platformFamily, INSTALL_WHY, whyText, installButtonLabel, INSTALL_ICONS, INSTALL_STEPS, INSTALL_ORDER, stepsFor,
+  stepParts,
 } from "../js/core/installsteps.js";
 import { installPlatform } from "../js/core/install.js";
 import { PATHS } from "../js/ui/icons.js";
@@ -70,4 +71,25 @@ test("install words: stepParts splits text and icons in order; unknown tokens st
   eq(stepParts("a {nope} {share}"), [{ text: "a {nope} " }, { icon: "share", label: "Share button" }]);
   eq(stepParts(""), []);
   eq(stepParts(null), []);
+});
+
+test("install words: Android and computers: the menu or the install icon, and one button where the browser offers it", () => {
+  eq(installButtonLabel("android-chrome"), "Add to Home Screen");
+  eq(installButtonLabel("android-samsung"), "Add to Home Screen");
+  eq(installButtonLabel("desktop-chrome"), "Install app");
+  eq(installButtonLabel("desktop-edge"), "Install app");
+  eq(installButtonLabel("none"), "Add to Home Screen");
+  ok(/menu \{menu\} at the top right/.test(stepsFor("android-chrome").steps[0]), "Chrome on Android: the upright three dots");
+  ok(/Add to Home screen.*Install app/.test(stepsFor("android-chrome").steps[1]), "then Add to Home screen or Install app");
+  ok(/menu \{lines\}/.test(stepsFor("android-samsung").steps[0]) && /Add page to.*Home screen/.test(stepsFor("android-samsung").steps[1]), "Samsung Internet");
+  ok(/Install \{install\} at the right end of the address bar/.test(stepsFor("desktop-chrome").steps[0]), "desktop Chrome: the install icon");
+  ok(/Install page as app/.test(stepsFor("desktop-chrome").steps[1]), "or the menu");
+  ok(/App available \{edgeapp\}/.test(stepsFor("desktop-edge").steps[0]) && /Install this site as an app/.test(stepsFor("desktop-edge").steps[1]), "Edge");
+  ok(/Add to Dock/.test(stepsFor("mac-safari").steps[0]), "Safari on a Mac: Add to Dock");
+  ok(/Open in Chrome/.test(stepsFor("android-inapp").steps[0]), "inside another Android app: open it in Chrome first");
+  eq(stepsFor("none"), null, "Firefox on a computer: no steps (it cannot install)");
+  for (const k of ["android", "desktop"]) ok(INSTALL_WHY[k] && !/notification/i.test(INSTALL_WHY[k]), k + ": a why line without promises about notifications");
+  for (const ua of [UA.android, UA.samsung, UA.androidfirefox, UA.androidwv, UA.chrome, UA.macchrome, UA.edge]) ok(stepsFor(installPlatform({ ua })), "steps for " + installPlatform({ ua }));
+  ok(stepsFor(installPlatform({ ua: UA.mac, maxTouchPoints: 0 })), "steps for a Mac");
+  eq(INSTALL_ORDER.length, 8, "the fold lists the eight common browsers");
 });
