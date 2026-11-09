@@ -64,5 +64,18 @@
 .r-barh { position: absolute; left: -6px; bottom: -15px; font: var(--t-caption); font-weight: var(--w-regular); line-height: 1; color: var(--label-2); white-space: nowrap; }
 .r-bartext { margin: var(--s-3) 0 0; padding: 0; list-style: none; font: var(--t-footnote); }   /* one hour group per line */
 
+/* Schedule by hour (owner 2026-11-09): how often the timetable sends a bus, one range per row (how often on the left,
+   the times on the right, wrapping under at large text), then the disclaimer as the card's quiet last row */
+.r-freq { margin: 0 0 var(--s-3); padding: var(--s-1) var(--inset-content) 0; }
+.r-flist { list-style: none; margin: 0; padding: 0; }
+.r-frow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s-3); padding: var(--s-3) 0; font: var(--t-row-detail); }
+.r-frow + .r-frow { border-top: .5px solid var(--separator); }
+.r-fk { font-weight: var(--w-semibold); color: var(--label); }
+.r-fw { margin-left: auto; color: var(--label-2); font-variant-numeric: tabular-nums; text-align: right; }
+.r-frow.is-none .r-fk { font-weight: var(--w-regular); color: var(--label-2); }   /* "No service": the words say it */
+.r-fnote { display: flex; align-items: flex-start; gap: var(--s-2); margin: 0; padding: var(--s-3) 0; border-top: .5px solid var(--separator);
+  font: var(--t-footnote); color: var(--label-2); }
+.r-fnote .ic { flex: none; margin-top: 1px; }
+
 @media (prefers-reduced-motion: reduce) { .r-bus { transition: none; } }
 @media (prefers-contrast: more) { .r-seg { background: currentColor; } .r-bus { outline: 1px solid currentColor; } }

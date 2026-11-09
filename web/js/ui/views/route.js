@@ -25,6 +25,7 @@ import { hav } from "../../core/geo.js";
 import { arrivalsFor, staleLevel, staleNote, runningText, runningCount, activeAlerts, alertText, alertRouteIds, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
 import { serviceHoursAt, isScheduledNow, weekSummary, upcomingChanges, hourBuses, groupHours, hourLabel, routeService, scheduleDay, departures, hourlyHeadways, headwayLine } from "../../core/schedule.js";
+import { svg } from "../icons.js";
 import { emptyState, skeleton, OFFICIAL_PHONE, liveDotHTML } from "../components.js";
 import { noLiveStatus, scheduledNoLive } from "../../core/operating.js";
 import { awayCount, awayText } from "../../core/offroute.js";
@@ -33,6 +34,7 @@ import { busKey, numberMap, busName, selectedBus, busArrival, arrivalBusName } f
 
 const STALE_BUS_S = 60;
 const DAY_NAME = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
+const INFO = svg("info", 15);
 const CHEVRON = '<svg class="r-chev" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true" focusable="false"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 /**
@@ -132,20 +134,26 @@ export function renderService(state, rid, now) {
   return h + "</section>";
 }
 
+/** The note under "Schedule by hour" (owner 2026-11-09: "a disclaimer that the bus schedules don't often follow this schedule"; iOS RouteText.headwayNote). */
+export function headwayNote(stopName) {
+  return `Timetable only${stopName ? `, times at ${stopName}` : ""}. Buses often don't keep to this schedule, so go by the live times when buses are running.`;
+}
+
 /**
  * "Schedule by hour" (owner 2026-11-09: "Every 30 minutes between x times", under the bus counts): how often the
- * timetable sends a bus, one line per range (core/schedule.js hourlyHeadways, times in the device's 12 / 24 hour style).
- * Each line is one sentence for screen readers ("Every 30 minutes, 7:00 to 10:00 AM").
+ * timetable sends a bus, one line per range (core/schedule.js hourlyHeadways, times in the device's 12 / 24 hour style),
+ * then the disclaimer. Each line is one sentence for screen readers ("Every 30 minutes, 7:00 to 10:00 AM").
  */
 function renderHeadways(state, rid, day, when) {
   const segs = hourlyHeadways(departures(day));
   if (!segs.length) return "";
+  const at = routeService(state.service, rid)?.at, name = at ? state.stops?.[at]?.name || "" : "";
   let h = `<h3 class="r-h3" id="r-freq-h">Schedule by hour, ${esc(when)}</h3><div class="v-card r-freq"><ul class="r-flist" aria-labelledby="r-freq-h">`;
   for (const s of segs) {
     const l = headwayLine(s, clockOfDay);
     h += `<li class="r-frow${s.kind === "none" ? " is-none" : ""}"><span class="v-sr">${esc(l.say)}</span><span class="r-fk" aria-hidden="true">${esc(l.text)}</span><span class="r-fw" aria-hidden="true">${esc(l.when)}</span></li>`;
   }
-  return h + "</ul></div>";
+  return h + `</ul><p class="r-fnote">${INFO}<span>${esc(headwayNote(name))}</span></p></div>`;
 }
 
 /** Scheduled buses by hour for one day entry (core/schedule.js scheduleDay): bars + text. */
