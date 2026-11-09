@@ -10,7 +10,7 @@ const FILES = {
   'route_stops.json': { r1: ['s1', 's2', 's1'], r2: ['s2'] },
   'stop_addresses.json': { s1: { address: '1 Main St' }, s2: { street: 'no address field' } },
   'service.json': { generated: 'x', feed: { start: '2026-10-07', end: '2026-11-07' }, routes: {
-    r1: { days: { mon: { first: '07:00', last: '19:00', trips: 3, buses: [] }, sat: 'bad' }, exceptions: [{ date: '2026-11-26', type: 'removed', hours: null }, 5] },
+    r1: { days: { mon: { first: '07:00', last: '19:00', trips: 3, buses: [], dep: [420, 30] }, sat: 'bad' }, exceptions: [{ date: '2026-11-26', type: 'removed', hours: null }, 5], at: 's1' },
     r2: 'bad' } },
   'landmarks.json': { v: 1, l: [['Regenstein Library', 41.792, -87.6, 1, 'library', 'Joseph Regenstein Library'], ['bad', 'x', 1, 1], ['No tier', 41.79, -87.6, 7]] },
   'idle.json': { note: 'x', from: '2026-10-10', to: '2026-11-05', valid_until: '2026-12-20', linger: [
@@ -49,6 +49,7 @@ test('static: loads all files, derives stopRoutes, sets staticLoaded in one patc
   eq(s.service.routes.r1.days.mon.first, '07:00');
   eq([s.service.routes.r1.days.sat, s.service.routes.r1.days.sun], [null, null], 'missing/bad days -> null');
   eq(s.service.routes.r1.exceptions.length, 1, 'bad exception dropped');
+  eq([s.service.routes.r1.at, s.service.routes.r1.days.mon.dep], ['s1', [420, 30]], 'Schedule by hour: reference stop + departures kept');
   ok(f.calls.every((c) => c.url.startsWith('data/')), 'uses base');
   await new Promise((r) => setTimeout(r, 0));
   eq(notes, 1, 'single store notification');

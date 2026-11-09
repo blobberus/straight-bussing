@@ -129,7 +129,7 @@ function cleanCorridors(v) {
 }
 
 /**
- * Keep only well-formed route entries of service.json ({days:{mon..sun}, exceptions:[]}).
+ * Keep only well-formed route entries of service.json ({days:{mon..sun}, exceptions:[], at?}).
  * @param {any} v service.routes
  * @returns {object}
  */
@@ -141,6 +141,7 @@ function cleanServiceRoutes(v) {
     const days = {};
     for (const k of ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']) days[k] = isObj(r.days[k]) ? r.days[k] : null;
     out[rid] = { days, exceptions: Array.isArray(r.exceptions) ? r.exceptions.filter(isObj) : [] };
+    if (typeof r.at === 'string' && r.at) out[rid].at = r.at;   // reference stop of the days' dep lists (Schedule by hour)
   }
   return out;
 }
