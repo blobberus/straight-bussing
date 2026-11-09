@@ -1449,10 +1449,15 @@ sb-v2-97).
   more ends a stretch of service ("No service, 9:54 AM to 3:41 PM" between two stretches of one day). In a stretch,
   runs of 3 or more gaps within a minute of each other are steady: "Every N min" from the first to the last of those
   buses (neighbouring steady runs one minute apart join: timetable rounding). Other gaps are uneven: "About every N min",
-  the average gap (to 5 min from 7.5 up, else to the minute), hour by hour with equal hours merged (a one-gap hour joins
-  its neighbour). A lone gap between two steady runs is the hand-over (no line; the next line starts at its bus) unless
-  it is within a minute of a neighbour's pace; a lone first or last bus reads "1 trip, 7:00 PM"; a stretch of two buses
-  "2 trips, 11:00 and 11:40 PM". Integer arithmetic only, so web and Swift agree to the minute.
+  the average gap (to the minute, to 5 min from 17.5 up), hour by hour (a one-gap hour joins its neighbour). A lone gap
+  between two steady runs is the hand-over (no line; the next line starts at its bus) unless it is within a minute of a
+  neighbour's pace; a lone first or last bus reads "1 trip, 7:00 PM"; a stretch of two buses "2 trips, 11:00 and 11:40
+  PM". Then each stretch is tidied (`tidy`; the experimental repo's CTA timetables need it, the shuttles barely do):
+  neighbours of the same pace merge (a minute apart, two when either is "About": "About every 10" next to "Every 10";
+  two steady runs of one pace across an odd gap under twice the pace stay "Every N"), a range under 30 min joins its
+  neighbour of closer pace (a burst of extra buses), and while a stretch has more than 6 lines the two of closest pace
+  merge; a merged line reads its own average ("About every"). Integer arithmetic only, so web and Swift agree to the
+  minute.
 - **Day** (`scheduleDay`, Kit `Schedule.scheduleDay`): the current service day (after midnight a night route is still on
   yesterday's: "Wednesday"), calendar changes applied (an extra day shows its own timetable as "today"; a cancelled day
   that weekday's regular one: "Thursdays"), else the first weekday with service ("Mondays"). The "Scheduled buses by
@@ -1466,11 +1471,13 @@ sb-v2-97).
   only, times at <reference stop>. Buses often don't keep to this schedule, so go by the live times when buses are
   running." No departures known (an older cached service.json): no card. sw `sb-v2-145`.
 - **Real examples** (timetable of 2026-11-08): Red Line/Arts Block weekdays "About every 10 min, 6:30 to 11:28 AM",
-  "Every 20 min, 11:28 AM to 3:48 PM", "About every 10 min, 3:48 to 4:28 PM", "Every 10 min, 4:28 to 9:08 PM" (at
-  Garfield Red Line Station (WB)); 53rd Street Express "Every 30 min, 7:00 to 8:00 AM", "Every 15 min, 8:00 to 10:30 AM",
-  "Every 30 min, 10:30 AM to 6:00 PM", "1 trip, 7:00 PM"; Downtown Campus Connector "Every 25 min, 6:30 AM to 9:55 PM";
-  North "Every 15 min, 4:00 to 11:00 PM", "Every 30 min, 11:00 PM to 4:00 AM"; Midway Metra "About every 10 min, 5:41 to
-  9:54 AM", "No service, 9:54 AM to 3:41 PM", "Every 10 min, 3:41 to 6:51 PM".
+  "Every 20 min, 11:28 AM to 3:48 PM", "About every 10 min, 3:48 to 9:08 PM" (at Garfield Red Line Station (WB)); 53rd
+  Street Express "Every 30 min, 7:00 to 8:00 AM", "Every 15 min, 8:00 to 10:30 AM", "Every 30 min, 10:30 AM to 6:00 PM",
+  "1 trip, 7:00 PM"; Downtown Campus Connector "Every 25 min, 6:30 AM to 9:55 PM"; North "Every 15 min, 4:00 to 11:00
+  PM", "Every 30 min, 11:00 PM to 4:00 AM"; Midway Metra "About every 11 min, 5:41 to 9:54 AM", "No service, 9:54 AM to
+  3:41 PM", "Every 10 min, 3:41 to 6:51 PM". CTA 47 weekdays (experimental): "About every 20 min, 4:03 to 5:05 AM",
+  "About every 9 min, 5:05 AM to 10:08 PM", "About every 20 min, 10:08 to 11:11 PM", "About every 25 min, 11:11 PM to
+  12:21 AM", "Every 22 min, 12:21 to 1:28 AM".
 - **Tests:** web/tests/route-schedule.js (rule, words, clock, scheduleDay, real data, the golden file),
   web/tests/route-hourly.js (the section: order, closed route, spoken rows, disclaimer, calendar changes, escaping,
   320 px at 200% text), web/tests/data-static.js (`at` kept); golden web/tests/fixtures/headways_golden.json (made by
