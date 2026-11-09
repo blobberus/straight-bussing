@@ -64,27 +64,35 @@ export const INSTALL_ICONS = Object.freeze({
 });
 
 const WEB_APP_ON = 'If you see "Open as Web App", leave it on. Then tap Add.';
+/** Owner 2026-11-09: "some iphone interfaces require you to press the View More button to see the home screen option":
+ *  its own step on every iPhone path, not a side note. */
+const VIEW_MORE = 'Scroll down the list. Don\'t see Add to Home Screen? Tap "View More" at the bottom of the list.';
 
 /** Steps per platform: {title, steps[]} (plain text with {icon} tokens). */
 export const INSTALL_STEPS = Object.freeze({
   "ios-safari": { title: "iPhone or iPad with Safari", steps: [
     "Tap Share {share}. Don't see it? Tap More {more} next to the address bar first, then Share.",
-    'Scroll down and tap Add to Home Screen {add}. Not in the list? Tap "View More" first.',
+    VIEW_MORE,
+    "Tap Add to Home Screen {add}.",
     WEB_APP_ON,
   ] },
   "ios-chrome": { title: "iPhone or iPad with Chrome", steps: [
     "Tap Share {share} at the right end of the address bar.",
-    "Scroll down and tap Add to Home Screen {add}.",
+    VIEW_MORE,
+    "Tap Add to Home Screen {add}.",
     WEB_APP_ON,
   ] },
   "ios-other": { title: "iPhone or iPad with another browser", steps: [
     "Open the browser's menu and tap Share {share}.",
+    VIEW_MORE,
     "Tap Add to Home Screen {add}, then Add.",
     "Not there? Open this page in Safari and add it from there.",
   ] },
   "ios-inapp": { title: "Inside another app", steps: [
     'This app\'s own browser cannot add pages to the Home Screen. Open its menu (often More {more} or Share {share}) and choose "Open in Safari" or "Open in browser".',
-    "In Safari, tap Share {share} (or More {more}, then Share), then Add to Home Screen {add}.",
+    "In Safari, tap Share {share} (or More {more}, then Share).",
+    VIEW_MORE,
+    "Tap Add to Home Screen {add}.",
     WEB_APP_ON,
   ] },
   "android-chrome": { title: "Android with Chrome", steps: [

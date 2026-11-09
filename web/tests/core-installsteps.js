@@ -55,6 +55,10 @@ test("install words: iPhone Safari steps work on iOS 26 and later (Share behind 
   ok(/Don't see it\? Tap More \{more\} next to the address bar first, then Share/.test(s), "More when Share is hidden (iOS 26 compact layout)");
   ok(/Add to Home Screen \{add\}/.test(s), "Add to Home Screen with the plus-in-a-square icon");
   ok(/View More/.test(s), "View More in the share sheet");
+  for (const p of ["ios-safari", "ios-chrome", "ios-other", "ios-inapp"]) {   // owner 2026-11-09: its own step on every iPhone path
+    const st = stepsFor(p).steps, i = st.findIndex((x) => /View More/.test(x)), j = st.findIndex((x) => /^Tap Add to Home Screen/.test(x));
+    ok(i >= 0 && j === i + 1, `${p}: "View More" is its own step, right before Add to Home Screen`);
+  }
   ok(/If you see "Open as Web App", leave it on\. Then tap Add\./.test(s), "Open as Web App stays on, then Add");
   eq(stepsFor("ios-safari").title, "iPhone or iPad with Safari");
   ok(/Share \{share\} at the right end of the address bar/.test(stepsFor("ios-chrome").steps[0]), "Chrome on iPhone: Share in the address bar");

@@ -77,7 +77,7 @@ test("install card: iPhone Safari gets its numbered steps with the Share, More a
   d.innerHTML = promptHTML({ platform: "ios-safari" });
   eq(d.querySelector(".a2hs-for").textContent, "iPhone or iPad with Safari");
   const own = d.querySelector(".a2hs-for + ol.a2hs-steps");
-  eq(own.children.length, 3, "three steps");
+  eq(own.children.length, 4, "four steps: Share, View More (owner 2026-11-09), Add to Home Screen, Add");
   const glyphs = [...own.querySelectorAll(".a2hs-glyph")].map((g) => g.getAttribute("aria-label"));
   eq(glyphs, ["Share button", "More button", "Add to Home Screen"], "the glyphs, each with alternative text");
   for (const g of own.querySelectorAll(".a2hs-glyph")) {
@@ -85,7 +85,8 @@ test("install card: iPhone Safari gets its numbered steps with the Share, More a
     ok(g.querySelector("svg[aria-hidden='true']"), "the drawing itself is hidden from screen readers");
   }
   ok(/^Tap Share/.test(own.children[0].textContent) && /Tap More/.test(own.children[0].textContent), "Share, or More first");
-  ok(/Open as Web App/.test(own.children[2].textContent), "Open as Web App stays on");
+  ok(/View More/.test(own.children[1].textContent), "View More is its own step");
+  ok(/Open as Web App/.test(own.children[3].textContent), "Open as Web App stays on");
   eq(d.querySelector('[data-a2hs="install"]'), null, "no button: iPhone has no programmatic install");
   const other = d.querySelector("details.a2hs-other");
   ok(other && !other.open, "the other browsers are folded away");
