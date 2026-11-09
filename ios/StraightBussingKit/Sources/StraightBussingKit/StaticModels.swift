@@ -52,8 +52,24 @@ public struct ServiceDay: Codable, Hashable, Sendable {
     public var buses: [Int]?
     /// Service windows [['HH:MM','HH:MM']]; times may be >= 24:00 (after midnight).
     public var spans: [[String]]?
-    public init(first: String? = nil, last: String? = nil, trips: Int? = nil, buses: [Int]? = nil, spans: [[String]]? = nil) {
-        self.first = first; self.last = last; self.trips = trips; self.buses = buses; self.spans = spans
+    /// Departures at the route's reference stop (`RouteService.at`), delta coded service-day minutes: [first, gap, ...]
+    /// (`Schedule.departures` decodes it). Junk here never costs the day: it decodes to nil.
+    public var dep: [Int]?
+    public init(first: String? = nil, last: String? = nil, trips: Int? = nil, buses: [Int]? = nil, spans: [[String]]? = nil,
+                dep: [Int]? = nil) {
+        self.first = first; self.last = last; self.trips = trips; self.buses = buses; self.spans = spans; self.dep = dep
+    }
+
+    enum CodingKeys: String, CodingKey { case first, last, trips, buses, spans, dep }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        first = try c.decodeIfPresent(String.self, forKey: .first)
+        last = try c.decodeIfPresent(String.self, forKey: .last)
+        trips = try c.decodeIfPresent(Int.self, forKey: .trips)
+        buses = try c.decodeIfPresent([Int].self, forKey: .buses)
+        spans = try c.decodeIfPresent([[String]].self, forKey: .spans)
+        dep = try? c.decodeIfPresent([Int].self, forKey: .dep)
     }
 }
 
@@ -73,9 +89,11 @@ public struct RouteService: Codable, Hashable, Sendable {
     /// Day key ('mon'...'sun') -> hours; a missing key means no service that day.
     public var days: [String: ServiceDay]
     public var exceptions: [ServiceException]
+    /// The stop the days' `dep` lists are timed at (the stop most trips leave from; Schedule by hour).
+    public var at: String?
 
-    public init(days: [String: ServiceDay], exceptions: [ServiceException] = []) {
-        self.days = days; self.exceptions = exceptions
+    public init(days: [String: ServiceDay], exceptions: [ServiceException] = [], at: String? = nil) {
+        self.days = days; self.exceptions = exceptions; self.at = at
     }
 
     private struct LossyDay: Decodable {
@@ -86,7 +104,7 @@ public struct RouteService: Codable, Hashable, Sendable {
         let value: ServiceException?
         init(from decoder: Decoder) throws { value = try? ServiceException(from: decoder) }
     }
-    enum CodingKeys: String, CodingKey { case days, exceptions }
+    enum CodingKeys: String, CodingKey { case days, exceptions, at }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -95,6 +113,7 @@ public struct RouteService: Codable, Hashable, Sendable {
         for (k, v) in raw { if let d = v.day { days[k] = d } }
         self.days = days
         self.exceptions = ((try? c.decode([LossyException].self, forKey: .exceptions)) ?? []).compactMap(\.value)
+        if let a = try? c.decodeIfPresent(String.self, forKey: .at), !a.isEmpty { self.at = a } else { self.at = nil }
     }
 }
 

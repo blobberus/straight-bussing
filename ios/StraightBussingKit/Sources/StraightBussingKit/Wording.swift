@@ -499,20 +499,39 @@ public enum RouteText {
 
     /// Scheduled buses by hour: the current service day's (after midnight a night route is still on yesterday's,
     /// "Friday"), else the first day with service ("Mondays"). nil = nothing worth a chart.
+    /// The day is `Schedule.scheduleDay` (calendar changes applied), the same day as `headways`.
     public static func busesChart(_ svc: ServiceData, rid: String, now: Double) -> (when: String, list: [Schedule.HourCount])? {
-        let sh = Schedule.serviceHoursAt(svc, rid, now)
-        let today = sh?.dayKey ?? Schedule.dayKey(now), tail = sh?.yesterday ?? false
-        var key = today, list = Schedule.busesByHour(svc, rid, today)
-        if list.isEmpty {
-            for k in Schedule.dayKeys {
-                let l = Schedule.busesByHour(svc, rid, k)
-                if !l.isEmpty { key = k; list = l; break }
-            }
-        }
+        guard let day = Schedule.scheduleDay(svc, rid, now) else { return nil }
+        let list = Schedule.hourBuses(day.day)
         guard let first = list.first else { return nil }
         let maxN = list.map(\.buses).max() ?? 0
         if maxN <= 1 && list.allSatisfy({ $0.buses == first.buses }) { return nil }
-        return (key == today ? (tail ? Schedule.dayName[key] ?? key : "today") : (Schedule.dayName[key] ?? key) + "s", list)
+        return (scheduleWhen(day), list)
+    }
+
+    /// The day name under the route page's bars and Schedule by hour: "today", "Wednesday" (after midnight a night route
+    /// is still on yesterday's service), "Mondays" (a weekday's regular timetable).
+    public static func scheduleWhen(_ d: Schedule.ScheduleDay) -> String {
+        d.today ? (d.yesterday ? Schedule.dayName[d.key] ?? d.key : "today") : (Schedule.dayName[d.key] ?? d.key) + "s"
+    }
+
+    /// The note under "Schedule by hour" (owner 2026-11-09: "a disclaimer that the bus schedules don't often follow this
+    /// schedule"; web route.js headwayNote).
+    public static func headwayNote(_ stopName: String?) -> String {
+        let at = (stopName ?? "").isEmpty ? "" : ", times at \(stopName!)"
+        return "Timetable only\(at). Buses often don't keep to this schedule, so go by the live times when buses are running."
+    }
+
+    /// "Schedule by hour" (owner 2026-11-09: "Every 30 minutes between x times", under the bus counts; web route.js
+    /// renderHeadways): the timetable's ranges for the bars' day, the day name and the disclaimer. nil = no departures
+    /// known (an older schedule file) or no service.
+    public static func headways(_ svc: ServiceData, rid: String, now: Double, stops: [String: Stop],
+                                clock: (Int) -> String = { TimeFmt.clockOfDay($0) }) -> (when: String, lines: [Schedule.HeadwayLine], note: String)? {
+        guard let day = Schedule.scheduleDay(svc, rid, now) else { return nil }
+        let segs = Schedule.hourlyHeadways(Schedule.departures(day.day))
+        guard !segs.isEmpty else { return nil }
+        let at = Schedule.routeService(svc, rid)?.at.flatMap { stops[$0]?.name }
+        return (scheduleWhen(day), segs.map { Schedule.headwayLine($0, clock: clock) }, headwayNote(at))
     }
 
     /// One line per group: "7 AM to 9 AM: 3 buses" (route.js buses-by-hour list).

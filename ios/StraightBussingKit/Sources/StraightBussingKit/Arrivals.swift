@@ -151,6 +151,15 @@ public enum TimeFmt {
         return clockFormatters.string(Date(timeIntervalSince1970: t), timeZone: timeZone, locale: locale)
     }
 
+    /// A timetable time (minutes into a service day, wraps after midnight: 1470 = 12:30 AM) in the device's 12 / 24 hour
+    /// style like `clock` ("7:00 AM" or "07:00"); no date or zone, so no daylight-saving shift (web core/time.js
+    /// clockOfDay). The route page's "Schedule by hour".
+    public static func clockOfDay(_ min: Int, locale: Locale = .current) -> String {
+        let t = ((min % 1440) + 1440) % 1440
+        return clockFormatters.string(Date(timeIntervalSince1970: Double(2 * 86400 + t * 60)), timeZone: utc, locale: locale)
+    }
+    static let utc = TimeZone(identifier: "UTC")!
+
     /// One cached "jmm" formatter per time zone + locale (a DateFormatter is expensive to create and `clock`
     /// runs for every row of every list).
     static let clockFormatters = ClockFormatterCache()

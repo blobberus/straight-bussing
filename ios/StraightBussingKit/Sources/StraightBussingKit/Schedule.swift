@@ -160,7 +160,13 @@ public enum Schedule {
 
     /// Scheduled buses per local hour on a weekday, in service-day order (a night route lists 16..23 then 0..4).
     public static func busesByHour(_ service: ServiceData?, _ rid: String, _ key: String) -> [HourCount] {
-        guard let day = routeService(service, rid)?.days[key], let buses = day.buses else { return [] }
+        hourBuses(routeService(service, rid)?.days[key])
+    }
+
+    /// Scheduled buses per local hour of one day entry (a weekday's or a calendar change's), in service-day order
+    /// (web core/schedule.js hourBuses).
+    public static func hourBuses(_ day: ServiceDay?) -> [HourCount] {
+        guard let day, let buses = day.buses else { return [] }
         let start = ((spansOf(day).first.flatMap { mins($0.0) } ?? 0) / 60) % 24
         var out: [HourCount] = []
         for i in 0..<24 {
@@ -256,5 +262,222 @@ public enum Schedule {
     public static func hourLabel(_ h: Int) -> String {
         let h = ((h % 24) + 24) % 24
         return h == 0 ? "12 AM" : h == 12 ? "12 PM" : "\(h % 12)" + (h < 12 ? " AM" : " PM")
+    }
+
+    /// The day the route page's "Scheduled buses by hour" and "Schedule by hour" show (`scheduleDay`).
+    public struct ScheduleDay: Hashable, Sendable {
+        public var day: ServiceDay
+        public var key: String
+        /// The service day of `t` (else a weekday's regular timetable).
+        public var today: Bool
+        /// `t` is in the after-midnight tail of yesterday's service.
+        public var yesterday: Bool
+        /// 'removed' | 'added' when a calendar change applies.
+        public var exception: String?
+    }
+
+    /// The day the route page's bars and "Schedule by hour" show: the current service day (after midnight a night route
+    /// is still on yesterday's; calendar changes applied, so a holiday or extra service shows its own timetable), else
+    /// that weekday's regular timetable (a calendar change with no service), else the first weekday with service. nil =
+    /// no service on any day or no schedule data (web core/schedule.js scheduleDay).
+    public static func scheduleDay(_ service: ServiceData?, _ rid: String, _ t: Double) -> ScheduleDay? {
+        guard let r = routeService(service, rid) else { return nil }
+        let p = localParts(t), today = isoDate(p), prev = isoDate(p, days: -1)
+        func has(_ day: ServiceDay?, _ m: Int) -> Bool {
+            spansOf(day).contains { s in m >= (mins(s.0) ?? 0) && m < (mins(s.1) ?? 0) }
+        }
+        let tail = !has(dayFor(r, today).day, p.min) && has(dayFor(r, prev).day, p.min + 1440)
+        let iso = tail ? prev : today, key = keyOfIso(iso)
+        let (day, exception) = dayFor(r, iso)
+        if let day, !spansOf(day).isEmpty { return ScheduleDay(day: day, key: key, today: true, yesterday: tail, exception: exception) }
+        for k in [key] + dayKeys {
+            if let d = r.days[k], !spansOf(d).isEmpty { return ScheduleDay(day: d, key: k, today: false, yesterday: false, exception: nil) }
+        }
+        return nil
+    }
+
+    // Schedule by hour (owner 2026-11-09: "Every 30 minutes between x times"): how often the timetable sends a bus, from
+    // a day's departures at the route's reference stop. Timetable only: buses often don't keep to it (the page says so).
+
+    /// A gap this long (minutes) or longer between two departures is a break in service ("No service" between).
+    public static let headwayBreakMin = 90
+    /// Gaps (all within a minute of each other) that make a steady run: "Every N min".
+    static let steadyGaps = 3
+
+    /// Departures of a day entry: service.json "dep" (delta coded) -> sorted service-day minutes (>= 1440 after
+    /// midnight); [] when missing or malformed (web departures).
+    public static func departures(_ day: ServiceDay?) -> [Int] {
+        guard let d = day?.dep else { return [] }
+        var out: [Int] = [], t = 0
+        for x in d {
+            if x < 0 || x > 2880 { return [] }
+            t += x
+            out.append(t)
+        }
+        return out
+    }
+
+    /// One "Schedule by hour" range (web hourlyHeadways segment).
+    public struct Headway: Codable, Hashable, Sendable {
+        public enum Kind: String, Codable, Sendable { case every, about, trips, none }
+        public var kind: Kind
+        /// Service-day minutes (may be >= 1440 after midnight).
+        public var from: Int
+        public var to: Int
+        /// Minutes between buses (every / about).
+        public var min: Int?
+        /// Trips (trips).
+        public var n: Int?
+        public init(kind: Kind, from: Int, to: Int, min: Int? = nil, n: Int? = nil) {
+            self.kind = kind; self.from = from; self.to = to; self.min = min; self.n = n
+        }
+    }
+
+    static func spread(_ g: [Int], _ a: Int, _ b: Int) -> Int {
+        var lo = Int.max, hi = Int.min
+        for i in a..<b { lo = Swift.min(lo, g[i]); hi = Swift.max(hi, g[i]) }
+        return hi - lo
+    }
+    static func total(_ g: [Int], _ a: Int, _ b: Int) -> Int { (a..<b).reduce(0) { $0 + g[$1] } }
+    /// t / c in whole minutes, half up (integers only, so every platform agrees).
+    static func roundDiv(_ t: Int, _ c: Int) -> Int { Int((2 * t + c).floorDiv(2 * c)) }
+    /// An uneven stretch's average gap: to 5 minutes from 7.5 up, else to the minute (at least 1).
+    static func aboutMin(_ t: Int, _ c: Int) -> Int {
+        2 * t >= 15 * c ? 5 * (2 * t + 5 * c).floorDiv(10 * c) : Swift.max(1, roundDiv(t, c))
+    }
+
+    private struct Run { var a: Int; var b: Int; var steady: Bool; var drop = false }
+    private struct HourGroup { var h: Int; var a: Int; var b: Int }
+
+    /// One stretch of service (no gap of `headwayBreakMin` or more) -> ranges.
+    static func stretchHeadways(_ d: [Int]) -> [Headway] {
+        let n = d.count
+        if n == 1 { return [Headway(kind: .trips, from: d[0], to: d[0], n: 1)] }
+        if n == 2 { return [Headway(kind: .trips, from: d[0], to: d[1], n: 2)] }
+        var g: [Int] = []
+        for i in 1..<n { g.append(d[i] - d[i - 1]) }
+        // runs of gaps within a minute of each other (greedy): 3 or more = steady, shorter = loose; loose neighbours join,
+        // and so do steady neighbours one minute apart (9 to 10 then 10 to 11: timetable rounding)
+        var runs: [Run] = []
+        var i = 0
+        while i < g.count {
+            var j = i + 1
+            while j < g.count && spread(g, i, j + 1) <= 1 { j += 1 }
+            let steady = j - i >= steadyGaps
+            if let last = runs.last, last.steady == steady, !steady || spread(g, last.a, j) <= 2 { runs[runs.count - 1].b = j }
+            else { runs.append(Run(a: i, b: j, steady: steady)) }
+            i = j
+        }
+        // a lone loose gap: part of a steady neighbour within a minute of its headway (the one before first), else a transition
+        func head(_ q: Run) -> Int { roundDiv(total(g, q.a, q.b), q.b - q.a) }
+        var k = 0
+        while k < runs.count {
+            let r = runs[k]
+            if r.steady || r.b - r.a != 1 { k += 1; continue }
+            if k > 0, runs[k - 1].steady, abs(g[r.a] - head(runs[k - 1])) <= 1 { runs[k - 1].b = r.b; runs.remove(at: k); continue }
+            if k + 1 < runs.count, runs[k + 1].steady, abs(g[r.a] - head(runs[k + 1])) <= 1 { runs[k + 1].a = r.a; runs.remove(at: k); continue }
+            runs[k].drop = true
+            k += 1
+        }
+        var out: [Headway] = []
+        if runs[0].drop { out.append(Headway(kind: .trips, from: d[0], to: d[0], n: 1)) }   // a lone first bus before a steady run
+        for r in runs where !r.drop {
+            if r.steady || spread(g, r.a, r.b) <= 1 { out.append(Headway(kind: .every, from: d[r.a], to: d[r.b], min: head(r))); continue }
+            // uneven: "About every N min" hour by hour (a one-gap hour joins the hour before, else after), equal neighbours merged
+            var hrs: [HourGroup] = []
+            for x in r.a..<r.b {
+                let h = d[x].floorDiv(60)
+                if let last = hrs.last, last.h == h { hrs[hrs.count - 1].b = x + 1 } else { hrs.append(HourGroup(h: h, a: x, b: x + 1)) }
+            }
+            var m = 0
+            while m < hrs.count && hrs.count > 1 {
+                if hrs[m].b - hrs[m].a > 1 { m += 1; continue }
+                if m > 0 { hrs[m - 1].b = hrs[m].b } else { hrs[m + 1].a = hrs[m].a }
+                hrs.remove(at: m)   // the next group moves into m
+            }
+            for x in hrs {
+                let mm = aboutMin(total(g, x.a, x.b), x.b - x.a)
+                if let last = out.last, last.kind == .about, last.min == mm, last.to == d[x.a] { out[out.count - 1].to = d[x.b] }
+                else { out.append(Headway(kind: .about, from: d[x.a], to: d[x.b], min: mm)) }
+            }
+        }
+        if runs.count > 1, runs[runs.count - 1].drop { out.append(Headway(kind: .trips, from: d[n - 1], to: d[n - 1], n: 1)) }   // a lone last bus
+        return out
+    }
+
+    /// How often the timetable sends a bus over one service day, as ranges (owner 2026-11-09; web core/schedule.js
+    /// hourlyHeadways, both checked against web/tests/fixtures/headways_golden.json). Steady stretches (4 or more buses,
+    /// gaps within a minute) read "Every N min" from the first to the last of those buses; uneven ones "About every N
+    /// min" hour by hour; a lone bus "1 trip" (two alone: "2 trips"); a gap of `headwayBreakMin` or more is "No service"
+    /// between two stretches. Duplicates and negative minutes are ignored.
+    public static func hourlyHeadways(_ deps: [Int]) -> [Headway] {
+        let d = Array(Set(deps.filter { $0 >= 0 })).sorted()
+        var out: [Headway] = []
+        var i = 0
+        while i < d.count {
+            var j = i + 1
+            while j < d.count && d[j] - d[j - 1] < headwayBreakMin { j += 1 }
+            if i > 0 { out.append(Headway(kind: .none, from: d[i - 1], to: d[i])) }
+            out += stretchHeadways(Array(d[i..<j]))
+            i = j
+        }
+        return out
+    }
+
+    /// Minute of a day as a 12-hour clock: 1470 -> '12:30 AM' (`headwayLine`'s default; the app passes the device's
+    /// 12 / 24 hour clock, RouteText.dayClock).
+    public static func clockMin(_ m: Int) -> String {
+        let t = ((m % 1440) + 1440) % 1440, h = t / 60
+        return "\((h + 11) % 12 + 1):" + String(format: "%02d", t % 60) + (h < 12 ? " AM" : " PM")
+    }
+
+    /// '7:00 to 10:00 AM' / '10:00 AM to 3:00 PM': the first AM / PM is dropped when both are the same.
+    static func clockPair(_ a: Int, _ b: Int, _ fmt: (Int) -> String, _ join: String) -> String {
+        let x = fmt(a), y = fmt(b)
+        func period(_ s: String) -> (String, String.Index)? {
+            for p in ["AM", "PM"] where s.hasSuffix(p) {
+                let i = s.index(s.endIndex, offsetBy: -p.count)
+                guard i > s.startIndex else { return nil }
+                let sep = s.index(before: i)
+                if [" ", "\u{202F}", "\u{00A0}"].contains(String(s[sep])) { return (p, sep) }
+            }
+            return nil
+        }
+        if let px = period(x), let py = period(y), px.0 == py.0 { return String(x[..<px.1]) + join + y }
+        return x + join + y
+    }
+
+    /// Words for one range (web headwayLine): text "Every 30 min" | "About every 20 min" | "1 trip" | "2 trips" |
+    /// "No service"; when "7:00 to 10:00 AM" | "11:00 PM" | "6:00 and 7:00 PM"; say = what VoiceOver reads ("Every 30
+    /// minutes, 7:00 to 10:00 AM").
+    public struct HeadwayLine: Codable, Hashable, Sendable {
+        public var text: String
+        public var when: String
+        public var say: String
+    }
+
+    public static func headwayLine(_ seg: Headway, clock: (Int) -> String = clockMin) -> HeadwayLine {
+        func minutes(_ m: Int) -> String { "\(m) minute\(m == 1 ? "" : "s")" }
+        var text: String, say: String, when: String
+        switch seg.kind {
+        case .every, .about:
+            let lead = seg.kind == .about ? "About every" : "Every", m = seg.min ?? 0
+            text = "\(lead) \(m) min"; say = "\(lead) \(minutes(m))"; when = clockPair(seg.from, seg.to, clock, " to ")
+        case .trips:
+            let n = seg.n ?? 1
+            text = n == 1 ? "1 trip" : "\(n) trips"; say = text
+            when = n == 1 ? clock(seg.from) : clockPair(seg.from, seg.to, clock, " and ")
+        case .none:
+            text = "No service"; say = text; when = clockPair(seg.from, seg.to, clock, " to ")
+        }
+        return HeadwayLine(text: text, when: when, say: "\(say), \(when)")
+    }
+}
+
+fileprivate extension Int {
+    /// Floor division (rounds toward minus infinity, like JavaScript's Math.floor(a / b)).
+    func floorDiv(_ b: Int) -> Int {
+        let q = self / b
+        return (self % b != 0 && (self < 0) != (b < 0)) ? q - 1 : q
     }
 }
