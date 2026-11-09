@@ -168,9 +168,10 @@
    the top while the suggestions and options scroll under it; a strip of the sheet color covers what scrolls above it */
 .v-dirbox {
   position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; gap: var(--s-2);
-  margin: 0 0 var(--s-3); padding: 10px 56px 10px 10px; border-radius: var(--r-card); background: var(--bg-card);
+  margin: 0 0 var(--s-3); padding: 10px; border-radius: var(--r-card); background: var(--bg-card);
   box-shadow: 0 calc(-1 * var(--s-1)) 0 var(--s-1) var(--bg-sheet);
 }
+.v-dfields { position: relative; display: flex; flex-direction: column; gap: var(--s-2); padding-right: 46px; }
 .v-dfield { position: relative; }
 .v-dfield input { border-radius: var(--r-nested); padding-right: 40px; }
 .v-pin { position: absolute; left: 14px; top: 50%; width: 10px; height: 10px; margin-top: -5px; box-sizing: border-box; border-radius: 50%; }
@@ -179,8 +180,26 @@
 .v-si .v-pin { position: static; display: inline-block; margin: 0; }
 .v-dclear { position: absolute; right: 0; top: 0; display: none; place-items: center; width: var(--tap); height: var(--tap); border: 0; background: none; color: var(--label-3); cursor: pointer; }
 .v-dfield:focus-within input:not(:placeholder-shown) ~ .v-dclear { display: grid; }
-.v-dswap { position: absolute; right: 6px; top: 50%; width: var(--tap); height: var(--tap); margin-top: -22px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--tint); cursor: pointer; transition: opacity var(--m-press) var(--ease-out); }
+.v-dswap { position: absolute; right: -4px; top: 50%; width: var(--tap); height: var(--tap); margin-top: -22px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--tint); cursor: pointer; transition: opacity var(--m-press) var(--ease-out); }
 .v-dswap:active { opacity: .6; }
+/* the trip start time under the fields (owner 2026-11-09): a fill capsule "Leave now" with the clock in tint and a
+   chevron (it opens the wheels); a chosen time keeps the capsule and adds a clear button. 36 tall, 44 hit area. */
+.v-dwhen { display: flex; align-items: center; gap: var(--s-1); min-height: 36px; }
+.v-dwhenbtn {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; min-height: 36px;
+  padding: 0 var(--s-3) 0 10px; border: 0; border-radius: var(--r-capsule); background: var(--fill); color: var(--label);
+  font: var(--t-row-detail); font-weight: var(--w-semibold); text-align: left; cursor: pointer;
+  transition: transform var(--m-press) var(--ease-out);
+}
+.v-dwhenbtn::after { content: ""; position: absolute; inset: -4px 0; }   /* 44 pt hit area */
+.v-dwhenbtn:active { background: var(--fill-pressed); transform: scale(.97); }
+.v-dwhenbtn:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+.v-dwhenic { flex: none; display: grid; place-items: center; color: var(--tint); }
+.v-dwhentxt { min-width: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.v-dwhenchev { flex: none; display: grid; place-items: center; color: var(--label-2); }
+.v-dwhenclear { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); margin: -4px 0; border: 0; background: none; color: var(--label-2); cursor: pointer; }
+.v-dwhenclear:active { opacity: .6; }
+@media (prefers-reduced-motion: reduce) { .v-dwhenbtn { transition: none; } .v-dwhenbtn:active { transform: none; } }
 .v-sugs { margin-top: 0; }
 .v-sugs .v-row { min-height: 56px; }
 .v-sugs .v-ic { color: var(--label-2); }

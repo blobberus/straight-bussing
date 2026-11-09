@@ -17,6 +17,10 @@
  * focused; collapsing the sheet puts the keyboard away and shows the selected option on the map (the card shows
  * again when the sheet expands). Focusing a field expands the sheet.
  * Walking is always visible: card + step markup in ./tripinfo.js.
+ * Trip start time (owner 2026-11-09): under the fields a "Leave now" control; a chosen time ("Leave tomorrow at 5:40 PM",
+ * cleared by its x) plans from then: under 10 minutes away with live times, later from the timetable (core/timetable.js
+ * startMode; data/timetable.js loads it on first use). Never stored: it lives in D.at for this visit only, and a time that
+ * has passed goes back to Leave now.
  */
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
@@ -42,6 +46,8 @@ import { DEMO } from "../../core/demo.js";
 import { bus } from "../../core/events.js";
 import { WALK_IC, tag, mins, walkMins, walkTotal, optionLines, stepsHTML as stepsFor } from "./tripinfo.js";
 import { svg } from "../icons.js";
+import { startMode, leaveLabel, LEAVE_NOW } from "../../core/timetable.js";
+import { loadTimetable, timetableNow } from "../../data/timetable.js";
 
 /** The required estimate note under the options. */
 export const NOTE = "Bus times are estimates from schedules and live predictions. They will get more accurate as we collect more ride data.";
@@ -52,16 +58,18 @@ const CLEAR_IC = svg("circle-x-fill", 17);
 const CHEV_IC = svg("chevron-right", 11, { stroke: 2.5 });
 
 /** View-local state. Endpoints are {lat, lon, label, stop?, me?}. */
-export const D = { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null, sel: 0, selKey: null, refining: false, meDenied: false, token: 0, missed: false, focusTo: false, optsChanged: false };
+export const D = { from: null, to: null, fromText: "", toText: "", active: null, sugs: [], result: null, sel: 0, selKey: null, refining: false, meDenied: false, token: 0, missed: false, focusTo: false, optsChanged: false,
+  at: null, tt: "" };   // at: the chosen trip start (unix s; null = Leave now; never stored); tt: '' | 'loading' | 'failed' (the timetable)
 /** Minimum seconds between background re-plans on live updates (iOS AppModel.dirRefreshS). */
 export const DIR_REFRESH_S = 8;
 /** Injectable dependencies (tests replace them; wallMs / later = the re-plan throttle's clock and timer). */
-export const deps = { plan, refineWalking, walkRoute, predict, wallMs: () => Date.now(), later: (f, ms) => setTimeout(f, ms) };
+export const deps = { plan, refineWalking, walkRoute, predict, loadTimetable, wallMs: () => Date.now(), later: (f, ms) => setTimeout(f, ms) };
 let rootRef = null, ctxRef = null, offStore = null, lastUser = null, offPlanWatch = null, offInset = null, lastRest = null;
 const photon = createPlaceSearch(() => patchSug());
 /** Background re-plan on live updates: .poke() per change, at most every DIR_REFRESH_S (gate: nothing open / failing feed = skip, a new plan still refining = defer). */
 export const liveReplan = createThrottle(() => replan(), { everyMs: DIR_REFRESH_S * 1000, now: () => deps.wallMs(), later: (f, ms) => deps.later(f, ms),
-  gate: () => (!rootRef || !D.from || !D.to || !D.result || cur().failed ? "skip" : D.refining ? "defer" : "go") });
+  gate: () => (!rootRef || !D.from || !D.to || !D.result || cur().failed ? "skip" : D.refining ? "defer"
+    : D.result.mode === "timetable" && startMode(D.at, nowFn()) === "timetable" ? "skip" : "go") });   // a timetable plan uses no live data until its time is near
 
 const cur = () => ctxRef?.store?.get?.() || {};
 const nowFn = () => (ctxRef?.now ? ctxRef.now() : nowS());
@@ -245,15 +253,32 @@ function field(key) {
 export function renderDirections(state, now = nowS()) {
   return `<div class="v-dir">${dirboxHTML()}<div data-region="dir-sug">${sugHTML()}</div><div data-region="dir-res">${resHTML(state, now)}</div></div>`;
 }
-/** The Start / Destination fields with the swap button (in the top card, or in the panel). */
+/** The Start / Destination fields with the swap button, then the trip start time (in the top card, or in the panel). */
 function dirboxHTML() {
-  return `<div class="v-dirbox">${field("from")}${field("to")}<button type="button" class="v-dswap" data-action="dir:swap" aria-label="Swap start and destination">${SWAP_IC}</button></div>`;
+  return `<div class="v-dirbox"><div class="v-dfields">${field("from")}${field("to")}<button type="button" class="v-dswap" data-action="dir:swap" aria-label="Swap start and destination">${SWAP_IC}</button></div>`
+    + `<div class="v-dwhen" data-region="dir-when">${whenHTML()}</div></div>`;
+}
+
+/**
+ * The trip start time control (owner 2026-11-09): "Leave now", or the chosen time with a clear button. A tap opens the
+ * wheels (dir:when). Trusted HTML.
+ * @param {number} [now]
+ * @returns {string}
+ */
+export function whenHTML(now = nowFn()) {
+  const set = startMode(D.at, now) !== "now", label = leaveLabel(D.at, now);
+  const aria = set ? `Trip start time: ${label}. Change` : `Trip start time: ${LEAVE_NOW}. Choose a later time`;
+  return `<button type="button" class="v-dwhenbtn${set ? " is-set" : ""}" data-action="dir:when" aria-haspopup="dialog" aria-label="${esc(aria)}">`
+    + `<span class="v-dwhenic" aria-hidden="true">${svg("clock", 17)}</span><span class="v-dwhentxt">${esc(label)}</span>`
+    + `<span class="v-dwhenchev" aria-hidden="true">${svg("chevron-down", 13, { stroke: 2.5 })}</span></button>`
+    + (set ? `<button type="button" class="v-dwhenclear" data-action="dir:when-clear" aria-label="Clear the start time and leave now">${CLEAR_IC}</button>` : "");
 }
 
 const lastHtml = {};
 function patch(region, html) { const el = rootRef?.querySelector?.(`[data-region="${region}"]`); if (el && lastHtml[region] !== html) { setHTMLKeepFocus(el, html); lastHtml[region] = html; } }
 function patchSug() { if (D.active) { D.sugs = computeSugs(cur(), D.active === "from" ? D.fromText : D.toText); if (D.active === "to" && !D.from && !cur().user) D.sugs = D.sugs.filter((s) => s.kind !== "me"); } patch("dir-sug", sugHTML()); }   // no start yet: the results' "Start from my location" is the one location action
 function patchRes() { patch("dir-res", resHTML(cur(), nowFn())); try { bus.emit("sheet:header", {}); } catch (e) { /* header optional */ } }
+function patchWhen() { patch("dir-when", whenHTML()); }
 function setInput(key) { const el = fq(`[data-input="dir-${key}"]`); if (el) el.value = D[key]?.label || (key === "from" ? D.fromText : D.toText); }
 
 /** Draw the selected option (or the walk-only line) on the map; optionally fit to it. */
@@ -289,15 +314,32 @@ function pickSel(fresh) {
 export async function replan({ fresh = false } = {}) {
   const state = cur(), token = ++D.token;
   if (!D.from || !D.to || !state.staticLoaded) { D.result = null; D.refining = false; patchRes(); try { ctxRef?.map?.drawPlan?.(null); } catch (e) { /* */ } return; }
-  const now = nowFn(), from = D.from, to = D.to;
+  const wall = nowFn(), from = D.from, to = D.to;
+  if (D.at != null && startMode(D.at, wall) === "now") { D.at = null; patchWhen(); }   // its time has come: Leave now
+  // the trip start (owner 2026-11-09): now, a chosen time under 10 minutes away (live times from then), or later (the timetable)
+  const mode = startMode(D.at, wall), now = mode === "now" ? wall : D.at;
+  let timetable = null;
+  if (mode === "timetable") {
+    timetable = timetableNow();
+    if (!timetable) {
+      D.tt = "loading"; D.result = null; D.refining = false; patchRes();
+      try { ctxRef?.map?.drawPlan?.(null); } catch (e) { /* */ }
+      try { timetable = await deps.loadTimetable(); } catch (e) { timetable = null; }
+      if (token !== D.token) return;
+      if (!timetable) { D.tt = "failed"; patchRes(); return; }
+      fresh = true;
+    }
+  }
+  D.tt = "";
   const data = { stops: state.stops, routes: state.routes, routeStops: state.routeStops, trips: state.trips || [], buses: state.buses || [], service: state.service };
   let r;
-  try { r = deps.plan({ from, to, now, data, predict: deps.predict }); } catch (e) { r = null; }
+  try { r = deps.plan({ from, to, now, data, predict: deps.predict, ...(timetable ? { timetable } : {}) }); } catch (e) { r = null; }
   if (!r || !Array.isArray(r.options)) { const m = hav(from, to) * 1.2; r = { options: [], walkOnly: { m, min: m / 80 } }; }
+  r = { ...r, mode, t0: now };
   if (fresh || !D.result) { D.result = r; D.missed = false; D.refining = true; pickSel(fresh); patchRes(); drawSel(fresh); }
   const top = r.options.filter((o) => !o.walkOnly).slice(0, PLANNER.MAX_OPTS);   // the walk option is rebuilt below
   const [settled, walk] = await Promise.all([
-    Promise.allSettled(top.map((o) => deps.refineWalking(o, { walkRoute: deps.walkRoute, now, data, from, to, predict: deps.predict }))),
+    Promise.allSettled(top.map((o) => deps.refineWalking(o, { walkRoute: deps.walkRoute, now, data, from, to, predict: deps.predict, ...(timetable ? { timetable } : {}) }))),
     Promise.resolve().then(() => deps.walkRoute(from, to)).catch(() => null),
   ]);
   if (token !== D.token) return;
@@ -317,6 +359,7 @@ export async function replan({ fresh = false } = {}) {
  * @returns {boolean}
  */
 export function startTrip() {
+  if (D.result?.mode === "timetable") return false;   // a plan for later: Start comes when live times take over
   const j = planJourney(D.result?.options?.[D.sel], D.to?.label);
   if (!j || !ctxRef?.store) return false;
   ctxRef.store.set({ journey: j });
@@ -348,7 +391,7 @@ const legSig = (j) => ((j && j.legs) || []).filter((l) => l.type === "bus").map(
  */
 function syncJourney(picked = false) {
   const s = cur();
-  if (!isPlanJourney(s) || !rootRef) return;
+  if (!isPlanJourney(s) || !rootRef || D.result?.mode === "timetable") return;
   const j = planJourney(D.result?.options?.[D.sel], D.to?.label);
   if (j && (!sameRids(j.rids, s.journey.rids) || j.label !== s.journey.label || (picked && legSig(j) !== legSig(s.journey)))) ctxRef.store.set({ journey: j });
 }
@@ -373,6 +416,22 @@ export function setEndpoint(key, ep) {
   endPlanJourney();
   D[key] = ep; if (ep) D[key + "Text"] = ep.label;
   setInput(key); afterSet();
+}
+
+/**
+ * Set the trip start time (null, or a time already past = Leave now) and re-plan. A new start time is a new trip, like a new
+ * endpoint: a started one ends.
+ * @param {number|null} at unix s
+ * @returns {number|null} the start time kept
+ */
+export function setStartTime(at) {
+  const keep = Number.isFinite(at) && startMode(at, nowFn()) !== "now" ? at : null;
+  if (keep === D.at) { patchWhen(); return keep; }
+  endPlanJourney();
+  D.at = keep;
+  patchWhen();
+  replan({ fresh: true });
+  return keep;
 }
 
 /** Use the current location for a field (asks permission if needed). */
@@ -544,3 +603,9 @@ registerAction("dir:clear", (ds, ev, ctx) => {
   el.focus({ preventScroll: true });
 });
 registerAction("dir:start", (ds, ev, ctx) => { ctxRef = ctx || ctxRef; startTrip(); });
+/** The start time's clear button: back to Leave now; focus stays on the control. */
+registerAction("dir:when-clear", (ds, ev, ctx) => {
+  ctxRef = ctx || ctxRef;
+  setStartTime(null);
+  fq('[data-action="dir:when"]')?.focus({ preventScroll: true });
+});
