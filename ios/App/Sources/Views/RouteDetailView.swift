@@ -302,9 +302,28 @@ struct RouteScheduleView: View, Equatable {
                 Text("No schedule changes in the next 30 days.").font(.footnote).foregroundStyle(Palette.text2)
             }
             busesChart(svc)
+            headways(svc)
             if has {
                 Text("Hours and bus counts come from the official published schedule. Live service may differ.")
                     .font(.caption).foregroundStyle(Palette.text2)
+            }
+        }
+    }
+
+    /// "Schedule by hour" (owner 2026-11-09: "Every 30 minutes between x times", under the bus counts; web route.js
+    /// renderHeadways): how often the timetable sends a bus on the bars' day, one row per range, then the disclaimer.
+    /// Times follow the phone's 12 / 24 hour setting; each row is one VoiceOver element.
+    @ViewBuilder func headways(_ svc: ServiceData) -> some View {
+        if let h = RouteText.headways(svc, rid: rid, now: t, stops: model.staticData.stops) {
+            SectionTitle(text: "Schedule by hour, \(h.when)")
+            Card {
+                ForEach(Array(h.lines.enumerated()), id: \.offset) { _, line in HeadwayRow(line: line) }
+                Divider()
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "info.circle").font(.footnote).foregroundStyle(Palette.text2).accessibilityHidden(true)
+                    Text(h.note).font(.footnote).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 8)
             }
         }
     }
@@ -340,5 +359,29 @@ struct RouteScheduleView: View, Equatable {
                 .padding(.vertical, 8)
             }
         }
+    }
+}
+
+/// One "Schedule by hour" row: how often on the leading side, the times trailing in tabular figures; at accessibility
+/// text sizes the times move under the words. VoiceOver reads one sentence ("Every 30 minutes, 7:00 to 10:00 AM").
+struct HeadwayRow: View {
+    let line: Schedule.HeadwayLine
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        let quiet = line.text == "No service"   // the words say it; no color of its own
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 12))
+        layout {
+            Text(line.text).font(.subheadline.weight(quiet ? .regular : .semibold))
+                .foregroundStyle(quiet ? Palette.text2 : Palette.text)
+            if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
+            Text(line.when).font(.subheadline).monospacedDigit().foregroundStyle(Palette.text2)
+                .multilineTextAlignment(typeSize.isAccessibilitySize ? .leading : .trailing)
+        }
+        .frame(minHeight: 36)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(line.say)
     }
 }
