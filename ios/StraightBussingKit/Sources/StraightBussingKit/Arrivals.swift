@@ -160,6 +160,9 @@ public enum TimeFmt {
     }
     static let utc = TimeZone(identifier: "UTC")!
 
+    /// Does the phone show a 24 hour clock ("13:00", web core/time.js clock24)? The times table labels hours "13" then.
+    public static func uses24Hour(locale: Locale = .current) -> Bool { clockOfDay(780, locale: locale).contains("13") }
+
     /// One cached "jmm" formatter per time zone + locale (a DateFormatter is expensive to create and `clock`
     /// runs for every row of every list).
     static let clockFormatters = ClockFormatterCache()

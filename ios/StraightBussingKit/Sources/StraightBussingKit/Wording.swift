@@ -525,16 +525,80 @@ public enum RouteText {
         return "Timetable only\(at). Buses often don't keep to this schedule, so go by the live times when buses are running."
     }
 
-    /// "Schedule by hour" (owner 2026-11-09: "Every 30 minutes between x times", under the bus counts; web route.js
-    /// renderHeadways): the timetable's ranges for the bars' day, the day name and the disclaimer. nil = no departures
-    /// known (an older schedule file) or no service.
-    public static func headways(_ svc: ServiceData, rid: String, now: Double, stops: [String: Stop],
-                                clock: (Int) -> String = { TimeFmt.clockOfDay($0) }) -> (when: String, lines: [Schedule.HeadwayLine], note: String)? {
-        guard let day = Schedule.scheduleDay(svc, rid, now) else { return nil }
-        let segs = Schedule.hourlyHeadways(Schedule.departures(day.day))
-        guard !segs.isEmpty else { return nil }
-        let at = Schedule.routeService(svc, rid)?.at.flatMap { stops[$0]?.name }
-        return (scheduleWhen(day), segs.map { Schedule.headwayLine($0, clock: clock) }, headwayNote(at))
+    /// The route page's "Schedule by hour" card for one day tab (web route.js renderHeadways): the title's day, the tabs,
+    /// the selected tab, its summary ranges (or "No service" with the next day with service), the disclaimer.
+    public struct HeadwayCard: Sendable {
+        public var when: String
+        public var tabs: [Schedule.DayTab]
+        public var tab: Schedule.DayTab
+        public var lines: [Schedule.HeadwayLine]
+        /// The tab has no service: "Next service Monday" ("" when no day has service); nil when it has.
+        public var noService: String?
+        public var disclaimer: String
+        /// The stop the times are for ("" when unknown).
+        public var stop: String
+    }
+
+    static let plural = ["Weekday": "weekdays", "Weekend": "weekends", "Every day": "every day"]
+
+    /// The section title's day for a tab: "today", "Wednesday" (after midnight, the evening's service), "weekends", "Saturdays".
+    public static func tabWhen(_ tab: Schedule.DayTab, key: String) -> String {
+        if tab.today { return tab.yesterday ? Schedule.dayName[key] ?? key : "today" }
+        if let p = plural[tab.label] { return p }
+        return tab.keys.count == 1 ? (Schedule.dayName[tab.keys[0]] ?? tab.label) + "s" : tab.label
+    }
+
+    /// "Schedule by hour" (owner 2026-11-09: "Every 30 minutes between x times", under the bus counts; follow-up: day tabs,
+    /// "Show all times") for the tab `tabId` (nil or unknown = today's). nil = no departures known (an older schedule file).
+    public static func headwayCard(_ svc: ServiceData, rid: String, now: Double, tabId: String?, stops: [String: Stop],
+                                   clock: (Int) -> String = { TimeFmt.clockOfDay($0) }) -> HeadwayCard? {
+        guard let t = Schedule.scheduleTabs(svc, rid, now) else { return nil }
+        let days = Schedule.routeService(svc, rid)?.days.values.map { $0 } ?? []
+        guard days.contains(where: { !Schedule.departures($0).isEmpty }) || t.tabs.contains(where: { !Schedule.departures($0.day).isEmpty }) else { return nil }
+        let tab = t.tabs.first { $0.id == tabId } ?? t.tabs.first { $0.id == t.selected } ?? t.tabs[0]
+        let segs = Schedule.hourlyHeadways(Schedule.departures(tab.day))
+        let at = Schedule.routeService(svc, rid)?.at.flatMap { stops[$0]?.name } ?? ""
+        let none: String? = segs.isEmpty ? (tab.next.map { "Next service " + (Schedule.dayName[$0] ?? $0) } ?? "") : nil
+        return HeadwayCard(when: tabWhen(tab, key: t.key), tabs: t.tabs, tab: tab, lines: segs.map { Schedule.headwayLine($0, clock: clock) },
+                           noService: none, disclaimer: headwayNote(at), stop: at)
+    }
+
+    /// One row of the times table (web route.js timesTable).
+    public struct TimesRow: Hashable, Sendable {
+        public var h: Int
+        /// "7 AM", or "07" on a 24 hour clock.
+        public var hour: String
+        /// ":00", ":30"
+        public var minutes: [String]
+        /// Index in `minutes` of the next bus (today's tab only).
+        public var next: Int?
+        /// The current hour (today's tab only).
+        public var now: Bool
+        /// What VoiceOver reads: "10 AM, now. 10:00 AM, 10:15 AM, next, 10:30 AM".
+        public var say: String
+    }
+
+    /// The expanded times table for a tab: one row per hour, the hour then its departures as minutes; on today's tab the
+    /// current hour ("Now") and the next bus ("Next"), with the line above the table ("Next scheduled bus 6:30 PM" or "No
+    /// more scheduled buses today."; "" on other tabs).
+    public static func timesTable(_ tab: Schedule.DayTab, now: Double, h24: Bool,
+                                  clock: (Int) -> String = { TimeFmt.clockOfDay($0) }) -> (line: String, rows: [TimesRow]) {
+        let deps = Schedule.departures(tab.day)
+        var cur = -1, next: Int? = nil, line = ""
+        if tab.today {
+            let nm = Schedule.nowMinute(deps, localMin: Schedule.localParts(now).min, yesterday: tab.yesterday, allDay: Schedule.allDay(tab.day))
+            cur = nm / 60
+            next = Schedule.nextDeparture(deps, now: nm)
+            line = next.map { "Next scheduled bus " + clock($0) } ?? "No more scheduled buses today."
+        }
+        let rows = Schedule.hourRows(deps).map { r -> TimesRow in
+            let isNow = r.h == cur
+            let say = Schedule.hourLabel(r.h) + (isNow ? ", now" : "") + ". " + r.times.map { clock($0) + ($0 == next ? ", next" : "") }.joined(separator: ", ")
+            return TimesRow(h: r.h, hour: h24 ? String(format: "%02d", r.h % 24) : Schedule.hourLabel(r.h),
+                            minutes: r.times.map { String(format: ":%02d", $0 % 60) }, next: r.times.firstIndex { $0 == next },
+                            now: isNow, say: say)
+        }
+        return (line, rows)
     }
 
     /// One line per group: "7 AM to 9 AM: 3 buses" (route.js buses-by-hour list).

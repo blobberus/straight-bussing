@@ -537,6 +537,134 @@ public enum Schedule {
     }
 }
 
+// All times by hour (owner 2026-11-09: "expandable to show exactly what time of day the bus can be expected. The table
+// should highlight the current time. It can break it down between the weekday and weekend."; web core/schedule.js).
+extension Schedule {
+    /// One day tab of the route page's times table (`scheduleTabs`).
+    public struct DayTab: Hashable, Sendable {
+        public var id: String
+        public var label: String
+        public var keys: [String]
+        /// The tab's timetable: today's real one (calendar changes applied) on today's tab, else the regular day's.
+        public var day: ServiceDay?
+        public var today: Bool
+        /// Today's tab, and `t` is in yesterday's after-midnight tail.
+        public var yesterday: Bool
+        /// "Holiday schedule today", "Extra service today", "Holiday schedule today: no service" or "".
+        public var note: String
+        /// A tab with no service: the next day with service (a day key).
+        public var next: String?
+    }
+
+    public struct DayTabs: Hashable, Sendable {
+        public var tabs: [DayTab]
+        public var selected: String
+        /// Today's service day.
+        public var key: String
+    }
+
+    /// Two day entries with the same timetable: the same departures, else (no departures listed) the same hours.
+    static func sameTimetable(_ a: ServiceDay?, _ b: ServiceDay?) -> Bool {
+        let da = departures(a), db = departures(b)
+        if !da.isEmpty || !db.isEmpty { return da == db }
+        return spanLabel(a) == spanLabel(b)
+    }
+
+    /// A day with any service (hours or departures).
+    static func hasService(_ day: ServiceDay?) -> Bool { !spansOf(day).isEmpty || !departures(day).isEmpty }
+
+    /// The next date with service after `iso` (calendar changes applied), within a week, as a day key.
+    static func nextServiceKey(_ r: RouteService, _ iso: String) -> String? {
+        let parts = iso.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        let p = LocalParts(y: parts[0], m: parts[1], d: parts[2], dow: 0, min: 0)
+        for i in 1...7 {
+            let next = isoDate(p, days: i)
+            if hasService(dayFor(r, next).day) { return keyOfIso(next) }
+        }
+        return nil
+    }
+
+    /// Day tabs for the times table (web scheduleTabs): consecutive days with the same timetable grouped in week order and
+    /// named by the data ("Every day", "Weekday", "Weekend", "Saturday", "Sunday", else "Mon-Thu", "Fri"); today's tab
+    /// (after midnight a night route's evening) carries today's real timetable and a note; a tab with no service names
+    /// the next day with service. nil = no schedule data for the route.
+    public static func scheduleTabs(_ service: ServiceData?, _ rid: String, _ t: Double) -> DayTabs? {
+        guard let r = routeService(service, rid) else { return nil }
+        let p = localParts(t), todayIso = isoDate(p), prev = isoDate(p, days: -1)
+        func has(_ day: ServiceDay?, _ m: Int) -> Bool {
+            spansOf(day).contains { s in m >= (mins(s.0) ?? 0) && m < (mins(s.1) ?? 0) }
+        }
+        let tail = !has(dayFor(r, todayIso).day, p.min) && has(dayFor(r, prev).day, p.min + 1440)
+        let iso = tail ? prev : todayIso, key = keyOfIso(iso)
+        let real = dayFor(r, iso)
+        var groups: [[String]] = []
+        for k in dayKeys {
+            if let last = groups.last, let lk = last.last, sameTimetable(r.days[lk], r.days[k]) { groups[groups.count - 1].append(k) }
+            else { groups.append([k]) }
+        }
+        let many = groups.count > 3
+        let tabs: [DayTab] = groups.map { g in
+            let s = g.joined(separator: ",")
+            let label = g.count == 7 ? "Every day" : s == "mon,tue,wed,thu,fri" ? "Weekday" : s == "sat,sun" ? "Weekend"
+                : g.count == 1 ? (many ? dayShort[g[0]]! : dayName[g[0]]!) : dayShort[g[0]]! + dayRange + dayShort[g[g.count - 1]]!
+            let today = g.contains(key)
+            let day = today ? real.day : r.days[g[0]]
+            var note = "", next: String? = nil
+            if today, let ex = real.exception {
+                note = ex == "added" ? "Extra service today" : hasService(real.day) ? "Holiday schedule today" : "Holiday schedule today: no service"
+            }
+            if !hasService(day) {
+                if today { next = nextServiceKey(r, iso) }
+                else {
+                    let lastIdx = dayKeys.firstIndex(of: g[g.count - 1]) ?? 0
+                    for i in 1...7 where next == nil {
+                        let k = dayKeys[(lastIdx + i) % 7]
+                        if hasService(r.days[k]) { next = k }
+                    }
+                }
+            }
+            return DayTab(id: g[0] + (g.count > 1 ? "-" + g[g.count - 1] : ""), label: label, keys: g, day: day, today: today,
+                          yesterday: today && tail, note: note, next: next)
+        }
+        return DayTabs(tabs: tabs, selected: tabs.first(where: { $0.today })?.id ?? tabs[0].id, key: key)
+    }
+
+    /// One hour of departures (web hourRows): `h` = hour of the service day (24 = 12 AM after the evening).
+    public struct HourRow: Codable, Hashable, Sendable {
+        public var h: Int
+        public var times: [Int]
+    }
+
+    /// A day's departures grouped by hour of the service day, in order; hours without one are left out.
+    public static func hourRows(_ deps: [Int]) -> [HourRow] {
+        var out: [HourRow] = []
+        for m in Array(Set(deps.filter { $0 >= 0 })).sorted() {
+            let h = m / 60
+            if let last = out.last, last.h == h { out[out.count - 1].times.append(m) } else { out.append(HourRow(h: h, times: [m])) }
+        }
+        return out
+    }
+
+    /// "Now" on a service day's clock (web nowMinute): + 24 h in yesterday's tail; a 24 hour route's cycle wraps.
+    public static func nowMinute(_ deps: [Int], localMin: Int, yesterday: Bool, allDay: Bool = false) -> Int {
+        let base = localMin + (yesterday ? 1440 : 0)
+        if allDay, !yesterday, let first = deps.first, base < first { return base + 1440 }
+        return base
+    }
+
+    /// The next scheduled departure at or after `now`, or nil when none is left that day.
+    public static func nextDeparture(_ deps: [Int], now: Int) -> Int? {
+        hourRows(deps).flatMap(\.times).first { $0 >= now }
+    }
+
+    /// Does the day run all day (one window "00:00" to "24:00", CTA's 24 hour routes)?
+    public static func allDay(_ day: ServiceDay?) -> Bool {
+        let s = spansOf(day)
+        return s.count == 1 && mins(s[0].0) == 0 && mins(s[0].1) == 1440
+    }
+}
+
 fileprivate extension Int {
     /// Floor division (rounds toward minus infinity, like JavaScript's Math.floor(a / b)).
     func floorDiv(_ b: Int) -> Int {

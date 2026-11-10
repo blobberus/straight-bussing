@@ -161,24 +161,112 @@ final class HeadwayTests: XCTestCase {
         XCTAssertNil(Schedule.scheduleDay(ServiceData(routes: ["E": RouteService(days: [:])]), "E", 0))
     }
 
-    func testRouteTextHeadwaysForTheRoutePage() throws {
+    func testRouteTextHeadwayCardForTheRoutePage() throws {
         let stops = ["S2": Stop(id: "S2", name: "Library", lat: 41.792, lon: -87.6)]
-        let h = try XCTUnwrap(RouteText.headways(Self.S, rid: "R1", now: utc("2026-10-14T15:00:00Z"), stops: stops, clock: Schedule.clockMin))
+        let h = try XCTUnwrap(RouteText.headwayCard(Self.S, rid: "R1", now: utc("2026-10-14T15:00:00Z"), tabId: nil, stops: stops, clock: Schedule.clockMin))
         XCTAssertEqual(h.when, "today")
+        XCTAssertEqual(h.tabs.map(\.label), ["Weekday", "Weekend"])
         XCTAssertEqual(h.lines.map(\.say), ["Every 30 minutes, 7:00 to 8:00 AM", "Every 15 minutes, 8:00 to 10:30 AM", "Every 30 minutes, 10:30 AM to 6:00 PM", "1 trip, 7:00 PM"])
-        XCTAssertEqual(h.note, "Timetable only, times at Library. Buses often don't keep to this schedule, so go by the live times when buses are running.")
+        XCTAssertNil(h.noService)
+        XCTAssertEqual(h.disclaimer, "Timetable only, times at Library. Buses often don't keep to this schedule, so go by the live times when buses are running.")
         XCTAssertEqual(RouteText.headwayNote(nil), "Timetable only. Buses often don't keep to this schedule, so go by the live times when buses are running.")
-        XCTAssertEqual(RouteText.headways(Self.S, rid: "D", now: utc("2026-11-26T16:00:00Z"), stops: stops)?.when, "Thursdays")
-        XCTAssertEqual(RouteText.headways(Self.S, rid: "N", now: utc("2026-10-08T07:00:00Z"), stops: stops)?.when, "Wednesday")
-        XCTAssertEqual(RouteText.busesChart(Self.S, rid: "D", now: utc("2026-11-26T16:00:00Z"))?.when, "Thursdays", "the bars show the same day")
+        let we = try XCTUnwrap(RouteText.headwayCard(Self.S, rid: "R1", now: utc("2026-10-14T15:00:00Z"), tabId: "sat-sun", stops: stops))
+        XCTAssertEqual([we.when, we.noService ?? "-"], ["weekends", "Next service Monday"])
+        let hol = try XCTUnwrap(RouteText.headwayCard(Self.S, rid: "D", now: utc("2026-11-26T16:00:00Z"), tabId: nil, stops: stops))
+        XCTAssertEqual([hol.when, hol.tab.note, hol.noService ?? "-"], ["today", "Holiday schedule today: no service", "Next service Friday"])
+        XCTAssertEqual(RouteText.headwayCard(Self.S, rid: "N", now: utc("2026-10-08T07:00:00Z"), tabId: nil, stops: stops)?.when, "Wednesday")
+        XCTAssertEqual(RouteText.busesChart(Self.S, rid: "D", now: utc("2026-11-26T16:00:00Z"))?.when, "Thursdays", "the bars: the weekday's regular timetable")
         var old = Self.S
-        old.routes["R1"]?.days["wed"]?.dep = nil   // a schedule file from before dep
-        XCTAssertNil(RouteText.headways(old, rid: "R1", now: utc("2026-10-14T15:00:00Z"), stops: stops))
+        for k in ["mon", "tue", "wed", "thu", "fri"] { old.routes["R1"]?.days[k]?.dep = nil }   // a schedule file from before dep
+        XCTAssertNil(RouteText.headwayCard(old, rid: "R1", now: utc("2026-10-14T15:00:00Z"), tabId: nil, stops: stops))
         XCTAssertNotNil(RouteText.busesChart(old, rid: "R1", now: utc("2026-10-14T15:00:00Z")), "the bars still show")
     }
 
+    // ---- All times by hour (owner 2026-11-09: "expandable ... highlight the current time ... weekday and weekend";
+    // web/tests/route-schedule.js + route-hourly.js, the same cases)
+
+    func testScheduleTabsGroupDaysAndSelectToday() throws {
+        let n = try XCTUnwrap(Schedule.scheduleTabs(Self.S, "N", utc("2026-10-14T15:00:00Z")))
+        XCTAssertEqual(n.tabs.map(\.label), ["Every day"]); XCTAssertEqual(n.selected, "mon-sun")
+        let d = try XCTUnwrap(Schedule.scheduleTabs(Self.S, "D", utc("2026-10-14T15:00:00Z")))
+        XCTAssertEqual(d.tabs.map(\.id), ["mon-fri", "sat-sun"]); XCTAssertEqual(d.tabs.map(\.label), ["Weekday", "Weekend"])
+        XCTAssertEqual(d.selected, "mon-fri"); XCTAssertNil(d.tabs[1].day); XCTAssertEqual(d.tabs[1].next, "mon")
+        XCTAssertNil(Schedule.scheduleTabs(Self.S, "zz", 0))
+        var svc = Self.S
+        let wk = svc.routes["D"]!.days["mon"]!
+        var sat = wk; sat.dep = [600, 30, 30]
+        svc.routes["D"]?.days["sat"] = sat
+        var t = try XCTUnwrap(Schedule.scheduleTabs(svc, "D", utc("2026-10-17T15:00:00Z")))   // Sat 10 AM
+        XCTAssertEqual(t.tabs.map(\.label), ["Weekday", "Saturday", "Sunday"]); XCTAssertEqual(t.selected, "sat"); XCTAssertEqual(t.tabs[2].next, "mon")
+        var fri = wk; fri.dep = [420, 60]
+        svc.routes["D"]?.days["fri"] = fri
+        t = try XCTUnwrap(Schedule.scheduleTabs(svc, "D", utc("2026-10-16T15:00:00Z")))       // Fri 10 AM
+        XCTAssertEqual(t.tabs.map(\.label), ["Mon-Thu", "Fri", "Sat", "Sun"]); XCTAssertEqual(t.selected, "fri")
+    }
+
+    func testScheduleTabsCalendarChangesAndAfterMidnight() throws {
+        let extra = try XCTUnwrap(Schedule.scheduleTabs(Self.S, "D", utc("2026-10-10T15:00:00Z")))
+        let we = try XCTUnwrap(extra.tabs.first { $0.today })
+        XCTAssertEqual([we.id, we.note], ["sat-sun", "Extra service today"]); XCTAssertNil(we.next)
+        XCTAssertEqual(Schedule.departures(we.day).first, 600)
+        let hol = try XCTUnwrap(Schedule.scheduleTabs(Self.S, "D", utc("2026-11-26T16:00:00Z")))
+        let wd = try XCTUnwrap(hol.tabs.first { $0.today })
+        XCTAssertEqual([wd.id, wd.note, wd.next ?? "-"], ["mon-fri", "Holiday schedule today: no service", "fri"])
+        let night = try XCTUnwrap(Schedule.scheduleTabs(Self.S, "N", utc("2026-10-08T07:00:00Z")))
+        XCTAssertTrue(night.tabs[0].today && night.tabs[0].yesterday); XCTAssertEqual(night.key, "wed")
+    }
+
+    func testHourRowsNowAndNextAcrossMidnight() {
+        XCTAssertEqual(Schedule.hourRows([420, 450, 480, 495, 510]), [.init(h: 7, times: [420, 450]), .init(h: 8, times: [480, 495, 510])])
+        XCTAssertEqual(Schedule.hourRows([1380, 1410, 1440, 1470, 1500]).map(\.h), [23, 24, 25])
+        XCTAssertEqual(Schedule.hourRows([600, 600, 540]), [.init(h: 9, times: [540]), .init(h: 10, times: [600])])
+        let north = Schedule.departures(Self.S.routes["N"]!.days["mon"]!)
+        XCTAssertEqual(Schedule.nowMinute(north, localMin: 23 * 60 + 50, yesterday: false), 1430)
+        XCTAssertEqual(Schedule.nextDeparture(north, now: 1430), 1440)
+        XCTAssertEqual(Schedule.nowMinute(north, localMin: 120, yesterday: true), 1560)
+        XCTAssertEqual(Schedule.nextDeparture(north, now: 1560), 1560)
+        XCTAssertNil(Schedule.nextDeparture(north, now: 1681))
+        XCTAssertEqual(Schedule.nextDeparture(north, now: Schedule.nowMinute(north, localMin: 600, yesterday: false)), 960)
+        let owl = (0..<48).map { 1431 + 30 * $0 }
+        XCTAssertEqual(Schedule.nowMinute(owl, localMin: 30, yesterday: false, allDay: true), 1470)
+        XCTAssertEqual(Schedule.nextDeparture(owl, now: 1470), 1491)
+        let early = [243] + (0..<30).map { 1440 + 3 * $0 }
+        XCTAssertEqual(Schedule.nowMinute(early, localMin: 60, yesterday: false), 60)
+        XCTAssertEqual(Schedule.nextDeparture(early, now: 60), 243)
+        XCTAssertTrue(Schedule.allDay(ServiceDay(first: "00:00", last: "24:00", spans: [["00:00", "24:00"]])))
+        XCTAssertFalse(Schedule.allDay(Self.S.routes["N"]!.days["mon"]!))
+    }
+
+    func testTimesTableMarksNowAndNextOnTodayOnly() throws {
+        let t = try XCTUnwrap(Schedule.scheduleTabs(Self.S, "R1", utc("2026-10-14T15:05:00Z")))   // Wed 10:05 AM
+        let today = try XCTUnwrap(t.tabs.first { $0.today })
+        let tbl = RouteText.timesTable(today, now: utc("2026-10-14T15:05:00Z"), h24: false, clock: Schedule.clockMin)
+        XCTAssertEqual(tbl.line, "Next scheduled bus 10:15 AM")
+        XCTAssertEqual(tbl.rows.map(\.hour), ["7 AM", "8 AM", "9 AM", "10 AM", "11 AM", "12 PM", "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", "6 PM", "7 PM"])
+        let now = try XCTUnwrap(tbl.rows.first { $0.now })
+        XCTAssertEqual([now.hour, now.say], ["10 AM", "10 AM, now. 10:00 AM, 10:15 AM, next, 10:30 AM"])
+        XCTAssertEqual(now.minutes, [":00", ":15", ":30"]); XCTAssertEqual(now.next, 1)
+        XCTAssertEqual(tbl.rows.filter { $0.now }.count, 1); XCTAssertEqual(tbl.rows.compactMap(\.next).count, 1)
+        let late = RouteText.timesTable(today, now: utc("2026-10-15T00:30:00Z"), h24: false, clock: Schedule.clockMin)   // 7:30 PM
+        XCTAssertEqual(late.line, "No more scheduled buses today."); XCTAssertTrue(late.rows.allSatisfy { $0.next == nil })
+        XCTAssertEqual(late.rows.last?.say, "7 PM, now. 7:00 PM")
+        var other = today; other.today = false
+        let o = RouteText.timesTable(other, now: utc("2026-10-14T15:05:00Z"), h24: true, clock: Schedule.clockMin)
+        XCTAssertEqual(o.line, ""); XCTAssertTrue(o.rows.allSatisfy { !$0.now && $0.next == nil }, "no marks on another day")
+        XCTAssertEqual(o.rows.first?.hour, "07", "24 hour clock")
+        let n = try XCTUnwrap(Schedule.scheduleTabs(Self.S, "N", utc("2026-10-08T05:10:00Z")))   // Thu 12:10 AM: Wednesday's
+        let nt = RouteText.timesTable(n.tabs[0], now: utc("2026-10-08T05:10:00Z"), h24: false, clock: Schedule.clockMin)
+        XCTAssertEqual(nt.rows.first { $0.now }?.hour, "12 AM"); XCTAssertEqual(nt.line, "Next scheduled bus 12:30 AM")
+        XCTAssertEqual(TimeFmt.uses24Hour(locale: Locale(identifier: "en_GB")), true)
+        XCTAssertEqual(TimeFmt.uses24Hour(locale: Locale(identifier: "en_US")), false)
+    }
+
     func testSharedGoldenFileMatchesTheWeb() throws {
-        struct Case: Decodable { let name: String; let dep: [Int]?; let deps: [Int]; let segs: [Schedule.Headway]; let lines: [Schedule.HeadwayLine] }
+        struct Probe: Decodable { let localMin: Int; let yesterday: Bool; let now: Int; let next: Int? }
+        struct Case: Decodable {
+            let name: String; let dep: [Int]?; let deps: [Int]; let segs: [Schedule.Headway]; let lines: [Schedule.HeadwayLine]
+            let allDay: Bool?; let rows: [Schedule.HourRow]?; let probes: [Probe]?
+        }
         struct Golden: Decodable { let cases: [Case] }
         let g = try JSONDecoder().decode(Golden.self, from: TS.fixture("headways_golden"))
         XCTAssertGreaterThan(g.cases.count, 20)
@@ -187,6 +275,12 @@ final class HeadwayTests: XCTestCase {
             let segs = Schedule.hourlyHeadways(c.deps)
             XCTAssertEqual(segs, c.segs, c.name)
             XCTAssertEqual(segs.map { Schedule.headwayLine($0) }, c.lines, c.name)
+            if let rows = c.rows { XCTAssertEqual(Schedule.hourRows(c.deps), rows, c.name + " rows") }
+            for q in c.probes ?? [] {
+                let now = Schedule.nowMinute(c.deps, localMin: q.localMin, yesterday: q.yesterday, allDay: c.allDay ?? false)
+                XCTAssertEqual(now, q.now, "\(c.name) at \(q.localMin)")
+                XCTAssertEqual(Schedule.nextDeparture(c.deps, now: now), q.next, "\(c.name) next at \(q.localMin)")
+            }
         }
     }
 
