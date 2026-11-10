@@ -671,3 +671,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5704,Downtown Campus Connector,1794283225,2026-11-09 22:00:25,drop,2,1,12645,151793,S (Upper) Wacker Dr & W Adams St,1794283225,874028,12642,6,4,0,,,1,
 1076,South,1794286833,2026-11-09 23:00:33,add,1,2,4314,,,1794287137,501651,12644,2,1,0,,,,0
 1076,South,1794287471,2026-11-09 23:11:11,drop,2,1,12644,8631,60th St. & Ellis (SE Corner),1794287471,501651,4314,2,1,0,,,1,
+6126,Apostolic/Drexel,1794290459,2026-11-10 00:00:59,drop,2,1,4324,8630,Levi Hall (W),1794290459,501490,4327,3,0,0,,,,
