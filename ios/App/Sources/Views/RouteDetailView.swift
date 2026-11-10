@@ -314,18 +314,7 @@ struct RouteScheduleView: View, Equatable {
     /// renderHeadways): how often the timetable sends a bus on the bars' day, one row per range, then the disclaimer.
     /// Times follow the phone's 12 / 24 hour setting; each row is one VoiceOver element.
     @ViewBuilder func headways(_ svc: ServiceData) -> some View {
-        if let h = RouteText.headways(svc, rid: rid, now: t, stops: model.staticData.stops) {
-            SectionTitle(text: "Schedule by hour, \(h.when)")
-            Card {
-                ForEach(Array(h.lines.enumerated()), id: \.offset) { item in HeadwayRow(line: item.element) }
-                Divider()
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "info.circle").font(.footnote).foregroundStyle(Palette.text2).accessibilityHidden(true)
-                    Text(h.note).font(.footnote).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.vertical, 8)
-            }
-        }
+        HeadwaySection(svc: svc, rid: rid, stops: model.staticData.stops).id(rid)   // a new route page starts collapsed
     }
 
     @ViewBuilder func busesChart(_ svc: ServiceData) -> some View {
@@ -383,5 +372,117 @@ struct HeadwayRow: View {
         .frame(minHeight: 36)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(line.say)
+    }
+}
+
+/// "Schedule by hour" (owner 2026-11-09; web route.js renderHeadways): day tabs by the data (a segmented Picker; today's
+/// selected), the selected day's ranges or "No service" with the next day with service, "Show all times" (a
+/// DisclosureGroup, collapsed on every visit, never saved) with the times table, then the disclaimer. The clock ticks
+/// every minute so "Now" and "Next" stay current; VoiceOver hears the current hour as "now" and the next bus as "next".
+struct HeadwaySection: View {
+    let svc: ServiceData
+    let rid: String
+    let stops: [String: Stop]
+    @State private var tabId: String?
+    @State private var open = false
+
+    var body: some View {
+        TimelineView(.everyMinute) { ctx in
+            let now = ctx.date.timeIntervalSince1970
+            if let card = RouteText.headwayCard(svc, rid: rid, now: now, tabId: tabId, stops: stops) {
+                SectionTitle(text: "Schedule by hour, \(card.when)")
+                Card {
+                    if card.tabs.count > 1 {
+                        Picker("Timetable day", selection: Binding(get: { card.tab.id }, set: { tabId = $0 })) {
+                            ForEach(card.tabs, id: \.id) { tab in Text(tab.label).tag(tab.id) }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.vertical, 8)
+                    }
+                    if !card.tab.note.isEmpty {
+                        Text(card.tab.note).font(.footnote.weight(.semibold)).foregroundStyle(Palette.text).padding(.top, 4)
+                    }
+                    if let none = card.noService {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("No service").font(.subheadline).foregroundStyle(Palette.text2)
+                            Spacer(minLength: 8)
+                            Text(none).font(.subheadline).foregroundStyle(Palette.text2).multilineTextAlignment(.trailing)
+                        }
+                        .frame(minHeight: 36)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(none.isEmpty ? "No service" : "No service. \(none)")
+                    } else {
+                        ForEach(Array(card.lines.enumerated()), id: \.offset) { item in HeadwayRow(line: item.element) }
+                        Divider()
+                        DisclosureGroup(isExpanded: $open) {
+                            TimesTableView(table: RouteText.timesTable(card.tab, now: now, h24: TimeFmt.uses24Hour()), stop: card.stop)
+                        } label: {
+                            Text(open ? "Hide times" : "Show all times").font(.subheadline.weight(.semibold)).foregroundStyle(Palette.accent)
+                                .frame(minHeight: 44, alignment: .leading)
+                        }
+                        .tint(Palette.accent)
+                    }
+                    Divider()
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "info.circle").font(.footnote).foregroundStyle(Palette.text2).accessibilityHidden(true)
+                        Text(card.disclaimer).font(.footnote).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+        }
+    }
+}
+
+/// The expanded times table (web route.js timesTable): one row per hour, the hour then its departures as minutes
+/// (":00  :30"); today's current hour on the tint background with "Now" under it, the next bus in bold with "Next"
+/// (words, not color alone). One VoiceOver element per row ("10 AM, now. 10:00 AM, 10:15 AM, next, 10:30 AM").
+struct TimesTableView: View {
+    let table: (line: String, rows: [RouteText.TimesRow])
+    let stop: String
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !table.line.isEmpty {
+                Text(table.line).font(.footnote.weight(.semibold)).monospacedDigit().foregroundStyle(Palette.text).padding(.bottom, 6)
+            }
+            ForEach(table.rows, id: \.h) { row in
+                let layout = typeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                    : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 12))
+                layout {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(row.hour).font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(Palette.text)
+                        if row.now { Text("Now").font(.caption.weight(.semibold)).foregroundStyle(Palette.accent) }
+                    }
+                    .frame(minWidth: typeSize.isAccessibilitySize ? nil : 56, alignment: .leading)
+                    minutes(row).font(.subheadline).monospacedDigit().foregroundStyle(Palette.text2)
+                    if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
+                }
+                .padding(.vertical, 6)
+                .padding(.horizontal, row.now ? 6 : 0)
+                .background(row.now ? Palette.accentBg : Color.clear, in: RoundedRectangle(cornerRadius: Radius.tag, style: .continuous))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(row.say)
+            }
+        }
+        .padding(.top, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(stop.isEmpty ? "Scheduled times by hour" : "Scheduled times at \(stop), by hour")
+    }
+
+    /// ":00  :15  :30 Next  :45" as one wrapping Text; the next bus bold in the accent with the word "Next".
+    func minutes(_ row: RouteText.TimesRow) -> Text {
+        var out = Text("")
+        for (i, m) in row.minutes.enumerated() {
+            if i > 0 { out = out + Text("   ") }
+            if i == row.next {
+                out = out + Text(m).bold().foregroundStyle(Palette.accent) + Text(" Next").font(.caption.weight(.semibold)).foregroundStyle(Palette.accent)
+            } else {
+                out = out + Text(m)
+            }
+        }
+        return out
     }
 }
