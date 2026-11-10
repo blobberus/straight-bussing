@@ -408,6 +408,44 @@ def test_archive_schedule_helpers():
     assert A.last_days(2, T1 + 3600) == [DAY, "2026-10-12"]
 
 
+def test_archive_gh_retries_server_errors_only():
+    """A 5xx from GitHub is tried again (the Nov 9 archive lost a day to one HTTP 503); a 404 is final at once."""
+    class R:
+        def __init__(self, rc, err=b"", out=b""):
+            self.returncode, self.stderr, self.stdout = rc, err, out
+    calls, sleeps = [], []
+    old_run, old_sleep, old_waits = A.subprocess.run, A.time.sleep, A.GH_RETRY_WAITS
+
+    def fake(answers):
+        def run(cmd, **kw):
+            calls.append(cmd)
+            return answers.pop(0)
+        return run
+    A.time.sleep, A.GH_RETRY_WAITS = sleeps.append, (1, 2, 3)
+    try:
+        A.subprocess.run = fake([R(1, b"gh: HTTP 503"), R(1, b"read tcp: connection reset by peer"), R(0, out=b"zip")])
+        assert A.gh("api", "x", binary=True) == b"zip" and len(calls) == 3 and sleeps == [1, 2]
+        calls.clear(); sleeps.clear()
+        A.subprocess.run = fake([R(1, b"gh: Not Found (HTTP 404)")])
+        try:
+            A.gh("api", "x")
+            raise AssertionError("a 404 must raise")
+        except RuntimeError as ex:
+            assert "404" in str(ex) and len(calls) == 1 and sleeps == []
+        calls.clear(); sleeps.clear()
+        A.subprocess.run = fake([R(1, b"gh: HTTP 502")] * 4)
+        try:
+            A.gh("api", "x")
+            raise AssertionError("four 5xx answers must raise")
+        except RuntimeError as ex:
+            assert "502" in str(ex) and len(calls) == 4 and sleeps == [1, 2, 3]
+        calls.clear(); sleeps.clear()
+        A.subprocess.run = fake([R(1, b"release not found")])
+        assert A.gh("release", "view", "t", check=False) == "" and len(calls) == 1
+    finally:
+        A.subprocess.run, A.time.sleep, A.GH_RETRY_WAITS = old_run, old_sleep, old_waits
+
+
 TESTS = [v for k, v in dict(globals()).items() if k.startswith("test_")]
 
 

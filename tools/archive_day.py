@@ -14,7 +14,7 @@ aggregate rows (the owner's accuracy goal by lead) are merged into data/eta/summ
 Only finished days are archived (3 h after the day ends, so the last runs have uploaded); a day already archived is
 skipped unless --replace. Needs the logged-in gh CLI (GH_TOKEN in CI). Stdlib + gh. Tests: tools/test_eta.py.
 """
-import argparse, csv, glob, gzip, io, json, subprocess, sys, time, zipfile
+import argparse, csv, glob, gzip, io, json, re, subprocess, sys, time, zipfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -27,12 +27,23 @@ PREFIXES = ("pred-updates-", "raw-polls-")
 SETTLE_S = 3 * 3600
 FIRST_DAY = "2026-10-08"              # the first day the collector logged; --catch-up never looks earlier
 LOCAL = L.ROOT / "data" / "monitor"
+GH_RETRY_WAITS = (10, 30, 90)         # seconds before the 2nd, 3rd and 4th try of a gh call that met a server error
+GH_TRANSIENT = re.compile(r"HTTP 5\d\d|connection reset|i/o timeout|TLS handshake timeout|unexpected EOF", re.I)
 
 
 def gh(*args, binary=False, check=True):
-    r = subprocess.run(["gh", *args], capture_output=True, timeout=600)
+    """Run the gh CLI. A call that GitHub answers with a server error (HTTP 5xx) or a dropped connection is tried again
+    GH_RETRY_WAITS apart; any other failure (404, bad arguments) is final at once. 2026-11-09: one HTTP 503 on an
+    artifact download failed that night's whole archive day (docs/DATA-COLLECTION-LOG.md DC-025)."""
+    for wait in (*GH_RETRY_WAITS, None):
+        r = subprocess.run(["gh", *args], capture_output=True, timeout=600)
+        err = r.stderr.decode("utf-8", "replace").strip()
+        if not r.returncode or wait is None or not GH_TRANSIENT.search(err):
+            break
+        print(f"gh {' '.join(args[:2])}: {err[:160]}; trying again in {wait} s", file=sys.stderr)
+        time.sleep(wait)
     if check and r.returncode:
-        raise RuntimeError(f"gh {' '.join(args[:3])}: {r.stderr.decode('utf-8', 'replace').strip()[:300]}")
+        raise RuntimeError(f"gh {' '.join(args[:3])}: {err[:300]}")
     return r.stdout if binary else r.stdout.decode("utf-8")
 
 
