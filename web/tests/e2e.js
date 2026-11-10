@@ -10,6 +10,7 @@ import { currentTripE2E } from "./e2e-current.js";
 import { locPromptE2E } from "./e2e-locprompt.js";
 import { backNavE2E } from "./e2e-backnav.js";
 import { tripStartE2E } from "./e2e-tripstart.js";
+import { hourlyE2E } from "./e2e-hourly.js";
 import { FEEDBACK_BTN_OFF_KEY } from "../js/ui/feedback-button.js";
 import { localParts } from "../js/core/schedule.js";
 import { A2HS_OFF_KEY } from "../js/ui/install-prompt.js";
@@ -855,6 +856,7 @@ test("tap outside the sheet: empty map collapses it to peek; stops and buses sti
 
 backNavE2E({ test, ok, eq, waitFor, $, $$, txt, click, tab, W: () => W, sb: () => SB });   // line replaces line (owner 2026-11-02)
 tripStartE2E({ test, ok, eq, waitFor, $, $$, txt, click, type, tab, W: () => W, sb: () => SB, stopName, dst: () => T.Dst });   // trip start time (owner 2026-11-09)
+hourlyE2E({ test, ok, eq, waitFor, $, $$, txt, click, tab, sb: () => SB });   // Schedule by hour, all times (owner 2026-11-09)
 
 test("no console errors or uncaught exceptions in the app", () => {
   eq(T.errors, []);
