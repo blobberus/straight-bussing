@@ -9,7 +9,7 @@
      python -m http.server in web/, copy the JSON in the page to both files. -->
 <pre id="result">running...</pre>
 <script type="module">
-import { departures, hourlyHeadways, headwayLine } from "../js/core/schedule.js";
+import { departures, hourlyHeadways, headwayLine, hourRows, nowMinute, nextDeparture } from "../js/core/schedule.js";
 const CTA47 = [243,25,25,12,10,10,9,9,10,8,10,8,7,6,9,9,8,10,10,10,10,10,9,9,10,10,10,10,5,5,6,4,10,10,10,10,10,8,10,10,10,10,9,10,10,9,9,10,10,10,10,9,9,10,10,10,8,10,10,7,9,9,9,8,9,9,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,8,2,10,10,10,10,10,10,10,10,10,10,7,3,10,10,10,10,10,10,10,6,4,10,10,10,5,11,18,3,14,5,15,20,22,21,23,21,26,22,23,22];
 const every = (from, gap, n) => Array.from({ length: n }, (_, i) => from + gap * i);
 const red = [390, 397];
@@ -62,11 +62,18 @@ for (const [rid, r] of Object.entries(svc.routes)) {
     cases.push({ name: `service.json ${rid} ${k}`, dep: day.dep, deps: departures(day) });
   }
 }
+cases.push({ name: "a 24 hour route whose day starts at 11:51 PM", allDay: true, deps: Array.from({ length: 48 }, (_, i) => 1431 + 30 * i) });
 for (const c of cases) {
   c.segs = hourlyHeadways(c.deps);
   c.lines = c.segs.map((s) => headwayLine(s));
+  // the expandable table (hourRows) and "now" / "Next" at a few clock minutes (in yesterday's tail too)
+  if (c.dep || c.name.startsWith("a 24 hour")) {
+    c.rows = hourRows(c.deps);
+    c.probes = [[0, false], [30, false], [360, false], [720, false], [1000, false], [1439, false], [60, true], [120, true]]
+      .map(([m, y]) => { const now = nowMinute(c.deps, m, y, !!c.allDay); return { localMin: m, yesterday: y, now, next: nextDeparture(c.deps, now) }; });
+  }
 }
-const out = { note: "web/js/core/schedule.js hourlyHeadways + headwayLine (12-hour clock) answers; made by web/tests/headways-golden.html", cases };
+const out = { note: "web/js/core/schedule.js hourlyHeadways + headwayLine (12-hour clock), hourRows, nowMinute and nextDeparture answers; made by web/tests/headways-golden.html", cases };
 document.getElementById("result").textContent = JSON.stringify(out);
 document.title = "TESTS pass=1 fail=0";
 </script>

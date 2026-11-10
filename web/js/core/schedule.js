@@ -516,3 +516,128 @@ export function headwayLine(seg, fmt = clockMin) {
   }
   return { text, when, say: `${say}, ${when}` };
 }
+
+/* All times by hour (owner 2026-11-09: "expandable to show exactly what time of day the bus can be expected. The table
+   should highlight the current time. It can break it down between the weekday and weekend."). */
+
+const DAY_LONG = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
+
+/** Two day entries with the same timetable: the same departures, else (no departures listed) the same hours. */
+function sameTimetable(a, b) {
+  const da = departures(a), db = departures(b);
+  if (da.length || db.length) return da.length === db.length && da.every((x, i) => x === db[i]);
+  return spanLabel(a) === spanLabel(b);
+}
+
+/** A day with any service (hours or departures). */
+const hasService = (day) => spansOf(day).length > 0 || departures(day).length > 0;
+
+/**
+ * The next date with service after `iso` (calendar changes applied), within a week, as a day key; null if none.
+ * @param {object} r route entry
+ * @param {string} iso 'YYYY-MM-DD'
+ */
+function nextServiceKey(r, iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  for (let i = 1; i <= 7; i++) {
+    const next = isoDate({ y, m, d }, i);
+    if (hasService(dayFor(r, next).day)) return keyOfIso(next);
+  }
+  return null;
+}
+
+/**
+ * Day tabs for the route page's "Schedule by hour" table: consecutive days with the same timetable grouped in week order
+ * and named by the data: "Every day", "Weekday" (Monday to Friday), "Weekend" (Saturday and Sunday), "Saturday",
+ * "Sunday", else short ranges ("Mon-Thu", "Fri"). The tab holding today's service day (after midnight a night route is
+ * still on yesterday's) is today's: it carries today's real timetable (calendar changes applied, like the bars) and a
+ * note when that differs from the regular one ("Holiday schedule today", "Extra service today"). A tab with no service
+ * says which day has service next (`next`, a day key). Same as the iOS Kit Schedule.scheduleTabs.
+ * @param {object} service
+ * @param {string} rid
+ * @param {number} unixS
+ * @returns {{tabs:{id:string, label:string, keys:string[], day:object|null, today:boolean, yesterday:boolean,
+ *   note:string, next:string|null}[], selected:string}|null} null = no schedule data for the route
+ */
+export function scheduleTabs(service, rid, unixS) {
+  const r = routeService(service, rid);
+  if (!r) return null;
+  const p = localParts(unixS), todayIso = isoDate(p), prev = isoDate(p, -1);
+  const has = (day, m) => spansOf(day).some(([a, b]) => m >= mins(a) && m < mins(b));
+  const tail = !has(dayFor(r, todayIso).day, p.min) && has(dayFor(r, prev).day, p.min + 1440);
+  const iso = tail ? prev : todayIso, key = keyOfIso(iso), real = dayFor(r, iso);
+  const groups = [];
+  for (const k of DAY_KEYS) {
+    const last = groups[groups.length - 1];
+    if (last && sameTimetable(r.days[last[last.length - 1]], r.days[k])) last.push(k);
+    else groups.push([k]);
+  }
+  const many = groups.length > 3, keysOf = (g) => g.join(",");
+  const tabs = groups.map((g) => {
+    const s = keysOf(g);
+    const label = g.length === 7 ? "Every day" : s === "mon,tue,wed,thu,fri" ? "Weekday" : s === "sat,sun" ? "Weekend"
+      : g.length === 1 ? (many ? DAY_SHORT[g[0]] : DAY_LONG[g[0]]) : DAY_SHORT[g[0]] + DAY_RANGE + DAY_SHORT[g[g.length - 1]];
+    const today = g.includes(key), day = today ? real.day : r.days[g[0]] || null;
+    let note = "", next = null;
+    if (today && real.exception) note = real.exception === "added" ? "Extra service today" : hasService(real.day) ? "Holiday schedule today" : "Holiday schedule today: no service";
+    if (!hasService(day)) {
+      if (today) next = nextServiceKey(r, iso);
+      else for (let i = 1; i <= 7 && !next; i++) { const k = DAY_KEYS[(DAY_KEYS.indexOf(g[g.length - 1]) + i) % 7]; if (hasService(r.days[k])) next = k; }
+    }
+    return { id: g[0] + (g.length > 1 ? "-" + g[g.length - 1] : ""), label, keys: g, day, today, yesterday: today && tail, note, next };
+  });
+  return { tabs, selected: tabs.find((t) => t.today).id };
+}
+
+/**
+ * Departures grouped by hour of the service day, in order (a night route's after-midnight hours come after its evening
+ * ones: 24 = 12 AM). Hours without a departure are left out.
+ * @param {number[]} deps service-day minutes (departures(day))
+ * @returns {{h:number, times:number[]}[]}
+ */
+export function hourRows(deps) {
+  const d = [...new Set((Array.isArray(deps) ? deps : []).filter((x) => Number.isInteger(x) && x >= 0))].sort((a, b) => a - b);
+  const out = [];
+  for (const m of d) {
+    const h = Math.floor(m / 60), last = out[out.length - 1];
+    if (last && last.h === h) last.times.push(m);
+    else out.push({ h, times: [m] });
+  }
+  return out;
+}
+
+/**
+ * "Now" on a service day's clock: minutes since its midnight, + 24 h in yesterday's after-midnight tail. A 24 hour
+ * route's list is one daily cycle that starts at its quietest minute (build_gtfs service_spans, e.g. 11:51 PM), so a
+ * minute before its first departure is read on the late side of that cycle.
+ * @param {number[]} deps the day's departures (service-day minutes)
+ * @param {number} localMin minute of the Chicago clock day (localParts(unixS).min)
+ * @param {boolean} yesterday unixS is in yesterday's after-midnight tail (scheduleTabs tab.yesterday)
+ * @param {boolean} [allDay] the day runs all day (allDay(day): hours "00:00" to "24:00")
+ * @returns {number}
+ */
+export function nowMinute(deps, localMin, yesterday, allDay = false) {
+  const base = localMin + (yesterday ? 1440 : 0), d = Array.isArray(deps) ? deps : [];
+  return allDay && !yesterday && d.length && base < d[0] ? base + 1440 : base;
+}
+
+/**
+ * Does the day run all day (one service window "00:00" to "24:00", CTA's 24 hour routes)?
+ * @param {object|null} day
+ * @returns {boolean}
+ */
+export function allDay(day) {
+  const s = spansOf(day);
+  return s.length === 1 && mins(s[0][0]) === 0 && mins(s[0][1]) === 1440;
+}
+
+/**
+ * The next scheduled departure at or after `now` (service-day minutes), or null when none is left that day.
+ * @param {number[]} deps
+ * @param {number} now nowMinute(...)
+ * @returns {number|null}
+ */
+export function nextDeparture(deps, now) {
+  for (const m of hourRows(deps).flatMap((r) => r.times)) if (m >= now) return m;
+  return null;
+}

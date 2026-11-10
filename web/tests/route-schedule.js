@@ -1,7 +1,7 @@
 // core/schedule.js unit tests.
 import { test, eq, ok } from "./lib.js";
 import { localParts, clock12, dayKey, hoursOn, serviceHoursAt, weekSummary, busesByHour, upcomingChanges, isScheduledNow, scheduledUntil, nextStartToday, groupHours, hourLabel, routeService,
-  hourBuses, scheduleDay, departures, hourlyHeadways, headwayLine, clockMin, HEADWAY_BREAK_MIN } from "../js/core/schedule.js";
+  hourBuses, scheduleDay, departures, hourlyHeadways, headwayLine, clockMin, HEADWAY_BREAK_MIN, scheduleTabs, hourRows, nowMinute, nextDeparture, allDay } from "../js/core/schedule.js";
 import { clockOfDay } from "../js/core/time.js";
 import { serviceFixture, utc } from "./route-fixtures.js";
 
@@ -302,5 +302,74 @@ test("headways: the shared golden file (iOS Kit parity)", async () => {
     if (c.dep) eq(departures({ dep: c.dep }), c.deps, c.name + " departures");
     eq(hourlyHeadways(c.deps), c.segs, c.name);
     eq(c.segs.map((s) => headwayLine(s)), c.lines, c.name + " words");
+    if (c.rows) eq(hourRows(c.deps), c.rows, c.name + " rows");
+    for (const q of c.probes || []) {
+      const now = nowMinute(c.deps, q.localMin, q.yesterday, !!c.allDay);
+      eq([now, nextDeparture(c.deps, now)], [q.now, q.next], `${c.name} at ${q.localMin}${q.yesterday ? " (yesterday's tail)" : ""}`);
+    }
   }
+});
+
+// ---- All times by hour (owner 2026-11-09: "expandable to show exactly what time of day the bus can be expected. The table
+// should highlight the current time. It can break it down between the weekday and weekend."; Kit HeadwayTests, same cases)
+
+test("scheduleTabs: days with the same timetable share a tab, named by the data; today's tab is selected", () => {
+  const n = scheduleTabs(S, "N", utc("2026-10-14T15:00:00Z"));   // Wed 10 AM
+  eq(n.tabs.map((t) => t.label), ["Every day"]);
+  eq([n.selected, n.tabs[0].today], ["mon-sun", true]);
+  const d = scheduleTabs(S, "D", utc("2026-10-14T15:00:00Z"));
+  eq(d.tabs.map((t) => [t.id, t.label, t.today]), [["mon-fri", "Weekday", true], ["sat-sun", "Weekend", false]]);
+  eq(d.selected, "mon-fri");
+  eq([d.tabs[1].day, d.tabs[1].next], [null, "mon"], "no service on weekends: the next day with service");
+  eq(scheduleTabs(S, "zz", 0), null);
+});
+
+test("scheduleTabs: Saturday and Sunday apart when they differ; short labels past three tabs", () => {
+  const svc = serviceFixture(), wk = svc.routes.D.days.mon;
+  svc.routes.D.days.sat = { ...wk, dep: [600, 30, 30] };
+  let t = scheduleTabs(svc, "D", utc("2026-10-17T15:00:00Z"));   // Sat 10 AM
+  eq(t.tabs.map((x) => x.label), ["Weekday", "Saturday", "Sunday"]);
+  eq([t.selected, t.tabs[2].next], ["sat", "mon"]);
+  svc.routes.D.days.fri = { ...wk, dep: [420, 60] };
+  t = scheduleTabs(svc, "D", utc("2026-10-16T15:00:00Z"));       // Fri 10 AM
+  eq(t.tabs.map((x) => x.label), ["Mon-Thu", "Fri", "Sat", "Sun"]);
+  eq(t.selected, "fri");
+});
+
+test("scheduleTabs: calendar changes, today's tab carries today's real timetable and says so", () => {
+  const extra = scheduleTabs(S, "D", utc("2026-10-10T15:00:00Z"));   // an extra Saturday
+  const we = extra.tabs.find((x) => x.today);
+  eq([we.id, we.note, we.next], ["sat-sun", "Extra service today", null]);
+  eq(departures(we.day)[0], 600, "the extra day's own departures");
+  const hol = scheduleTabs(S, "D", utc("2026-11-26T16:00:00Z"));     // Thanksgiving off
+  const wd = hol.tabs.find((x) => x.today);
+  eq([wd.id, wd.note, wd.next], ["mon-fri", "Holiday schedule today: no service", "fri"]);
+  eq(hol.tabs.find((x) => x.id === "sat-sun").next, "mon", "other tabs: the regular week");
+  const night = scheduleTabs(S, "N", utc("2026-10-08T07:00:00Z"));  // Thu 2 AM: Wednesday's night service
+  eq([night.tabs[0].today, night.tabs[0].yesterday], [true, true]);
+});
+
+test("hourRows: departures by hour of the service day, after midnight after the evening", () => {
+  eq(hourRows([420, 450, 480, 495, 510]).map((r) => [r.h, r.times]), [[7, [420, 450]], [8, [480, 495, 510]]]);
+  eq(hourRows([1380, 1410, 1440, 1470, 1500]).map((r) => r.h), [23, 24, 25], "12 AM = 24 on the evening's service day");
+  eq(hourRows([600, 600, 540]).map((r) => [r.h, r.times]), [[9, [540]], [10, [600]]], "sorted, duplicates once");
+  eq(hourRows([]), []);
+});
+
+test("nowMinute / nextDeparture: the next bus across midnight, none after the last", () => {
+  const north = departures(S.routes.N.days.mon);   // 4 PM to 4 AM
+  eq(nowMinute(north, 23 * 60 + 50, false), 1430);
+  eq(nextDeparture(north, 1430), 1440, "11:50 PM: the 12:00 AM bus is next");
+  eq(nowMinute(north, 120, true), 1560, "2 AM in yesterday's tail");
+  eq(nextDeparture(north, 1560), 1560, "a bus at this minute is still next");
+  eq(nextDeparture(north, 1681), null, "after 4:00 AM: none left");
+  eq(nowMinute(north, 600, false), 600, "10 AM: before tonight's service, the plain minute");
+  eq(nextDeparture(north, 600), 960);
+  const owl = Array.from({ length: 48 }, (_, i) => 1431 + 30 * i);   // a 24 hour route whose day starts at 11:51 PM
+  eq(nowMinute(owl, 30, false, true), 1470, "12:30 AM sits on the late side of that day's cycle");
+  eq(nextDeparture(owl, 1470), 1491);
+  const early = [243, ...Array.from({ length: 30 }, (_, i) => 1440 + 3 * i)];   // 4:03 AM on, into tonight's small hours
+  eq(nowMinute(early, 60, false), 60, "1 AM on a day after a day off: tonight's 1 AM buses are a day away");
+  eq(nextDeparture(early, 60), 243);
+  eq([allDay({ first: "00:00", last: "24:00", spans: [["00:00", "24:00"]] }), allDay(S.routes.N.days.mon), allDay(null)], [true, false, false]);
 });
