@@ -557,7 +557,7 @@ function nextServiceKey(r, iso) {
  * @param {string} rid
  * @param {number} unixS
  * @returns {{tabs:{id:string, label:string, keys:string[], day:object|null, today:boolean, yesterday:boolean,
- *   note:string, next:string|null}[], selected:string}|null} null = no schedule data for the route
+ *   note:string, next:string|null}[], selected:string, key:string}|null} key = today's service day; null = no schedule data
  */
 export function scheduleTabs(service, rid, unixS) {
   const r = routeService(service, rid);
@@ -586,7 +586,7 @@ export function scheduleTabs(service, rid, unixS) {
     }
     return { id: g[0] + (g.length > 1 ? "-" + g[g.length - 1] : ""), label, keys: g, day, today, yesterday: today && tail, note, next };
   });
-  return { tabs, selected: tabs.find((t) => t.today).id };
+  return { tabs, selected: tabs.find((t) => t.today).id, key };
 }
 
 /**

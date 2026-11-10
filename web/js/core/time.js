@@ -60,6 +60,15 @@ export function clockOfDay(min) {
 }
 
 /**
+ * Does the device show a 24 hour clock (clockOfDay(13:00) reads "13:00")? The times table labels its hours "13" then,
+ * else "1 PM".
+ * @returns {boolean}
+ */
+export function clock24() {
+  return /13/.test(clockOfDay(780));
+}
+
+/**
  * Chicago calendar date of a unix time: 'Oct 12', or 'Oct 12, 2026' with the year. '' for invalid input.
  * @param {number} unixS
  * @param {boolean} [withYear=false]

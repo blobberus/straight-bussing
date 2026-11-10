@@ -20,13 +20,14 @@
 import { registerView } from "../router.js";
 import { registerAction } from "../actions.js";
 import { esc, safeColor, textOn } from "../../core/esc.js";
-import { nowS, minsUntil, ago, clockOfDay } from "../../core/time.js";
+import { nowS, minsUntil, ago, clockOfDay, clock24 } from "../../core/time.js";
 import { hav } from "../../core/geo.js";
 import { arrivalsFor, staleLevel, staleNote, runningText, runningCount, activeAlerts, alertText, alertRouteIds, liveUnknown } from "../../core/arrivals.js";
 import { effectiveHidden } from "../../core/visibility.js";
-import { serviceHoursAt, isScheduledNow, weekSummary, upcomingChanges, hourBuses, groupHours, hourLabel, routeService, scheduleDay, departures, hourlyHeadways, headwayLine } from "../../core/schedule.js";
+import { serviceHoursAt, isScheduledNow, weekSummary, upcomingChanges, hourBuses, groupHours, hourLabel, routeService, scheduleDay, departures, hourlyHeadways, headwayLine,
+  scheduleTabs, hourRows, nowMinute, nextDeparture, allDay, localParts } from "../../core/schedule.js";
 import { svg } from "../icons.js";
-import { emptyState, skeleton, OFFICIAL_PHONE, liveDotHTML } from "../components.js";
+import { emptyState, skeleton, OFFICIAL_PHONE, liveDotHTML, segmented } from "../components.js";
 import { noLiveStatus, scheduledNoLive } from "../../core/operating.js";
 import { awayCount, awayText } from "../../core/offroute.js";
 import { noBusHelpHTML } from "./alerts.js";
@@ -128,8 +129,9 @@ export function renderService(state, rid, now) {
   const day = scheduleDay(svc, rid, now);   // the bars and the list show the same day
   if (day) {
     const when = day.today ? (day.yesterday ? DAY_NAME[day.key] : "today") : DAY_NAME[day.key] + "s";
-    h += renderBuses(day.day, when) + renderHeadways(state, rid, day.day, when);
+    h += renderBuses(day.day, when);
   }
+  h += renderHeadways(state, rid, now);
   if (routeService(svc, rid)) h += '<p class="v-foot">Hours and bus counts come from the official published schedule. Live service may differ.</p>';
   return h + "</section>";
 }
@@ -139,21 +141,75 @@ export function headwayNote(stopName) {
   return `Timetable only${stopName ? `, times at ${stopName}` : ""}. Buses often don't keep to this schedule, so go by the live times when buses are running.`;
 }
 
+const PLURAL = { Weekday: "weekdays", Weekend: "weekends", "Every day": "every day" };
+/** The section title's day for a tab: "today", "Wednesday" (after midnight, the evening's service), "weekends", "Saturdays". */
+function tabWhen(tab, key) {
+  if (tab.today) return tab.yesterday ? DAY_NAME[key] : "today";
+  return PLURAL[tab.label] || (tab.keys.length === 1 ? DAY_NAME[tab.keys[0]] + "s" : tab.label);
+}
+
+/**
+ * The expanded times table (owner 2026-11-09: "show exactly what time of day the bus can be expected ... highlight the
+ * current time"): one row per hour of the service day, the hour on the left ("7 AM", or "07" on a 24 hour clock), its
+ * departures as minutes on the right (":00 :30"), like a printed timetable. On today's tab the current hour's row is
+ * tinted and labeled "Now" and the next departure is outlined and labeled "Next" (words, not color alone); the render tick
+ * keeps both current. Screen readers hear "7 AM, now" and "7:00, 7:30, next".
+ */
+function timesTable(tab, deps, name, now) {
+  const rows = hourRows(deps);
+  let cur = -1, next = null, h = "";
+  if (tab.today) {
+    const nm = nowMinute(deps, localParts(now).min, tab.yesterday, allDay(tab.day));
+    cur = Math.floor(nm / 60);
+    next = nextDeparture(deps, nm);
+    h += `<p class="r-fnext">${next === null ? "No more scheduled buses today." : esc(`Next scheduled bus ${clockOfDay(next)}`)}</p>`;
+  }
+  const h24 = clock24(), hourText = (x) => (h24 ? String(x % 24).padStart(2, "0") : hourLabel(x));
+  h += `<table class="r-ftab"><caption class="v-sr">${esc(`Scheduled times${name ? ` at ${name}` : ""}, by hour`)}</caption><tbody>`;
+  for (const r of rows) {
+    const isNow = r.h === cur;
+    const say = r.times.map((m) => clockOfDay(m) + (m === next ? ", next" : "")).join(", ");
+    const mins = r.times.map((m) => `<span class="r-tm${m === next ? " is-next" : ""}">:${String(m % 60).padStart(2, "0")}${m === next ? '<span class="r-tnext">Next</span>' : ""}</span>`).join("");
+    h += `<tr${isNow ? ' class="is-now"' : ""}><th scope="row"><span aria-hidden="true">${esc(hourText(r.h))}</span><span class="v-sr">${esc(hourLabel(r.h) + (isNow ? ", now" : ""))}</span>${isNow ? '<span class="r-tnow" aria-hidden="true">Now</span>' : ""}</th>`
+      + `<td><span class="v-sr">${esc(say)}</span><span class="r-tms" aria-hidden="true">${mins}</span></td></tr>`;
+  }
+  return h + "</tbody></table>";
+}
+
 /**
  * "Schedule by hour" (owner 2026-11-09: "Every 30 minutes between x times", under the bus counts): how often the
  * timetable sends a bus, one line per range (core/schedule.js hourlyHeadways, times in the device's 12 / 24 hour style),
  * then the disclaimer. Each line is one sentence for screen readers ("Every 30 minutes, 7:00 to 10:00 AM").
+ * Follow-up (owner 2026-11-09: "expandable to show exactly what time of day the bus can be expected. The table should
+ * highlight the current time. It can break it down between the weekday and weekend."): day tabs by the data
+ * (core/schedule.js scheduleTabs; today's selected), "Show all times" / "Hide times" (a 44 px button with aria-expanded,
+ * collapsed on every visit: store.freq is never saved and main.js clears it off the route page), the times table.
  */
-function renderHeadways(state, rid, day, when) {
-  const segs = hourlyHeadways(departures(day));
-  if (!segs.length) return "";
+function renderHeadways(state, rid, now) {
+  const t = scheduleTabs(state.service, rid, now), days = Object.values(routeService(state.service, rid)?.days || {});
+  if (!t || !(days.some((d) => departures(d).length) || t.tabs.some((x) => departures(x.day).length))) return "";   // no departures known (an older service.json)
+  const f = state.freq && state.freq.rid === rid ? state.freq : null;
+  const tab = t.tabs.find((x) => x.id === (f && f.tab)) || t.tabs.find((x) => x.id === t.selected);
+  const deps = departures(tab.day), segs = hourlyHeadways(deps);
   const at = routeService(state.service, rid)?.at, name = at ? state.stops?.[at]?.name || "" : "";
-  let h = `<h3 class="r-h3" id="r-freq-h">Schedule by hour, ${esc(when)}</h3><div class="v-card r-freq"><ul class="r-flist" aria-labelledby="r-freq-h">`;
-  for (const s of segs) {
-    const l = headwayLine(s, clockOfDay);
-    h += `<li class="r-frow${s.kind === "none" ? " is-none" : ""}"><span class="v-sr">${esc(l.say)}</span><span class="r-fk" aria-hidden="true">${esc(l.text)}</span><span class="r-fw" aria-hidden="true">${esc(l.when)}</span></li>`;
+  const open = !!(f && f.open) && segs.length > 0;
+  let h = `<h3 class="r-h3" id="r-freq-h">Schedule by hour, ${esc(tabWhen(tab, t.key))}</h3><div class="v-card r-freq">`;
+  if (t.tabs.length > 1) h += `<div class="r-ftabs">${segmented(t.tabs.map((x) => ({ id: x.id, label: x.label, on: x.id === tab.id })), { action: "route:freqday", label: "Timetable day" })}</div>`;
+  if (tab.note) h += `<p class="r-fday">${esc(tab.note)}</p>`;
+  if (!segs.length) {
+    const next = tab.next ? `Next service ${DAY_NAME[tab.next]}` : "";
+    h += `<ul class="r-flist" aria-labelledby="r-freq-h"><li class="r-frow is-none"><span class="v-sr">${esc("No service" + (next ? ". " + next : ""))}</span><span class="r-fk" aria-hidden="true">No service</span><span class="r-fw" aria-hidden="true">${esc(next)}</span></li></ul>`;
+  } else {
+    h += '<ul class="r-flist" aria-labelledby="r-freq-h">';
+    for (const s of segs) {
+      const l = headwayLine(s, clockOfDay);
+      h += `<li class="r-frow${s.kind === "none" ? " is-none" : ""}"><span class="v-sr">${esc(l.say)}</span><span class="r-fk" aria-hidden="true">${esc(l.text)}</span><span class="r-fw" aria-hidden="true">${esc(l.when)}</span></li>`;
+    }
+    h += "</ul>";
+    h += `<button type="button" class="r-fmore" data-action="route:freqopen" aria-expanded="${open}"${open ? ' aria-controls="r-ftimes"' : ""}>${open ? "Hide times" : "Show all times"}${CHEVRON}</button>`;
+    if (open) h += `<div class="r-ftimes" id="r-ftimes">${timesTable(tab, deps, name, now)}</div>`;
   }
-  return h + `</ul><p class="r-fnote">${INFO}<span>${esc(headwayNote(name))}</span></p></div>`;
+  return h + `<p class="r-fnote">${INFO}<span>${esc(headwayNote(name))}</span></p></div>`;
 }
 
 /** Scheduled buses by hour for one day entry (core/schedule.js scheduleDay): bars + text. */
@@ -308,6 +364,21 @@ registerAction("route:bus", (ds, ev, ctx) => {
   if (id) ctx.store.set({ busId: s.busId === id ? null : id });
 });
 registerAction("route:allbuses", (ds, ev, ctx) => ctx.store.set({ busId: null }));
+
+// Schedule by hour: the day tab and Show all times / Hide times (store.freq, never saved; main.js clears it off the page)
+registerAction("route:freqday", (ds, ev, ctx) => {
+  const s = ctx.store.get(), f = s.freq && s.freq.rid === s.routeId ? s.freq : { rid: s.routeId, open: false };
+  if (ds.id) ctx.store.set({ freq: { ...f, tab: String(ds.id) } });
+});
+registerAction("route:freqopen", (ds, ev, ctx) => {
+  const s = ctx.store.get(), f = s.freq && s.freq.rid === s.routeId ? s.freq : { rid: s.routeId, open: false, tab: null };
+  ctx.store.set({ freq: { ...f, open: !f.open } });
+  // opened: bring the current hour (else the next bus) into view inside the sheet, moving it as little as possible
+  if (!f.open) setTimeout(() => {
+    const row = document.querySelector("#r-ftimes tr.is-now") || document.querySelector("#r-ftimes .is-next");
+    try { if (row) row.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) { /* old browsers */ }
+  }, 0);
+});
 
 registerAction("route:open", (ds, ev, ctx) => {
   const s = ctx.store.get();

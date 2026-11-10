@@ -61,12 +61,14 @@ test("route page: the bars and Schedule by hour follow calendar changes and the 
   eq(rows(extra).map((x) => x.say), ["Every 20 minutes, 10:00 AM to 2:00 PM"]);
   ok(!extra.includes("Scheduled buses by hour"), "no bus counts for that day: no bars (never the regular Saturday's or Monday's)");
   const hol = renderService(s, "D", utc("2026-11-26T16:00:00Z"));      // Thanksgiving off
-  ok(hol.includes("Scheduled buses by hour, Thursdays") && hol.includes("Schedule by hour, Thursdays"), "a cancelled day: the weekday's regular timetable, named");
+  ok(hol.includes("Scheduled buses by hour, Thursdays"), "a cancelled day: the bars show the weekday's regular timetable, named");
+  ok(hol.includes("Schedule by hour, today") && text(hol).includes("Holiday schedule today: no service") && text(hol).includes("No service. Next service Friday"), "the list: today's real timetable, said so");
   const night = renderService(s, "N", utc("2026-10-08T07:00:00Z"));    // Thu 2 AM = Wednesday's night service
   ok(night.includes("Schedule by hour, Wednesday"), "after midnight: yesterday's service day by name");
   eq(rows(night).map((x) => x.say), ["Every 15 minutes, 4:00 to 11:00 PM", "Every 30 minutes, 11:00 PM to 4:00 AM"]);
   const sun = renderService(s, "R1", utc("2026-10-11T15:00:00Z"));      // a weekday route on Sunday
-  ok(sun.includes("Scheduled buses by hour, Mondays") && sun.includes("Schedule by hour, Mondays"), "the first day with service");
+  ok(sun.includes("Scheduled buses by hour, Mondays"), "the bars: the first day with service");
+  ok(sun.includes("Schedule by hour, today") && text(sun).includes("No service. Next service Monday"), "the list: today's tab (the weekend) says when service comes back");
 });
 
 test("route page: Schedule by hour escapes the stop name", () => {
@@ -106,7 +108,7 @@ test("route page: Schedule by hour on real data (service.json + stops.json)", as
     if (!h.includes("r-freq")) continue;
     shown++;
     const r = rows(h);
-    ok(r.length > 0 && r.every((x) => /^(About every|Every) \d+ min$|^\d trips?$|^No service$/.test(x.k) && /\d:\d\d/.test(x.w)), rid + " " + JSON.stringify(r));
+    ok(r.length > 0 && r.every((x) => /^(About every|Every) \d+ min$|^\d trips?$|^No service$/.test(x.k) && (/\d:\d\d/.test(x.w) || /^(Next service \w+day)?$/.test(x.w))), rid + " " + JSON.stringify(r));
     if (svc.routes[rid].at) ok(text(h).includes(`times at ${stops[svc.routes[rid].at].name}.`), rid + " names its stop");
   }
   ok(shown > 0, "some routes show Schedule by hour");

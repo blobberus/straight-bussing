@@ -112,6 +112,7 @@ export function initialState() {
     // nav (ui/router.js writes)
     view: 'nearby', prevView: null, stopId: null, routeId: null,
     busId: null,                                               // the bus picked on the route page (core/busnum.js selectedBus; not persisted)
+    freq: null,                                                // route page Schedule by hour: {rid, open, tab} (Show all times, day tab; not persisted)
     routeFilter: null,
   };
 }

@@ -346,7 +346,7 @@ test("scheduleTabs: calendar changes, today's tab carries today's real timetable
   eq([wd.id, wd.note, wd.next], ["mon-fri", "Holiday schedule today: no service", "fri"]);
   eq(hol.tabs.find((x) => x.id === "sat-sun").next, "mon", "other tabs: the regular week");
   const night = scheduleTabs(S, "N", utc("2026-10-08T07:00:00Z"));  // Thu 2 AM: Wednesday's night service
-  eq([night.tabs[0].today, night.tabs[0].yesterday], [true, true]);
+  eq([night.tabs[0].today, night.tabs[0].yesterday, night.key], [true, true, "wed"]);
 });
 
 test("hourRows: departures by hour of the service day, after midnight after the evening", () => {

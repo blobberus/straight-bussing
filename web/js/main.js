@@ -554,6 +554,8 @@ async function boot() {
   // (a bus left out of one or two polls keeps its pick, as the map keeps its badge); then back to the next bus at each stop
   let pickGone = 0;
   store.subscribe((s) => { const r = pickCheck(s, pickGone, nowS()); pickGone = r.goneSince; if (r.clear) store.set({ busId: null }); });
+  // Schedule by hour opens collapsed on every visit: its Show all times / day tab is forgotten off its route page
+  store.subscribe((s) => { if (s.freq && (s.view !== "route" || s.routeId !== s.freq.rid)) store.set({ freq: null }); });
   // Lines by Time: the moment the shown lines change (one deselected or added), the "Lines active at" name goes and the lines stay
   store.subscribe((s, changed) => { if (s.timeView && (!changed || changed.has("hiddenRoutes") || changed.has("routes"))) { const p = settleTimeView(s); if (Object.keys(p).length) store.set(p); } });
   render();
