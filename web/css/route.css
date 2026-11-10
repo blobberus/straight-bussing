@@ -77,5 +77,34 @@
   font: var(--t-footnote); color: var(--label-2); }
 .r-fnote .ic { flex: none; margin-top: 1px; }
 
-@media (prefers-reduced-motion: reduce) { .r-bus { transition: none; } }
+/* Schedule by hour, all times (owner 2026-11-09: "expandable ... highlight the current time ... weekday and weekend"):
+   day tabs (the shared segmented control), Show all times / Hide times (a 44 px text button, chevron turns), then one
+   table row per hour: the hour, its departures as minutes. Today: the current hour's row tinted + "Now", the next bus
+   outlined + "Next" (words and a shape, never color alone). */
+.r-ftabs { padding: var(--s-3) 0 var(--s-1); }
+.r-fday { margin: var(--s-2) 0 0; font: var(--t-footnote); font-weight: var(--w-semibold); color: var(--label); }
+.r-fmore { display: flex; align-items: center; gap: var(--s-2); width: 100%; min-height: var(--tap); margin: 0; padding: 0;
+  border: 0; border-top: .5px solid var(--separator); background: none; color: var(--tint); font: var(--t-row-detail);
+  font-weight: var(--w-semibold); text-align: left; cursor: pointer; }
+.r-fmore:active { opacity: .6; }
+.r-fmore:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
+.r-fmore .r-chev { transition: transform var(--m-quick) var(--ease-standard); }
+.r-fmore[aria-expanded="true"] .r-chev { transform: rotate(180deg); }
+.r-ftimes { padding: 0 0 var(--s-2); }
+.r-fnext { margin: 0 0 var(--s-2); font: var(--t-footnote); font-weight: var(--w-semibold); color: var(--label); font-variant-numeric: tabular-nums; }
+.r-ftab { width: 100%; border-collapse: collapse; font: var(--t-row-detail); font-variant-numeric: tabular-nums; }
+.r-ftab th, .r-ftab td { padding: var(--s-2) var(--s-2); vertical-align: baseline; text-align: left; }
+.r-ftab tr + tr th, .r-ftab tr + tr td { border-top: .5px solid var(--separator); }
+.r-ftab th { width: 5.5em; padding-left: 0; font-weight: var(--w-semibold); color: var(--label); white-space: nowrap; }
+.r-ftab td { padding-right: 0; color: var(--label-2); }
+.r-tms { display: flex; flex-wrap: wrap; gap: 2px var(--s-3); }
+.r-tm { display: inline-flex; align-items: baseline; gap: var(--s-1); }
+.r-ftab tr.is-now th, .r-ftab tr.is-now td { background: var(--tint-bg); }
+.r-ftab tr.is-now th { padding-left: var(--s-2); border-radius: var(--r-tag) 0 0 var(--r-tag); }
+.r-ftab tr.is-now td { border-radius: 0 var(--r-tag) var(--r-tag) 0; }
+.r-tnow { display: block; font: var(--t-caption); color: var(--tint); }
+.r-tm.is-next { padding: 0 var(--s-2); border: 1.5px solid var(--tint); border-radius: var(--r-capsule); color: var(--label); font-weight: var(--w-semibold); }
+.r-tnext { font: var(--t-caption); color: var(--tint); }
+
+@media (prefers-reduced-motion: reduce) { .r-bus, .r-fmore .r-chev { transition: none; } }
 @media (prefers-contrast: more) { .r-seg { background: currentColor; } .r-bus { outline: 1px solid currentColor; } }
