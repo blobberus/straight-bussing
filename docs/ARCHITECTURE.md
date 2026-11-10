@@ -82,6 +82,7 @@ export function createStore(initial): { get(), set(patch), subscribe(fn)->off } 
   // nav (ui/router.js writes)
   view:'nearby', prevView:null, stopId:null, routeId:null,
   routeFilter:null /* {ids:[rid], label:'Station name'} | null */,
+  freq:null /* route page Schedule by hour: {rid, open, tab}; never saved, main.js clears it off the page (2026-11-09) */,
 }
 ```
 View-local state (picker query, directions fields) lives in that view module, not the store.
@@ -311,6 +312,9 @@ departures(day): number[]                           // dep decoded: sorted servi
 hourlyHeadways(deps): [{kind:'every'|'about'|'trips'|'none', from, to, min?, n?}]
 headwayLine(seg, fmt = clockMin): {text:'Every 30 min', when:'7:00 to 10:00 AM', say:'Every 30 minutes, 7:00 to 10:00 AM'}
 // core/time.js clockOfDay(min): the device's 12 / 24 hour clock for a timetable minute (no zone shift)
+// 2026-11-09 follow-up, the times table: scheduleTabs(service, rid, unixS): {tabs:[{id, label, keys, day, today, yesterday,
+//   note, next}], selected, key}|null; hourRows(deps): [{h, times}]; nowMinute(deps, localMin, yesterday, allDay?);
+//   nextDeparture(deps, now): minute|null; allDay(day); core/time.js clock24()
 ```
 
 ### Ownership for v2.1 (in addition to the table above; never edit files you do not own)
@@ -1629,4 +1633,36 @@ sb-v2-97).
   320 px at 200% text), web/tests/data-static.js (`at` kept); golden web/tests/fixtures/headways_golden.json (made by
   web/tests/headways-golden.html; an identical copy in the Kit's test Fixtures); Kit HeadwayTests.
 - **iPhone:** RouteDetailView `RouteScheduleView.headways` + `HeadwayRow` (times under the words at accessibility sizes,
-  one VoiceOver element per row), Kit `RouteText.headways` / `headwayNote` / `scheduleWhen`, `TimeFmt.clockOfDay`.
+  one VoiceOver element per row), Kit `RouteText.headways` / `headwayNote` / `scheduleWhen`, `TimeFmt.clockOfDay`
+  (`RouteText.headways` became `headwayCard` with the follow-up below).
+- **All times, day tabs, Now / Next** (follow-up 2026-11-09, owner: "The schedule by hour should be expandable to show
+  exactly what time of day the bus can be expected. The table should highlight the current time. It can break it down
+  between the weekday and weekend."):
+  - *Tabs* (`scheduleTabs`, Kit `Schedule.scheduleTabs`): consecutive days with the same timetable (the same departures,
+    else the same hours) grouped in week order and named by the data: "Every day" (no control shown), "Weekday" /
+    "Weekend", "Weekday" / "Saturday" / "Sunday", past three tabs short names ("Mon-Thu", "Fri", "Sat", "Sun"). Today's
+    tab (the service day: after midnight a night route's evening) is selected by default and carries today's real
+    timetable, with "Holiday schedule today", "Holiday schedule today: no service" or "Extra service today" when a
+    calendar change applies (the bars keep the weekday's regular one, as before). A tab with no service reads "No
+    service" + "Next service Monday" (today's: the next date with service, calendar changes applied; others: the
+    regular week). The section title follows the tab: "today", "Wednesday" (after midnight), "weekends", "Saturdays".
+  - *Disclosure:* "Show all times" / "Hide times", a 44 px text button with `aria-expanded` (and `aria-controls` while
+    open; iPhone: a DisclosureGroup), collapsed on every visit: store.freq `{rid, open, tab}` is never saved and main.js
+    clears it off the route page (iPhone: @State in `HeadwaySection`, `.id(rid)`).
+  - *Table* (`hourRows`, route.js `timesTable`, Kit `RouteText.timesTable`): one row per hour of the service day with a
+    departure, the hour on the left ("7 AM", "07" on a 24 hour clock: core/time.js clock24 / Kit TimeFmt.uses24Hour),
+    its departures as minutes on the right (":00 :15 :30 :45"): the printed-timetable layout, the shortest that still
+    gives every exact time, and it scans down the minutes; a night route's 12 AM to 4 AM rows come after its evening.
+    The caption names the reference stop; the disclaimer stays under the table.
+  - *Now / Next, today's tab only* (`nowMinute`, `nextDeparture`): "now" on the service day's clock (+ 24 h in
+    yesterday's tail; a 24 hour route's cycle wraps, `allDay`); the current hour's row on the tint background with "Now"
+    under the hour, the next bus outlined in the tint with "Next" (words and a shape, never color alone), and "Next
+    scheduled bus 6:30 PM" / "No more scheduled buses today." above the table. The 15 s render tick keeps them current
+    (iPhone: TimelineView every minute). Screen readers: "10 AM, now" and "10:00 AM, 10:15 AM, next, 10:30 AM". Opening
+    scrolls the current hour (else the next bus) into view with `scrollIntoView({block: "nearest"})`, so the sheet moves
+    as little as possible and the page never does. Other tabs show the plain table.
+  - *Data:* service.json already had `dep` for every weekday and calendar change; nothing new to build.
+  - *Tests:* route-schedule.js (tabs, calendar changes, rows, now / next across midnight and on a 24 hour cycle, golden
+    rows + probes), route-hourly.js (collapsed by default, aria, Now / Next on today only, after midnight, no-service tab,
+    holiday and extra-service notes, 320 px at 200%), e2e-hourly.js (the real app: open, Weekend, Back, collapsed
+    again), data-state.js (store.freq), Kit HeadwayTests (the same cases, golden rows + probes). sw `sb-v2-149`.
