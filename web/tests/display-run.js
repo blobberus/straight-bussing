@@ -6,7 +6,7 @@
  * --expect stores its answers). Not a test page.
  */
 import { startLive } from "../js/data/live.js";
-import { cleanSlice, deriveStopRoutes } from "../js/data/static.js";
+import { cleanSlice, deriveStopRoutes, cleanSeen } from "../js/data/static.js";
 import { arrivalsFor } from "../js/core/arrivals.js";
 import { busKey } from "../js/core/busnum.js";
 import { plan } from "../js/core/planner.js";
@@ -30,7 +30,8 @@ function spans(polls, pred, hms) {
  *   report time]], u:[snap index], a:[alert index]}], plan?}; every time is seconds after t0 (fx.static: the app's
  *   static slices that day, shared by the cases)
  * @returns {Promise<{polls:Array, story:object}>} polls[i] = [shown ids on the case's routes, ids whose times are kept,
- *   ids away (off route), {id: number} on the case's routes, vehicle of the next time at c.stop on c.routes[0]]
+ *   ids away (off route), {id: number} on the case's routes, vehicle of the next time at c.stop on c.routes[0], ids marked
+ *   "Transitioning to new line" (store.transitioning, core/seen.js; since 2026-11-11)]
  */
 export async function runCase(fx, c) {
   const st = fx.static || {}, T = Number(c.t0) || 0;   // every time in a case is seconds after its t0
@@ -38,6 +39,7 @@ export async function runCase(fx, c) {
     routes: cleanSlice("routes", fx.routes), idle: cleanSlice("idle", fx.idle), shapes: cleanSlice("shapes", st.shapes || {}),
     corridors: cleanSlice("corridors", st.corridors || {}), service: cleanSlice("service", st.service || {}),
     stops: cleanSlice("stops", st.stops || {}), routeStops: cleanSlice("routeStops", st.routeStops || {}),
+    serviceSeen: fx.seen ? cleanSeen(fx.seen) : null,   // service_seen.json's windows (core/seen.js), since 2026-11-11
   };
   state.stopRoutes = deriveStopRoutes(state.routeStops);
   state.staticLoaded = true;
@@ -69,7 +71,8 @@ export async function runCase(fx, c) {
       const nums = {};
       for (const r of routes) Object.assign(nums, (state.busNums && state.busNums.routes && state.busNums.routes[r]) || {});
       const next = c.stop ? arrivalsFor(state, c.stop, { routeId: c.routes[0], nowS: T + cur.h })[0] : null;
-      polls.push([shown, kept, away, nums, next ? next.vehicleId : null]);
+      const marked = (state.transitioning || []).map(String).sort();
+      polls.push([shown, kept, away, nums, next ? next.vehicleId : null, marked]);
       if (c.plan && cur.h === c.plan.at) {
         const from = state.stops[c.plan.from], to = state.stops[c.plan.to];
         const res = plan({ from: { lat: from.lat, lon: from.lon }, to: { lat: to.lat, lon: to.lon }, now: T + cur.h,
@@ -94,6 +97,7 @@ export async function runCase(fx, c) {
     times: spans(c.polls, (i) => polls[i][1].includes(B), hms),
     away: spans(c.polls, (i) => polls[i][2].includes(B), hms),
     next_at_stop: c.stop ? spans(c.polls, (i) => polls[i][4] === B, hms) : [],
+    marked: spans(c.polls, (i) => (polls[i][5] || []).includes(B), hms),
     number: numCh,
     swaps,
     ...(c.plan ? { plan: planned } : {}),
