@@ -94,7 +94,8 @@ def ratio_severity(ratio, n_near, base=None):
 
 
 def scope_text(parts):
-    return ";".join(f"{k}={v}" for k, v in parts if v)
+    """[(key, value)] -> 'key=value;...' (empty values left out; a ';' inside a value would start a new part)."""
+    return ";".join(f"{k}={str(v).replace(';', ',')}" for k, v in parts if v)
 
 
 def fmt(x, nd=4):
@@ -193,7 +194,7 @@ def build(tables=TABLES, today=None, prev=None):
         note = f"a time at any lead 1 to 30 min ahead {100 * anyn / n:.0f}%" if n else ""
         if bef:
             bn, bh = sum(x[0] for x in bef), sum(x[1] for x in bef)
-            note += f"; before the last 14 days {100 * bh / bn:.0f}% of {bn} arrivals had one 5 min ahead"
+            note += f", before the last 14 days {100 * bh / bn:.0f}% of {bn} arrivals had one 5 min ahead"
         sev = "high" if v is not None and v < 0.10 and n >= 100 else "medium"
         add(rid, ss[0]["route"], "stops_without_predictions", sev,
             scope_text([("stops", "|".join(s["stop_id"] for s in ss)), ("lead", "0-10"), ("note", note)]),
@@ -220,7 +221,7 @@ def build(tables=TABLES, today=None, prev=None):
                 f"{big - e} of {n} times the bus came later than shown")
         add(rid, ss[0]["route"], flag, sev,
             scope_text([("stops", "|".join(s["stop_id"] for s in ss)), ("lead", "0-10"),
-                        ("note", f"stop positions {', '.join(idx)}; {side}")]),
+                        ("note", f"stop positions {' '.join(idx)}, {side}")]),
             "share of the times a screen showed only under another trip id of the same bus 5 min ahead (no own-trip "
             "time) that were large misses (more than 2 min either way), last 14 service days",
             v, b5, n, d_recent, "stop_hotspots.csv",

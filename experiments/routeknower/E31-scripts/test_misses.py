@@ -348,7 +348,7 @@ def test_build_flags_in_the_shared_schema():
     assert "Oct 27" in e["agent_action"] and e["first_flagged"] == "2026-11-04" and e["last_checked"] == "2026-11-11"
     assert "large_late_miss" not in by                             # Central is under the all-lines rate
     s = by["stops_without_predictions"]
-    assert s["scope"].startswith("stops=8613;lead=0-10;note=a time at any lead 1 to 30 min ahead 60%")
+    assert s["scope"].startswith("stops=8613;lead=0-10;note=a time at any lead 1 to 30 min ahead 60%,")
     assert "before the last 14 days 58% of 200" in s["scope"] and s["value"] == "0.0500" and s["severity"] == "high"
     o = by["other_trip_times"]                                     # stop position 6: not a first stop
     assert o["value"] == "0.9500" and o["severity"] == "medium" and "38 of 40 times the bus came earlier" in o["scope"]
