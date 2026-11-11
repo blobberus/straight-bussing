@@ -193,6 +193,7 @@ extension AppModel {
         liveState = s
         if buses != s.buses { buses = s.buses }
         if away != s.awayBuses { away = s.awayBuses }
+        if transitioning != s.transitioning { transitioning = s.transitioning }
         if trips != s.trips {
             trips = s.trips
             arrivalIndex = Arrivals.index(trips: s.trips)
@@ -238,12 +239,15 @@ extension AppModel {
         let t = now
         let drawn = busMotion.drawn()
         // "Bus 1", "Bus 2" on routes the map shows with two or more buses (owner 2026-10-30): numbered from what is drawn,
-        // so a bus missing from one poll (kept 45 s) keeps its number and its pick
-        let nums = BusNumbers.byRoute(drawn.map { (rid: $0.rid, key: Optional($0.id)) })
+        // so a bus missing from one poll (kept 45 s) keeps its number and its pick; a bus a rule hides (off its route,
+        // idle) keeps its place up to 15 min, so the others keep their numbers while it blinks (owner 2026-11-11)
+        let nums = BusNumbers.byRoute(BusNumbers.numberedPairs(drawn: drawn.map { (rid: $0.rid, key: Optional($0.id)) },
+                                                               held: liveState.numberHeld, now: t))
         if busNumbers != nums { busNumbers = nums }
+        let trans = Set(liveState.transitioning)   // off its route on its way to a new line (Kit Seen): marked
         let markers = drawn.map { d in
             MapBus(id: d.id, rid: d.rid, label: d.label, coord: d.coord, bearing: d.rotation, stale: d.vt > 0 && t - d.vt > 60,
-                   number: nums[d.rid]?[d.id])
+                   number: nums[d.rid]?[d.id], transitioning: trans.contains(d.id))
         }
         if mapBuses != markers { mapBuses = markers }
     }

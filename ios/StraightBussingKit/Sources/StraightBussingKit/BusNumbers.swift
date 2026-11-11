@@ -45,6 +45,42 @@ public enum BusNumbers {
         return out
     }
 
+    /// The quiet line wherever the app shows a live bus count or bus numbers (owner 2026-11-11: "keep numbers steady but
+    /// indicate that this bus count reported by PassioGo is unreliable"; web core/busnum.js COUNT_NOTE, same words).
+    public static let countNote = "Bus count reported by PassioGo can be unreliable."
+
+    /// A bus a display rule hides (`OffRoute`, `Idle`) keeps its number place this long from the hide (s; web
+    /// core/busnum.js RULE_HOLD_S): the other buses keep their numbers while it blinks off and on at the edge of its line
+    /// (owner 2026-11-11: "keep numbers steady"; RouteKnower E32 number_flap). Hidden longer, the line renumbers.
+    public static let ruleHoldS = 15.0 * 60
+
+    /// A rule-hidden bus's number place: its route and when the rule hid it there.
+    public struct Held: Sendable, Equatable {
+        public var rid: String
+        public var since: Double
+        public init(rid: String, since: Double) { self.rid = rid; self.since = since }
+    }
+
+    /// The buses a rule hides now (web numberStep `held`), each with when the rule hid it on that route (kept while it
+    /// stays hidden, so a place past `ruleHoldS` is not given back); `LiveState.applying` keeps them between polls.
+    public static func heldStep(_ prev: [String: Held], hidden: [VehiclePosition], now: Double) -> [String: Held] {
+        var out: [String: Held] = [:]
+        for b in hidden {
+            guard let k = key(b), let rid = b.trip.routeId, !rid.isEmpty else { continue }
+            out[k] = Held(rid: rid, since: prev[k].flatMap { $0.rid == rid ? $0.since : nil } ?? now)
+        }
+        return out
+    }
+
+    /// What the app numbers (web numberStep): the buses the map draws plus the places of rule-hidden buses it does not
+    /// draw, hidden at most `ruleHoldS`; no drawn bus at all = nothing held.
+    public static func numberedPairs(drawn: [(rid: String, key: String?)], held: [String: Held], now: Double) -> [(rid: String, key: String?)] {
+        guard !drawn.isEmpty, !held.isEmpty else { return drawn }
+        let keys = Set(drawn.compactMap(\.key))
+        return drawn + held.filter { !keys.contains($0.key) && now - $0.value.since <= ruleHoldS }.sorted { $0.key < $1.key }
+            .map { (rid: $0.value.rid, key: Optional($0.key)) }
+    }
+
     /// How the app names a bus (busnum.js busName): "Bus 2" on a route with several buses, else "Bus <fleet label>",
     /// else "This bus".
     public static func name(number: Int?, label: String?) -> String {

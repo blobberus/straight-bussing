@@ -51,6 +51,24 @@ final class IdleTests: XCTestCase {
                        [80, 1800, 5400, 180, 3600, 120, 600, 120])
     }
 
+    /// Owner 2026-11-11 "use a wider standing still radius" (web core-idle.js): 150 m downtown, 80 m elsewhere.
+    func testWiderStillRadiusDowntown() {
+        XCTAssertEqual([Idle.stillDowntownM, Idle.downtownLat, Idle.stillRadius(41.88), Idle.stillRadius(41.79)], [150, 41.85, 150, 80])
+        let t0 = 1_792_000_000.0
+        func run(_ lat0: Double) -> Double {
+            var tr: [String: Idle.Track] = [:]
+            for k in 0...12 {
+                let lat = lat0 + (k % 2 == 1 ? 0.0011 : 0)   // 122 m north every other report
+                let b = VehiclePosition(vehicle: .init(id: "p"), latitude: lat, longitude: -87.64, trip: .init(tripId: "t", routeId: "R"),
+                                        timestamp: t0 + 60 * Double(k))
+                tr = Idle.step(tr, buses: [b], trips: [], service: nil, idle: nil, now: t0 + 60 * Double(k), feedTs: t0 + 60 * Double(k)).tracks
+            }
+            return tr["p"]?.since ?? 0
+        }
+        XCTAssertEqual(run(41.8787), t0, "downtown: still since the first report")
+        XCTAssertGreaterThan(run(41.79), t0, "campus (80 m): the clock restarted")
+    }
+
     func testServiceClock() {
         XCTAssertEqual(Idle.serviceClock(at(23, 50)), .init(min: 1430, iso: "2026-10-14", day: "wed", group: "weekday"))
         XCTAssertEqual(Idle.serviceClock(at(24, 30)), .init(min: 1470, iso: "2026-10-14", day: "wed", group: "weekday"), "00:30 Thursday")

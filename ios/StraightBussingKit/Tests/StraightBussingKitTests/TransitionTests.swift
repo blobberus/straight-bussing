@@ -111,6 +111,49 @@ final class TransitionTests: XCTestCase {
         XCTAssertFalse(goneSeen.contains { $0.hasPrefix("layover:") || $0 == "long_layover:4314" || $0 == "long_layover:12647" })
     }
 
+    /// HELD (owner 2026-11-11, web tests "transition: HELD keeps a hidden bus's times off ..."): a bus a rule hid keeps its
+    /// times off after it stops reporting, until it reports again and no rule hides it.
+    func testHeldKeepsAHiddenBusTimesOffUntilItReportsUnhidden() {
+        var r = Transition.held([:], operating: [veh("x", t0), veh("y", t0)], hidden: ["x"], trips: [tu("x", t0 + 300)], now: t0, feedTs: t0)
+        XCTAssertEqual(r.ids, [], "hidden now: the rule drops it")
+        XCTAssertEqual(r.held, ["x": t0], "held from its report time")
+        r = Transition.held(r.held, operating: [veh("y", t0 + 400)], hidden: [], trips: [tu("x", t0 + 700)], now: t0 + 400, feedTs: t0 + 400)
+        XCTAssertEqual(r.ids, ["x"], "silent 6 min: no longer operating, no rule sees it: its times stay off")
+        r = Transition.held(r.held, operating: [veh("y", t0 + 2000)], hidden: [], trips: [tu("x", t0 + 2300)], now: t0 + 2000, feedTs: t0 + 2000)
+        XCTAssertEqual(r.ids, ["x"], "past GONE too: still off")
+        let again = Transition.held(r.held, operating: [veh("x", t0 + 2010), veh("y", t0 + 2010)], hidden: ["x"], trips: [], now: t0 + 2010, feedTs: t0 + 2010)
+        XCTAssertEqual(again.ids, [])
+        XCTAssertEqual(Array(again.held.keys), ["x"], "reports again but a rule still hides it: held")
+        let free = Transition.held(r.held, operating: [veh("x", t0 + 2010), veh("y", t0 + 2010)], hidden: [], trips: [], now: t0 + 2010, feedTs: t0 + 2010)
+        XCTAssertEqual(free.ids, [])
+        XCTAssertEqual(free.held, [:], "reports again and no rule hides it: its times are back")
+        let old = t0 - Transition.keepS - 1
+        r = Transition.held(["old": old, "kept": old], operating: [veh("y", t0)], hidden: [], trips: [tu("kept", t0 + 60)], now: t0, feedTs: t0)
+        XCTAssertEqual(r.ids, ["kept"], "forgotten after keepS unless still predicted")
+    }
+
+    /// LiveState.applying keeps a bus hidden off its route out of `trips` after it goes silent (web tests "live: a bus
+    /// hidden off its route that goes silent keeps its times off (E32 offroute_then_silent)").
+    func testLiveStateKeepsAHiddenBusTimesOffAfterItGoesSilent() {
+        let quiet = t0 + 60
+        let shapes: [String: [[LatLon]]] = ["A": [[LatLon(lat: 41.79, lon: -87.61), LatLon(lat: 41.79, lon: -87.59)]]]
+        let stat = StaticData(routes: ["A": Route(id: "A", short: "A")], stops: ["S": Stop(id: "S", name: "S", lat: 41.79, lon: -87.6)],
+                              shapes: shapes, routeStops: ["A": ["S"]])
+        func poll(_ now: Double) -> FeedPoll {
+            var vs = [VehiclePosition.on("A", id: "y", trip: "t-y", ts: now, lat: 41.79, lon: -87.6)]
+            if now - quiet <= 400 { vs.append(VehiclePosition.on("A", id: "x", trip: "t-x", ts: min(now, quiet), lat: 41.79, lon: -87.58)) }
+            return FeedPoll(vehicles: .success(Feed(timestamp: now, entities: vs)),
+                            trips: .success(Feed(timestamp: now, entities: [tu("x", now + 300), tu("y", now + 120)])),
+                            alerts: .success(Feed(timestamp: now, entities: [])))
+        }
+        var s = LiveState()
+        for t in [t0, t0 + 10, t0 + 60] { s = s.applying(poll(t), staticData: stat, now: t) }
+        XCTAssertEqual(s.trips.compactMap(\.vehicle.id), ["y"], "hidden off its route (FAST): its times are off")
+        s = s.applying(poll(quiet + 360), staticData: stat, now: quiet + 360)
+        XCTAssertEqual(s.trips.compactMap(\.vehicle.id), ["y"], "silent 6 min: its times stay off (they came back here before)")
+        XCTAssertEqual(s.heldIds, ["x"])
+    }
+
     /// LiveState.applying drops a gone bus's trip updates (web tests "live: a gone bus's trip updates leave store.trips").
     func testLiveStateDropsGoneTripUpdates() {
         let left = t0 + 60

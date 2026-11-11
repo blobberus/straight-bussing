@@ -164,6 +164,8 @@ struct MapBus: Identifiable, Equatable {
     let stale: Bool
     /// "Bus 2": its number when its route shows two or more buses (Kit `BusNumbers`, owner 2026-10-30).
     var number: Int? = nil
+    /// Off its route on its usual way to a new line (Kit `Seen`, owner 2026-11-11): the badge is marked.
+    var transitioning = false
 }
 
 /// The bus picked on its route page: each station shows that bus's own time (owner 2026-10-30, web store.busId).
@@ -253,6 +255,9 @@ final class AppModel {
     /// Buses more than a block off their route (Kit `OffRoute`, `LiveState.awayBuses`): hidden, still tracked; never
     /// counted as running. The route page counts them (`RouteText.awayText`).
     var away: [VehiclePosition] = []
+    /// Buses off their route on their usual way to a new line (Kit `Seen`, `LiveState.transitioning`): shown, marked,
+    /// "Transitioning to new line" on the route page when tapped (owner 2026-11-11).
+    var transitioning: [String] = []
     var trips: [TripUpdate] = []
     var alerts: [ServiceAlert] = []
     var liveLoaded = false

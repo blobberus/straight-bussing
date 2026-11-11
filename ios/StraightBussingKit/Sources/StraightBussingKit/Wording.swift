@@ -476,7 +476,7 @@ public enum RouteText {
     /// Where each live bus of a route is along the stop order, with a sentence for each. `numbers` (bus key -> number,
     /// `BusNumbers`) names a route's buses "Bus 1", "Bus 2" when it shows two or more (web route.js busPositions).
     public static func busPositions(_ S: StaticData, buses: [VehiclePosition], rid: String, now: Double,
-                                    numbers: [String: Int] = [:]) -> [BusSpot] {
+                                    numbers: [String: Int] = [:], transitioning: Set<String> = []) -> [BusSpot] {
         let list = S.routeStops[rid] ?? [], ids = stopOrder(list)
         let loop = list.count > 2 && list.first == list.last
         func name(_ i: Int) -> String { S.stops[ids[i]]?.name ?? ids[i] }
@@ -493,7 +493,9 @@ public enum RouteText {
             let key = BusNumbers.key(b), num = key.flatMap { numbers[$0] }
             let called = BusNumbers.name(number: num, label: b.vehicle.label ?? b.vehicle.id)
             let label = num != nil ? called : b.vehicle.label ?? b.vehicle.id ?? ""
-            var text = "\(called) " + (prev == nil ? "approaching \(name(next))" : "between \(name(prev!)) and \(name(next)), heading to \(name(next))")
+            // off its line on its way to a new line (`Seen`, owner 2026-11-11): where Passio says it heads next would mislead
+            var text = b.vehicle.id.map(transitioning.contains) == true ? "\(called): \(Seen.transitionText)"
+                : "\(called) " + (prev == nil ? "approaching \(name(next))" : "between \(name(prev!)) and \(name(next)), heading to \(name(next))")
             if stale { text += ", location from \(TimeFmt.ago(seen, from: now))" }
             out.append(BusSpot(label: label, key: key, number: num, name: called, next: next, prev: prev, frac: frac, stale: stale, seen: seen, text: text))
         }

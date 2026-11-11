@@ -41,6 +41,30 @@ final class BusNumbersTests: XCTestCase {
                        ["R": ["v1": 1, "v2": 2]])
     }
 
+    /// Owner 2026-11-11 (web core-busnum.js "a bus a rule hides keeps its number place RULE_HOLD_S"): the app numbers the
+    /// drawn buses plus the places of rule-hidden ones, for 15 min from the hide; a place past it is not given back.
+    func testRuleHiddenBusKeepsItsNumberPlaceFor15Minutes() {
+        XCTAssertEqual(BusNumbers.ruleHoldS, 900)
+        let hidden = VehiclePosition.on("A", id: "4325")
+        var held = BusNumbers.heldStep([:], hidden: [hidden], now: 10)
+        XCTAssertEqual(held, ["4325": BusNumbers.Held(rid: "A", since: 10)])
+        let drawn: [(rid: String, key: String?)] = [(rid: "A", key: "4320"), (rid: "A", key: "4330")]
+        XCTAssertEqual(BusNumbers.byRoute(BusNumbers.numberedPairs(drawn: drawn, held: held, now: 10))["A"], ["4320": 1, "4325": 2, "4330": 3],
+                       "hidden: 4330 stays Bus 3")
+        held = BusNumbers.heldStep(held, hidden: [hidden], now: 10 + BusNumbers.ruleHoldS)
+        XCTAssertEqual(held["4325"]?.since, 10, "the hide time is kept while it stays hidden")
+        XCTAssertEqual(BusNumbers.byRoute(BusNumbers.numberedPairs(drawn: drawn, held: held, now: 10 + BusNumbers.ruleHoldS))["A"]?["4330"], 3)
+        held = BusNumbers.heldStep(held, hidden: [hidden], now: 11 + BusNumbers.ruleHoldS)
+        XCTAssertEqual(BusNumbers.byRoute(BusNumbers.numberedPairs(drawn: drawn, held: held, now: 11 + BusNumbers.ruleHoldS))["A"], ["4320": 1, "4330": 2],
+                       "hidden longer: the line renumbers without it")
+        XCTAssertEqual(BusNumbers.heldStep(held, hidden: [], now: 20), [:], "shown again (or silent): no place")
+        XCTAssertEqual(BusNumbers.numberedPairs(drawn: [], held: held, now: 10).count, 0, "no drawn bus at all: nothing numbered")
+        let other = BusNumbers.heldStep([:], hidden: [VehiclePosition.on("B", id: "1")], now: 0)
+        XCTAssertNil(BusNumbers.byRoute(BusNumbers.numberedPairs(drawn: [(rid: "A", key: "2")], held: other, now: 0))["A"],
+                     "a place counts on the hidden bus's own route only")
+        XCTAssertEqual(BusNumbers.countNote, "Bus count reported by PassioGo can be unreliable.")
+    }
+
     func testByRouteNumbersEachRouteOnItsOwn() {
         let b = [TripFix.bus("v102", "102", "R", "t2", "A2", "A3"), TripFix.bus("v101", "101", "R", "t1", "A0", "A1"),
                  TripFix.bus("v301", "301", "G", "t3", "B0", "B1")]

@@ -7,7 +7,7 @@ public enum StaticLoader {
     public static let files: [(String, Bool)] = [
         ("routes.json", true), ("stops.json", true), ("shapes.json", true), ("route_stops.json", true),
         ("stop_addresses.json", false), ("service.json", false), ("segments.json", false), ("idle.json", false),
-        ("corridors.json", false), ("timetable.json", false),
+        ("corridors.json", false), ("timetable.json", false), ("service_seen.json", false),
     ]
 
     public struct Loaded: Sendable {
@@ -98,9 +98,12 @@ public enum StaticLoader {
         // the timetable for Directions' trip start time (owner 2026-11-09); optional: without it a chosen start time says it could not load
         var timetable: TimetableData? = nil
         if let d = files["timetable.json"], let parsed = TimetableData.parse(d) { timetable = parsed } else { failed.append("timetable.json") }
+        // the seen service windows (owner 2026-11-11; `Seen`): optional, without it no bus is kept as transitioning
+        var seen: SeenData? = nil
+        if let d = files["service_seen.json"], let parsed = SeenData.parse(d) { seen = parsed } else { failed.append("service_seen.json") }
         let data = StaticData(routes: routes, stops: stops, shapes: shapes, routeStops: routeStops, addresses: addresses,
                               service: service, segments: segments, generated: service.generated, idle: idle,
-                              corridors: corridors, timetable: timetable)
+                              corridors: corridors, timetable: timetable, seen: seen)
         return Loaded(data: data, failed: failed)
     }
 
