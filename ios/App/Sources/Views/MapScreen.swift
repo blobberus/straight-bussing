@@ -524,9 +524,18 @@ struct BusMarker: View {
         }
         .opacity(faded ? (stale ? 0.32 : 0.42) : (stale ? 0.5 : 1))
         .scaleEffect(faded ? 0.8 : 1)
-        .accessibilityLabel((youText ?? (number.map { "Bus \($0), \(route?.displayName ?? "Shuttle")" } ?? "\(route?.displayName ?? "Shuttle") bus"))
-                            + (transitioning ? ", \(Seen.transitionText)" : "")
-                            + (picked ? ", showing its times" : "") + (stale ? ", location may be old" : ""))
+        .accessibilityLabel(spoken)
+    }
+
+    /// VoiceOver: the trip sentence or "Bus 2, <route>", then ", Transitioning to new line" (Kit `Seen`), the pick, staleness.
+    private var spoken: String {
+        let name = route?.displayName ?? "Shuttle"
+        var s: String
+        if let youText { s = youText } else if let number { s = "Bus \(number), \(name)" } else { s = "\(name) bus" }
+        if transitioning { s += ", " + Seen.transitionText }
+        if picked { s += ", showing its times" }
+        if stale { s += ", location may be old" }
+        return s
     }
 }
 
