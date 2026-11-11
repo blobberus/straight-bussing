@@ -10,6 +10,7 @@ import misses_lib as M          # noqa: E402
 import features as F            # noqa: E402
 import transitions_near as T    # noqa: E402
 import coverage as C            # noqa: E402
+import other_trip as O          # noqa: E402
 
 TESTS = []
 
@@ -203,6 +204,27 @@ def test_coverage_matches_within_a_minute_and_per_lead():
            {"vehicle_id": "4302", "stop_id": "S1", "epoch_i": EP, "day": "2026-10-21", "route_id": "1075"}]
     t = C.targets(arr, ix)
     assert [(x["has_5"], x["has_10"], x["has_any"]) for x in t] == [(1, 0, 1), (0, 1, 1), (0, 0, 0)]
+
+
+# ---------------------------------------------------------------- the screen's time under another trip id
+@test
+def test_screen_time_takes_the_same_bus_on_display_and_about_this_visit():
+    t = EP - 300                                       # the moment 5 min before the arrival at EP
+    updates = {
+        ("4301", "NEXT", "S1"): [(t - 200, t + 10, t - 210, EP + 240, 1)],          # on display: 4 min late
+        ("4301", "LATER", "S1"): [(t - 100, t, t - 100, EP + 1800, 1)],            # later, not the first shown
+        ("4301", "GONE", "S1"): [(t - 900, t - 200, t - 900, EP - 60, 1)],         # last shown 200 s before t
+        ("4302", "OTHER", "S1"): [(t - 60, t, t - 60, EP - 30, 1)],                # another bus: never
+        (None, "NOVEH", "S1"): [(t - 60, t, t - 60, EP - 10, 1)],                  # no vehicle id: never
+    }
+    ix = O.bus_index(updates)
+    assert O.screen_time(ix, "4301", "S1", EP) == (EP + 240, "NEXT")
+    # an update first seen before the bus's previous visit to the stop is about that visit, not this one
+    assert O.screen_time(ix, "4301", "S1", EP, prev_visit=t - 150) == (EP + 1800, "LATER")
+    assert O.screen_time(ix, "4303", "S1", EP) is None
+    v = O.previous_visits([{"vehicle_id": "4301", "stop_id": "S1", "epoch_i": EP - 3000},
+                           {"vehicle_id": "4301", "stop_id": "S1", "epoch_i": EP}])
+    assert O.prev_of(v, "4301", "S1", EP) == EP - 3000 and O.prev_of(v, "4301", "S1", EP - 3000) is None
 
 
 def main():
