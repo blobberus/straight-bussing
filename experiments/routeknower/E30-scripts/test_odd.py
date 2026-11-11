@@ -13,6 +13,7 @@ import odd_labels as LB      # noqa: E402
 import odd_passio as P       # noqa: E402
 import odd_schedule as S     # noqa: E402
 import odd_dwell as D        # noqa: E402
+import flags as FL           # noqa: E402
 
 DAY = "2026-11-09"           # a Monday
 T0 = L.day_bounds(DAY)[0] + 6 * 3600       # 10:00 CST
@@ -296,6 +297,25 @@ class DwellTest(unittest.TestCase):
             eps = D.lingers(DAY, td)
         self.assertEqual([(e["vehicle_id"], e["outcome"], e["pred_visible"], e["spot_name"]) for e in eps],
                          [("1", "end_of_shift", "y", "Reynolds Club")])
+
+
+class FlagsTest(unittest.TestCase):
+    def test_severity_rule(self):
+        self.assertEqual(FL.severity("rate", True, 2.5, 40, 6), "high")
+        self.assertEqual(FL.severity("rate", False, 2.5, 40, 6), "medium")      # not rider-facing: medium at most
+        self.assertEqual(FL.severity("rate", True, 1.6, 40, 6), "medium")
+        self.assertEqual(FL.severity("rate", True, 2.5, 12, 3), "medium")
+        self.assertEqual(FL.severity("rate", True, 1.6, 12, 3), "low")
+        self.assertIsNone(FL.severity("rate", True, 1.4, 400, 30))              # common to every line: no flag
+        self.assertIsNone(FL.severity("rate", True, 3.0, 9, 9))                 # too few episodes
+        self.assertEqual(FL.severity("span", True, 3.0, 16, 16), "high")        # one span a day
+        self.assertIsNone(FL.severity("span", True, 3.0, 7, 7))
+
+    def test_scope(self):
+        eps = [{"vehicle_id": "4322", "hour": "8", "dow": "Mon", "spot": "Stop X"}] * 12 +               [{"vehicle_id": "9", "hour": "15", "dow": "Sat", "spot": "Y"}] * 2
+        parts, top = FL.scope_of(eps, {"Stop X": ["123"]})
+        self.assertEqual(parts, ["vehicles=4322", "hours=8-9", "stops=123"])
+        self.assertEqual(top, ("Stop X", 12))
 
 
 if __name__ == "__main__":
