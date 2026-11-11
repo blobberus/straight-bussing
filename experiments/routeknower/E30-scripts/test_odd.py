@@ -77,6 +77,9 @@ class WindowTest(unittest.TestCase):
         self.assertIsNone(wi.at("A", T0 + 4 * 3600))                       # nothing within 30 min
         self.assertIsNone(wi.at("B", T0))                                   # other line
         self.assertEqual(wi.covered_s("A", T0 - 1800, T0 + 2400), 4200)     # two overlapping windows merged
+        # an episode of bus 1 at its own leave: the only window left without its own events is the listed start's
+        self.assertEqual(wi.at("A", T0 + 60, T0 + 120, {"1"})["kind"], "bus_change")     # bus 2's add (+10 min)
+        self.assertIsNone(wi.at("A", T0 - 1500, T0 - 1400, {"1", "2"}))
 
     def test_listed_spans_cross_midnight(self):
         svc = {"routes": {"A": {"days": {"mon": {"spans": [["16:00", "28:29"]], "buses": [1] * 24}}}}}

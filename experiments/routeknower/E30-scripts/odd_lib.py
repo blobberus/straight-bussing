@@ -268,7 +268,7 @@ def build_windows(day, trans_rows, spans, steps):
     for r in real:
         t = int(r["epoch"])
         W.append({"route_id": r["route_id"], "kind": "bus_change", "t": t, "a": t - WINDOW_S, "b": t + WINDOW_S,
-                  "ref": r["event_id"]})
+                  "ref": r["event_id"], "vehicles": {str(r["vehicle_id"])}})
     leaves = [r for r in real if r["kind"] == "leave"]
     adds = [r for r in real if r["kind"] == "add"]
     for lv in leaves:
@@ -278,7 +278,8 @@ def build_windows(day, trans_rows, spans, steps):
         if best is not None:
             t = (tl + int(best["epoch"])) // 2
             W.append({"route_id": lv["route_id"], "kind": "handover", "t": t, "a": t - WINDOW_S, "b": t + WINDOW_S,
-                      "ref": f"{lv['event_id']}+{best['event_id']}"})
+                      "ref": f"{lv['event_id']}+{best['event_id']}",
+                      "vehicles": {str(lv["vehicle_id"]), str(best["vehicle_id"])}})
     for rid, sp in spans.items():
         for a, b in sp:
             W.append({"route_id": rid, "kind": "service_start", "t": a, "a": a - WINDOW_S, "b": a + WINDOW_S,
@@ -304,13 +305,14 @@ class WindowIndex:
         for v in self.by.values():
             v.sort(key=lambda w: w["a"])
 
-    def at(self, rid, a, b=None):
+    def at(self, rid, a, b=None, not_vehicles=None):
+        """not_vehicles: skip the bus_change / handover windows of these buses (an episode's own event)."""
         b = a if b is None else b
         best = None
         for w in self.by.get(str(rid), []):
             if w["a"] > b:
                 break
-            if w["b"] < a:
+            if w["b"] < a or (not_vehicles and w.get("vehicles", set()) & set(not_vehicles)):
                 continue
             key = (abs(w["t"] - a), self.PRI[w["kind"]])
             if best is None or key < best[0]:
