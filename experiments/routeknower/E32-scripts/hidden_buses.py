@@ -60,7 +60,7 @@ DOCS = {
     "first_time_ahead_min": "the soonest time at the episode's first minute with times",
     "first_times, first_times_came_true": "times Passio had at that first minute, and how many came true (the bus "
                                           "logged that stop from 1 min before to 15 min after the time)",
-    "times_shown_by_app": "y = the replayed app still showed those times (not_operating in the shipped code), n = kept off",
+    "times_shown_by_app": "y = the replayed app still showed those times (not_operating: no rule held them), n = kept off",
     "reports_while_hidden": "fresh position reports the bus sent during the episode (Passio still reporting the bus)",
     "next_report_min": "minutes from the episode's end to its next fresh report (blank: none that day)",
     "next_arrival_on_line_min": "minutes from the episode's start to its next logged arrival on the line (within 3 h)",
@@ -232,7 +232,7 @@ def day_episodes(day, inp, res, A, stops, rstops, names, label):
         ft = r["first_times"]
         true_n = sum(1 for s, p in ft if A.any_vs(v, s, p - TRUE_EARLY_S, p + TRUE_LATE_S))
         served = nx is not None and nx <= b + SERVE_S
-        shown_by_app = "y" if rule == "not_operating" and label == "shipped" else "n"
+        shown_by_app = "y" if rule == "not_operating" else "n"     # no rule holds them: the replayed app showed them
         ev = (f"{names.get(rid, rid)} bus {v} {rule}{' (' + r['why'] + ')' if r['why'] else ''} {ct(a)}-{ct(b)}: Passio "
               f"had times {r['times_min']} of {r['n']} min at {len(r['stops'])} stops (soonest {r['near']:.0f} min "
               f"ahead); {len(ft)} times at the first minute, {true_n} came true; "
