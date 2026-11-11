@@ -46,6 +46,7 @@
  */
 import { isScheduledNow, localParts } from "./schedule.js";
 import { activeAlerts, alertRouteIds, alertText } from "./arrivals.js";
+import { transitionAt, TRANSITION_MAX_M, TOWARD_M } from "./seen.js";
 
 /** A report farther than this from its route (line or corridor) is more than a block off (m): the FAR tier. */
 export const BLOCK_M = 250;
@@ -241,16 +242,18 @@ export function detourAlert(alerts, routes, rid, t) {
  * @param {Object<string, {rid:string, since:number, last:number, n:number, fs:number|null, fn:number, ff:number}>} tracks
  *   the previous call's tracks ({} at start; not modified). since / n = the current stretch off the route (farther
  *   than NEAR_M with a corridor, BLOCK_M without) and its distinct reports; fs / fn = the same for farther than BLOCK_M
- *   (null / 0 when nearer); ff = distinct reports in a row farther than FAST_M.
+ *   (null / 0 when nearer); ff = distinct reports in a row farther than FAST_M; dx = its farthest distance in the stretch
+ *   (m; core/seen.js TOWARD_M).
  * @param {Array<object>} buses operating vehicles (GTFS-rt VehiclePosition: vehicle.id, trip.route_id, position, timestamp)
- * @param {{shapes?:object, corridors?:object, service?:object, alerts?:Array, routes?:object, nowS?:number, feedTs?:number}} ctx
+ * @param {{shapes?:object, corridors?:object, service?:object, alerts?:Array, routes?:object, seen?:object, nowS?:number, feedTs?:number}} ctx
  *   nowS: the clock for listed hours, alerts and the corridor file's date (like core/operating.js); feedTs: the feed's
- *   time (report times fall back to it)
- * @returns {{tracks:object, hidden:string[]}} tracks: buses off their route now (and ones missing from this poll for up
- *   to GAP_S); hidden: vehicle ids in input order
+ *   time (report times fall back to it); seen: store.serviceSeen (core/seen.js transition windows)
+ * @returns {{tracks:object, hidden:string[], transitioning:string[]}} tracks: buses off their route now (and ones missing
+ *   from this poll for up to GAP_S); hidden: vehicle ids in input order; transitioning: the buses the rule would hide that
+ *   stay shown because their report time is inside a transition window of their line (owner 2026-11-11), input order
  */
 export function offRouteStep(tracks, buses, ctx = {}) {
-  const prev = tracks || {}, next = {}, hidden = [], seen = new Set();
+  const prev = tracks || {}, next = {}, hidden = [], transitioning = [], seen = new Set();
   const shapes = ctx.shapes || {};
   const ref = Number(ctx.feedTs) || Number(ctx.nowS) || 0;
   const now = Number(ctx.nowS) || ref;
@@ -272,8 +275,8 @@ export function offRouteStep(tracks, buses, ctx = {}) {
     const fresh = !cont || t > p.last;                                         // a new report (not the same one repeated)
     const far = d > BLOCK_M;
     const tr = cont
-      ? { rid, since: p.since, last: Math.max(p.last, t), n: (p.n || 1) + (fresh ? 1 : 0), fs: null, fn: 0, ff: 0 }
-      : { rid, since: t, last: t, n: 1, fs: null, fn: 0, ff: 0 };
+      ? { rid, since: p.since, last: Math.max(p.last, t), n: (p.n || 1) + (fresh ? 1 : 0), fs: null, fn: 0, ff: 0, dx: Math.max(p.dx || 0, d) }
+      : { rid, since: t, last: t, n: 1, fs: null, fn: 0, ff: 0, dx: d };
     if (far) {
       const fcont = cont && p.fs != null && t >= p.fs;
       tr.fs = fcont ? p.fs : t;
@@ -286,12 +289,16 @@ export function offRouteStep(tracks, buses, ctx = {}) {
       || (pts != null && tr.n >= 2 && t - tr.since >= NEAR_S);                 // NEAR
     if (!hide) continue;
     if (d <= DETOUR_MAX_M && inListedHours(ctx.service, rid, now) !== false && detourAlert(ctx.alerts, ctx.routes, rid, now)) continue;   // an official detour: serving
+    if (ctx.seen && d <= TRANSITION_MAX_M && (!(TOWARD_M > 0) || d < tr.dx - TOWARD_M) && transitionAt(ctx.seen, ctx.service, rid, t)) {
+      transitioning.push(id);                                                  // on its way to a new line: shown, marked
+      continue;
+    }
     hidden.push(id);
   }
   for (const [id, p] of Object.entries(prev)) {                                // a bus missing from this poll keeps its clock
     if (!seen.has(id) && p && ref - p.last <= GAP_S) next[id] = p;
   }
-  return { tracks: next, hidden };
+  return { tracks: next, hidden, transitioning };
 }
 
 /**

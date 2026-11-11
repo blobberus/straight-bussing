@@ -10,13 +10,16 @@
 // still tracked: their clocks stay here and store.away lists them (the route page counts them), so a bus shows again
 // on its first report back on its route.
 // Trip updates of buses that left the feed 15 min ago or more while Passio still predicts them (core/transition.js: a
-// break, a shift end, another route) are dropped too, so nothing recommends a bus that has left its route.
+// break, a shift end, another route) are dropped too, so nothing recommends a bus that has left its route. A bus a rule
+// hid keeps its trip updates dropped after it stops reporting, until it reports again and no rule hides it
+// (core/transition.js heldStep, owner 2026-11-11).
 // store.busNums: "Bus 1", "Bus 2" on lines with 2 or more buses for this list (core/busnum.js numberStep: a bus left
 // out of a poll keeps its number 45 s, like its map badge), read by the map badges and every arrival that names a bus.
 import { operatingBuses } from '../core/operating.js';
 import { offRouteStep, dropHidden, awayBuses } from '../core/offroute.js';
 import { idleStep } from '../core/idle.js';
-import { goneStep } from '../core/transition.js';
+import { goneStep, heldStep } from '../core/transition.js';
+import { TRANSITION_TIMES } from '../core/seen.js';
 import { numberStep } from '../core/busnum.js';
 
 /** Passio feed base URL. */
@@ -98,6 +101,9 @@ export function startLive(store, opts = {}) {
   let offTracks = {}, offHidden = [];      // core/offroute.js clocks between polls; the vehicles it hides now
   let idleTracks = {}, idleHidden = [];    // core/idle.js still clocks between polls; the vehicles it hides now
   let goneSeen = {}, goneIds = [];         // core/transition.js latest report times; the gone buses whose trip updates drop
+  let heldOff = {}, heldIds = [];          // core/transition.js heldStep: buses a rule hid; those silent since (times stay off)
+  let ruled = [];                          // the operating buses a rule hides now (core/busnum.js keeps their number places)
+  let transIds = [];                       // off their route inside a transition window of their line: shown, marked (core/seen.js)
   let numSeen = null;                      // core/busnum.js numberStep memory: a bus left out of a poll keeps its number 45 s
 
   /** Paused: the page is hidden and nothing needs data in the background. */
@@ -152,25 +158,35 @@ export function startLive(store, opts = {}) {
       patch.buses = operatingBuses(patch.buses, { routes: s.routes, service: s.service, trips: patch.trips || s.trips,
         feedTs: patch.feedTs, nowS: nowFn(), staticLoaded: s.staticLoaded });
       const off = offRouteStep(offTracks, patch.buses, { shapes: s.shapes, corridors: s.corridors, service: s.service,
-        alerts: patch.alerts || s.alerts, routes: s.routes, nowS: nowFn(), feedTs: patch.feedTs });
+        alerts: patch.alerts || s.alerts, routes: s.routes, seen: s.serviceSeen, nowS: nowFn(), feedTs: patch.feedTs });
       offTracks = off.tracks;
       offHidden = off.hidden;
+      transIds = off.transitioning || [];
+      patch.transitioning = transIds.length || (s.transitioning || []).length ? transIds : s.transitioning || transIds;   // the map's marker, the route page
       const away = awayBuses(patch.buses, offHidden);   // still tracked, not shown (never counted as running)
       patch.away = away.length || (s.away || []).length ? away : s.away || away;   // none before and now: no change to report
       const idle = idleStep(idleTracks, patch.buses, { trips: patch.trips || s.trips, service: s.service, idle: s.idle,
         nowS: nowFn(), feedTs: patch.feedTs });
       idleTracks = idle.tracks;
       idleHidden = idle.hidden;
-      if ((offHidden.length || idleHidden.length || goneIds.length) && !patch.trips) patch.trips = s.trips;   // the store's trips still list a newly hidden bus
+      const rules = offHidden.concat(idleHidden);
+      // a transitioning bus shown without its times counts as hidden for its times: silent next, they stay off
+      const timesHidden = TRANSITION_TIMES ? rules : rules.concat(transIds);
+      const held = heldStep(heldOff, patch.buses, timesHidden, patch.trips || s.trips, { feedTs: patch.feedTs, nowS: nowFn() });
+      heldOff = held.held;
+      heldIds = held.ids;
+      ruled = rules.length ? awayBuses(patch.buses, rules) : [];
+      if ((rules.length || goneIds.length || heldIds.length || transIds.length) && !patch.trips) patch.trips = s.trips;   // the store's trips still list a newly hidden bus
     }
-    const hiddenNow = offHidden.concat(idleHidden, goneIds);
-    if (hiddenNow.length && (patch.buses || patch.trips)) {
+    const hiddenNow = offHidden.concat(idleHidden, goneIds, heldIds);
+    const timesOff = TRANSITION_TIMES ? [] : transIds;   // a transitioning bus: its badge only, without its times
+    if ((hiddenNow.length || timesOff.length) && (patch.buses || patch.trips)) {
       const d = dropHidden(patch.buses, patch.trips, hiddenNow);
       if (patch.buses) patch.buses = d.buses;
-      if (patch.trips) patch.trips = d.trips;
+      if (patch.trips) patch.trips = timesOff.length ? dropHidden([], d.trips, timesOff).trips : d.trips;
     }
     if (patch.buses) {   // "Bus 1", "Bus 2" for this list (core/busnum.js): the map badges and every arrival read them
-      const nn = numberStep(numSeen, patch.buses, { away: patch.away, nowS: nowFn() });
+      const nn = numberStep(numSeen, patch.buses, { away: patch.away, held: ruled, nowS: nowFn() });
       numSeen = nn.seen;
       patch.busNums = { of: patch.buses, routes: nn.routes };
     }

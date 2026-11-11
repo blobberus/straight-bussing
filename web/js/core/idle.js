@@ -31,10 +31,29 @@
  * phone's; after a reload the clocks start again (a missed hide, never a wrong one).
  */
 import { inListedHours } from "./offroute.js";
-import { localParts, routeService, DAY_KEYS } from "./schedule.js";
+import { serviceClock, hoursKey } from "./schedule.js";
+export { serviceClock, hoursKey } from "./schedule.js";   // moved to core/schedule.js (core/seen.js uses them too)
 
 /** A bus within this of where its clock started is still (m). */
 export const STILL_M = 80;
+/**
+ * ... downtown (north of DOWNTOWN_LAT: the Loop, the South Loop, River North), where tall buildings scatter GPS fixes (m;
+ * owner 2026-11-11 "use a wider standing still radius"). RouteKnower E32c, 32 days replayed: 150 m downtown cut ghost
+ * times by 34 bus-min and ghost badges by 50 while 2 more hidden minutes were a bus coming to serve; 120 m everywhere cut
+ * fewer (24 / 19) and hid 27 more serving minutes (South at Regenstein, layovers on campus); 200 m downtown hid 19 more.
+ */
+export const STILL_DOWNTOWN_M = 150;
+/** Downtown starts here (latitude; Cermak Road is 41.853, campus 41.79). */
+export const DOWNTOWN_LAT = 41.85;
+
+/**
+ * The still radius where a bus's clock started (m): STILL_DOWNTOWN_M downtown, else STILL_M.
+ * @param {number} lat
+ * @returns {number}
+ */
+export function stillRadius(lat) {
+  return Number(lat) >= DOWNTOWN_LAT ? STILL_DOWNTOWN_M : STILL_M;
+}
 /** Still this long with no Passio prediction FUTURE_S ahead = hidden (s). */
 export const IDLE_S = 30 * 60;
 /** Still this long = hidden, whatever Passio predicts (s). */
@@ -62,40 +81,6 @@ function distM(lat1, lon1, lat2, lon2) {
 function hm(s) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(s ?? ""));
   return m ? +m[1] * 60 + +m[2] : NaN;
-}
-
-/**
- * The service-day clock of a unix time (Chicago; the night after midnight, before 04:00, belongs to the day before).
- * @param {number} t unix seconds
- * @returns {{min:number, iso:string, day:string, group:'weekday'|'sat'|'sun'}} min = minutes since that day's
- *   midnight (00:30 after midnight = 1470); iso = the service day's date; day = its service.json key
- */
-export function serviceClock(t) {
-  const p = localParts(t);
-  const night = p.min < 240;
-  const d = night ? localParts(t - 86400) : p;
-  const day = DAY_KEYS[d.dow];
-  const iso = `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
-  return { min: night ? p.min + 1440 : p.min, iso, day, group: day === "sat" ? "sat" : day === "sun" ? "sun" : "weekday" };
-}
-
-/**
- * The route's listed hours on a service day as 'HH:MM-HH:MM' windows joined by ',' (a calendar exception for the
- * date replaces the weekday's hours). null without schedule data for the route.
- * @param {object} service store.service
- * @param {string} rid
- * @param {string} iso service day 'YYYY-MM-DD'
- * @param {string} day its key ('mon'..'sun')
- * @returns {string|null}
- */
-export function hoursKey(service, rid, iso, day) {
-  const r = routeService(service, String(rid));
-  if (!r) return null;
-  const exc = (r.exceptions || []).find((e) => e && e.date === iso);
-  const d = exc ? exc.hours : r.days[day];
-  if (!d || typeof d !== "object") return "";
-  const spans = Array.isArray(d.spans) && d.spans.length ? d.spans : d.first && d.last ? [[d.first, d.last]] : [];
-  return spans.filter((s) => Array.isArray(s) && s.length >= 2).map((s) => s[0] + "-" + s[1]).join(",");
 }
 
 /**
@@ -169,7 +154,7 @@ export function idleStep(tracks, buses, ctx = {}) {
     if (!rid || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     const t = Number(b.timestamp) || ref;
     const p = prev[id];
-    const cont = !!(p && p.rid === rid && t >= p.since && t - p.last <= GAP_S && distM(p.lat, p.lon, lat, lon) <= STILL_M);
+    const cont = !!(p && p.rid === rid && t >= p.since && t - p.last <= GAP_S && distM(p.lat, p.lon, lat, lon) <= stillRadius(p.lat));
     const tr = cont ? { rid, lat: p.lat, lon: p.lon, since: p.since, last: Math.max(p.last, t) } : { rid, lat, lon, since: t, last: t };
     next[id] = tr;
     const still = t - tr.since;

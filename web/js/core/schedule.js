@@ -641,3 +641,37 @@ export function nextDeparture(deps, now) {
   for (const m of hourRows(deps).flatMap((r) => r.times)) if (m >= now) return m;
   return null;
 }
+
+/**
+ * The service-day clock of a unix time (Chicago; the night after midnight, before 04:00, belongs to the day before).
+ * @param {number} t unix seconds
+ * @returns {{min:number, iso:string, day:string, group:'weekday'|'sat'|'sun'}} min = minutes since that day's
+ *   midnight (00:30 after midnight = 1470); iso = the service day's date; day = its service.json key
+ */
+export function serviceClock(t) {
+  const p = localParts(t);
+  const night = p.min < 240;
+  const d = night ? localParts(t - 86400) : p;
+  const day = DAY_KEYS[d.dow];
+  const iso = `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+  return { min: night ? p.min + 1440 : p.min, iso, day, group: day === "sat" ? "sat" : day === "sun" ? "sun" : "weekday" };
+}
+
+/**
+ * The route's listed hours on a service day as 'HH:MM-HH:MM' windows joined by ',' (a calendar exception for the
+ * date replaces the weekday's hours). null without schedule data for the route.
+ * @param {object} service store.service
+ * @param {string} rid
+ * @param {string} iso service day 'YYYY-MM-DD'
+ * @param {string} day its key ('mon'..'sun')
+ * @returns {string|null}
+ */
+export function hoursKey(service, rid, iso, day) {
+  const r = routeService(service, String(rid));
+  if (!r) return null;
+  const exc = (r.exceptions || []).find((e) => e && e.date === iso);
+  const d = exc ? exc.hours : r.days[day];
+  if (!d || typeof d !== "object") return "";
+  const spans = Array.isArray(d.spans) && d.spans.length ? d.spans : d.first && d.last ? [[d.first, d.last]] : [];
+  return spans.filter((s) => Array.isArray(s) && s.length >= 2).map((s) => s[0] + "-" + s[1]).join(",");
+}

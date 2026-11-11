@@ -1,7 +1,7 @@
 // core/busnum.js (core.test.html): bus numbers on a line, the picked bus, its own times (owner 2026-10-30).
 import { test, eq, ok } from "./lib.js";
 import { busKey, compareIds, busNumbers, busName, selectedBus, busArrival, pickCheck, PICK_HOLD_S,
-  numberRoutes, numberStep, NUM_HOLD_S, routeNumbers, numberMap, busNumber, arrivalKey, arrivalBusName, legBusName } from "../js/core/busnum.js";
+  numberRoutes, numberStep, NUM_HOLD_S, RULE_HOLD_S, routeNumbers, numberMap, busNumber, arrivalKey, arrivalBusName, legBusName } from "../js/core/busnum.js";
 
 const bus = (id, rid, label) => ({ vehicle: { id, label }, trip: { route_id: rid }, position: { latitude: 41.79, longitude: -87.6 } });
 
@@ -101,6 +101,36 @@ test("busnum: numberStep lets a bus more than a block off its route go at once; 
   r = numberStep(r.seen, two.slice(1), { nowS: 10 });
   eq(r.routes, { A: { 1: 1, 2: 2 } }, "a plain drop-out is held");
   eq(numberStep(r.seen, [bus("1", "B"), bus("2", "A")], { nowS: 20 }).routes, {}, "back on another route: it counts there, not twice");
+});
+
+test("busnum: a bus a rule hides keeps its number place RULE_HOLD_S, so a blink off and on renumbers nobody (owner 2026-11-11)", () => {
+  eq(RULE_HOLD_S, 900, "15 min (RouteKnower E32c)");
+  const three = [bus("4320", "A"), bus("4325", "A"), bus("4330", "A")];
+  let r = numberStep(null, three, { nowS: 0 });
+  const blink = [three[1]];                                       // 4325 off its route: store.away and held
+  r = numberStep(r.seen, [three[0], three[2]], { nowS: 10, away: blink, held: blink });
+  eq(r.routes.A, { 4320: 1, 4325: 2, 4330: 3 }, "hidden: 4330 stays Bus 3 (it was Bus 2 at once before)");
+  r = numberStep(r.seen, [three[0], three[2]], { nowS: 10 + RULE_HOLD_S, away: blink, held: blink });
+  eq(r.routes.A["4330"], 3, "still within the hold (counted from the hide)");
+  const back = numberStep(r.seen, three, { nowS: 20 + RULE_HOLD_S });
+  eq(back.routes.A, { 4320: 1, 4325: 2, 4330: 3 }, "shown again: the same numbers");
+  r = numberStep(r.seen, [three[0], three[2]], { nowS: 11 + RULE_HOLD_S, away: blink, held: blink });
+  eq(r.routes.A, { 4320: 1, 4330: 2 }, "hidden longer: the line renumbers without it, at once");
+  r = numberStep(r.seen, [three[0], three[2]], { nowS: 30 + RULE_HOLD_S, away: blink, held: blink });
+  eq(r.routes.A, { 4320: 1, 4330: 2 }, "still hidden: its place is not given back (no flip)");
+  r = numberStep(r.seen, [three[0], three[2]], { nowS: 40 + RULE_HOLD_S });
+  eq(r.routes.A, { 4320: 1, 4330: 2 }, "then silent: no 45 s drop-out place either");
+  const idle = [bus("1", "A"), bus("2", "A")];
+  r = numberStep(null, idle, { nowS: 0 });
+  r = numberStep(r.seen, idle.slice(1), { nowS: 600, held: idle.slice(0, 1) });
+  eq(r.routes, { A: { 1: 1, 2: 2 } }, "idle (core/idle.js, not away): held too; the one shown bus keeps 'Bus 2'");
+  r = numberStep(r.seen, idle.slice(1), { nowS: 610 });
+  eq(r.routes, { A: { 1: 1, 2: 2 } }, "a held bus that stops reporting: the usual 45 s drop-out hold");
+  eq(numberStep(r.seen, idle.slice(1), { nowS: 611 + NUM_HOLD_S }).routes, {}, "then it goes");
+  const fresh = numberStep(null, idle.slice(1), { nowS: 0, held: idle.slice(0, 1) });
+  eq(fresh.routes, { A: { 1: 1, 2: 2 } }, "after a reload a hidden bus gets its place from the first poll");
+  eq(numberStep(fresh.seen, [], { nowS: 10, held: idle.slice(0, 1) }).routes, {}, "no bus shown at all: nothing held");
+  eq(numberStep(null, [bus("2", "A")], { nowS: 0, held: [bus("1", "B")] }).routes, {}, "a place counts on the hidden bus's own route only");
 });
 
 test("busnum: routeNumbers reads store.busNums while it belongs to the shown buses, else numbers store.buses", () => {

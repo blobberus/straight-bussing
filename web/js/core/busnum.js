@@ -81,32 +81,58 @@ export function numberRoutes(pairs) {
   return out;
 }
 
+/**
+ * The quiet line wherever the app shows a live bus count or bus numbers (owner 2026-11-11: "keep numbers steady but
+ * indicate that this bus count reported by PassioGo is unreliable"): the route page under "Where the buses are" (or under
+ * the count). Kit BusNumbers.countNote, same words.
+ */
+export const COUNT_NOTE = "Bus count reported by PassioGo can be unreliable.";
+
 /** A bus left out of a poll keeps its number this long (s): as long as the map keeps its badge (map/layers.js MISSING_S). */
 export const NUM_HOLD_S = 45;
+/**
+ * A bus a display rule hides (core/offroute.js, core/idle.js) keeps its number place this long from the hide (s), so the
+ * other buses keep their numbers while it blinks off and on at the edge of its line (owner 2026-11-11: "keep numbers
+ * steady"; RouteKnower E32 number_flap); hidden longer, the line renumbers without it.
+ */
+export const RULE_HOLD_S = 15 * 60;
+
+const keysOf = (xs) => new Set((xs || []).map((x) => (x && typeof x === "object" ? busKey(x) : x == null ? null : String(x))));
 
 /**
  * One poll's bus numbers (data/live.js, every poll with a vehicle list; stored as store.busNums). A bus Passio leaves out
- * of the poll while others report (DC-015) keeps its place for NUM_HOLD_S, so the other buses keep their numbers; a bus
- * more than a block off its route (store.away, core/offroute.js) leaves at once, like its badge; a poll with no bus
- * lets every bus go (data/live.js already keeps the list through ONE odd empty answer). Then vehicle id order, as
- * busNumbers. iOS: the app numbers the buses its map draws (BusMotion keeps a missing bus 45 s), Kit BusNumbers.byRoute.
- * @param {Map<string, {rid:string, gone:number}>|null} seen the last step's memory (bus key -> route, when it went missing; 0 = listed)
+ * of the poll while others report (DC-015) keeps its place for NUM_HOLD_S, so the other buses keep their numbers; a bus a
+ * display rule hides (`held`: more than a block off its route, store.away, or idle) keeps its place for RULE_HOLD_S from
+ * the hide, so a bus that blinks off and on keeps its number and so do the others (owner 2026-11-11), then leaves at
+ * once; a poll with no bus lets every bus go (data/live.js already keeps the list through ONE odd empty answer). Then
+ * vehicle id order, as busNumbers. iOS: the app numbers the buses its map draws (BusMotion keeps a missing bus 45 s) plus
+ * the rule-hidden ones (LiveState.numberHeld, Kit BusNumbers.heldStep), Kit BusNumbers.byRoute.
+ * @param {Map<string, {rid:string, gone:number, hid?:number, out?:1}>|null} seen the last step's memory (bus key -> route,
+ *   when it went missing (0 = listed), when a rule hid it, out = hidden past RULE_HOLD_S: remembered, not numbered)
  * @param {object[]} buses this poll's store.buses
- * @param {{away?:Array<object|string>, nowS:number}} o away: buses (or keys) more than a block off their route
- * @returns {{seen:Map<string, {rid:string, gone:number}>, routes:Object<string, Object<string, number>>}}
+ * @param {{away?:Array<object|string>, held?:Array<object>, nowS:number}} o away: buses (or keys) more than a block off
+ *   their route; held: the operating buses a display rule hides now (away included), with their routes
+ * @returns {{seen:Map<string, {rid:string, gone:number, hid?:number, out?:1}>, routes:Object<string, Object<string, number>>}}
  */
-export function numberStep(seen, buses, { away = [], nowS } = {}) {
+export function numberStep(seen, buses, { away = [], held = [], nowS } = {}) {
   const now = Number(nowS) || 0, next = new Map();
   for (const [k, rid] of pairsOf(buses)) if (k != null && rid) next.set(k, { rid, gone: 0 });
-  const off = new Set((away || []).map((x) => (x && typeof x === "object" ? busKey(x) : x == null ? null : String(x))));
-  if (next.size) {
+  const off = keysOf(away), ruled = keysOf(held), any = next.size > 0;
+  for (const [k, rid] of pairsOf(held)) {
+    if (k == null || !rid || next.has(k)) continue;
+    const p = seen && seen.get(k);
+    const hid = p && p.rid === rid && p.hid ? p.hid : now;                   // when a rule hid it (on this route)
+    next.set(k, now - hid <= RULE_HOLD_S ? { rid, gone: 0, hid } : { rid, gone: 0, hid, out: 1 });   // past the hold: remembered, not numbered
+  }
+  if (any) {
     for (const [k, v] of seen || []) {
-      if (next.has(k) || off.has(k) || !v || !v.rid) continue;
+      if (next.has(k) || off.has(k) || ruled.has(k) || !v || !v.rid || v.out) continue;   // a place past its hold is not given back
       const gone = v.gone || now;
       if (now - gone <= NUM_HOLD_S) next.set(k, { rid: v.rid, gone });
     }
   }
-  return { seen: next, routes: numberRoutes([...next].map(([k, v]) => [k, v.rid])) };
+  const counted = any ? [...next].filter(([, v]) => !v.out) : [];          // no bus shown at all: nothing numbered
+  return { seen: next, routes: numberRoutes(counted.map(([k, v]) => [k, v.rid])) };
 }
 
 const memo = new WeakMap();

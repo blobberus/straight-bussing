@@ -1,6 +1,6 @@
 import { test, eq, ok } from './lib.js';
 import { createStore } from '../js/core/store.js';
-import { loadStatic, deriveStopRoutes, cleanSlice, cleanLandmarks } from '../js/data/static.js';
+import { loadStatic, deriveStopRoutes, cleanSlice, cleanLandmarks, cleanSeen } from '../js/data/static.js';
 import { res, stubFetch } from './data-helpers.js';
 
 const FILES = {
@@ -53,6 +53,33 @@ test('static: loads all files, derives stopRoutes, sets staticLoaded in one patc
   ok(f.calls.every((c) => c.url.startsWith('data/')), 'uses base');
   await new Promise((r) => setTimeout(r, 0));
   eq(notes, 1, 'single store notification');
+});
+
+test('static: service_seen.json loads after staticLoaded, cleaned to what core/seen.js reads (owner 2026-11-11)', async () => {
+  const seen = { valid_until: '2026-12-25', about: 'long text', lines: {
+    r1: { name: 'R1', days: [{ type: 'weekday', dows: ['mon', 'tue'], listed: { spans: [['07:00', '21:00']] },
+      buses: [{ bus: 1, days: 22, first_stop: { p50: '07:05' } }, { bus: 2, days: 2, first_stop: { p50: '18:00' } }, { bus: 3, days: 9, first_stop: { p50: 'x' } }] },
+      { type: 'sat', dows: ['sat'], listed: { spans: [] } }, 'junk'] },
+    bad: 'x' },
+    transitions: [{ from: 'r1', to: 'r2', day_type: 'weekday', kind: 'after_break', leave: { p50: '17:57' }, join: { p50: '18:03' } },
+      { from: 'r1', to: 'r2', day_type: 'sun', leave: { p50: '17:57' }, join: { p50: '18:03' } }, { from: 'r1', to: 'r2', day_type: 'weekday' }] };
+  const store = createStore({});
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const pending = loadStatic(store, { fetch: okFetch({ 'service_seen.json': () => gate.then(() => res(seen)) }) });
+  await new Promise((r) => setTimeout(r, 20));
+  eq([store.get().staticLoaded, store.get().serviceSeen], [true, undefined], 'staticLoaded does not wait for it (first paint)');
+  release();
+  const out = await pending;
+  eq([out.failed, out.lateFailed], [[], []]);
+  eq(store.get().serviceSeen, { valid_until: '2026-12-25', lines: { r1: [{ dows: ['mon', 'tue'], spans: '07:00-21:00', starts: [425] },
+    { dows: ['sat'], spans: '', starts: [] }] }, transitions: [{ from: 'r1', to: 'r2', dows: ['mon', 'tue'], leave: 1077, join: 1083, brk: 1 }] },
+    'explanations dropped, bus slots seen under 3 days dropped, transitions without a known day type dropped');
+  eq(cleanSeen({ lines: {} }), null, 'nothing usable: null');
+  eq(cleanSeen('x'), null);
+  const missing = createStore({});
+  const o2 = await loadStatic(missing, { fetch: okFetch({ 'service_seen.json': () => res(null, 404) }) });
+  eq([o2.lateFailed, missing.get().serviceSeen, missing.get().staticLoaded], [['service_seen.json'], undefined, true], 'missing: off, the rest loads');
 });
 
 test('static: a required file failing leaves an empty slice, retries once, still loads', async () => {

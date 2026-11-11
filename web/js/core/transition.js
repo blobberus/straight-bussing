@@ -82,3 +82,35 @@ export function goneStep(prev, vehicles, trips, ctx = {}) {
   }
   return { seen, gone };
 }
+
+/**
+ * HELD (owner 2026-11-11: "Keep hidden bus times off until it reports again"; RouteKnower E32 offroute_then_silent): a
+ * bus that a display rule hides (core/offroute.js, core/idle.js) and that then stops reporting leaves core/operating.js's
+ * list 5 min after its last report, so the rules no longer see it; without this its Passio times came back on screen
+ * until GONE (15 min after its last report, never for a sparse reporter): 1,555 bus-minutes Oct 10 to Nov 5, 174 Nov 6
+ * to 10, mostly buses already at the garage. Now its trip updates stay dropped until it is operating again (a fresh
+ * report) and no rule hides it. data/live.js runs it once per vehicle poll after the rules; iOS Kit Transition.held
+ * (same rule).
+ * @param {Object<string, {t:number}>} prev the previous call's `held` ({} at start; not modified)
+ * @param {Array<object>} buses this poll's operating vehicles (core/operating.js), before any rule drops one
+ * @param {Iterable<string>} hidden vehicle ids a display rule hides now
+ * @param {Array<object>} trips store.trips (a held bus that is still predicted is never forgotten)
+ * @param {{feedTs?:number, nowS?:number}} [ctx]
+ * @returns {{held:Object<string, {t:number}>, ids:string[]}} held: every bus a rule hid (t = its report time then);
+ *   ids: the held buses no rule hides now (not operating: their trip updates to drop too), in `prev` order
+ */
+export function heldStep(prev, buses, hidden, trips, ctx = {}) {
+  const ref = Number(ctx.feedTs) || Number(ctx.nowS) || 0;
+  const H = new Set([...(hidden || [])].map(String));
+  const op = new Map();
+  for (const b of buses || []) if (b && b.vehicle && b.vehicle.id != null) op.set(String(b.vehicle.id), b);
+  const predicted = new Set();
+  for (const tu of trips || []) if (tu && tu.vehicle && tu.vehicle.id != null) predicted.add(String(tu.vehicle.id));
+  const held = {}, ids = [];
+  for (const [id, e] of Object.entries(prev || {})) {
+    if (H.has(id) || op.has(id) || !e || !Number.isFinite(e.t)) continue;      // hidden now (below), or reporting unhidden: released
+    if (ref - e.t <= KEEP_S || predicted.has(id)) { held[id] = e; ids.push(id); }
+  }
+  for (const id of H) held[id] = { t: Number(op.get(id) && op.get(id).timestamp) || ref };
+  return { held, ids };
+}

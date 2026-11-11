@@ -2,6 +2,7 @@
 // cases plus real bus reports from the archived raw polls (fixtures/idle_golden.json, made by
 // experiments/routeknower/E28-scripts/make_golden.py; the iOS Kit IdleTests replays the same file).
 import { test, eq, ok } from "./lib.js";
+import { STILL_DOWNTOWN_M, DOWNTOWN_LAT, stillRadius, idleStep as idleStepD } from "../js/core/idle.js";
 import { STILL_M, IDLE_S, PARKED_S, LINGER_S, PAST_PAD_S, FUTURE_S, GAP_S, SPOT_R, serviceClock, hoursKey, lingerAt,
   predictsAhead, idleStep } from "../js/core/idle.js";
 import { startLive } from "../js/data/live.js";
@@ -37,6 +38,22 @@ const reasonAt = (rows) => (rows.find((x) => x[1]) || [])[2] || null;
 
 test("idle: constants are the measured rule (RouteKnower E28)", () => {
   eq([STILL_M, IDLE_S, PARKED_S, LINGER_S, PAST_PAD_S, FUTURE_S, GAP_S, SPOT_R], [80, 1800, 5400, 180, 3600, 120, 600, 120]);
+});
+
+test("idle: a wider still radius downtown (owner 2026-11-11; RouteKnower E32c: 150 m north of Cermak Road)", () => {
+  eq([STILL_DOWNTOWN_M, DOWNTOWN_LAT, stillRadius(41.88), stillRadius(41.79)], [150, 41.85, 150, 80]);
+  // a bus parked at Union Station whose fixes wander up to 120 m (downtown GPS) stays one still stretch; on campus it restarts
+  const T = 1792000000;
+  const run = (lat0) => {
+    let tr = {};
+    for (let k = 0; k <= 12; k++) {
+      const lat = lat0 + (k % 2 ? 0.0011 : 0);   // 122 m north every other report
+      tr = idleStepD(tr, [{ vehicle: { id: "p" }, trip: { route_id: "R" }, position: { latitude: lat, longitude: -87.64 }, timestamp: T + 60 * k }], { nowS: T + 60 * k }).tracks;
+    }
+    return tr.p.since;
+  };
+  eq(run(41.8787), T, "downtown: still since the first report");
+  ok(run(41.79) > T, "campus (80 m): the clock restarted");
 });
 
 test("idle: the service-day clock (the night after midnight belongs to the day before)", () => {

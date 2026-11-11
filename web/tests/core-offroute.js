@@ -8,6 +8,8 @@ import { BLOCK_M, CONFIRM_S, FAST_M, NEAR_M, NEAR_S, HOURS_PAD_S, GAP_S, DETOUR_
   awayText } from "../js/core/offroute.js";
 import { startLive } from "../js/data/live.js";
 import { createStore } from "../js/core/store.js";
+import { TRANSITION_PAD_S, START_MIN_DAYS, TRANSITION_TEXT, TOWARD_M, TRANSITION_TIMES, TRANSITION_MAX_M, seenEntry, transitionAt } from "../js/core/seen.js";
+import { cleanSeen } from "../js/data/static.js";
 
 const NOON = 1791997200;              // Wed 2026-10-14 12:00 Chicago (CDT)
 const NIGHT = 1792033200;             // Wed 22:00: route A ended at 21:00, past the 30 min pad
@@ -47,6 +49,51 @@ const feedAlerts = (c) => (c.alerts || []).map((a) => ({ header_text: a.header, 
 
 test("offroute: constants are the measured rule (E27b: 250 m for 45 s; E27c: 500 m twice, 120 m for 2 min, detours within 3 km)", () => {
   eq([BLOCK_M, CONFIRM_S, FAST_M, NEAR_M, NEAR_S, HOURS_PAD_S, GAP_S, DETOUR_MAX_M, SHAPE_TOL], [250, 45, 500, 120, 120, 1800, 600, 3000, 0.01]);
+});
+
+// service_seen.json (tools/build_service_seen.py) as the app cleans it: A's weekday buses start 07:05 and 16:00, a bus
+// usually leaves A for B at 17:57 and starts B at 18:03 (owner 2026-11-11: show such buses, marked)
+const SEEN = cleanSeen({ valid_until: "2026-12-25", lines: {
+  A: { days: [{ type: "weekday", dows: ["mon", "tue", "wed", "thu", "fri"], listed: { spans: [["07:00", "21:00"]] },
+    buses: [{ bus: 1, days: 22, first_stop: { p50: "07:05" } }, { bus: 2, days: 9, first_stop: { p50: "16:00" } }, { bus: 3, days: 2, first_stop: { p50: "12:00" } }] },
+  { type: "sat", dows: ["sat"], listed: { spans: [["09:00", "17:00"]] }, buses: [] }] },
+  B: { days: [{ type: "weekday", dows: ["mon", "tue", "wed", "thu", "fri"], listed: { spans: [["07:00", "21:00"]] }, buses: [] }] } },
+  transitions: [{ from: "A", to: "B", day_type: "weekday", kind: "direct", leave: { p50: "17:57" }, join: { p50: "18:03" } },
+    { from: "B", to: "A", day_type: "weekday", kind: "after_break", leave: { p50: "08:30" }, join: { p50: "10:00" } }] });
+const AT = (h, m = 0) => NOON + (h - 12) * 3600 + m * 60;
+
+test("seen: transition windows of a line (owner 2026-11-11), only on the learned timetable and before valid_until", () => {
+  eq([TRANSITION_PAD_S, START_MIN_DAYS, TRANSITION_TEXT, TOWARD_M, TRANSITION_TIMES, TRANSITION_MAX_M], [1800, 3, "Transitioning to new line", 100, false, 1000],
+    "RouteKnower E32c: windows of 30 min, heading back 100 m, within 1 km, its badge without its times");
+  eq(transitionAt(SEEN, service, "A", AT(17, 30)), { kind: "transition", from: "A", to: "B", a: 1047, b: 1113 }, "30 min before the leave");
+  eq(transitionAt(SEEN, service, "B", AT(18, 33))?.kind, "transition", "the new line too, to 30 min after the join");
+  eq(transitionAt(SEEN, service, "A", AT(18, 34)), null, "past it");
+  eq(transitionAt(SEEN, service, "A", AT(16, 20)), { kind: "start", a: 930, b: 990 }, "a usual shift start (seen 9 days)");
+  eq(transitionAt(SEEN, service, "A", AT(12, 10)), null, "a bus slot seen on 2 days only: no window");
+  eq(transitionAt(SEEN, service, "A", AT(12)), null, "midday: none (a garage run then is hidden as before)");
+  const changed = { routes: { ...service.routes, A: { days: week(day("08:00", "21:00")), exceptions: [] } } };
+  eq(transitionAt(SEEN, changed, "A", AT(17, 30)), null, "today's listed hours differ from the learned ones: off");
+  eq(transitionAt({ ...SEEN, valid_until: "2026-10-13" }, service, "A", AT(17, 30)), null, "past valid_until: off");
+  eq(transitionAt(SEEN, service, "A", AT(17, 30) + 3 * 86400), null, "Saturday: its own entry, no windows");
+  eq(seenEntry(null, service, "A", NOON), null, "no file: off");
+  eq(transitionAt(SEEN, service, "B", AT(9)), null, "after a break: not while the bus goes on its break");
+  eq(transitionAt(SEEN, service, "A", AT(9, 45)), { kind: "transition", from: "B", to: "A", a: 570, b: 630 }, "only around the join");
+});
+
+test("offroute: a bus off its route heading back to it inside a transition window stays shown, marked; else hidden as before", () => {
+  // 1.2 km north of A heading back to it (about 280 m nearer every 15 s, then 390 m off), or parked there
+  const OUT = [41.801, -87.61];
+  const toward = (t0) => (t) => [OUT[0] - 0.0025 * Math.min(3, (t - t0) / 15), OUT[1]];
+  const run = (t0, c, pos = () => OUT) => { let tr = {}, r; for (let t = t0; t <= t0 + 90; t += 15) { r = offRouteStep(tr, [bus("x", "A", pos(t), t)], ctx(t, c)); tr = r.tracks; } return r; };
+  const at = run(AT(17, 40), { seen: SEEN }, toward(AT(17, 40)));
+  eq([at.hidden, at.transitioning], [[], ["x"]], "17:40, on its way back toward its line in its usual transition window: shown, marked");
+  const parked = run(AT(17, 40), { seen: SEEN });
+  eq([parked.hidden, parked.transitioning], [["x"], []], "parked off its line in the window: not on its way (TOWARD_M), hidden");
+  const far = run(AT(17, 40), { seen: SEEN }, (t) => [GARAGE[0] - 0.0025 * Math.min(3, (t - AT(17, 40)) / 15), GARAGE[1]]);
+  eq([far.hidden, far.transitioning], [["x"], []], "heading back but over 1 km off (TRANSITION_MAX_M): hidden");
+  const noon = run(AT(12), { seen: SEEN }, toward(AT(12)));
+  eq([noon.hidden, noon.transitioning], [["x"], []], "noon: hidden");
+  eq(run(AT(17, 40), {}, toward(AT(17, 40))).hidden, ["x"], "without the file: hidden (the E27b rule)");
 });
 
 test("offroute: a route's corridor is used only while its line is the learned one and before valid_until", () => {

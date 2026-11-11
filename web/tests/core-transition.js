@@ -3,7 +3,7 @@
 // (fixtures/transition_golden.json, made by experiments/routeknower/E29-scripts/make_golden.py; the iOS Kit
 // TransitionTests replays the same file).
 import { test, eq, ok } from "./lib.js";
-import { GONE_S, FRESH_S, SPARSE_S, KEEP_S, goneStep } from "../js/core/transition.js";
+import { GONE_S, FRESH_S, SPARSE_S, KEEP_S, goneStep, heldStep } from "../js/core/transition.js";
 import { startLive } from "../js/data/live.js";
 import { createStore } from "../js/core/store.js";
 
@@ -69,6 +69,55 @@ test("transition: seen is carried, pruned after KEEP_S unless still predicted, a
   eq(goneStep({ x: { t: T0 - 20, dt: 10 } }, [veh("x", T0)], [], { feedTs: T0 }).seen.x, { t: T0, dt: 20 }, "dt = time between its last two reports");
   eq(goneStep({ x: { t: T0 - 999, dt: 0, p: 1 } }, [veh("x", T0)], [], { feedTs: T0 }).seen.x, { t: T0, dt: 0 }, "a predicted-only clock gives way to its first report");
   eq(goneStep(null, null, null, {}).gone, []);
+});
+
+test("transition: HELD keeps a hidden bus's times off after it stops reporting, until it reports unhidden (owner 2026-11-11)", () => {
+  const b = (id, ts) => veh(id, ts);
+  let r = heldStep({}, [b("x", T0), b("y", T0)], ["x"], [tu("x", T0 + 300)], { feedTs: T0 });
+  eq(r.ids, [], "hidden now: the rule drops it, held has nothing more to drop");
+  eq(r.held, { x: { t: T0 } }, "held from its report time");
+  r = heldStep(r.held, [b("y", T0 + 400)], [], [tu("x", T0 + 700)], { feedTs: T0 + 400 });
+  eq(r.ids, ["x"], "silent 6 min: no longer operating, no rule sees it: its times stay off");
+  r = heldStep(r.held, [b("y", T0 + 2000)], [], [tu("x", T0 + 2300)], { feedTs: T0 + 2000 });
+  eq(r.ids, ["x"], "past GONE too (a sparse reporter is never gone): still off");
+  const again = heldStep(r.held, [b("x", T0 + 2010), b("y", T0 + 2010)], ["x"], [tu("x", T0 + 2300)], { feedTs: T0 + 2010 });
+  eq([again.ids, Object.keys(again.held)], [[], ["x"]], "reports again but a rule still hides it: hidden, held");
+  const free = heldStep(r.held, [b("x", T0 + 2010), b("y", T0 + 2010)], [], [tu("x", T0 + 2300)], { feedTs: T0 + 2010 });
+  eq([free.ids, free.held], [[], {}], "reports again and no rule hides it: its times are back");
+  const prev = Object.freeze({ old: Object.freeze({ t: T0 - KEEP_S - 1 }), kept: Object.freeze({ t: T0 - KEEP_S - 1 }) });
+  r = heldStep(prev, [b("y", T0)], [], [tu("kept", T0 + 60)], { feedTs: T0 });
+  eq(r.ids, ["kept"], "forgotten after KEEP_S unless still predicted; the input is not modified");
+  eq(heldStep(null, null, null, null, {}), { held: {}, ids: [] });
+});
+
+test("live: a bus hidden off its route that goes silent keeps its times off (E32 offroute_then_silent)", async () => {
+  let now = T0;
+  const quiet = T0 + 60;                                    // x drives off its line at T0, reports last at T0 + 60
+  const on = { latitude: 41.79, longitude: -87.6 }, off = { latitude: 41.79, longitude: -87.58 };   // 1.66 km east
+  const vx = () => ({ vehicle: { id: "x" }, trip: { trip_id: "t-x", route_id: "A" }, position: off, timestamp: Math.min(now, quiet) });
+  const feeds = () => ({
+    vehiclePositions: { header: { timestamp: now }, entity: [{ vehicle: { ...veh("y", now), position: on } }, ...(now - quiet <= 400 ? [{ vehicle: vx() }] : [])] },
+    tripUpdates: { header: { timestamp: now }, entity: [{ trip_update: tu("x", now + 300) }, { trip_update: tu("y", now + 120) }] },
+    serviceAlerts: { header: { timestamp: now }, entity: [] },
+  });
+  const fetch = async (url) => {
+    const f = feeds(), name = Object.keys(f).find((k) => url.includes(k));
+    return { ok: true, status: 200, json: async () => f[name] };
+  };
+  const shapes = { A: [[[41.79, -87.61], [41.79, -87.59]]] };
+  const store = createStore({ routes: { A: { short: "A" } }, service: {}, shapes, staticLoaded: true, buses: [], trips: [], alerts: [], feedTs: 0 });
+  const live = startLive(store, { fetch, intervalMs: 600000, now: () => now });
+  const tripVehs = () => store.get().trips.map((t) => t.vehicle.id);
+  try {
+    for (const t of [T0, T0 + 10, T0 + 60]) { now = t; await live.pollNow(); }
+    eq(tripVehs(), ["y"], "hidden off its route (FAST): its times are off");
+    now = quiet + 360;                                        // no longer operating (5 min), GONE not yet (15 min)
+    await live.pollNow();
+    eq(tripVehs(), ["y"], "silent 6 min: its times stay off (they came back here before)");
+    now = quiet + 1200;
+    await live.pollNow();
+    eq(tripVehs(), ["y"], "silent 20 min: off");
+  } finally { live.stop(); }
 });
 
 test("transition real: the shift end and the break dropped 15 min after the bus left; layovers and a sparse bus never", async () => {

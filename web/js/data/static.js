@@ -15,6 +15,14 @@ export const STATIC_FILES = Object.freeze([
   ['corridors', 'corridors.json', false],   // streets the buses really drive (RouteKnower E27c; core/offroute.js): see cleanCorridors
 ]);
 
+/**
+ * Loaded AFTER staticLoaded is set (never delays the first paint; ship checklist 3), each into its own store key:
+ * [storeKey, fileName]. A missing or bad file leaves the slice null (the feature it serves is off).
+ */
+export const LATE_FILES = Object.freeze([
+  ['serviceSeen', 'service_seen.json'],     // seen service windows (tools/build_service_seen.py; core/seen.js): see cleanSeen
+]);
+
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const num = (v) => (typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN);
 
@@ -79,6 +87,49 @@ export function cleanSlice(key, v) {
     } else out[id] = x;
   }
   return out;
+}
+
+/** 'HH:MM' (may be >= 24:00) -> minutes, or NaN. */
+const hmMin = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s ?? '')); return m ? +m[1] * 60 + +m[2] : NaN; };
+const p50 = (st) => (isObj(st) ? hmMin(st.p50) : NaN);
+const spansKey = (l) => (isObj(l) && Array.isArray(l.spans) ? l.spans.filter((s) => Array.isArray(s) && s.length >= 2).map((s) => s[0] + '-' + s[1]).join(',') : null);
+
+/**
+ * The parts of service_seen.json the app uses (core/seen.js transitionAt), or null when nothing usable is left:
+ * {valid_until, lines: {rid: [{dows, spans: 'HH:MM-HH:MM,...', starts: [median first stop of each bus slot seen on
+ * START_MIN_DAYS days or more, minutes]}]}, transitions: [{from, to, dows (the from line's day type), leave, join
+ * (median minutes), brk: 1 after a break}]}. Every explanation in the file stays in the file.
+ * @param {any} v parsed service_seen.json
+ * @param {number} [minDays] core/seen.js START_MIN_DAYS
+ * @returns {object|null}
+ */
+export function cleanSeen(v, minDays = 3) {
+  if (!isObj(v) || !isObj(v.lines)) return null;
+  const lines = {}, types = {};
+  for (const [rid, L] of Object.entries(v.lines)) {
+    if (!isObj(L) || !Array.isArray(L.days)) continue;
+    const list = [];
+    for (const d of L.days) {
+      if (!isObj(d) || !Array.isArray(d.dows)) continue;
+      const spans = spansKey(d.listed);
+      if (spans == null) continue;
+      const dows = d.dows.filter((x) => typeof x === 'string');
+      const starts = (Array.isArray(d.buses) ? d.buses : []).filter((b) => isObj(b) && num(b.days) >= minDays)
+        .map((b) => p50(b.first_stop)).filter(Number.isFinite);
+      list.push({ dows, spans, starts });
+      types[rid + '|' + d.type] = dows;
+    }
+    if (list.length) lines[String(rid)] = list;
+  }
+  const transitions = [];
+  for (const x of Array.isArray(v.transitions) ? v.transitions : []) {
+    if (!isObj(x) || x.from == null || x.to == null) continue;
+    const dows = types[x.from + '|' + x.day_type], leave = p50(x.leave), join = p50(x.join);
+    if (!dows || !Number.isFinite(leave) || !Number.isFinite(join)) continue;
+    transitions.push({ from: String(x.from), to: String(x.to), dows, leave, join, ...(x.kind === 'after_break' ? { brk: 1 } : {}) });
+  }
+  if (!Object.keys(lines).length) return null;
+  return { valid_until: v.valid_until ? String(v.valid_until) : null, lines, transitions };
 }
 
 /**
@@ -209,5 +260,14 @@ export async function loadStatic(store, opts = {}) {
   patch.stopRoutes = deriveStopRoutes(patch.routeStops);
   patch.staticLoaded = true;
   store.set(patch);
-  return { failed };
+  // the late files: after the first paint has its data (main.js does not wait for loadStatic; tests and replays do)
+  const late = await Promise.allSettled(LATE_FILES.map(([, f]) => getFile(base + f, fetchFn, false)));
+  const lp = {}, lateFailed = [];
+  late.forEach((res, i) => {
+    const [key, file] = LATE_FILES[i];
+    lp[key] = res.status === 'fulfilled' ? cleanSeen(res.value) : null;
+    if (!lp[key]) lateFailed.push(file);
+  });
+  if (lateFailed.length < LATE_FILES.length) store.set(lp);   // nothing loaded: no second notification
+  return { failed, lateFailed };
 }
