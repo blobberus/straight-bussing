@@ -194,6 +194,40 @@ expanded; a night route's after-midnight trips moved past 24:00, the same readin
 timetable as published, with its oddities (Oct-Nov 2026: some morning Midway Metra loops grow 10 min longer every
 trip); the planner takes, among the next departures, the one that gets there first.
 
+## Seen service windows: `web/data/service_seen.json` (added 2026-11-11)
+Learned from the collected data, not published: when each line's buses are REALLY seen starting and ending service,
+bus by bus, next to the timetable's listed hours, and the usual line-to-line transitions (owner 2026-11-11: "Refresh
+the end of service data in another file where each line is shown their daily seeming end and start time for each bus
+and transition (explain the reasoning in the same file)"). The reasoning is inside the file (`about`, `fields`,
+`method`, `why_seen_differs_from_listed`, `layovers_vs_lasting`, `how_the_app_uses_it`, `refresh`).
+`tools/build_service_seen.py` (stdlib, test `tools/test_service_seen.py`) reads a fetch.py folder: the raw position
+polls, each day's own timetable and arrivals.csv. It leaves out E30's wrong_line_label arrivals and the calendar's
+holidays and breaks (`data/calendar.json`). A stint is a bus's arrivals on one line with gaps of 30 min at most (a
+layover; the same rule as bus_changes.csv `lasting`). A shift is a bus's stints on one line within 3 h (the gaps
+between them are breaks). Bus 1, Bus 2, ... are a line's shifts in the order they first reported under its label;
+they are not the app's Bus N numbers. A transition is a stint on one line followed by one on another line within
+3 h. Per line and day type (weekday / sat / sun, split where the listed hours differ; a single weekday is split off
+only when it clearly differs, and Friday was checked) the file holds:
+- `listed`: the listed hours
+- `seen`: the first report, first stop, last stop and last report (median, p10 to p90, days)
+- `buses[]`: the same for each Bus k
+- `breaks[]`, plus `transitions[]` at the top level
+
+Times are 'HH:MM' on the service-day clock, so 24:25 = 00:25. First build (Oct 10 to Nov 10, 32 days, 85 kB, 32
+transition patterns), weekday medians:
+- Ending 15 min or more before the listed end on almost every day: Downtown Campus Connector (last stop 22:12, listed
+  to 00:25), 53rd Street Express (18:12 vs 19:25), Apostolic/Drexel (23:55 vs 00:55), Midway Metra's morning span
+  (09:49 vs 11:55), and NightRide (about 23:50 to 24:00 vs 04:29: no bus in the feed after midnight).
+- Running past the listed end on most days: Central (23:51 vs 23:14), Midway Metra's afternoon (19:12 vs 18:55),
+  Regents Express (21:29 vs 21:00).
+- Never seen: Friend Center/Metra's weekend listing (0 of 10 days). App use (display-rules, 2026-11-11): end of service for the idle rule, and transition windows
+for buses on their way to a new line. Check `valid_until` (newest day + 45 days) and that `listed.spans` equals
+today's hours.
+Refresh it monthly, after a timetable change, after a holiday or break, or when valid_until passes:
+`python experiments/routeknower/E28-scripts/fetch.py --out <dl> --from 2026-10-10 --to <newest complete day>`, then
+`python tools/build_service_seen.py --dl <dl>` (about 15 s for 32 days plus the downloads), then
+`python tools/test_service_seen.py`.
+
 ## Forecast snapshots for training and analysis: `eta-<day>.csv.gz` (added 2026-10-12)
 `tools/build_eta_dataset.py`. **One row = (query minute t, bus, one of that bus's arrivals in (t, t + 45 min])**, plus
 rows for a visit Passio showed at t that no arrival matches (`label_status` no_arrival: a bus going out of service, a
