@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import odd_lib as L          # noqa: E402
 import odd_feed as F         # noqa: E402
+import odd_labels as LB      # noqa: E402
 
 DAY = "2026-11-09"           # a Monday
 T0 = L.day_bounds(DAY)[0] + 6 * 3600       # 10:00 CST
@@ -181,6 +182,25 @@ class FeedTest(unittest.TestCase):
         self.assertEqual(len(eps), 1)                         # starts > 15 min after the end
         self.assertEqual((eps[0]["side"], eps[0]["outcome"]), ("after", "not_serving"))
         self.assertGreater(eps[0]["start"], T0 + 900)
+
+
+class LabelTest(unittest.TestCase):
+    def test_wrong_line_needs_30_min_off_label(self):
+        li = L.LineIndex(SHAPES)
+        tr = shuttle("A", LAT_B, T0, 360)                                    # labeled A, drives B, 60 min
+        p = L.DayPolls.from_tracks({"1": tr})
+        eps = LB.wrong_line(DAY, p, li, {"A", "B", "N"}, {})
+        self.assertEqual(len(eps), 1)
+        self.assertEqual((eps[0]["route_id"], eps[0]["other_route"], eps[0]["outcome"]), ("A", "B", "kept_label"))
+        short = shuttle("A", LAT_B, T0, 120)                                 # 20 min: not enough
+        self.assertEqual(LB.wrong_line(DAY, L.DayPolls.from_tracks({"1": short}), li, {"A", "B"}, {}), [])
+        own = shuttle("A", LAT_A, T0, 360)                                   # on its own line
+        self.assertEqual(LB.wrong_line(DAY, L.DayPolls.from_tracks({"1": own}), li, {"A", "B"}, {}), [])
+
+    def test_flipflop(self):
+        tr = drive("1", "A", LAT_A, T0, 10) + drive("1", "B", LAT_A, T0 + 100, 6) + drive("1", "A", LAT_A, T0 + 160, 10)
+        eps = LB.flipflops(DAY, L.DayPolls.from_tracks({"1": tr}), {"A", "B"})
+        self.assertEqual([(e["route_id"], e["other_route"]) for e in eps], [("A", "B")])
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
