@@ -192,7 +192,7 @@ def validate_row(r, routes, category=None, stops=None, registry=False):
     if stops is not None:
         bad = [s for s in sc.get("stops", []) if s not in stops]
         if bad:
-            w.append(f"scope stops not in web/data/stops.json: {', '.join(bad)}")
+            w.append(f"scope stops not in web/data/stops.json or timetable.json: {', '.join(bad)}")
     return p, w
 
 
@@ -351,11 +351,33 @@ def stop_names_for(rows, stops):
 
 
 def load_stops(path):
+    """{stop id: name} from web/data/stops.json, plus (unnamed) every stop id of web/data/timetable.json next to it.
+    The committed stops.json can be older than the timetable (the Pages deploy rebuilds web/data from Passio's zip
+    each day without committing it; e.g. 61st & Kimbark, 225834, joined the Apostolic/Drexel timetable in late
+    October), so a stop a newer timetable serves is not reported as unknown."""
     try:
         d = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    return {str(k): (v.get("name", "") if isinstance(v, dict) else "") for k, v in d.items()}
+    out = {str(k): (v.get("name", "") if isinstance(v, dict) else "") for k, v in d.items()}
+    try:
+        tt = json.loads((Path(path).parent / "timetable.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return out
+
+    def walk(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if k == "stops" and isinstance(v, list):
+                    for sid in v:
+                        out.setdefault(str(sid), "")
+                else:
+                    walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+    walk(tt)
+    return out
 
 
 def main(argv=None):

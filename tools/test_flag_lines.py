@@ -195,7 +195,10 @@ def unknown_stop_ids_warn():
     r = Repo()
     r.write("transition_flags.csv", [row(scope="stops=99999")])
     code, out, err = r.run()
-    assert code == 0 and "scope stops not in web/data/stops.json: 99999" in err, err
+    assert code == 0 and "scope stops not in web/data/stops.json or timetable.json: 99999" in err, err
+    (r.root / "timetable.json").write_text(json.dumps({"6126": [{"stops": ["8811", "99999"], "t": [0, 60]}]}), encoding="utf-8")
+    code, out, err = r.run()                                  # a stop a newer timetable serves is known
+    assert code == 0 and "99999" not in err, err
 
 
 @test
