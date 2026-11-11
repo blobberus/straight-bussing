@@ -8,6 +8,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import misses_lib as M          # noqa: E402
 import features as F            # noqa: E402
+import transitions_near as T    # noqa: E402
 
 TESTS = []
 
@@ -161,6 +162,30 @@ def test_eta_index_matches_nearest_arrival_and_lead():
     assert ix.match("4301", "S1", EP + 200, 300) is None    # no arrival within 60 s
     assert ix.match("4301", "S2", EP, 300) is None
     assert F.derive(None)["no_timetable"] == ""
+
+
+# ---------------------------------------------------------------- transitions near a prediction
+@test
+def test_transitions_labeled_file_first_then_the_live_log():
+    d = tmp()
+    lab = write(d / "transitions.csv", ["service_day", "epoch", "route_id", "vehicle_id", "kind", "label", "lasting"], [
+        ["2026-10-21", EP, "1075", "4301", "leave", "break", "1"],
+        ["2026-10-21", EP + 600, "1075", "4302", "leave", "layover_swap", "0"],     # a layover: not a transition
+        ["2026-10-21", EP + 900, "1075", "4303", "add", "layover_swap", ""],       # the layover's end: not either
+        ["2026-10-21", EP + 1200, "1075", "4304", "add", "added_from_garage", ""],
+    ])
+    bc = write(d / "bus_changes.csv", ["route_id", "epoch", "kind", "vehicle_id", "lasting", "returning"], [
+        ["1075", EP + 60, "drop", "4309", "1", ""],                   # a day the labeled file covers: ignored
+        ["1075", EP + 86400, "drop", "4305", "1", ""],
+        ["1075", EP + 86400 + 300, "add", "4306", "", "1"],           # a returning bus: not a transition
+    ])
+    tr = T.Transitions(lab, bc)
+    assert tr.covered("2026-10-21") and tr.covered("2026-10-22") and not tr.covered("2026-10-23")
+    assert [e[1] for e in tr.ev["1075"]] == ["leave", "add", "leave"]
+    assert tr.nearest("1075", EP + 300) == (5.0, "leave", "4301")          # 5 min after the bus left
+    assert tr.nearest("1075", EP + 1080) == (-2.0, "add", "4304")          # a bus joins 2 min later
+    assert tr.nearest("1075", EP + 86400 - 600)[0] == -10.0
+    assert tr.nearest("1075", EP + 5 * 3600) is None and tr.nearest("9999", EP) is None
 
 
 def main():
