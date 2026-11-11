@@ -207,8 +207,11 @@ def load_reports(path, day, routes):
     return by, sorted(polls)
 
 
+STOP_LL = {}             # stop name -> (lat, lon), from arrivals.csv (where transitions leave and join)
+
+
 def load_arrivals(path):
-    """Per vehicle: sorted (epoch, route_id, stop_name)."""
+    """Per vehicle: sorted (epoch, route_id, stop_name). Fills STOP_LL."""
     by = defaultdict(list)
     with open(path, encoding="utf-8-sig", newline="") as f:
         for r in csv.DictReader(f):
@@ -216,6 +219,10 @@ def load_arrivals(path):
                 by[str(r["vehicle_id"])].append((int(r["epoch"]), str(r["route_id"]), r.get("stop_name") or ""))
             except (KeyError, ValueError):
                 continue
+            try:
+                STOP_LL.setdefault(r.get("stop_name") or "", (round(float(r["stop_lat"]), 5), round(float(r["stop_lon"]), 5)))
+            except (KeyError, ValueError, TypeError):
+                pass
     for v in by.values():
         v.sort()
     return by
@@ -647,6 +654,8 @@ def build(facts, statics, names, used_days, left_out, gaps_by_day, a_from, a_to)
                          "join": stat([clock_min(t["join"], t["day"]) for t in cl]),
                          "gap_min": med(gap), "left_at": top(Counter(t["left_at"] for t in cl))[0],
                          "joined_at": top(Counter(t["joined_at"] for t in cl))[0],
+                         "left_at_ll": STOP_LL.get(top(Counter(t["left_at"] for t in cl))[0]),
+                         "joined_at_ll": STOP_LL.get(top(Counter(t["joined_at"] for t in cl))[0]),
                          "from_bus": top(Counter(t["from_order"] for t in cl))[0],
                          "to_bus": top(Counter(t["to_order"] for t in cl))[0],
                          "label_on_the_way": label,
@@ -714,7 +723,8 @@ ABOUT = {
         "transitions[]": "a bus leaving one line and starting another within 3 h: from / to (route ids + names), "
                          "day_type (of the from line), days (days seen) of of_days, times, kind (direct = median gap "
                          "up to 30 min, after_break = longer), leave (its last stop on the from line), join (its first "
-                         "stop on the to line), gap_min (median), left_at / joined_at (stops), from_bus / to_bus (its "
+                         "stop on the to line), gap_min (median), left_at / joined_at (stops) and left_at_ll / "
+                         "joined_at_ll ([lat, lon] of those stops), from_bus / to_bus (its "
                          "order on each line that day), label_on_the_way (the label most of its reports between leave "
                          "and join carried: from, to, other, or none = out of the feed), label_share, "
                          "to_label_after_min (median minutes after leaving until it first reported under the new "
@@ -778,8 +788,9 @@ ABOUT = {
         "Monthly, after a timetable change, or when valid_until passes (and after a holiday or a break, which are left "
         "out). Commands: python experiments/routeknower/E28-scripts/fetch.py --out <dl> --from 2026-10-10 --to <newest "
         "complete day>; python tools/build_service_seen.py --dl <dl> --odd data/labeled/transitions/odd_episodes.csv; "
-        "python tools/test_service_seen.py. About 3 min for 32 days plus the downloads. docs/DATA.md \"Seen service "
-        "windows\"."),
+        "python tools/test_service_seen.py. About 15 s for 32 days plus the downloads. The data repo's weekly findings "
+        "run (github.com/blobberus/straight-bussing-data, findings/service_seen/service_seen.json) rebuilds a candidate "
+        "copy every Monday: adopt it here after a look. docs/DATA.md \"Seen service windows\"."),
 }
 
 
