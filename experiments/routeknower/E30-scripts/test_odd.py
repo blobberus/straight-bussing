@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import odd_lib as L          # noqa: E402
 import odd_feed as F         # noqa: E402
 import odd_labels as LB      # noqa: E402
+import odd_passio as P       # noqa: E402
 
 DAY = "2026-11-09"           # a Monday
 T0 = L.day_bounds(DAY)[0] + 6 * 3600       # 10:00 CST
@@ -204,6 +205,47 @@ class LabelTest(unittest.TestCase):
         tr = drive("1", "A", LAT_A, T0, 10) + drive("1", "B", LAT_A, T0 + 100, 6) + drive("1", "A", LAT_A, T0 + 160, 10)
         eps = LB.flipflops(DAY, L.DayPolls.from_tracks({"1": tr}), {"A", "B"})
         self.assertEqual([(e["route_id"], e["other_route"]) for e in eps], [("A", "B")])
+
+
+class PassioTest(unittest.TestCase):
+    def test_ghost_and_join(self):
+        rows = [{"event_id": "e1", "kind": "leave", "label": "shift_end", "passio_pred_after_min": "22.0",
+                 "phantom_stops": "6", "epoch": str(T0), "route_id": "A", "vehicle_id": "1", "spot_lat": "", "spot_lon": "",
+                 "spot": "X"},
+                {"event_id": "e2", "kind": "leave", "label": "layover_swap", "passio_pred_after_min": "30",
+                 "phantom_stops": "0", "epoch": str(T0), "route_id": "A", "vehicle_id": "2", "spot_lat": "", "spot_lon": "",
+                 "spot": "X"}]
+        g = P.ghost_predictions(DAY, rows)
+        self.assertEqual([(e["vehicle_id"], e["beyond_gone_min"], e["stops_affected"]) for e in g], [("1", 7.0, 6)])
+        add = [{"event_id": "e3", "kind": "add", "label": "added_from_garage", "epoch": str(T0), "route_id": "A",
+                "vehicle_id": "3", "spot_lat": "", "spot_lon": "", "spot": "Y"}]
+        arr = {"3": [(T0 + 120, "A", "s1", "S1", 0, 0, False, "proximity"), (T0 + 300, "A", "s2", "S2", 0, 0, False, "proximity")]}
+        preds = {"3": [(T0 + 400, T0 + 500, "trA", "s3", T0 + 700)]}
+        j = P.joining_no_predictions(DAY, add, arr, preds, {"trA": "A"})
+        self.assertEqual([(e["stops_affected"], e["outcome"]) for e in j], [(2, "predicted_later")])
+        preds_early = {"3": [(T0 + 30, T0 + 500, "trA", "s3", T0 + 700)]}
+        self.assertEqual(P.joining_no_predictions(DAY, add, arr, preds_early, {"trA": "A"}), [])
+
+    def test_staying_late(self):
+        rows = [{"event_id": "e1", "kind": "leave", "label": "break", "buses_after": "1", "epoch": str(T0),
+                 "route_id": "A", "vehicle_id": "1", "spot_lat": "", "spot_lon": "", "spot": "X"}]
+        p = L.DayPolls.from_tracks({"1": drive("1", "A", LAT_A, T0 - 300, 30), "2": drive("2", "A", LAT_A, T0 - 300, 60)})
+        pc = {("A", "2"): [(T0 + 900, 600, -400, "s1"), (T0 + 900, 900, -300, "s1"), (T0 + 1500, 1200, -100, "s2")]}
+        eps, tagged = P.staying_late(DAY, rows, p, pc)
+        self.assertEqual(len(tagged), 3)
+        self.assertEqual([(e["vehicle_id"], e["median_err_min"], e["late_rows"]) for e in eps], [("2", -5.0, 2)])
+        pc_ok = {("A", "2"): [(T0 + 900, 600, -30, "s1"), (T0 + 900, 900, 20, "s1")]}
+        self.assertEqual(P.staying_late(DAY, rows, p, pc_ok)[0], [])
+
+    def test_bunching(self):
+        arr = {"3": [(T0 + k * 300, "A", f"s{k}", "", 0, 0, True, "") for k in range(4)],
+               "4": [(T0 + k * 300 + 60, "A", f"s{k}", "", 0, 0, True, "") for k in range(4)]}
+        rarr = P.route_arrivals(arr, T0 - 10, T0 + 5000)
+        add = [{"event_id": "e3", "kind": "add", "label": "added_from_garage", "epoch": str(T0 - 5), "route_id": "A",
+                "vehicle_id": "3", "spot_lat": "", "spot_lon": "", "spot": "Y"}]
+        eps = P.bunching_after_add(DAY, add, rarr)
+        self.assertEqual([(e["other_vehicle"], e["arrivals_during"]) for e in eps], [("4", 4)])
+        self.assertTrue(all(b for _, b in P.bunched_flags(rarr)["A"]))
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
