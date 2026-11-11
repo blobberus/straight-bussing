@@ -684,6 +684,45 @@ def build(facts, statics, names, used_days, left_out, gaps_by_day, a_from, a_to)
             "friday_vs_mon_thu": fri_check, "lines": lines, "transitions": tout}
 
 
+def check_bus_changes(path, arrivals, wrong, d0, d1):
+    """How the stint rule agrees with the collector's own bus count changes (data/ground_truth/bus_changes.csv, live
+    since 2026-10-30): a lasting drop should be a stint end in the hour before the bus's last report, a layover drop
+    (lasting 0) should sit inside one stint. None without the file."""
+    if not Path(path).exists():
+        return None
+    t0, t1 = day_bounds(d0)[0], day_bounds(d1)[1]
+    st, out, lag = {}, Counter(), []
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        rows = [r for r in csv.DictReader(f) if r.get("kind") == "drop" and r.get("lasting") in ("0", "1")]
+    for r in rows:
+        try:
+            v, rid, t = str(r["vehicle_id"]), str(r["route_id"]), int(r.get("last_seen_epoch") or r["epoch"])
+        except (KeyError, ValueError):
+            continue
+        if not t0 <= t < t1:
+            continue
+        if v not in st:
+            st[v] = stints_of([x for x in arrivals.get(v, []) if not any(p <= x[0] <= q for p, q in wrong.get(v, ()))], [])
+        ss = [x for x in st[v] if x[0] == rid]
+        inside = any(x[1] < t and x[2] > t + LAYOVER_S / 2 for x in ss)
+        ends = [x[2] for x in ss if t - 3600 <= x[2] <= t + LAYOVER_S / 2]
+        if r["lasting"] == "0":
+            out["layover_drops"] += 1
+            out["layovers_inside_one_stint"] += inside
+        else:
+            out["lasting_drops"] += 1
+            if ends:
+                out["lasting_at_a_stint_end"] += 1
+                lag.append((t - max(ends)) / 60)
+    if not rows or not (out["layover_drops"] or out["lasting_drops"]):
+        return None
+    days = sorted({datetime.fromtimestamp(int(r["epoch"]), CT).date().isoformat() for r in rows if r.get("epoch")})
+    res = dict(out)
+    res["from"] = max(days[0], d0) if days else d0
+    res["last_stop_to_last_report_min_p50"] = med(lag, 1) if lag else None
+    return res
+
+
 # ---------------------------------------------------------------- the reasoning written into the file
 ABOUT = {
     "about": (
@@ -729,6 +768,9 @@ ABOUT = {
         "outside_listed": "shifts seen under the line's label with under half their time inside the listed hours "
                           "widened by 60 min (usually a bus that kept last night's label): counted here, never as a "
                           "Bus k",
+        "bus_changes_check": "layover_drops / layovers_inside_one_stint, lasting_drops / lasting_at_a_stint_end, "
+                             "last_stop_to_last_report_min_p50 (a leaving bus's last stop to its last report under "
+                             "the label), from (the first day compared)",
         "friday_vs_mon_thu": "per line, Friday's median [first stop, last stop] minus Monday to Thursday's, in minutes "
                              "(positive = later): the check for Friday nights",
         "transitions[]": "a bus leaving one line and starting another within 3 h: from / to (route ids + names), "
@@ -787,7 +829,10 @@ ABOUT = {
         "data/ground_truth/bus_changes.csv `lasting`: a dropped bus back on its line within 30 min is a layover, "
         "lasting = 0) joins a bus's arrivals into one stint; a longer gap on the same line (up to 3 h) is a break "
         "inside the shift (listed under breaks), and a move to another line is a transition. A bus's seen end is "
-        "therefore its last stop before at least 3 h without serving the line, never a layover."),
+        "therefore its last stop before at least 3 h without serving the line, never a layover. `bus_changes_check` "
+        "says how this agrees with bus_changes.csv (live since 2026-10-30): layover drops that sit inside one stint, and "
+        "lasting drops that come at a stint end in the hour before the bus's last report (the rest are mostly drops "
+        "under a wrong label or of a bus that logged too few arrivals to make a stint)."),
     "how_the_app_uses_it": (
         "Planned (display-rules work, 2026-11-11): (1) end of service for the idle rule: past a line's usual last stop "
         "(the last bus's last_stop p90, today's listed hours equal to `listed`), a still bus of the line is very likely "
@@ -810,7 +855,7 @@ def dump(doc):
     head = {k: doc[k] for k in ("about", "fields", "method", "why_seen_differs_from_listed", "layovers_vs_lasting",
                                 "how_the_app_uses_it", "refresh")}
     meta = {k: doc[k] for k in ("generated", "from", "to", "days_used", "days_left_out", "collector_gaps", "valid_until",
-                                "friday_vs_mon_thu")}
+                                "friday_vs_mon_thu", "bus_changes_check")}
     c = lambda o: json.dumps(o, ensure_ascii=False, separators=(",", ":"))
     parts = ["{"]
     for k, v in list(head.items()) + list(meta.items()):
@@ -874,6 +919,7 @@ def run(dl, d0, d1, out, cache, odd=None, cal_path=None, generated=None, log=pri
         log(f"{day}: {len(f['shifts'])} shifts, {len(f['transitions'])} transitions, {len(f['breaks'])} breaks")
     doc = build(facts, statics, names, used, left_out, gaps_by_day, used[0] if used else d0, used[-1] if used else d1)
     doc["generated"] = generated or date.today().isoformat()
+    doc["bus_changes_check"] = check_bus_changes(Path(dl) / "bus_changes.csv", arrivals, wrong, doc["from"], doc["to"])
     doc.update(ABOUT)
     txt = dump(doc)
     json.loads(txt)   # the hand-made layout must stay valid JSON
