@@ -11,6 +11,7 @@ import features as F            # noqa: E402
 import transitions_near as T    # noqa: E402
 import coverage as C            # noqa: E402
 import other_trip as O          # noqa: E402
+import misses as X              # noqa: E402
 
 TESTS = []
 
@@ -225,6 +226,66 @@ def test_screen_time_takes_the_same_bus_on_display_and_about_this_visit():
     v = O.previous_visits([{"vehicle_id": "4301", "stop_id": "S1", "epoch_i": EP - 3000},
                            {"vehicle_id": "4301", "stop_id": "S1", "epoch_i": EP}])
     assert O.prev_of(v, "4301", "S1", EP) == EP - 3000 and O.prev_of(v, "4301", "S1", EP - 3000) is None
+
+
+# ---------------------------------------------------------------- the tables
+def synth_preds():
+    """Two lines, two days: line A has 2 of 4 goal predictions 3 min early (bus came earlier than shown), B none."""
+    rows = []
+    for day_off, day in ((0, "2026-10-21"), (86400, "2026-10-22")):
+        for rid, name, errs in (("A", "Line A", (180, -30)), ("B", "Line B", (-30, -30))):
+            for k, e in enumerate(errs):
+                ep = EP + day_off + 600 * k
+                rows.append({"route_id": rid, "route_name": name, "trip_id": "T", "vehicle_id": "V" + rid,
+                             "stop_id": "S" + str(k), "stop_name": "Stop " + str(k), "stop_index": str(k),
+                             "pred_epoch": ep + e, "lead": 300, "err": float(e), "epoch_i": ep, "day": day,
+                             "age_s": 30.0})
+    return rows
+
+
+@test
+def test_line_summary_rates_shares_and_ratios():
+    preds = X.enrich(synth_preds(), None, None, log=lambda *_: None)
+    assert preds[0]["dir"] == M.EARLY and preds[0]["near"] == "" and preds[0]["feat"] == 0
+    tg = [{"route_id": "A", "has_5": 1, "has_1": 0, "day": "2026-10-21"},
+          {"route_id": "A", "has_5": 0, "has_1": 0, "day": "2026-10-21"}]
+    rows = X.line_summary(preds, tg, boots=200, period="all")
+    by = {(r["route_id"], r["lead_min"]): r for r in rows}
+    a, al = by[("A", 5)], by[("ALL", X.GOAL)]
+    assert a["n"] == 4 and a["large_early"] == 2 and a["large_early_rate"] == 0.5 and a["large_late"] == 0
+    assert al["large_early_rate"] == 0.25 and a["early_ratio_vs_all"] == 2.0 and a["share_of_all_large_early"] == 1.0
+    assert a["targets"] == 2 and a["coverage"] == 0.5 and by[("B", 5)].get("targets") is None
+    assert a["median_err_min"] == round(75 / 60, 2) and a["features_known"] == 0.0
+    assert a["period"] == "all" and ("A", 10) not in by
+    per = X.periods(preds, tg, [], "2026-10-22")
+    assert [len(per[k][0]) for k in ("all", "before", "recent")] == [8, 4, 4] and len(per["recent"][1]) == 0
+    rows = X.add_trends(X.line_summary(per["before"][0], [], 100, "before") +
+                        X.line_summary(per["recent"][0], [], 100, "recent"))
+    r = next(x for x in rows if x["period"] == "recent" and x["route_id"] == "A" and x["lead_min"] == 5)
+    assert r["before_large_early_rate"] == 0.5 and r["trend_early"] == "same" and r["trend_late"] == "same"
+
+
+@test
+def test_hotspot_trend_and_buckets():
+    row = {"n": 60, "large_early_rate": 0.2, "line_large_early_rate": 0.1, "large_late_rate": 0.5,
+           "line_large_late_rate": 0.45, "coverage_5": 0.1, "targets": 40, "screen_other_trip_5": 30}
+    assert X.hotspot(row) == "large_early|no_time|other_trip_times"
+    assert X.hotspot(dict(row, n=49, targets=29)) == ""
+    assert X.hotspot(dict(row, screen_other_trip_5=29)) == "large_early|no_time"    # under 30 arrivals
+    assert X.hotspot(dict(row, targets=200, screen_other_trip_5=35)) == "large_early|no_time"   # under 20%
+    assert X.trend(0.10, 0.13) == "worse" and X.trend(0.10, 0.11) == "same" and X.trend(0.10, 0.08) == "better"
+    assert X.trend(0.01, 0.019) == "same" and X.trend("", 0.5) == ""             # 2 points at least
+    assert X.behind_bucket("") == "unknown" and X.behind_bucket(10.5) == "more than 10 min behind"
+    assert X.behind_bucket(-3) == "more than 2 min ahead" and X.behind_bucket(0) == "within 2 min"
+
+
+@test
+def test_large_miss_rows_only_goal_leads_and_large():
+    preds = X.enrich(synth_preds(), None, None, log=lambda *_: None)
+    rows = list(X.miss_rows(preds))
+    assert len(rows) == 2 and all(r["direction"] == M.EARLY and r["route_id"] == "A" for r in rows)
+    assert rows[0]["error_min"] == 3.0 and rows[0]["lead_min"] == 5 and rows[0]["local_time"] == "2026-10-21 13:00:00"
+    assert rows[0]["shown_at"] == "2026-10-21 12:55:00" and rows[0]["predicted"] == EP + 180
 
 
 def main():

@@ -131,10 +131,14 @@ def num(x):
         return None
 
 
+PRED_KEEP = ("route_id", "route_name", "trip_id", "vehicle_id", "stop_id", "stop_name", "stop_index", "pred_epoch")
+
+
 def load_predictions(paths, day_from=None, day_to=None, leads=ALL_LEADS):
     """predictions.csv files (oldest first: the archive, then the current file) -> list of dicts, one per (vehicle,
     stop, arrival epoch, lead_target_s); a later file's row replaces an earlier one (the files overlap by minutes).
-    Adds: lead (int), err (float s), day, and age_s (how old the shown prediction was then)."""
+    Keeps PRED_KEEP and adds: epoch_i, lead (int), err (float s), day, and age_s (how old the shown prediction was
+    then)."""
     best = {}
     for p in paths:
         with _open(p) as f:
@@ -149,8 +153,9 @@ def load_predictions(paths, day_from=None, day_to=None, leads=ALL_LEADS):
                 if (day_from and day < day_from) or (day_to and day > day_to):
                     continue
                 pl = num(r.get("pred_lead_s"))
-                r.update(lead=lead, err=err, epoch_i=ep, day=day, age_s=None if pl is None else pl - lead)
-                best[(r["vehicle_id"], r["stop_id"], ep, lead)] = r
+                slim = {c: r.get(c, "") for c in PRED_KEEP}
+                slim.update(lead=lead, err=err, epoch_i=ep, day=day, age_s=None if pl is None else pl - lead)
+                best[(r["vehicle_id"], r["stop_id"], ep, lead)] = slim
     return list(best.values())
 
 
