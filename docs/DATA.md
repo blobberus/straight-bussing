@@ -226,7 +226,8 @@ today's hours.
 Refresh it monthly, after a timetable change, after a holiday or break, or when valid_until passes:
 `python experiments/routeknower/E28-scripts/fetch.py --out <dl> --from 2026-10-10 --to <newest complete day>`, then
 `python tools/build_service_seen.py --dl <dl>` (about 15 s for 32 days plus the downloads), then
-`python tools/test_service_seen.py`.
+`python tools/test_service_seen.py`. The data repo's weekly findings run rebuilds a candidate copy every Monday
+(`findings/service_seen/service_seen.json` in github.com/blobberus/straight-bussing-data); adopt it here after a look.
 
 ## Forecast snapshots for training and analysis: `eta-<day>.csv.gz` (added 2026-10-12)
 `tools/build_eta_dataset.py`. **One row = (query minute t, bus, one of that bus's arrivals in (t, t + 45 min])**, plus
