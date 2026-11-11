@@ -9,6 +9,7 @@ sys.path.insert(0, str(HERE))
 import misses_lib as M          # noqa: E402
 import features as F            # noqa: E402
 import transitions_near as T    # noqa: E402
+import coverage as C            # noqa: E402
 
 TESTS = []
 
@@ -186,6 +187,22 @@ def test_transitions_labeled_file_first_then_the_live_log():
     assert tr.nearest("1075", EP + 1080) == (-2.0, "add", "4304")          # a bus joins 2 min later
     assert tr.nearest("1075", EP + 86400 - 600)[0] == -10.0
     assert tr.nearest("1075", EP + 5 * 3600) is None and tr.nearest("9999", EP) is None
+
+
+# ---------------------------------------------------------------- arrivals with no time on display
+@test
+def test_coverage_matches_within_a_minute_and_per_lead():
+    preds = [{"vehicle_id": "4301", "stop_id": "S1", "epoch_i": EP + 20, "lead": 300},
+             {"vehicle_id": "4301", "stop_id": "S1", "epoch_i": EP + 20, "lead": 60},
+             {"vehicle_id": "4301", "stop_id": "S1", "epoch_i": EP + 3600, "lead": 600}]
+    ix = C.PredIndex(preds)
+    assert ix.leads_at("4301", "S1", EP) == {60, 300}            # the arrival 20 s off (a replay moved it)
+    assert ix.leads_at("4301", "S1", EP + 3000) == set()
+    arr = [{"vehicle_id": "4301", "stop_id": "S1", "epoch_i": EP, "day": "2026-10-21", "route_id": "1075"},
+           {"vehicle_id": "4301", "stop_id": "S1", "epoch_i": EP + 3590, "day": "2026-10-21", "route_id": "1075"},
+           {"vehicle_id": "4302", "stop_id": "S1", "epoch_i": EP, "day": "2026-10-21", "route_id": "1075"}]
+    t = C.targets(arr, ix)
+    assert [(x["has_5"], x["has_10"], x["has_any"]) for x in t] == [(1, 0, 1), (0, 1, 1), (0, 0, 0)]
 
 
 def main():
