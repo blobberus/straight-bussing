@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>E32 replay (running)</title></head>
+<body>
+<!-- RouteKnower E32: replays one archived service day through the SHIPPED web code. Not a test page: replay.py serves
+     the repo root at / and the work folder at /work/, opens this page in headless Edge and receives the result by POST.
+     The feeds come from inputs.py (/work/<day>.json); web/js/data/live.js startLive polls them through a stub fetch, poll
+     by poll on the feed's own clock, exactly as the app does every 10 s. A second chain of the same core functions in
+     the same order as data/live.js run() records WHY each bus was dropped (off route, idle, gone); every poll the two
+     must agree on the buses shown and the trip updates kept (mismatch counts are part of the result).
+     Every PLAN_EVERY_S the page also runs core/planner.js plan() for sampled stop pairs on each route that shows a bus,
+     with the shipped state and with the pre-rule state (operating buses only, every trip update kept). -->
+<pre id="result">running...</pre>
+<script type="module">
+import { startLive, parseBuses, parseTrips, parseAlerts, EMPTY_HOLD_S } from "/web/js/data/live.js";
+import { loadStatic } from "/web/js/data/static.js";
+import { operatingBuses } from "/web/js/core/operating.js";
+import { offRouteStep, dropHidden } from "/web/js/core/offroute.js";
+import { idleStep } from "/web/js/core/idle.js";
+import { goneStep } from "/web/js/core/transition.js";
+import { busKey, numberRoutes } from "/web/js/core/busnum.js";
+import { arrivalsFor } from "/web/js/core/arrivals.js";
+import { plan } from "/web/js/core/planner.js";
+
+const q = new URLSearchParams(location.search);
+const day = q.get("day");
+const PLAN_EVERY_S = Number(q.get("plan") ?? 300);   // 0 = no planner samples
+const PAIRS = Number(q.get("pairs") ?? 2);
+const ARR_EVERY_S = Number(q.get("arr") ?? 900);   // golden sample of arrivalsFor at every stop (measure.py checks its own reading)
+const post = (path, body) => fetch(path, { method: "POST", body: typeof body === "string" ? body : JSON.stringify(body) });
+const log = (m) => post("/log/" + day, String(m));
+addEventListener("error", (e) => post("/error/" + day, String(e.message || e)));
+addEventListener("unhandledrejection", (e) => post("/error/" + day, String(e.reason && (e.reason.stack || e.reason))));
+
+function rng(seed) {   // mulberry32
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+
+const inp = await (await fetch(`/work/${day}.json`, { cache: "no-store" })).json();
+const state = {};
+const store = { get: () => state, set: (p) => { Object.assign(state, p); } };
+await loadStatic(store, { base: `/work/${inp.static}/` });
+
+const feed = {
+  vehiclePositions: (p) => ({ header: { timestamp: p[0] }, entity: p[1].map((v) => ({ vehicle: {
+    vehicle: { id: v[0] }, trip: { trip_id: v[1], route_id: v[2] },
+    position: { latitude: v[3], longitude: v[4], ...(v[5] != null ? { bearing: v[5] } : {}), ...(v[6] != null ? { speed: v[6] } : {}) },
+    timestamp: v[7] } })) }),
+  tripUpdates: (p) => ({ header: { timestamp: p[0] }, entity: p[2].map((i) => { const [veh, trip, rid, stops] = inp.snaps[i]; return { trip_update: {
+    trip: { trip_id: trip, route_id: rid }, vehicle: { id: veh },
+    stop_time_update: stops.map(([s, t]) => ({ stop_id: s, arrival: { time: t } })) } }; }) }),
+  serviceAlerts: (p) => ({ header: { timestamp: p[0] }, entity: p[3].map((i) => ({ alert: inp.alerts[i] })) }),
+};
+let cur = inp.polls[0];
+const stubFetch = async (url) => {
+  const name = String(url).replace(/^stub\//, "").split(".json")[0];
+  const body = feed[name](cur);
+  return { ok: true, status: 200, json: async () => body };
+};
+
+// The reason chain: the same functions, in data/live.js run()'s order, on the same parsed feeds.
+let C = { gone: {}, off: {}, idle: {}, lastBuses: [], lastAt: 0 };
+function chain(p) {
+  const h = p[0];
+  let buses = parseBuses(feed.vehiclePositions(p));
+  const trips = parseTrips(feed.tripUpdates(p));
+  const alerts = parseAlerts(feed.serviceAlerts(p));
+  if (buses.length) { C.lastBuses = buses; C.lastAt = h; }
+  else if (C.lastBuses.length && h - C.lastAt <= EMPTY_HOLD_S) { buses = C.lastBuses; C.lastBuses = []; }
+  else C.lastBuses = [];
+  const g = goneStep(C.gone, buses, trips, { feedTs: h, nowS: h });
+  C.gone = g.seen;
+  const op = operatingBuses(buses, { routes: state.routes, service: state.service, trips, feedTs: h, nowS: h, staticLoaded: true });
+  const off = offRouteStep(C.off, op, { shapes: state.shapes, corridors: state.corridors, service: state.service, alerts,
+    routes: state.routes, nowS: h, feedTs: h });
+  C.off = off.tracks;
+  const idle = idleStep(C.idle, op, { trips, service: state.service, idle: state.idle, nowS: h, feedTs: h });
+  C.idle = idle.tracks;
+  return { op, trips, off: off.hidden, idle: idle.hidden, why: idle.why, gone: g.gone };
+}
+
+const live = startLive(store, { fetch: stubFetch, base: "stub/", intervalMs: 2e9, now: () => cur[0] });
+const out = { day, static: inp.static, polls: [], plans: [], arrivals: [], mismatch: 0, mismatchAt: [], ms: 0 };
+const t0 = performance.now();
+const ids = (xs) => xs.map((b) => busKey(b)).join(",");
+const tripIds = (xs) => xs.map((t) => (t.vehicle && t.vehicle.id) + "/" + (t.trip && t.trip.trip_id)).join(",");
+
+/** The pre-rule app's numbers: every operating bus, numbered per route in vehicle id order, no hold. */
+function oldNums(op) {
+  const m = {};
+  for (const r of Object.values(numberRoutes(op.map((b) => [busKey(b), String(b.trip.route_id)])))) Object.assign(m, r);
+  return m;
+}
+
+function plans(p, ch) {
+  const h = p[0];
+  const shownRoutes = [...new Set(state.buses.map((b) => String(b.trip.route_id)))].sort();
+  const base = { stops: state.stops, routes: state.routes, routeStops: state.routeStops, service: state.service };
+  const variants = { n: { ...base, trips: state.trips, buses: state.buses }, o: { ...base, trips: ch.trips, buses: ch.op } };
+  for (const rid of shownRoutes) {
+    const seq = (state.routeStops[rid] || []).map(String).filter((s) => state.stops[s]);
+    const loop = seq.length > 2 && seq[0] === seq[seq.length - 1];
+    if (loop) seq.pop();
+    if (seq.length < 3) continue;
+    const r = rng(hash(day + "|" + h + "|" + rid));
+    for (let k = 0; k < PAIRS; k++) {
+      const i = Math.floor(r() * seq.length);
+      let j = i + 2 + Math.floor(r() * 6);
+      if (j >= seq.length) { if (!loop) continue; j %= seq.length; }
+      if (j === i) continue;
+      const from = state.stops[seq[i]], to = state.stops[seq[j]];
+      const rec = [h, rid, seq[i], seq[j]];
+      for (const v of ["n", "o"]) {
+        const res = plan({ from: { lat: from.lat, lon: from.lon }, to: { lat: to.lat, lon: to.lon }, now: h, data: variants[v] });
+        rec.push(res.options.map((o) => [o.walkOnly ? 1 : 0, Math.round(o.arrive || 0),
+          o.legs.filter((l) => l.type === "bus").map((l) => [String(l.rid), String(l.board && l.board.id), String(l.alight && l.alight.id),
+            l.vehicleId == null ? null : String(l.vehicleId), Math.round(l.boardT || 0), Math.round(l.alightT || 0), l.waitLive ? 1 : 0, l.source || ""])]));
+      }
+      out.plans.push(rec);
+    }
+  }
+}
+
+await live.pollNow();   // startLive's own first poll (cur = poll 0) is in flight: join it
+for (let i = 0; i < inp.polls.length; i++) {
+  cur = inp.polls[i];
+  if (i > 0) await live.pollNow();
+  const ch = chain(cur);
+  const hidden = ch.off.concat(ch.idle, ch.gone);
+  const d = dropHidden(ch.op, ch.trips, hidden);
+  if (ids(d.buses) !== ids(state.buses || []) || tripIds(d.trips) !== tripIds(state.trips || [])) {
+    out.mismatch++;
+    if (out.mismatchAt.length < 20) out.mismatchAt.push(cur[0]);
+  }
+  const nums = {};
+  for (const m of Object.values((state.busNums && state.busNums.routes) || {})) Object.assign(nums, m);
+  out.polls.push([cur[0], ch.op.map((b) => [busKey(b), String(b.trip.route_id)]), ch.off, ch.idle.map((v) => [v, ch.why[v]]), ch.gone,
+    nums, (state.away || []).map((b) => busKey(b)), oldNums(ch.op)]);
+  if (ARR_EVERY_S > 0 && cur[0] % ARR_EVERY_S === 0) {
+    for (const sid of Object.keys(state.stops).sort()) {
+      for (const a of arrivalsFor(state, sid, { nowS: cur[0] })) out.arrivals.push([cur[0], sid, a.rid, a.t, a.vehicleId]);
+    }
+  }
+  if (PLAN_EVERY_S > 0 && cur[0] % PLAN_EVERY_S === 0) plans(cur, ch);
+  if (i % 1000 === 0) log(`${i}/${inp.polls.length} ${Math.round(performance.now() - t0)} ms`);
+}
+live.stop();
+out.ms = Math.round(performance.now() - t0);
+await post("/result/" + day, out);
+document.getElementById("result").textContent = `done ${out.polls.length} polls, ${out.plans.length} plan samples, mismatch ${out.mismatch}`;
+document.title = "E32 replay done";
+</script>
+</body>
+</html>
