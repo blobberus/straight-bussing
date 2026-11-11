@@ -15,8 +15,15 @@ are not in service"); the numbers below are what riders saw before.
 
 The flagged-lines registry (`data/labeled/flags/flagged_lines.csv`, per line in `docs/FLAGGED-LINES.md`) measures two
 things this ranking did not: odd bus behavior at transition times (RouteKnower E30) and large prediction misses
-(E31), on the data through Nov 10, each line's rate against all lines'. It holds 77 flags on 14 lines, 27 of them
-high. E32 (what the shipped display showed riders) is not in yet.
+(E31), on the data through Nov 10, each line's rate against all lines'. Those two gave 77 flags on 14 lines, 27 of
+them high. Since Nov 11 it also holds E32's 22 display flags (what the shipped display rules showed riders, replayed
+Oct 10 to Nov 10): 99 flags, 30 high. E32's three high flags: **South**, the idle rule hid a still bus that then
+served the line within 15 min in 47% of its hidden minutes (all lines 24%; 9 to 10 PM and 11 PM to midnight, 60th St.
+& Ellis and Regenstein Library); **Friend Center/Metra**, the off-route rule did the same 53% of the time (all lines
+20%; 6 to 9 PM, buses 4325 and 4313, Goldblatt Pavilion); the **Downtown Campus Connector**, 18% of the planner's
+live bus legs used a bus that left the line before the rider's stop (all lines 7%). With them the Downtown Campus
+Connector and South reach 4 high flags, level with the 53rd Street Express; the table below counts E30 and E31 only.
+A flag alone never hides or shows a bus: the display rules change only with the owner's decision.
 
 **All five lines below stay flagged**, with new evidence:
 - **Downtown Campus Connector**, 3 high flags: its last bus left more than 15 min before the listed end on 22 of 22
