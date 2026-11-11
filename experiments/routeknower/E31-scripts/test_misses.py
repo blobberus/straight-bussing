@@ -7,6 +7,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import misses_lib as M          # noqa: E402
+import features as F            # noqa: E402
 
 TESTS = []
 
@@ -129,6 +130,37 @@ def test_counts_rate_per_key():
         c.add("x", f"d{i % 2}", i < 3)
     assert c.rate("x") == 0.3 and c.n["x"] == 10 and c.days["x"]["d0"] == [2, 5]
     assert c.rate("nothing") is None
+
+
+# ---------------------------------------------------------------- features from the forecast table
+ETA_HEADER = ("query_epoch,service_day,vehicle_id,route_id,trip_id,stop_id,next_trip,stops_away,delay_s,actual_epoch,"
+              "lead_s,label_status,passio_status,tt_epoch,crosses_terminal,standing_s,cal_regime").split(",")
+
+
+def eta_row(veh, stop, act, lead, next_trip=0, delay="", tt="1", status="arrived"):
+    return [act - lead, "2026-10-21", veh, "1075", "T1", stop, next_trip, 2, delay, act, lead, status, "shown", tt, 0,
+            0, "class"]
+
+
+@test
+def test_eta_index_matches_nearest_arrival_and_lead():
+    d = tmp()
+    p = write(d / "eta-2026-10-21.csv", ETA_HEADER, [
+        eta_row("4301", "S1", EP, 290, delay=120),              # 10 s from the 300 s lead
+        eta_row("4301", "S1", EP, 350, delay=999),              # farther from it
+        eta_row("4301", "S1", EP + 30, 600, next_trip=1, tt=""),   # the arrival 30 s later (a replay moved it)
+        eta_row("4301", "S1", EP, 470),                          # no lead within 90 s: not kept
+        eta_row("4301", "S1", EP, 300, status="no_arrival"),     # not an arrival: not kept
+    ])
+    ix = F.EtaIndex().add_table(p, F.day_of_table(p))
+    assert ix.days == {"2026-10-21"} and len(ix.by[("4301", "S1")]) == 3
+    f = F.derive(ix.match("4301", "S1", EP, 300))
+    assert f["behind_min"] == 2.0 and f["next_trip"] == 0 and f["no_timetable"] == 0
+    f = F.derive(ix.match("4301", "S1", EP, 600))
+    assert f["next_trip"] == 1 and f["no_timetable"] == 1 and f["behind_min"] == ""
+    assert ix.match("4301", "S1", EP + 200, 300) is None    # no arrival within 60 s
+    assert ix.match("4301", "S2", EP, 300) is None
+    assert F.derive(None)["no_timetable"] == ""
 
 
 def main():
