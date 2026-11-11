@@ -224,6 +224,9 @@ def test_missing_day_line_drop_and_late_block():
         w.arr.append(moved)                                                  # a replayed row appended at the end
         res = w.run()
         assert "days:missing" in checks(res, "error"), res.found
+        holiday = {"regimes": [{"start": "2026-11-04", "end": "2026-11-04", "regime": "holiday"}]}
+        res2 = A.audit(A.Branch(folder=w.tmp / "branch"), NOW, w.assets, calendar=holiday)
+        assert "days:missing" not in checks(res2) and "days:quiet" in checks(res2, "note"), res2.found
         assert any(f["check"] == "days:line:2026-11-02:East" and f["level"] == "warn" for f in res.found), res.found
         assert not any(f["check"].startswith("days:line:2026-11-02:Central") for f in res.found)
         order = next(f for f in res.found if f["check"] == "arrivals:order")

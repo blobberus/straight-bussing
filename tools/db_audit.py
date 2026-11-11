@@ -303,13 +303,16 @@ def check_days(a, arr, now, calendar=None):
         by_day[x["day"]].append(x)
     cal = calendar if calendar is not None else H.load_json(ROOT / "data" / "calendar.json") or {}
     first = min(by_day)
-    d, missing = first, []
+    d, missing, quiet = first, [], []
     while d < today:
         if not by_day.get(d):
-            missing.append(str(d))
+            (quiet if H.regime(d, cal) in ("break", "holiday") else missing).append(str(d))
         d += timedelta(days=1)
     if missing:
         a.add("error", "days:missing", f"service days with no arrival at all: {', '.join(missing)}")
+    if quiet:
+        a.add("note", "days:quiet", f"break or holiday days with no arrival (data/calendar.json; maybe no service): "
+                                    f"{', '.join(quiet)}")
     per = {d: Counter(x["route"] for x in xs) for d, xs in by_day.items()}
     table = {}
     for d in sorted(by_day):
