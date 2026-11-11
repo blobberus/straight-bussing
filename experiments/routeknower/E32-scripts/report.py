@@ -17,8 +17,9 @@ def name(rid):
 def rates(c, svc):
     g = lambda k: c.get(k, 0)
     div = lambda a, b: round(100 * a / b, 1) if b else None
-    hide = sum(g(f"hide_{r}_min") for r in ("off", "idle", "gone"))
-    false = sum(g(f"false_{r}_min") for r in ("off", "idle", "gone"))
+    R = ("off", "idle", "gone", "held")   # held: core/transition.js heldStep (2026-11-11)
+    hide = sum(g(f"hide_{r}_min") for r in R)
+    false = sum(g(f"false_{r}_min") for r in R)
     return {
         "service_h": round(svc / 60, 1),
         "ghost_time_pct": div(g("ghost_time_min"), g("time_min")), "ghost_time_min": g("ghost_time_min"), "time_min": g("time_min"),
@@ -27,11 +28,11 @@ def rates(c, svc):
         "leaves": g("leaves"), "leave_shown_avg": round(g("leave_shown_min") / g("leaves"), 1) if g("leaves") else None,
         "leaves_shown_15_pct": div(g("leaves_shown_15"), g("leaves")), "leave_shown_min": g("leave_shown_min"),
         "hide_min": hide, "false_hide_min": false, "false_hide_pct": div(false, hide),
-        **{f"false_{r}_pct": div(g(f"false_{r}_min"), g(f"hide_{r}_min")) for r in ("off", "idle", "gone")},
-        **{f"hide_{r}_min": g(f"hide_{r}_min") for r in ("off", "idle", "gone")},
-        **{f"false_{r}_min": g(f"false_{r}_min") for r in ("off", "idle", "gone")},
-        **{f"false_{r}_episodes": g(f"false_{r}_episodes") for r in ("off", "idle", "gone")},
-        **{f"hide_{r}_episodes": g(f"hide_{r}_episodes") for r in ("off", "idle", "gone")},
+        **{f"false_{r}_pct": div(g(f"false_{r}_min"), g(f"hide_{r}_min")) for r in R},
+        **{f"hide_{r}_min": g(f"hide_{r}_min") for r in R},
+        **{f"false_{r}_min": g(f"false_{r}_min") for r in R},
+        **{f"false_{r}_episodes": g(f"false_{r}_episodes") for r in R},
+        **{f"hide_{r}_episodes": g(f"hide_{r}_episodes") for r in R},
         "plan_live_legs": g("plan_live_legs"), "plan_risky_pct": div(g("plan_risky"), g("plan_live_legs")),
         "plan_risky": g("plan_risky"), "plan_ghost_board": g("plan_ghost_board"), "plan_left": g("plan_left_before_alight"),
         "plan_top_legs": g("plan_top_live_legs"), "plan_top_risky_pct": div(g("plan_top_risky"), g("plan_top_live_legs")),
@@ -39,6 +40,8 @@ def rates(c, svc):
         "num_swap": g("num_swap"), "num_flip": g("num_flip"), "num_swap_per_10h": round(10 * g("num_swap") / (svc / 60), 2) if svc else None,
         "unjudged_sparse_min": g("unjudged_sparse_time_min") + g("unjudged_sparse_badge_min"),
         "unseen_time_min": g("unseen_time_min"), "plan_unseen": g("plan_unseen"),
+        "num_gap_min": g("num_gap_min"),
+        "trans_min": g("trans_min"), "trans_served_min": g("trans_served_min"),
         "reshown_time_min": g("reshown_time_min"), "reshown_per_10h": round(10 * g("reshown_time_min") / (svc / 60), 2) if svc else None,
         "rolling_min": g("rolling_min"), "rolling_ghost_min": g("rolling_ghost_min"),
     }

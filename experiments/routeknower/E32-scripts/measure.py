@@ -33,7 +33,16 @@ plan_unseen): it may have driven the line unseen. A bus that reports too rarely 
 like 12647 on the DCC on Nov 6) is not judged (the unjudged_sparse_* counts).
   reshown_time_min   minutes a bus's times are back on screen after core/offroute.js or core/idle.js hid it (within
                      15 min) because it stopped reporting: no longer operating, the rules no longer see it, and GONE
-                     waits 15 min after its last report.
+                     waits 15 min after its last report. Since 2026-11-11 (core/transition.js heldStep, owner) such a
+                     bus is HELD: replay.py's results carry the held ids (poll field 9), its times stay off (rule
+                     "held" in the false-hide counts) and this count is 0.
+  trans_min          minutes a bus off its route stayed on the map, marked "Transitioning to new line", because its report
+                     time was inside a transition window of its line (core/seen.js, 2026-11-11; poll field 10);
+                     trans_served_min = those where it then logged an arrival on that line within 15 min (it was coming
+                     to serve). With results.transTimes false its times are off (badge only).
+  num_gap_min        route-minutes (new app) where the numbers on the line's shown buses are not 1 to n: a number place
+                     held for a bus a rule hides (core/busnum.js RULE_HOLD_S, 2026-11-11), e.g. "Bus 1" and "Bus 3"
+                     only, or one shown bus that still carries a number.
   rolling_min        a candidate rule, not shipped: minutes where a bus within 150 m of where it was 10 min ago shows a time
                      at its next stop 5+ min later than it showed 10 min ago (rolling_ghost_min = those that were ghosts:
                      the rule's precision and recall against ghost_time_min).
@@ -224,8 +233,10 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
     last_hid = {}                      # vehicle -> last poll core/offroute.js or core/idle.js hid it
     last_change = {"new": {}, "old": {}}
     for k, rp in enumerate(rpolls):
-        h, op, off, idle, gone, nums, away, onums = rp
-        offs, idles, gones = set(off), {v for v, _ in idle}, set(gone)
+        h, op, off, idle, gone, nums, away, onums = rp[:8]
+        held = list(rp[8]) if len(rp) > 8 else []   # core/transition.js heldStep (results made since 2026-11-11)
+        trans = set(rp[9]) if len(rp) > 9 else set()   # core/seen.js transitioning (shown, marked)
+        offs, idles, gones, helds = set(off), {v for v, _ in idle}, set(gone), set(held)
         oprid = {v: r for v, r in op}
         newshown = {v: r for v, r in op if v not in offs and v not in idles}
         # numbers: swaps between consecutive polls
@@ -267,8 +278,21 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
             continue
         for r in set(oprid.values()):
             service[r] += 1
+        byr = defaultdict(list)                     # numbers on each line's shown buses (new app): 1 to n, or a gap
+        for v, r in newshown.items():
+            byr[r].append(nums.get(v, 0))
+        for r, ns in byr.items():
+            if any(ns) and sorted(ns) != list(range(1, len(ns) + 1)):
+                acc["new"][r]["num_gap_min"] += 1
         ip = ipolls[h]
-        drop = offs | idles | gones
+        drop = offs | idles | gones | helds | (set() if res.get("transTimes", True) else trans)
+        for v in trans:
+            r = oprid.get(v)
+            if r:
+                acc["new"][r]["trans_min"] += 1
+                nx = A.next_vr(v, r, h)
+                if nx is not None and nx <= h + FALSE_WIN:
+                    acc["new"][r]["trans_served_min"] += 1
         tn, to = defaultdict(list), defaultdict(list)
         for i in ip[2]:
             veh, trip, rid, stops = snaps[i]
@@ -285,6 +309,9 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
         for v in gone:
             rids = {snaps[i][2] for i in ip[2] if snaps[i][0] == v and snaps[i][2]}
             hl += [(v, r, "gone") for r in rids]
+        for v in helds - gones:
+            rids = {snaps[i][2] for i in ip[2] if snaps[i][0] == v and snaps[i][2]}
+            hl += [(v, r, "held") for r in rids]
         hidden[h] = hl
         # RESHOWN: a bus hidden off route or idle that then stops reporting leaves core/operating.js's list (5 min), so
         # the rules no longer see it and its Passio times are back on screen until GONE (15 min after its last report)

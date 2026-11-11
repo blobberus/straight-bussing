@@ -6,7 +6,8 @@
      the repo root at / and the work folder at /work/, opens this page in headless Edge and receives the result by POST.
      The feeds come from inputs.py (/work/<day>.json); web/js/data/live.js startLive polls them through a stub fetch, poll
      by poll on the feed's own clock, exactly as the app does every 10 s. A second chain of the same core functions in
-     the same order as data/live.js run() records WHY each bus was dropped (off route, idle, gone); every poll the two
+     the same order as data/live.js run() records WHY each bus was dropped (off route, idle, gone, held) and which off-route
+     buses stayed shown as transitioning (core/seen.js, 2026-11-11); every poll the two
      must agree on the buses shown and the trip updates kept (mismatch counts are part of the result).
      Every PLAN_EVERY_S the page also runs core/planner.js plan() for sampled stop pairs on each route that shows a bus,
      with the shipped state and with the pre-rule state (operating buses only, every trip update kept). -->
@@ -17,7 +18,12 @@ import { loadStatic } from "/web/js/data/static.js";
 import { operatingBuses } from "/web/js/core/operating.js";
 import { offRouteStep, dropHidden } from "/web/js/core/offroute.js";
 import { idleStep } from "/web/js/core/idle.js";
-import { goneStep } from "/web/js/core/transition.js";
+import * as TRANSITION from "/web/js/core/transition.js";
+// rules added on 2026-11-11 (core/transition.js heldStep, core/seen.js): optional, so a copy of older web code (replay.py
+// --web, the shipped code for a "before" run) still replays; a missing module would otherwise stop the page silently
+const { goneStep } = TRANSITION;
+const heldStep = TRANSITION.heldStep || (() => ({ held: {}, ids: [] }));
+const SEEN = await import("/web/js/core/seen.js").catch(() => ({}));
 import { busKey, numberRoutes } from "/web/js/core/busnum.js";
 import { arrivalsFor } from "/web/js/core/arrivals.js";
 import { plan } from "/web/js/core/planner.js";
@@ -41,7 +47,8 @@ function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0)
 const inp = await (await fetch(`/work/${day}.json`, { cache: "no-store" })).json();
 const state = {};
 const store = { get: () => state, set: (p) => { Object.assign(state, p); } };
-await loadStatic(store, { base: `/work/${inp.static}/` });
+await loadStatic(store, { base: `/work/${inp.static}/` });   // service_seen.json too (a late file: loadStatic waits for it)
+const TRANS_TIMES = SEEN.TRANSITION_TIMES !== false;   // a transitioning bus keeps its Passio times (else: its badge only)
 
 const feed = {
   vehiclePositions: (p) => ({ header: { timestamp: p[0] }, entity: p[1].map((v) => ({ vehicle: {
@@ -61,7 +68,7 @@ const stubFetch = async (url) => {
 };
 
 // The reason chain: the same functions, in data/live.js run()'s order, on the same parsed feeds.
-let C = { gone: {}, off: {}, idle: {}, lastBuses: [], lastAt: 0 };
+let C = { gone: {}, off: {}, idle: {}, held: {}, lastBuses: [], lastAt: 0 };
 function chain(p) {
   const h = p[0];
   let buses = parseBuses(feed.vehiclePositions(p));
@@ -74,15 +81,17 @@ function chain(p) {
   C.gone = g.seen;
   const op = operatingBuses(buses, { routes: state.routes, service: state.service, trips, feedTs: h, nowS: h, staticLoaded: true });
   const off = offRouteStep(C.off, op, { shapes: state.shapes, corridors: state.corridors, service: state.service, alerts,
-    routes: state.routes, nowS: h, feedTs: h });
+    routes: state.routes, seen: state.serviceSeen, nowS: h, feedTs: h });
   C.off = off.tracks;
   const idle = idleStep(C.idle, op, { trips, service: state.service, idle: state.idle, nowS: h, feedTs: h });
   C.idle = idle.tracks;
-  return { op, trips, off: off.hidden, idle: idle.hidden, why: idle.why, gone: g.gone };
+  const hs = heldStep(C.held, op, off.hidden.concat(idle.hidden, TRANS_TIMES ? [] : off.transitioning || []), trips, { feedTs: h, nowS: h });
+  C.held = hs.held;
+  return { op, trips, off: off.hidden, idle: idle.hidden, why: idle.why, gone: g.gone, held: hs.ids, trans: off.transitioning || [] };
 }
 
 const live = startLive(store, { fetch: stubFetch, base: "stub/", intervalMs: 2e9, now: () => cur[0] });
-const out = { day, static: inp.static, polls: [], plans: [], arrivals: [], mismatch: 0, mismatchAt: [], ms: 0 };
+const out = { day, static: inp.static, transTimes: TRANS_TIMES, seen: !!state.serviceSeen, polls: [], plans: [], arrivals: [], mismatch: 0, mismatchAt: [], ms: 0 };
 const t0 = performance.now();
 const ids = (xs) => xs.map((b) => busKey(b)).join(",");
 const tripIds = (xs) => xs.map((t) => (t.vehicle && t.vehicle.id) + "/" + (t.trip && t.trip.trip_id)).join(",");
@@ -128,8 +137,9 @@ for (let i = 0; i < inp.polls.length; i++) {
   cur = inp.polls[i];
   if (i > 0) await live.pollNow();
   const ch = chain(cur);
-  const hidden = ch.off.concat(ch.idle, ch.gone);
+  const hidden = ch.off.concat(ch.idle, ch.gone, ch.held);
   const d = dropHidden(ch.op, ch.trips, hidden);
+  if (!TRANS_TIMES && ch.trans.length) d.trips = dropHidden([], d.trips, ch.trans).trips;
   if (ids(d.buses) !== ids(state.buses || []) || tripIds(d.trips) !== tripIds(state.trips || [])) {
     out.mismatch++;
     if (out.mismatchAt.length < 20) out.mismatchAt.push(cur[0]);
@@ -137,7 +147,7 @@ for (let i = 0; i < inp.polls.length; i++) {
   const nums = {};
   for (const m of Object.values((state.busNums && state.busNums.routes) || {})) Object.assign(nums, m);
   out.polls.push([cur[0], ch.op.map((b) => [busKey(b), String(b.trip.route_id)]), ch.off, ch.idle.map((v) => [v, ch.why[v]]), ch.gone,
-    nums, (state.away || []).map((b) => busKey(b)), oldNums(ch.op)]);
+    nums, (state.away || []).map((b) => busKey(b)), oldNums(ch.op), ch.held, ch.trans]);
   if (ARR_EVERY_S > 0 && cur[0] % ARR_EVERY_S === 0) {
     for (const sid of Object.keys(state.stops).sort()) {
       for (const a of arrivalsFor(state, sid, { nowS: cur[0] })) out.arrivals.push([cur[0], sid, a.rid, a.t, a.vehicleId]);

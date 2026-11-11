@@ -38,15 +38,12 @@ CASES = [
     dict(name="number_join", day="2026-11-06", t=("09:20", "09:50"), bus="12645", routes=["5704"], stop="8612", kind="guard",
          says="A bus joining the Downtown Campus Connector renumbers the line in vehicle id order (core/busnum.js; every "
               "phone shows the same numbers)."),
-    dict(name="offroute_then_silent", day="2026-11-06", t=("18:15", "19:05"), bus="4317", routes=["6126"], stop="8612", kind="gap",
+    dict(name="offroute_then_silent", day="2026-11-06", t=("18:15", "19:05"), bus="4317", routes=["6126"], stop="8612", kind="guard",
          every=6,
          says="AP/DX 4317 ends its shift (last arrival 18:13), drives off the line and is hidden with its times at 18:21 "
-              "(core/offroute.js); its last report is at 18:43, at 18:48 it leaves the operating list (5 min) and its "
-              "Passio times come back on screen until GONE drops them at 18:58 (15 min).",
-         gap="Rider: times from a bus already at the garage return for up to 10 min (5 to 15 min after its last report). "
-             "1,555 bus-minutes Oct 10 to Nov 5 replayed, 174 Nov 6 to 10 (the Downtown Campus Connector most). Fix: keep dropping the times of a "
-             "bus core/offroute.js or core/idle.js hid until it reports again (data/live.js), or let GONE start from the "
-             "hide; an owner decision since it changes what riders see."),
+         "(core/offroute.js); its last report is at 18:43 and at 18:48 it leaves the operating list (5 min). Since "
+         "2026-11-11 (owner: \"Keep hidden bus times off until it reports again\"; core/transition.js heldStep) its "
+         "Passio times stay off; before, they came back on screen from 18:49 until GONE at 18:58."),
     dict(name="gone_comeback", day="2026-11-09", t=("07:45", "08:25"), bus="4322", routes=["5702"], stop="8612", kind="gap",
          says="Apostolic 4322 sends no report from 07:55 to 08:13 between morning runs: GONE drops its times at 08:10, it "
               "reports again at 08:13 and serves Goldblatt within 15 min.",
@@ -55,15 +52,19 @@ CASES = [
              "time is a trip start, or keep such times labeled est."),
     dict(name="offroute_loop", day="2026-11-06", t=("17:58", "18:26"), bus="4331", routes=["6126"], stop="8615", kind="gap",
          says="AP/DX 4331 runs a 17 min loop off the drawn line (north to 55th Street, east toward Lake Park) on each "
-              "evening round: hidden with its times while away, shown again at Goldblatt (18:19), where it serves.",
-         gap="Rider: the next AP/DX time at Bernard Mitchell / Goldblatt disappears for about 12 min of each loop. Fix "
-             "(owner, pending since Nov 6): learned off-line service runs (the loop as a corridor), or keep the times of "
-             "a hidden bus that Passio predicts within 10 min."),
+         "evening round: hidden with its times while away; since 2026-11-11 its badge is back at 18:13:30, marked "
+         "\"Transitioning to new line\" (heading back to its line inside the evening FCM / AP/DX transition window, "
+         "core/seen.js), without times; at Goldblatt (18:19) it is on its line and its times are back.",
+         gap="Rider: the next AP/DX time at Bernard Mitchell / Goldblatt disappears for about 12 min of each loop (the "
+         "marked badge comes back 5 min early). Owner 2026-11-11 chose transition windows, the badge without times "
+         "(with times, ghost times rose from 4.5% to 5.6%, RouteKnower E32c). Fix still open (owner): learned off-line "
+         "service runs (the loop as a corridor), or the times of a hidden bus that Passio predicts within 10 min."),
     dict(name="offroute_fcm", day="2026-11-06", t=("19:25", "19:50"), bus="4313", routes=["5700"], stop="8612", kind="gap",
-         says="Friend Center/Metra 4313 in the evening: hidden off its line for about 12 min (south of 60th Street, parked "
-              "4 min), then serves Wyler Pavilion at 19:46.",
-         gap="Rider: no Friend Center/Metra bus or time for about 12 min while it is coming (53% of the line's off-route minutes "
-             "Oct 10 to Nov 10 were such, 68% since Nov 6; 6 to 9 PM, 4325 and 4313). Fix (owner): the same as offroute_loop."),
+         says="Friend Center/Metra 4313 in the evening: hidden off its line (south of 60th Street, parked 4 min); since "
+         "2026-11-11 its badge is back at 19:36, marked \"Transitioning to new line\" (heading back inside the AP/DX to "
+         "FCM transition window, core/seen.js), without times; it serves Wyler Pavilion at 19:46.",
+         gap="Rider: no Friend Center/Metra time for about 12 min while it is coming (the marked badge is back 8 min "
+         "early; 6 to 9 PM, 4325 and 4313). Fix still open (owner): the same as offroute_loop."),
     dict(name="idle_linger_comeback", day="2026-11-09", t=("23:35", "00:05"), bus="4317", routes=["1075"], stop="8579", kind="gap",
          says="North 4317 waits at Reynolds Club after the learned linger time: hidden (core/idle.js LINGER), then serves "
               "again 10 min later.",
@@ -71,11 +72,13 @@ CASES = [
              "time was learned before Nov 6) or require no Passio time ahead for LINGER."),
     dict(name="parked_rolling", day="2026-11-06", t=("18:30", "19:20"), bus="12645", routes=["5704"], stop="8654", kind="gap",
          says="Downtown Campus Connector 12645 parked downtown from 18:30 to 20:49: shown with a time about 20 min ahead at "
-              "59th and Ellis that slides forward with the clock; GPS jitter of about 100 m keeps restarting the 80 m still clock, so "
-              "core/idle.js never hides it.",
-         gap="Rider: 'DCC in 20 min' at 59th and Ellis for over two hours. Fix (owner): a wider still radius downtown "
-             "(about 150 m), or label times that slide 5+ min in 10 min while the bus is still as est. (a hide rule on that "
-             "alone would be wrong 3 times in 4: only 24% of the minutes it picks were ghosts, E32)."),
+         "59th and Ellis that slides forward with the clock. Since 2026-11-11 the still radius downtown is 150 m "
+         "(core/idle.js STILL_DOWNTOWN_M, owner: \"use a wider standing still radius\"), so GPS jitter of about 100 m no "
+         "longer restarts its still clock, but in this window nothing hides it: IDLE needs no Passio time ahead and "
+         "PARKED 90 min.",
+         gap="Rider: 'DCC in 20 min' at 59th and Ellis while the bus is parked. Fix (owner): label times that slide 5+ min "
+         "in 10 min while the bus is still as est. (a hide rule on that alone would be wrong 3 times in 4: only 24% of "
+         "the minutes it picks were ghosts, E32)."),
     dict(name="parked_now", day="2026-11-06", t=("18:02", "18:50"), bus="12644", routes=["6126"], stop="8615", kind="gap",
          says="AP/DX 12644 parked at Goldblatt for an hour with Passio saying it reaches Bernard Mitchell in under a "
               "minute (it moves again at 19:09); later stops keep a time ahead, so core/idle.js IDLE never applies, and its "
@@ -88,14 +91,27 @@ CASES = [
               "4318 on its live time (Passio: at 59th and Ellis in about 12 min) while the bus is downtown; it makes its "
               "last arrival at 18:00 (Roosevelt Station) and logs no other arrival that day.",
          gap="Rider: a trip planned on a bus that never comes (its live time at 59th and Ellis was impossible from "
-             "downtown). No live signal predicts a leave (E29). Fix (owner): none in the rules; a live time far below the "
-             "timetable's ride time from where the bus is could be shown as est."),
-    dict(name="number_flap", day="2026-11-09", t=("10:00", "10:30"), bus="12643", routes=["5704"], stop="8612", kind="gap",
-         says="Downtown Campus Connector, 6 buses: each time core/offroute.js hides or shows a bus at the edge of the "
-              "line, the others are renumbered (Bus 3 becomes Bus 2 and back).",
-         gap="Rider: 'Bus 3 in 4 min' turns into 'Bus 2 in 4 min' with no bus change. 50% of the DCC's swaps (Oct 10 to Nov "
-             "10) came from rule toggles. Fix (owner): keep a hidden bus's number place while it is in store.away (as for a feed gap)."),
+         "downtown). No live signal predicts a leave (E29). Fix (owner, accepted on 2026-11-11 as a known gap): none "
+         "in the rules; a live time far below the timetable's ride time from where the bus is could be shown as est."),
+    dict(name="number_flap", day="2026-11-09", t=("10:00", "10:30"), bus="12643", routes=["5704"], stop="8612", kind="guard",
+         says="Downtown Campus Connector, 6 buses: a bus core/offroute.js hides and shows again at the edge of the line "
+         "keeps its number place for up to 15 min (core/busnum.js RULE_HOLD_S, owner 2026-11-11: \"keep numbers "
+         "steady\"), so the other buses keep theirs: no swap in these 30 min (23 before, Bus 3 becoming Bus 2 and "
+         "back)."),
 ]
+
+
+def slim_seen(ss):
+    """The fields of service_seen.json that web/js/data/static.js cleanSeen reads (the fixture stays small)."""
+    def day(d):
+        return {"type": d.get("type"), "dows": d.get("dows", []), "listed": {"spans": (d.get("listed") or {}).get("spans", [])},
+                "buses": [{"days": b.get("days"), "first_stop": {"p50": b["first_stop"].get("p50")}} for b in d.get("buses", [])
+                          if b.get("first_stop")]}
+    return {"valid_until": ss.get("valid_until"),
+            "lines": {rid: {"days": [day(d) for d in L.get("days", [])]} for rid, L in (ss.get("lines") or {}).items()},
+            "transitions": [{"from": t["from"], "to": t["to"], "day_type": t.get("day_type"), "kind": t.get("kind"),
+                             "leave": {"p50": t["leave"]["p50"]}, "join": {"p50": t["join"]["p50"]}}
+                            for t in ss.get("transitions") or [] if t.get("leave") and t.get("join")]}
 
 
 def epoch(day, hm):
@@ -120,7 +136,7 @@ def build(work, out):
                     "[[stop, time]]]; every time is seconds after the case's t0 (unix); expect[j] = [shown on the case's "
                     "routes, vehicles whose times are kept, away, {vehicle: number}, vehicle of the next time at the "
                     "case's stop]",
-          "routes": None, "idle": None, "cases": []}
+          "routes": None, "idle": None, "seen": None, "cases": []}
     cache = {}
     for C in CASES:
         day = C["day"]
@@ -131,6 +147,8 @@ def build(work, out):
         load = lambda n: json.loads((sdir / n).read_text(encoding="utf-8"))
         if fx["routes"] is None:
             fx["routes"], fx["idle"] = load("routes.json"), load("idle.json")
+            if (sdir / "service_seen.json").exists():   # the seen service windows (core/seen.js), without the explanations
+                fx["seen"] = slim_seen(load("service_seen.json"))
         a0, a1 = epoch(day, C["t"][0]), epoch(day, C["t"][1])
         grid = [p for p in inp["polls"] if a0 <= p[0] <= a1]
         grid = grid[::C.get("every", EVERY)]
