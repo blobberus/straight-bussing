@@ -131,6 +131,7 @@ const PRECACHE = [
   'data/timetable.json',
   'data/idle.json',
   'data/corridors.json',
+  'data/service_seen.json',
   'data/landmarks.json',
 ];
 // PRECACHE:END
