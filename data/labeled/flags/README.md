@@ -96,10 +96,21 @@ The default, for any producer that states no rule of its own:
 - **medium**: at least 1.5 times the baseline on n >= 30, or a high-impact pattern on fewer samples;
 - **low**: a real but small difference, or too few samples to act on (often `watch`).
 
-Each producer's own rule (it wins over the default):
-- E30 transitions: see `data/labeled/transitions/README.md` (odd behavior at transition times).
-- E31 prediction misses: see `data/labeled/prediction_misses/README.md`.
-- E32 display replay: see RouteKnower.md E32.
+Each producer's own rule (it wins over the default; the full text is in its README):
+- **E30 transitions** (`data/labeled/transitions/README.md`, "Flags: the E30 severity rule"): ratio = the line's rate /
+  all lines'; high = ratio >= 2 on >= 30 episodes (15 for once-a-day spans and timetable steps) and >= 5 days, and riders
+  can be misled; medium = ratio >= 1.5 on 30 (15) episodes and 3 days, or ratio >= 2 on 10 (8), or a would-be high that
+  misleads nobody; low (`watch`) = ratio >= 1.5 on 10 (8) episodes and 3 days. A behavior every line shares is a fact
+  of the feed, not a flag.
+- **E31 prediction misses** (`data/labeled/prediction_misses/README.md`, "Severity rule (E31)"): large early / late
+  misses high at >= 1.5 x all lines (or + 15 points) with the interval's low end above all lines on n >= 300 and 5 days,
+  medium 1.25 x / + 10 points, low 1.1 x / + 5 points; stops without predictions high under 10% with a time 5 min ahead
+  on >= 100 arrivals; next-trip and other-trip times high when >= 50% of them are large misses on n >= 100; worse near
+  transitions / when behind high at a ratio >= 1.5 on >= 300 rows.
+- **E32 display replay**: see RouteKnower.md E32.
+
+Before acting on a flag, read the producer's "for other agents" notes too (E30's lists which episodes to drop from
+training labels: `feed_drop_mid_route`, `sparse_reporting`, `frozen_gps`, `wrong_line_label`; never from test rows).
 
 ## Refresh
 
