@@ -20,6 +20,9 @@ Scores (bus-minutes, the time each report stands for, capped at 60 s, on reports
 
   python experiments/routeknower/E28-scripts/idle_rules.py --dl <fetch.py folder> --episodes episodes.pkl
       --cache reports.pkl [--train-to 2026-10-28] [--json rules.json] [--cutoffs web/data/idle.json]
+  Refresh web/data/idle.json only (no scoring, no per-report table; seconds):
+  python experiments/routeknower/E28-scripts/idle_rules.py --dl <fetch.py folder> --episodes episodes.pkl
+      --cutoffs-only --write-idle web/data/idle.json
 """
 import argparse, bisect, json, math, pickle, sys, tempfile
 from collections import Counter, defaultdict
@@ -300,18 +303,32 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dl", required=True)
     ap.add_argument("--episodes", required=True, help="endofservice.py --cache pickle")
-    ap.add_argument("--cache", required=True, help="pickle of the per-report table (written once, then read)")
+    ap.add_argument("--cache", help="pickle of the per-report table (written once, then read); needed unless --cutoffs-only")
     ap.add_argument("--train-to", default="2026-10-28")
     ap.add_argument("--json")
     ap.add_argument("--grid", action="store_true", help="score the whole parameter grid (slow)")
     ap.add_argument("--write-idle", help="write the learned linger cutoffs as web/data/idle.json")
+    ap.add_argument("--cutoffs-only", action="store_true",
+                    help="only learn the linger cutoffs from every day and write --write-idle (skips the scoring)")
     a = ap.parse_args(argv)
+    if not a.cutoffs_only and not a.cache:
+        ap.error("--cache is required unless --cutoffs-only")
     eps, stops, names = pickle.loads(Path(a.episodes).read_bytes())
     E.ROUTE_NAMES.update(names)
     E.name_spots(eps, stops)
     for e in eps:
         e["label"], e["evidence"] = E.label(e)
     days = sorted({e["day"] for e in eps})
+    if a.cutoffs_only:
+        cache = Path(tempfile.gettempdir()) / "sb-e27-static"
+        SIG["_service"] = {d: O.build_static(O.zip_for(a.dl, d), cache)["service"] for d in days}
+        cuts = learn_cutoffs(eps, set(days), CHOSEN["past_min"], CHOSEN["margin_min"])
+        if a.write_idle:
+            write_idle(a.write_idle, cuts, days)
+        if a.json:
+            Path(a.json).write_text(json.dumps({"days": days, "cutoffs_all": cuts}, indent=1, default=float),
+                                    encoding="utf-8")
+        return
     if Path(a.cache).exists():
         R = pickle.loads(Path(a.cache).read_bytes())
     else:
