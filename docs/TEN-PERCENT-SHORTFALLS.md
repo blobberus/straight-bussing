@@ -1,5 +1,7 @@
 # Where the live arrival times fall short of the 10% rule (synopsis)
 
+> **Newer, for the current goal (the 10 minute shrink): RouteKnower E31 (2026-11-11), Oct 12 to Nov 10.** Large misses per line, stop, hour and week, by direction, in `data/labeled/prediction_misses/` (README, tables in `experiments/routeknower/E31-prediction-misses-tables.md`, flags in `data/labeled/flags/prediction_flags.csv`). What changed since this synopsis: from Oct 27 about 6 PM the bus often comes EARLIER than Passio shows on Central, 53rd Street Express, East and the Downtown Campus Connector (5 min ahead, more than 2 min earlier for 36 to 60% of times, 1 to 6% before), and fewer arrivals have a time 5 min ahead (66%, was 79%).
+
 What riders see today as "arrives in N min" in Straight Bussing is Passio's live prediction from the public feed,
 unchanged. This synopsis measures those times against the owner's **10% rule** and breaks the misses down to show
 where the tracking system is weakest and why. Our two timetable-based estimates are shown next to Passio for
