@@ -11,6 +11,7 @@ import odd_lib as L          # noqa: E402
 import odd_feed as F         # noqa: E402
 import odd_labels as LB      # noqa: E402
 import odd_passio as P       # noqa: E402
+import odd_schedule as S     # noqa: E402
 
 DAY = "2026-11-09"           # a Monday
 T0 = L.day_bounds(DAY)[0] + 6 * 3600       # 10:00 CST
@@ -246,6 +247,25 @@ class PassioTest(unittest.TestCase):
         eps = P.bunching_after_add(DAY, add, rarr)
         self.assertEqual([(e["other_vehicle"], e["arrivals_during"]) for e in eps], [("4", 4)])
         self.assertTrue(all(b for _, b in P.bunched_flags(rarr)["A"]))
+
+
+class ScheduleTest(unittest.TestCase):
+    def test_bus_count_and_start_end(self):
+        tr = {"1": drive("1", "A", LAT_A, T0 + 1800, 180, step_s=20)}       # from 10:30 to 11:30
+        p = L.DayPolls.from_tracks(tr)
+        bc = S.BusCount(p, {"A"})
+        self.assertEqual(bc.at("A", T0 + 2000), 1)
+        self.assertEqual(bc.at("A", T0 + 1800 + 180 * 20 + 700), 0)          # silent > 10 min
+        eps = S.start_end(DAY, {"A": [(T0, T0 + 3 * 3600)]}, bc)
+        self.assertEqual(sorted(e["code"] for e in eps), ["service_end_early", "service_start_late"])
+
+    def test_step_add_missed(self):
+        tr = {"1": drive("1", "A", LAT_A, T0 - 3600, 400, step_s=20)}       # one bus 09:00 to 11:13
+        bc = S.BusCount(L.DayPolls.from_tracks(tr), {"A"})
+        eps = S.step_mismatches(DAY, [("A", T0, 1, 2)], bc, [])
+        self.assertEqual([e["code"] for e in eps], ["timetable_add_missed"])
+        joined = [{"kind": "add", "label": "added_from_garage", "route_id": "A", "epoch": str(T0 + 300)}]
+        self.assertEqual(S.step_mismatches(DAY, [("A", T0, 1, 2)], bc, joined), [])
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
