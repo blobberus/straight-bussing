@@ -762,3 +762,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5704,Downtown Campus Connector,1794369599,2026-11-10 21:59:59,drop,4,3,12645,151793,S (Upper) Wacker Dr & W Adams St,1794369599,874028,12642;12647;12649,6,6,0,,,1,
 5704,Downtown Campus Connector,1794369637,2026-11-10 22:00:37,drop,3,2,12647,8654,59th & Ellis,1794369637,874028,12642;12649,6,4,0,,,1,
 5704,Downtown Campus Connector,1794369668,2026-11-10 22:01:08,drop,2,1,12642,8654,59th & Ellis,1794369668,874028,12649,6,4,0,,,1,
+6126,Apostolic/Drexel,1794376832,2026-11-11 00:00:32,drop,2,1,4324,8612,Goldblatt Pavilion,1794376832,501492,4327,3,0,0,,,,
