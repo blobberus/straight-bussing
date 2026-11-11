@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>display golden (running)</title></head>
+<body>
+<!-- Not a test page (the suite runs *.test.html): experiments/routeknower/E32-scripts/make_fixtures.py --expect opens it
+     in headless Edge to store what the shipped live pipeline shows on the real episodes of
+     fixtures/display_episodes.json (the test data-display.js checks against those answers). -->
+<pre id="result">running...</pre>
+<script type="module">
+import { runCase } from "./display-run.js";
+const fx = await (await fetch("fixtures/display_episodes.json", { cache: "no-store" })).json();
+const out = {};
+for (const c of fx.cases) out[c.name] = await runCase(fx, c);
+document.getElementById("result").textContent = JSON.stringify(out);
+document.title = "TESTS pass=1 fail=0";
+</script>
+</body>
+</html>
