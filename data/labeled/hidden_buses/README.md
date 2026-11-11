@@ -69,7 +69,9 @@ not_operating 88.
   shipped code). Score "what riders saw" without them, and score Passio's raw feed with them.
 - **Refresh**: in the data repo's weekly `findings.yml`, its replay step writes `findings/hidden_buses/hidden_buses.csv`.
   To adopt that file here, copy it in, check the TOTALS line and commit. By hand, run the commands in the file's
-  REFRESH lines.
+  REFRESH lines. The weekly replay works on GitHub's runner: the first run (43070787938, 2026-11-11) replayed 31 days
+  in about 2.5 min with headless Edge 156 (`findings/last_run.json` `hidden_buses`). That replay could carry E32b's
+  display flags too, but those need planner samples (`--plan 300`, slower), which this step skips.
 
 ## Caveats
 
