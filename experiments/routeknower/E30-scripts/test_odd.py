@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import odd_lib as L          # noqa: E402
+import odd_feed as F         # noqa: E402
 
 DAY = "2026-11-09"           # a Monday
 T0 = L.day_bounds(DAY)[0] + 6 * 3600       # 10:00 CST
@@ -94,6 +95,92 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(L.hours_outside([(100, 200)], 150), ("", 0.0))
         self.assertEqual(L.hours_outside([(100, 200)], 260), ("after", 60))
         self.assertEqual(L.hours_outside([(100, 200), (1000, 2000)], 900), ("before", 100))
+
+
+class FeedTest(unittest.TestCase):
+    def setUp(self):
+        self.li = L.LineIndex(SHAPES)
+
+    def polls(self, tracks):
+        return L.DayPolls.from_tracks(tracks)
+
+    def test_feed_drop_mid_route_reappears_far(self):
+        a = drive("1", "A", LAT_A, T0, 30)                  # 5 min driving
+        b = drive("1", "A", LAT_A, T0 + 290 + 600, 10, lon0=LON0 + 0.02)   # back 10 min later, ~1.2 km on
+        p = self.polls({"1": a + b, "Z": other_bus(T0, T0 + 1000)})
+        eps = F.feed_drops(DAY, p, {"A", "N"}, self.li, [])
+        self.assertEqual(len(eps), 1)
+        e = eps[0]
+        self.assertEqual((e["code"], e["outcome"], e["vehicle_id"]), ("feed_drop_mid_route", "reappeared_far", "1"))
+        self.assertAlmostEqual(e["duration_min"], 10.0, delta=0.2)
+
+    def test_no_drop_when_whole_feed_silent(self):
+        a = drive("1", "A", LAT_A, T0, 30)
+        b = drive("1", "A", LAT_A, T0 + 900, 10)
+        p = self.polls({"1": a + b})                        # nobody else reported: a feed / collector gap
+        self.assertEqual(F.feed_drops(DAY, p, {"A"}, self.li, []), [])
+
+    def test_no_drop_when_parked_or_at_linger_spot(self):
+        a = park("1", "A", LAT_A, LON0 + 0.01, T0, 30)
+        b = drive("1", "A", LAT_A, T0 + 900, 10)
+        p = self.polls({"1": a + b, "Z": other_bus(T0, T0 + 1200)})
+        self.assertEqual(F.feed_drops(DAY, p, {"A", "N"}, self.li, []), [])
+        a = drive("1", "A", LAT_A, T0, 30)
+        last = a[-1]
+        p = self.polls({"1": a + drive("1", "A", LAT_A, T0 + 900, 5), "Z": other_bus(T0, T0 + 1200)})
+        self.assertEqual(F.feed_drops(DAY, p, {"A", "N"}, self.li, [(last[3], last[4], "Layover")]), [])
+
+    def test_sparse_reporter_is_its_own_code_and_merges(self):
+        tr = []
+        for k in range(4):                                  # a report every 6 min, moving fast between them
+            tr += drive("1", "A", LAT_A, T0 + k * 360, 2, step_s=5, lon0=LON0 + k * 0.004)
+        p = self.polls({"1": tr, "Z": other_bus(T0, T0 + 1800)})
+        eps = F.feed_drops(DAY, p, {"A", "N"}, self.li, [])
+        codes = [e["code"] for e in eps]
+        self.assertIn("feed_drop_mid_route", codes)         # the first gap: it was reporting every 5 s
+        sparse = [e for e in eps if e["code"] == "sparse_reporting"]
+        self.assertEqual(len(sparse), 0)                    # 5 s apart before each gap here
+        tr2 = []
+        for k in range(5):                                  # reports 150 s, then 330 s apart
+            tr2 += [(T0 + k * 480, "A", "t", LAT_A, LON0 + k * 0.004, 9.0, "", T0 + k * 480),
+                    (T0 + k * 480 + 150, "A", "t", LAT_A, LON0 + k * 0.004 + 0.002, 9.0, "", T0 + k * 480 + 150)]
+        p = self.polls({"1": tr2, "Z": other_bus(T0, T0 + 2100)})
+        sp = [e for e in F.feed_drops(DAY, p, {"A", "N"}, self.li, []) if e["code"] == "sparse_reporting"]
+        self.assertEqual(len(sp), 1)
+        self.assertGreaterEqual(sp[0]["gaps"], 3)
+
+    def test_frozen_gps_needs_motion(self):
+        frozen = [(T0 + k * 10, "A", "t", LAT_A, LON0 + 0.01, 7.0, "", T0 + k * 10) for k in range(40)]
+        p = self.polls({"1": frozen})
+        self.assertEqual([e["code"] for e in F.frozen_gps(DAY, p, {"A"})], ["frozen_gps"])
+        parked = [(T0 + k * 10, "A", "t", LAT_A, LON0 + 0.01, 0.0, "", T0 + k * 10) for k in range(40)]
+        self.assertEqual(F.frozen_gps(DAY, self.polls({"1": parked}), {"A"}), [])
+
+    def test_position_jump_merges_and_spike(self):
+        tr = drive("1", "A", LAT_A, T0, 5)
+        t = tr[-1][0]
+        tr.append((t + 10, "A", "t", LAT_A + 0.02, LON0, 8.0, "", t + 10))          # 2.2 km away
+        tr.append((t + 20, "A", "t", tr[-2][3], tr[-2][4], 8.0, "", t + 20))        # straight back
+        tr += drive("1", "A", LAT_A, t + 30, 3, lon0=tr[-1][4])
+        eps = F.position_jumps(DAY, self.polls({"1": tr}), {"A"})
+        self.assertEqual(len(eps), 1)
+        self.assertEqual((eps[0]["outcome"], eps[0]["jumps"]), ("spike", 2))
+
+    def test_twin_buses_same_label_only(self):
+        a = drive("1", "A", LAT_A, T0, 30)
+        b = [(r[0] + 2, r[1], r[2], r[3] + 0.0001, r[4], r[5], "", r[7] + 2) for r in a]
+        eps = F.twin_buses(DAY, self.polls({"1": a, "2": b}), {"A"})
+        self.assertEqual([(e["vehicle_id"], e["other_vehicle"], e["outcome"]) for e in eps], [("1", "2", "convoy")])
+        c = [(r[0], "B", r[2], r[3], r[4], r[5], "", r[7]) for r in b]
+        self.assertEqual(F.twin_buses(DAY, self.polls({"1": a, "2": c}), {"A", "B"}), [])
+
+    def test_after_hours(self):
+        spans3 = {"A": [(T0 - 7200, T0)]}
+        tr = drive("1", "A", LAT_A, T0 + 600, 10, step_s=30) + drive("1", "A", LAT_A, T0 + 1200, 20, step_s=30)
+        eps = F.after_hours(DAY, self.polls({"1": tr}), {"A"}, spans3, {})
+        self.assertEqual(len(eps), 1)                         # starts > 15 min after the end
+        self.assertEqual((eps[0]["side"], eps[0]["outcome"]), ("after", "not_serving"))
+        self.assertGreater(eps[0]["start"], T0 + 900)
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
