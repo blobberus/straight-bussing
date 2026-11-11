@@ -23,42 +23,71 @@ the collector's `arrivals.csv`.
 | `idle` | `core/idle.js` (`idle_reason`: idle, parked, past, linger). The bus and its times are dropped. |
 | `gone` | `core/transition.js` GONE: silent 15 min while the feed is alive. Its times are dropped. |
 | `not_operating` | After an off_route or idle hide, the bus stopped reporting. `core/operating.js` drops it after 5 min, so the two rules no longer see it. In the shipped code its Passio times came back until GONE: `times_shown_by_app = y`. This is the KNOWN GAP the owner's rule closes. |
-| `held` | The times are kept off until the bus reports again (the owner's rule). This rule appears once the replayed code has it (poll field 9 of the replay). |
+| `held` | `core/transition.js` heldStep, the owner's rule, live since 2026-11-11. A bus a rule hid that then stopped reporting keeps its times off until it reports again. Replay poll field 8. |
+| `transitioning` | `core/seen.js`, live since 2026-11-11. An off-route bus on its way to a new line stays on the map, marked "Transitioning to new line", but its Passio times are dropped (`TRANSITION_TIMES` false). Replay poll field 9. It is listed only while a replay drops those times. |
 
-## First build (2026-11-11, rules shipped on Nov 6, replayed on Oct 10 to Nov 10, 32 days)
+## Current build (2026-11-11, rules on main@d65931ad, replayed on Oct 10 to Nov 10, 32 days)
 
-1,698 episodes:
-- **off_route** 1,185: 440 of them came to serve within 15 min; Passio had times for 11,529 bus-minutes.
-- **not_operating** 218: 38 came to serve; 1,525 bus-minutes of times that the shipped app showed again.
-- **gone** 191: 46 came to serve; 2,743 bus-minutes.
-- **idle** 104: 35 came to serve; 1,088 bus-minutes; 77 of them were learned linger spots.
+1,997 episodes. In brackets: came to serve within 15 min, and Passio's bus-minutes of times:
+- **off_route** 1,164 (410; 10,208 bus-min).
+- **transitioning** 309 (185; 1,321 bus-min): the badge stays, the times are off.
+- **gone** 191 (46; 2,743 bus-min).
+- **held** 179 (15; 1,928 bus-min held back).
+- **idle** 113 (35; 1,172 bus-min).
+- **not_operating** 41 (22; 120 bus-min the app still shows).
 
-Of the times Passio had at an episode's first minute, 13% came true for off_route, 7% for not_operating, 3% for gone
-and 2% for idle. "Came true" means the bus logged that stop from 1 min before to 15 min after the time. Most hidden
-times were ghosts. Off-route hides of a bus that then served are the exception: E32's false hides, the evening loops
-of Apostolic/Drexel and Friend Center/Metra.
+Share of the first minute's times that came true: off_route 12%, idle 1%, gone 3%, held 4%, transitioning 17%,
+not_operating 21%. "Came true" means the bus logged that stop from 1 min before to 15 min after the time. The held
+times were ghosts. The transitioning buses mostly came to serve (60%), but most of their times did not come true:
+Apostolic/Drexel has 101 of its 122.
 
-Episodes per line and rule (in brackets: how many came to serve within 15 min):
+Episodes per line and rule (in brackets: came to serve within 15 min):
 
-| line | off_route | idle | gone | not_operating |
-|---|---|---|---|---|
-| Downtown Campus Connector | 358 (121) | 6 (1) | 78 (18) | 46 (8) |
-| Apostolic/Drexel | 228 (146) | 32 (0) | 19 (3) | 39 (7) |
-| Red Line/Arts Block | 205 (52) | 4 (1) | 8 (0) | 27 (4) |
-| Friend Center/Metra | 74 (43) | 2 (1) | 3 (0) | 23 (10) |
-| South | 54 (8) | 23 (13) | 18 (5) | 15 (0) |
-| Central | 47 (9) | 7 (2) | 10 (1) | 20 (3) |
-| 53rd Street Express | 46 (23) | 0 | 6 (0) | 5 (0) |
-| Apostolic | 40 (19) | 0 | 8 (8) | 1 (1) |
-| East | 38 (3) | 3 (1) | 23 (4) | 20 (0) |
-| North | 35 (2) | 23 (16) | 7 (0) | 10 (0) |
-| Midway Metra | 28 (4) | 0 | 7 (4) | 4 (0) |
-| Drexel | 17 (2) | 0 | 0 | 2 (0) |
-| Regents Express | 9 (4) | 0 | 3 (2) | 6 (5) |
-| South Loop Shuttle | 6 (4) | 4 (0) | 1 (1) | 0 |
+| line | off_route | idle | gone | held | transitioning | not_operating |
+|---|---|---|---|---|---|---|
+| Downtown Campus Connector | 354 (113) | 9 (1) | 78 (18) | 30 (0) | 76 (31) | 14 (6) |
+| Apostolic/Drexel | 213 (130) | 32 (0) | 19 (3) | 34 (2) | 122 (101) | 6 (5) |
+| Red Line/Arts Block | 205 (50) | 4 (1) | 8 (0) | 25 (2) | 60 (18) | 3 (2) |
+| Friend Center/Metra | 74 (42) | 2 (1) | 3 (0) | 16 (6) | 19 (16) | 9 (6) |
+| South | 54 (7) | 29 (13) | 18 (5) | 11 (0) | 4 (3) | 4 (0) |
+| Central | 48 (10) | 7 (2) | 10 (1) | 19 (2) | 5 (5) | 3 (2) |
+| East | 38 (3) | 3 (1) | 23 (4) | 20 (0) | 3 (1) | 0 |
+| North | 34 (1) | 23 (16) | 7 (0) | 11 (1) | 2 (2) | 0 |
+| 53rd Street Express | 44 (21) | 0 | 6 (0) | 4 (0) | 5 (4) | 1 (0) |
+| Apostolic | 40 (19) | 0 | 8 (8) | 0 | 0 | 1 (1) |
+| Midway Metra | 28 (4) | 0 | 7 (4) | 5 (1) | 4 (1) | 0 |
+| Drexel | 17 (2) | 0 | 0 | 2 (0) | 2 (0) | 0 |
+| Regents Express | 9 (4) | 0 | 3 (2) | 2 (1) | 7 (3) | 0 |
+| South Loop Shuttle | 6 (4) | 4 (0) | 1 (1) | 0 | 0 | 0 |
 
-Hides with no Passio time at all are not listed. The header's TOTALS line counts them: off_route 253, idle 84, gone 163,
-not_operating 88.
+## Against the shipped rules (the first build, 1,698 episodes)
+
+Episodes, shipped -> new:
+- off_route 1,185 -> 1,164.
+- idle 104 -> 113. Downtown, the wider 150 m still radius catches more parked buses.
+- gone 191 -> 191.
+- not_operating 218 -> 41.
+- held 0 -> 179.
+- transitioning 0 -> 309.
+
+**Times the app now holds back:** the shipped app showed Passio's times again for 1,525 bus-minutes after a hide
+(not_operating). The held rule now keeps 1,928 bus-minutes of times off; that is more than 1,525 because a held
+bus stays held past GONE's 15 min until it reports again. Only 120 bus-minutes (41 episodes) are still reshown.
+
+The held episodes per line went from 0 to: Apostolic/Drexel 34, Downtown Campus Connector 30, Red Line/Arts Block
+25, East 20, Central 19, Friend Center/Metra 16, South 11, North 11.
+
+The not_operating episodes, shipped -> new: Downtown Campus Connector 46 -> 14, Apostolic/Drexel 39 -> 6, Red
+Line/Arts Block 27 -> 3, Friend Center/Metra 23 -> 9, Central 20 -> 3, East 20 -> 0, South 15 -> 4, North 10 -> 0.
+
+Off-route hides that the transition marks turned into transitioning: Apostolic/Drexel 228 -> 213 off_route, with 122
+transitioning; Downtown Campus Connector 358 -> 354, with 76.
+
+After any display-rule change, rebuild with the commands in the file's REFRESH lines. Label the run with
+`--rules main@<commit of web/js>`, and compare the old and new files per rule and line.
+
+Hides with no Passio time at all are not listed. The header's TOTALS line counts them: off_route 261, idle 82, gone 163,
+held 86, transitioning 76, not_operating 8.
 
 ## For other agents
 
@@ -75,8 +104,8 @@ not_operating 88.
 
 ## Caveats
 
-- The days before Nov 6 are what the rules WOULD have hidden: the rules shipped on Nov 6, and the replay applies them to
-  every day.
+- The days before Nov 11 (Nov 6 for the first rules) are what the rules WOULD have hidden: the replay applies main's
+  rules to every day.
 - Minutes, not seconds: an episode is read at each whole minute, and minutes no more than 2 min apart join.
 - `sparse_reporter = y` (bus 12647 on some days) cannot be judged: such a bus may serve unseen.
 - `came_to_serve_15` comes from the collector's arrivals, which can miss a stop (DC-023). A `n` is "no logged
