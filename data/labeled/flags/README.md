@@ -108,6 +108,7 @@ Each producer's own rule (it wins over the default):
 # 2. merge, validate, commit
 python tools/flag_lines.py                # writes flagged_lines.csv and docs/FLAGGED-LINES.md
 python tools/flag_lines.py --check        # exit 1 on a problem or an out-of-date registry
+python tools/flag_lines.py --check-inputs # a producer, before committing its *_flags.csv: its rows only
 python tools/test_flag_lines.py           # the tool's own tests (also run by .github/workflows/collector-tests.yml)
 ```
 

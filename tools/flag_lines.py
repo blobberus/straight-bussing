@@ -16,6 +16,8 @@ altogether leaves its old flags as they were (not rechecked; a warning says so).
   python tools/flag_lines.py            validate, merge, write the registry and the summary
   python tools/flag_lines.py --check    validate only: exit 1 on a problem, or when the registry or the summary is
                                         out of date with the producer files (run the tool without --check to fix)
+  python tools/flag_lines.py --check-inputs   validate the producer files only (what a producer runs before it
+                                        commits its *_flags.csv; the registry is merged afterwards)
   options: --flags-dir DIR (producer files, default data/labeled/flags) --routes web/data/routes.json
            --prev CSV (previous registry, default <out>) --out CSV --md MD --today YYYY-MM-DD (default: Chicago today)
 The data repo's weekly findings run (straight-bussing-data findings/run_findings.py) calls it with --flags-dir on a
@@ -359,6 +361,7 @@ def load_stops(path):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--check", action="store_true", help="validate only (exit 1 on a problem or an out-of-date registry)")
+    ap.add_argument("--check-inputs", action="store_true", help="validate the producer files only (exit 1 on a problem)")
     ap.add_argument("--flags-dir", default=str(FLAGS_DIR))
     ap.add_argument("--routes", default=str(ROUTES))
     ap.add_argument("--stops", default=str(ROUTES.parent / "stops.json"))
@@ -388,6 +391,12 @@ def main(argv=None):
     md = md_text(merged, stop_names_for(merged, stops or {}))
     for x in warns:
         print("warning:", x, file=sys.stderr)
+    if a.check_inputs:
+        for x in problems:
+            print("problem:", x, file=sys.stderr)
+        print(f"flag_lines --check-inputs: {len(rows)} valid producer flags from {len(cats)} file(s), "
+              f"{len(problems)} problem(s), {len(warns)} warning(s)")
+        return 1 if problems else 0
     if a.check:
         if not problems:
             if prev_path.exists() and csv_text(merge(prev, rows, cats, "9999-12-31")[0]) != csv_text(

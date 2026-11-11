@@ -272,6 +272,17 @@ def crlf_and_bom_input_and_idempotent_output():
 
 
 @test
+def check_inputs_ignores_the_registry():
+    r = Repo()
+    r.write("transition_flags.csv", [row()])
+    code, out, err = r.run("--check-inputs")
+    assert code == 0 and "1 valid producer flags" in out and not r.out.exists(), (out, err)
+    r.write("prediction_flags.csv", [row("prediction_miss", "x", severity="urgent")])
+    code, out, err = r.run("--check-inputs")
+    assert code == 1 and "severity 'urgent'" in err, err
+
+
+@test
 def no_flags_yet():
     r = Repo()
     code, out, err = r.run()
