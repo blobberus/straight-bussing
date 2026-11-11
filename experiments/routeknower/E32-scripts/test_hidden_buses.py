@@ -25,7 +25,7 @@ class Replay:
         self.inp = {"snaps": [], "polls": []}
         self.res = {"polls": []}
 
-    def minute(self, k, op=(), off=(), idle=(), gone=(), times=None, reports=(), held=None):
+    def minute(self, k, op=(), off=(), idle=(), gone=(), times=None, reports=(), held=None, marked=()):
         h = T0 + 60 * k
         snap_ix = []
         for veh, pts in (times or {}).items():
@@ -34,8 +34,8 @@ class Replay:
         vs = [[v, "trip", "A", 41.79, -87.60, 0, 0, h - 5] for v in reports]
         self.inp["polls"].append([h, vs, snap_ix, []])
         poll = [h, [[v, "A"] for v in op], list(off), [[v, w] for v, w in idle], list(gone), {}, [], {}]
-        if held is not None:
-            poll += [list(held), []]                       # replay.html fields 8 (held) and 9 (marked transitioning)
+        if held is not None or marked:
+            poll += [list(held or []), list(marked)]       # replay.html fields 8 (held) and 9 (marked transitioning)
         self.res["polls"].append(poll)
         return h
 
@@ -109,6 +109,17 @@ class Episodes(unittest.TestCase):
         rows, _ = run(rp, label="held-15")
         self.assertEqual([(r["rule"], r["times_shown_by_app"], r["rules"]) for r in rows],
                          [("gone", "n", "held-15"), ("held", "n", "held-15")])
+
+    def test_transitioning_listed_only_when_its_times_are_dropped(self):
+        rp = Replay()
+        rp.minute(0, op=["3"], times={"3": [("S1", 6)]}, reports=["3"], marked=["3"])
+        rp.res["transTimes"] = False
+        rows, no_times = run(rp)
+        self.assertEqual([(r["rule"], r["times_shown_by_app"]) for r in rows], [("transitioning", "n")])
+        self.assertEqual((no_times["_marked_min"], no_times["_marked_times_min"]), (1, 1))
+        rp.res["transTimes"] = True                        # its times stay on screen: not a hide
+        rows, _ = run(rp)
+        self.assertEqual(rows, [])
 
     def test_merge_within_two_minutes(self):
         rp = Replay()

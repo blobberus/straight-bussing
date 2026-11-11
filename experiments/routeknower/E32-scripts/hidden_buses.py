@@ -15,8 +15,10 @@ Rules (what the replayed app did at each whole minute, data/live.js order):
                  come back until GONE (E32 "times back after a hide"); under the owner's 2026-11-11 rule they stay off
                  until the bus reports again (`times_shown_by_app` says which the replayed code did)
   held           core/transition.js heldStep (the owner's rule, live since 2026-11-11): a bus a rule hid that then stopped
-                 reporting keeps its times off until it reports again (replay.html poll field 8, `held`; field 9 lists the
-                 off-route buses kept on screen as transitioning to a new line, core/seen.js, which are not hides)
+                 reporting keeps its times off until it reports again (replay.html poll field 8, `held`)
+  transitioning  core/seen.js (2026-11-11): an off-route bus on its way to a new line stays on the map, marked
+                 "Transitioning to new line" (replay.html poll field 9), but with TRANSITION_TIMES false (the replay's
+                 `transTimes`) its Passio times are dropped: listed only then (badge shown, times kept off)
 An episode joins the minutes of one (bus, line, rule) no more than 2 min apart; only episodes with at least one minute
 of Passio times 0 to 60 min ahead are written. What the bus did = the data branch's arrivals.csv.
 
@@ -39,7 +41,7 @@ SERVE_S = 900           # came to serve: an arrival on its line from the hide's 
 TRUE_EARLY_S, TRUE_LATE_S = 60, 900    # a hidden time came true: the bus logged that stop 1 min before to 15 min after
 NEXT_LOOK_S = 3 * 3600
 SPARSE_S = 120          # core/transition.js SPARSE_S (a bus whose median report gap is longer reports too rarely)
-PRIORITY = ("off_route", "idle", "gone", "held", "not_operating")
+PRIORITY = ("off_route", "idle", "gone", "held", "transitioning", "not_operating")
 
 COLUMNS = ["day", "route_id", "route", "vehicle", "rule", "idle_reason", "hidden_from", "hidden_to", "hidden_min",
            "passio_times_min", "stops_with_times", "nearest_time_ahead_min", "first_time_ahead_min",
@@ -50,7 +52,7 @@ DOCS = {
     "day": "service day (04:00 to 04:00 Chicago time)",
     "route_id, route": "the line the bus was labeled with (GTFS route_id) and its name",
     "vehicle": "Passio's bus number",
-    "rule": "off_route / idle / gone / not_operating / held (see above)",
+    "rule": "off_route / idle / gone / held / transitioning / not_operating (see RULES above)",
     "idle_reason": "for idle: idle (still 30 min, no time 2 min ahead), parked (still 90 min), past (past the listed "
                    "hours + 60 min), linger (a learned end-of-shift spot, web/data/idle.json)",
     "hidden_from, hidden_to": "first and last whole minute of the episode (Chicago, HH:MM)",
@@ -162,6 +164,7 @@ def day_episodes(day, inp, res, A, stops, rstops, names, label):
         return len(w) >= 2 and g[len(g) // 2] > SPARSE_S
 
     last_hid, marks = {}, Counter()
+    trans_times = res.get("transTimes", True) is not False
     state = {}                      # minute -> {veh: (rule, rid, why)}
     times = {}                      # minute -> {veh: [(stop, p)]}
     shown = {}                      # minute -> set of veh shown on the map
@@ -170,6 +173,10 @@ def day_episodes(day, inp, res, A, stops, rstops, names, label):
         h, op, off, idle, gone = rp[0], rp[1], rp[2], rp[3], rp[4]
         held = set(poll_field(rp, 8, []) or [])        # replay.html since cc0ef86c: [.., oldNums, held, marked]
         marked = set(poll_field(rp, 9, []) or [])      # off-route buses kept on screen as transitioning (core/seen.js)
+        if trans_times:
+            marked_hidden = set()                      # their times stay on screen: not a hide
+        else:
+            marked_hidden = marked
         offs, idles, gones = set(off), {v: w for v, w in idle}, set(gone)
         oprid = {v: r for v, r in op}
         for v in offs | set(idles):
@@ -194,7 +201,7 @@ def day_episodes(day, inp, res, A, stops, rstops, names, label):
             marks["_marked_min"] += 1
             marks["_marked_times_min"] += bool(tm.get(v))
         st = {}
-        for v in set(oprid) | set(srid) | gones | held:
+        for v in set(oprid) | set(srid) | gones | held | marked_hidden:
             rid = oprid.get(v) or srid.get(v)
             if not rid:
                 continue
@@ -206,6 +213,8 @@ def day_episodes(day, inp, res, A, stops, rstops, names, label):
                 st[v] = ("gone", rid, "")
             elif v in held:
                 st[v] = ("held", rid, "")
+            elif v in marked_hidden:
+                st[v] = ("transitioning", rid, "")
             elif v not in oprid and h - last_hid.get(v, -10 ** 9) <= RESHOWN_S:
                 st[v] = ("not_operating", rid, "")
         state[h] = st
@@ -306,12 +315,13 @@ def header(rows, d0, d1, label, n_days, totals):
         "dropped); not_operating = after an off_route / idle hide the bus stopped reporting and left the operating list",
         "(5 min stale), so in the shipped code its Passio times came back until GONE (E32 'times back after a hide');",
         "held = core/transition.js heldStep (the owner's rule, live since 2026-11-11): the times of a bus a rule hid that",
-        "then stopped reporting stay off until it reports again (in the replays of code from before it: none).",
+        "then stopped reporting stay off until it reports again (in the replays of code from before it: none);",
+        "transitioning = core/seen.js: an off-route bus on its way to a new line stays on the map, marked 'Transitioning",
+        "to new line', but its Passio times are dropped (TRANSITION_TIMES false; not listed when a replay keeps them).",
         f"DATA: service days {d0} to {d1} ({n_days} replayed) with the rule set '{label}' (the web/js the replay ran:",
         "shipped = the rules live 2026-11-06 to 11-11; main@<commit> = main at that commit), applied to every day: what",
-        "those rules WOULD have hidden. Off-route buses kept on screen as transitioning to a new line (core/seen.js) are",
-        f"not hides and not listed: {totals.get('_marked_min', 0)} bus-minutes marked, "
-        f"{totals.get('_marked_times_min', 0)} of them with Passio times.",
+        "those rules WOULD have hidden. Buses marked as transitioning: "
+        f"{totals.get('_marked_min', 0)} bus-minutes, {totals.get('_marked_times_min', 0)} of them with Passio times.",
         "Episodes join the minutes of one (bus, line, rule) at most 2 min apart; only those with Passio times are listed.",
         "COLUMNS:", *(f"  {k}: {v}" for k, v in DOCS.items()),
         "TOTALS: " + ", ".join(f"{k} {by_rule[k]} episodes ({served[k]} came to serve within 15 min)"
