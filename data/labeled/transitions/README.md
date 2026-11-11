@@ -10,6 +10,13 @@ Built by `experiments/routeknower/E29-scripts/transitions.py` (RouteKnower.md E2
 `experiments/routeknower/E28-scripts/fetch.py`. 27 service days, Oct 10 to Nov 5, 2026 (Oct 18 had no change). Service
 days run 04:00 to 04:00 Chicago time. Every file is plain CSV: open it in Google Sheets (File > Import) or Excel.
 
+**Refreshed 2026-11-11 (E30) through Nov 10:** 32 service days, 2,250 events (Oct 18 and Nov 7 had no change; Nov 10's
+polls were merged from the collector's run artifacts by fetch.py, the archive builds the same file later). The 1,926 rows
+of Oct 10 to Nov 5 came out identical; the counts below are still those of the first 27 days. All 32 days: leaves break
+276, shift_end 241, feed_drop 207, route_switch 191, layover 201; adds from the garage 336, a break 270, another line 166,
+a layover 244, unknown 118. `leave_windows.csv` was not re-learned (it feeds the forecast table; the data repo's weekly
+findings run re-learns it). The odd-behavior files of E30 are described at the end ("Odd behavior at transition times").
+
 ## What one row of `transitions.csv` is
 
 A **transition**: a line's bus count changed. The events are the collector's own bus count changes
