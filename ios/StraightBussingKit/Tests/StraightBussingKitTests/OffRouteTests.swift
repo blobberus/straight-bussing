@@ -140,7 +140,8 @@ final class OffRouteTests: XCTestCase {
         var tr: [String: OffRoute.Track] = [:]
         var t = noon
         while t <= noon + 300 { tr = step(tr, [bus("g", "A", o, t)], t).tracks; t += 15 }
-        XCTAssertEqual(tr["g"], OffRoute.Track(rid: "A", since: noon, last: noon + 300, n: 21, fs: noon, fn: 21, ff: 0), "still tracked while hidden")
+        XCTAssertEqual(tr["g"], OffRoute.Track(rid: "A", since: noon, last: noon + 300, n: 21, fs: noon, fn: 21, ff: 0, dx: tr["g"]?.dx ?? -1), "still tracked while hidden")
+        XCTAssertEqual(tr["g"]?.dx ?? 0, 300, accuracy: 5, "its farthest distance in the stretch (Seen.towardM)")
         let back = step(tr, [bus("g", "A", onA, noon + 310)], noon + 310)
         XCTAssertEqual(back.hidden, [], "back within a block: shown on that report")
         XCTAssertTrue(back.tracks.isEmpty, "its clock is gone")
@@ -182,7 +183,7 @@ final class OffRouteTests: XCTestCase {
         var tr: [String: OffRoute.Track] = [:]
         var t = noon
         while t <= noon + 60 { tr = step(tr, [bus("y", "A", LatLon(lat: 41.7920, lon: -87.60), t)], t, corridors: c).tracks; t += 15 }
-        XCTAssertEqual(tr["y"], OffRoute.Track(rid: "A", since: noon, last: noon + 60, n: 5), "the NEAR clock runs, the FAR one does not")
+        XCTAssertEqual(tr["y"], OffRoute.Track(rid: "A", since: noon, last: noon + 60, n: 5, dx: tr["y"]?.dx ?? -1), "the NEAR clock runs, the FAR one does not")
     }
 
     func testOneBadFixNeverHidesABusTwoInARow500mOffDo() {
