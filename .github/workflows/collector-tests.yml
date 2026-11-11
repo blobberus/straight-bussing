@@ -37,12 +37,13 @@ jobs:
         run: python tools/collector_selftest.py
       - name: The workflow's own merge step against a throwaway remote (no-rows-lost guard, timetable record)
         run: python tools/test_collect_yml.py
-      - name: Archive, replay, monitor and daylight-saving tests
+      - name: Archive, replay, monitor, daylight-saving and database audit tests
         run: |
           python tools/test_eta.py
           python tools/test_replay.py
           python tools/test_monitor.py
           python tools/test_dst.py
+          python tools/test_db_audit.py
       - name: Timetable for Directions' Leave at (tools/build_gtfs.py build_timetable -> web/data/timetable.json)
         run: python tools/test_timetable.py
       - name: Flagged lines registry (tools/flag_lines.py -> data/labeled/flags/flagged_lines.csv, docs/FLAGGED-LINES.md)
