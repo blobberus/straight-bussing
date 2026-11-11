@@ -1,0 +1,7 @@
+data_from=2026-10-12
+data_to=2026-11-10
+recent_from=2026-10-28
+days=30
+predictions=437521
+targets=83762
+screens=9114
