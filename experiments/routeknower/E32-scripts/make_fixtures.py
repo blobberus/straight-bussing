@@ -44,7 +44,7 @@ CASES = [
               "(core/offroute.js); its last report is at 18:43, at 18:48 it leaves the operating list (5 min) and its "
               "Passio times come back on screen until GONE drops them at 18:58 (15 min).",
          gap="Rider: times from a bus already at the garage return for up to 10 min (5 to 15 min after its last report). "
-             "1,555 bus-minutes Oct 10 to Nov 5 replayed, 153 Nov 6 to 9 (DCC most). Fix: keep dropping the times of a "
+             "1,555 bus-minutes Oct 10 to Nov 5 replayed, 174 Nov 6 to 10 (the Downtown Campus Connector most). Fix: keep dropping the times of a "
              "bus core/offroute.js or core/idle.js hid until it reports again (data/live.js), or let GONE start from the "
              "hide; an owner decision since it changes what riders see."),
     dict(name="gone_comeback", day="2026-11-09", t=("07:45", "08:25"), bus="4322", routes=["5702"], stop="8612", kind="gap",
@@ -62,8 +62,8 @@ CASES = [
     dict(name="offroute_fcm", day="2026-11-06", t=("19:25", "19:50"), bus="4313", routes=["5700"], stop="8612", kind="gap",
          says="Friend Center/Metra 4313 in the evening: hidden off its line for about 12 min (south of 60th Street, parked "
               "4 min), then serves Wyler Pavilion at 19:46.",
-         gap="Rider: no Friend Center/Metra bus or time for about 12 min while it is coming (55% of the line's off-route minutes "
-             "were such, 6 to 9 PM, 4325 and 4313). Fix (owner): the same as offroute_loop."),
+         gap="Rider: no Friend Center/Metra bus or time for about 12 min while it is coming (53% of the line's off-route minutes "
+             "Oct 10 to Nov 10 were such, 68% since Nov 6; 6 to 9 PM, 4325 and 4313). Fix (owner): the same as offroute_loop."),
     dict(name="idle_linger_comeback", day="2026-11-09", t=("23:35", "00:05"), bus="4317", routes=["1075"], stop="8579", kind="gap",
          says="North 4317 waits at Reynolds Club after the learned linger time: hidden (core/idle.js LINGER), then serves "
               "again 10 min later.",
@@ -75,7 +75,7 @@ CASES = [
               "core/idle.js never hides it.",
          gap="Rider: 'DCC in 20 min' at 59th and Ellis for over two hours. Fix (owner): a wider still radius downtown "
              "(about 150 m), or label times that slide 5+ min in 10 min while the bus is still as est. (a hide rule on that "
-             "alone would be wrong 3 times in 4: only 25% of the minutes it picks were ghosts, E32)."),
+             "alone would be wrong 3 times in 4: only 24% of the minutes it picks were ghosts, E32)."),
     dict(name="parked_now", day="2026-11-06", t=("18:02", "18:50"), bus="12644", routes=["6126"], stop="8615", kind="gap",
          says="AP/DX 12644 parked at Goldblatt for an hour with Passio saying it reaches Bernard Mitchell in under a "
               "minute (it moves again at 19:09); later stops keep a time ahead, so core/idle.js IDLE never applies, and its "
@@ -93,8 +93,8 @@ CASES = [
     dict(name="number_flap", day="2026-11-09", t=("10:00", "10:30"), bus="12643", routes=["5704"], stop="8612", kind="gap",
          says="Downtown Campus Connector, 6 buses: each time core/offroute.js hides or shows a bus at the edge of the "
               "line, the others are renumbered (Bus 3 becomes Bus 2 and back).",
-         gap="Rider: 'Bus 3 in 4 min' turns into 'Bus 2 in 4 min' with no bus change. 52% of DCC swaps came from rule "
-             "toggles. Fix (owner): keep a hidden bus's number place while it is in store.away (as for a feed gap)."),
+         gap="Rider: 'Bus 3 in 4 min' turns into 'Bus 2 in 4 min' with no bus change. 50% of the DCC's swaps (Oct 10 to Nov "
+             "10) came from rule toggles. Fix (owner): keep a hidden bus's number place while it is in store.away (as for a feed gap)."),
 ]
 
 
