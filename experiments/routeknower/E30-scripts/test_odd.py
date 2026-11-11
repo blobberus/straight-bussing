@@ -12,6 +12,7 @@ import odd_feed as F         # noqa: E402
 import odd_labels as LB      # noqa: E402
 import odd_passio as P       # noqa: E402
 import odd_schedule as S     # noqa: E402
+import odd_dwell as D        # noqa: E402
 
 DAY = "2026-11-09"           # a Monday
 T0 = L.day_bounds(DAY)[0] + 6 * 3600       # 10:00 CST
@@ -266,6 +267,36 @@ class ScheduleTest(unittest.TestCase):
         self.assertEqual([e["code"] for e in eps], ["timetable_add_missed"])
         joined = [{"kind": "add", "label": "added_from_garage", "route_id": "A", "epoch": str(T0 + 300)}]
         self.assertEqual(S.step_mismatches(DAY, [("A", T0, 1, 2)], bc, joined), [])
+
+
+class DwellTest(unittest.TestCase):
+    def test_off_route_needs_two_reports_45_s(self):
+        st = {"segs": {r: L.O.segs_of(v) for r, v in SHAPES.items()}}
+        tr = drive("1", "A", LAT_A, T0, 10) + drive("1", "A", LAT_A + 0.0045, T0 + 100, 8) + drive("1", "A", LAT_A, T0 + 180, 5)
+        p = L.DayPolls.from_tracks({"1": tr})
+        d = D.own_dist(p, st, {})
+        arr = {"1": [(T0 - 300, "A", "s", "", 0, 0, True, ""), (T0 + 400, "A", "s", "", 0, 0, True, "")]}
+        eps = D.off_route(DAY, p, st, {"A": [(T0 - 3600, T0 + 3600)]}, arr, d)
+        self.assertEqual([(e["outcome"], e["max_dist_m"] > 400) for e in eps], [("in_service", True)])
+        # a corridor point where it drove takes the episode away
+        c = {"A": L.O.xy([LAT_A + 0.0045] * 60, [LON0 + k * 0.0005 for k in range(60)])}
+        self.assertEqual(D.off_route(DAY, p, st, {"A": [(T0 - 3600, T0 + 3600)]}, arr, D.own_dist(p, st, c)), [])
+        # outside the listed hours (+-30 min) it is after_hours' business
+        self.assertEqual(D.off_route(DAY, p, st, {"A": [(T0 - 9000, T0 - 3600)]}, arr, d), [])
+
+    def test_lingers_keep_not_in_service_labels(self):
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as td:
+            cols = ["vehicle", "route_id", "start", "duration_min", "lat", "lon", "spot", "pred_share", "label", "shown_by_app_min"]
+            L.write_csv(os.path.join(td, f"{DAY}.csv"), [
+                {"vehicle": "1", "route_id": "A", "start": "2026-11-09 23:49", "duration_min": "12.0", "lat": "41.79",
+                 "lon": "-87.6", "spot": "Reynolds Club (41.791, -87.598)", "pred_share": "0.9", "label": "end_of_shift"},
+                {"vehicle": "2", "route_id": "A", "start": "2026-11-09 12:00", "duration_min": "8.0", "lat": "41.79",
+                 "lon": "-87.6", "spot": "X", "pred_share": "0", "label": "layover"}], cols)
+            eps = D.lingers(DAY, td)
+        self.assertEqual([(e["vehicle_id"], e["outcome"], e["pred_visible"], e["spot_name"]) for e in eps],
+                         [("1", "end_of_shift", "y", "Reynolds Club")])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
