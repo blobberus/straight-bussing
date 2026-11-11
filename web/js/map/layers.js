@@ -18,6 +18,7 @@ import { unwrapDeg } from './geometry.js';
 import { prepareShape, follow, pathCum, pointAt, advance, headingAt } from './track.js';
 import { busKey, busNumbers } from '../core/busnum.js';
 import { busFaded } from '../core/visibility.js';
+import { TRANSITION_TEXT } from '../core/seen.js';
 
 const ids = new WeakMap();
 let nextId = 1;
@@ -90,9 +91,9 @@ export function networkSig(o, dimAll = false) {
  * Per-marker signature for a bus (position, heading, stale, label, color, focused, number, picked, faded).
  * @returns {string}
  */
-export function busSig(rid, lat, lon, bearing, stale, label, color, focused = false, num = 0, selected = false, faded = false) {
+export function busSig(rid, lat, lon, bearing, stale, label, color, focused = false, num = 0, selected = false, faded = false, trans = false) {
   return sig(rid, lat.toFixed(6), lon.toFixed(6), Number.isFinite(bearing) ? Math.round(bearing) : '', stale ? 1 : 0, label, color,
-    focused ? 1 : 0, num || 0, selected ? 1 : 0, faded ? 1 : 0);
+    focused ? 1 : 0, num || 0, selected ? 1 : 0, faded ? 1 : 0, trans ? 1 : 0);
 }
 
 /** A bus must move this far before its heading is derived from movement (no feed bearing). */
@@ -289,7 +290,7 @@ const STALE_S = 60;
  * over five characters), the bus number inside it after a thin divider when the line has 2 or more buses, and the heading
  * notch in the route color on the ring.
  */
-function busIcon(color, label, num = 0) {
+function busIcon(color, label, num = 0, tr = false) {
   const root = document.createElement('div');
   root.className = 'sb-bus';
   root.style.setProperty('--c', color);
@@ -299,7 +300,21 @@ function busIcon(color, label, num = 0) {
   if (label.length > 5) tx.classList.add('sb-bus-tx-sm');
   root.append(hd, tx);
   setNum(root, num);
+  setTrans(root, tr);
   return window.L.divIcon({ className: 'sb-busicon', html: root, iconSize: [32, 26], iconAnchor: [16, 13] });
+}
+
+/** Two arrows, one each way (a bus changing lines): the transitioning mark (core/seen.js), drawn in the text color. */
+const TRANS_SVG = '<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" focusable="false"><path d="M1.5 4h7.2M6.8 1.8 9 4 6.8 6.2M10.5 8H3.3M5.2 5.8 3 8l2.2 2.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/**
+ * The transitioning mark (owner 2026-11-11: a bus off its route inside a transition window of its line, core/seen.js):
+ * a small disc with two arrows at the marker's bottom right corner; the marker's name says it too (never color alone).
+ */
+function setTrans(root, on) {
+  let b = root.querySelector('.sb-bus-tr');
+  if (!on) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement('span'); b.className = 'sb-bus-tr'; b.setAttribute('aria-hidden', 'true'); b.innerHTML = TRANS_SVG; root.append(b); }
 }
 
 /** The bus number (core/busnum.js: routes with 2 or more buses) inside the marker after a divider; 0 removes it. */
@@ -561,7 +576,7 @@ export function createBusLayer(map, cb, opt = {}) {
 
   /** The marker's name: "Bus 2, Red Line/Arts Block" when its route shows several buses, else "Route RED bus". */
   function nameMarker(m) {
-    const base = m.num ? `Bus ${m.num}, ${m.name}` : `Route ${m.label} bus`;
+    const base = (m.num ? `Bus ${m.num}, ${m.name}` : `Route ${m.label} bus`) + (m.tr ? `, ${TRANSITION_TEXT}` : '');
     const text = m.key === youId ? `You are on this bus: ${base}` : base;
     const el = m.mk.getElement();
     if (el) { el.setAttribute('title', text); el.setAttribute('aria-label', text); }
@@ -586,6 +601,7 @@ export function createBusLayer(map, cb, opt = {}) {
     const plan = Array.isArray(o.plan) ? o.plan : null;
     const nums = o.numbers instanceof Map ? o.numbers : busNumbers(buses), sel = o.selected != null ? String(o.selected) : null;   // store.busNums: the numbers every view uses
     const away = new Set((o.away || []).filter((k) => k != null).map(String));   // more than a block off its route: gone at once
+    const trans = new Set((o.transitioning || []).filter((k) => k != null).map(String));   // off its route on its way to a new line: marked
     const seen = new Set(), listed = new Set();
     let changed = 0;
     for (const v of buses || []) {
@@ -603,9 +619,9 @@ export function createBusLayer(map, cb, opt = {}) {
       const brg = busHeading(feed, m && m.rid === rid ? m.ll : null, [lat, lon], m ? m.brg : NaN, (a, b) => map.distance(a, b));
       const stale = v.timestamp ? now - v.timestamp > STALE_S : false;
       const focused = !!focus?.has(rid), faded = busFaded(rid, o.focus, plan);
-      const num = nums.get(key) || 0, picked = key === sel;
+      const num = nums.get(key) || 0, picked = key === sel, tr = trans.has(key);
       const name = o.routes?.[rid]?.long || o.routes?.[rid]?.short || label;
-      const s = busSig(rid, lat, lon, brg, stale, label, color, focused, num, picked, faded);
+      const s = busSig(rid, lat, lon, brg, stale, label, color, focused, num, picked, faded, tr);
       if (m && m.s === s) continue;
       changed++;
       const prep = prepareShape(o.shapes?.[rid]);
@@ -615,12 +631,12 @@ export function createBusLayer(map, cb, opt = {}) {
         if (m) group.removeLayer(m.mk);
         const r0 = follow(prep, null, null, [lat, lon], { bearing: feed });   // a new badge starts on its line
         const start = r0.to ? r0.to.pt : [lat, lon];
-        const mk = L.marker(start, { icon: busIcon(color, label, num), zIndexOffset: 500, keyboard: false,
-          title: num ? `Bus ${num}, ${name}` : `Route ${label} bus`, riseOnHover: true });
+        const mk = L.marker(start, { icon: busIcon(color, label, num, tr), zIndexOffset: 500, keyboard: false,
+          title: (num ? `Bus ${num}, ${name}` : `Route ${label} bus`) + (tr ? `, ${TRANSITION_TEXT}` : ''), riseOnHover: true });
         const info = { id: key, rid, label: v.vehicle?.label != null ? String(v.vehicle.label) : '' };
         mk.on('click', () => cb.onBusTap(info));
         mk.addTo(group);
-        m = { key, rid, base, color, label, name, num, sel: false, faded: false, mk, s: '', ll: [lat, lon], brg: NaN, disp: start, to: r0.to, anim: null, vt, seen: now, rot: NaN };
+        m = { key, rid, base, color, label, name, num, tr, sel: false, faded: false, mk, s: '', ll: [lat, lon], brg: NaN, disp: start, to: r0.to, anim: null, vt, seen: now, rot: NaN };
         markers.set(key, m);
         if (key === youId) markYou(m, true);
         nameMarker(m);
@@ -638,6 +654,7 @@ export function createBusLayer(map, cb, opt = {}) {
       if (Number.isFinite(vt)) m.vt = vt;
       const el = m.mk.getElement()?.firstElementChild;
       if (m.num !== num || m.name !== name) { m.num = num; m.name = name; if (el) { setNum(el, num); const r = m.rot; m.rot = NaN; turn(m, r); } nameMarker(m); }
+      if (m.tr !== tr) { m.tr = tr; if (el) setTrans(el, tr); nameMarker(m); }
       if (m.sel !== picked || m.faded !== faded) { m.sel = picked; m.faded = faded; dress(m); }
       if (el) {
         el.classList.toggle('is-picked', picked);

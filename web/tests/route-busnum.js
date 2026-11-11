@@ -44,6 +44,30 @@ test("route busnum: two buses on a line are Bus 1 and Bus 2; each row is a 44 px
   ok(h.includes("Bus 2 heading here") || h.includes("Bus 1 heading here"), "pills use the numbers");
 });
 
+test("route busnum: one quiet line says the bus count comes from PassioGo (owner 2026-11-11)", () => {
+  const h = renderRoute(two(), NOW);
+  const d = document.createElement("div"); d.innerHTML = h;
+  const note = d.querySelector(".r-count");
+  eq(note?.textContent, "Bus count reported by PassioGo can be unreliable.");
+  ok(note.previousElementSibling?.classList.contains("r-buslist"), "right under Where the buses are");
+  eq(d.querySelectorAll(".r-count").length, 1, "once");
+  ok(note.classList.contains("v-sec") && !note.closest(".v-warn"), "secondary text, not a warning");
+  const none = fixture({ routeId: "R1", view: "route" });
+  none.buses = none.buses.filter((b) => b.trip.route_id !== "R1");
+  ok(!renderRoute(none, NOW).includes("r-count"), "no live bus on the line: no line");
+});
+
+test("route busnum: a transitioning bus says so in its row, and when tapped (owner 2026-11-11)", () => {
+  const s = two({ transitioning: ["v3"] });
+  const p = busPositions(s, "R1", NOW);
+  eq(p.find((b) => b.key === "v3").text, "Bus 2: Transitioning to new line");
+  ok(p.find((b) => b.key === "v1").text.startsWith("Bus 1 "), "the other bus: where it is");
+  const h = renderRoute({ ...s, busId: "v3" }, NOW);
+  const d = document.createElement("div"); d.innerHTML = h;
+  eq(d.querySelector(".r-busnote .v-grow")?.textContent, "Transitioning to new line", "the tapped bus's note, exactly");
+  ok(!renderRoute({ ...s, busId: "v1" }, NOW).includes("r-trans"), "not for a bus on its line");
+});
+
 test("route busnum: one bus on a line keeps its fleet label, no number", () => {
   const p = busPositions(fixture({ routeId: "R1" }), "R1", NOW);
   eq(p[0].name, "Bus 101");

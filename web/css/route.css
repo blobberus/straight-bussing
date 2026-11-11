@@ -10,6 +10,9 @@
 .r-sched.is-on { color: var(--label); }   /* schedule data, not live: never the live green or its dot (the words carry the state) */
 .r-nolive { margin: 0 0 var(--s-3); }
 .r-away { margin: 0 0 var(--s-2); }   /* buses more than a block off the route (core/offroute.js): hidden from the map, still tracked */
+/* "Bus count reported by PassioGo can be unreliable." (core/busnum.js COUNT_NOTE): quiet secondary text, never a warning color */
+.v-route > .r-count { padding: 0 var(--s-1); margin: 0 0 var(--s-3); font: var(--t-footnote); color: var(--label-2); }
+.r-buslist + .r-count { margin-top: calc(-1 * var(--s-2)); }
 
 /* where the buses are (text, also the accessible description of the rail); each bus is a button: pick it to see its own
    time at every station (core/busnum.js; 44 px target) */
@@ -22,6 +25,7 @@
 .r-busbtn:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
 .r-busbtn.is-picked { color: var(--label); font-weight: var(--w-semibold); background: var(--tint-bg); }
 .r-busnote .v-btn { flex: none; }
+.r-trans { display: block; color: var(--label); font-weight: var(--w-semibold); }   /* "Transitioning to new line" (core/seen.js) */
 .r-bus.is-picked, .v-tlbus.is-picked { outline: 2px solid var(--tint); outline-offset: 1px; }
 .r-dot { flex: none; width: 8px; height: 8px; border-radius: 2px; }
 

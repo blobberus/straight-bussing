@@ -31,7 +31,8 @@ import { emptyState, skeleton, OFFICIAL_PHONE, liveDotHTML, segmented } from "..
 import { noLiveStatus, scheduledNoLive } from "../../core/operating.js";
 import { awayCount, awayText } from "../../core/offroute.js";
 import { noBusHelpHTML } from "./alerts.js";
-import { busKey, numberMap, busName, selectedBus, busArrival, arrivalBusName } from "../../core/busnum.js";
+import { busKey, numberMap, busName, selectedBus, busArrival, arrivalBusName, COUNT_NOTE } from "../../core/busnum.js";
+import { TRANSITION_TEXT } from "../../core/seen.js";
 
 const STALE_BUS_S = 60;
 const DAY_NAME = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
@@ -75,6 +76,7 @@ export function busPositions(state, rid, now) {
   const loop = list.length > 2 && list[0] === list[list.length - 1];
   const name = (i) => state.stops?.[ids[i]]?.name || ids[i];
   const out = [], nums = numberMap(state);   // the map badges' numbers (store.busNums: a bus missing from a poll keeps its place)
+  const trans = new Set((state.transitioning || []).map(String));   // off its route on its way to a new line (core/seen.js)
   for (const b of state.buses || []) {
     if (b?.trip?.route_id !== rid || !b.stop_id) continue;
     const next = ids.indexOf(b.stop_id);
@@ -90,9 +92,11 @@ export function busPositions(state, rid, now) {
     const seen = Number(b.timestamp) || 0, stale = !!seen && now - seen > STALE_BUS_S;
     const num = nums.get(busKey(b)) || 0, called = busName(b, nums);
     const label = num ? called : String(b.vehicle?.label || b.vehicle?.id || "");
-    let text = `${called} ` + (prev === null ? `approaching ${name(next)}` : `between ${name(prev)} and ${name(next)}, heading to ${name(next)}`);
+    const tr = trans.has(String(b.vehicle?.id ?? ""));
+    let text = tr ? `${called}: ${TRANSITION_TEXT}`   // off its line: where Passio says it heads next would mislead
+      : `${called} ` + (prev === null ? `approaching ${name(next)}` : `between ${name(prev)} and ${name(next)}, heading to ${name(next)}`);
     if (stale) text += `, location from ${ago(seen, now)}`;
-    out.push({ key: busKey(b), num, name: called, label, next, prev, frac, stale, seen, text });
+    out.push({ key: busKey(b), num, name: called, label, next, prev, frac, stale, seen, text, tr });
   }
   return out;
 }
@@ -302,6 +306,10 @@ export function renderRoute(state, now = nowS()) {
   const list = state.routeStops?.[rid] || [], ids = stopOrder(list);
   const loop = list.length > 2 && list[0] === list[list.length - 1];
   let h = '<div class="v-route">' + statusHtml(state, rid, r, n, now);
+  const pos = state.liveLoaded && ids.length ? busPositions(state, rid, now) : [];
+  // the live count and bus numbers come from Passio's feed (owner 2026-11-11): one quiet line, under the bus list or the count
+  const countNote = n > 0 || pos.length ? `<p class="v-sec r-count">${esc(COUNT_NOTE)}</p>` : "";
+  if (!pos.length) h += countNote;
   if (hidden) h += state.journey
     ? '<div class="v-note"><span class="v-grow v-sec">This route is not part of the current journey, so it is hidden on the map.</span></div>'
     : `<div class="v-note"><span class="v-grow v-sec">This route is hidden from the map and arrival times.</span><button type="button" class="v-btn v-btn--quiet" data-action="routes:toggle" data-id="${esc(rid)}">Show</button></div>`;
@@ -311,7 +319,6 @@ export function renderRoute(state, now = nowS()) {
   if (!first) h += help;
   if (!ids.length) return h + (first ? svc + help : "") + emptyState("No stops listed", "The schedule has no stops for this route.") + (first ? "" : svc) + "</div>";
   if (first) h += svc + help + '<h2 class="r-h r-stops-h" id="r-stops-h">Stops</h2>';
-  const pos = state.liveLoaded ? busPositions(state, rid, now) : [];
   const busAt = new Map(), railAt = new Map();
   for (const b of pos) {
     if (!busAt.has(b.next)) busAt.set(b.next, []);
@@ -321,8 +328,11 @@ export function renderRoute(state, now = nowS()) {
     railAt.get(host).push(b);
   }
   const picked = selectedBus(state), pk = busKey(picked), pname = picked ? busName(picked, numberMap(state)) : "";
-  if (picked) h += `<div class="v-note r-busnote" role="status"><span class="v-grow v-sec">${esc(`Showing ${pname}'s times`)}</span><button type="button" class="v-btn v-btn--quiet" data-action="route:allbuses">Show the next bus at each stop</button></div>`;
-  if (pos.length) h += `<ul class="r-buslist" aria-label="Where the buses are">${pos.map((b) => `<li${b.stale ? ' class="is-stale"' : ""}><button type="button" class="r-busbtn${b.key === pk ? " is-picked" : ""}" data-action="route:bus" data-id="${esc(b.key)}" aria-pressed="${b.key === pk}" aria-label="${esc(`${b.text}. ${b.key === pk ? "Showing its times" : "Show its times"}`)}"><span class="r-dot" style="background:${color}" aria-hidden="true"></span><span class="v-grow">${esc(b.text)}</span></button></li>`).join("")}</ul>`;
+  const ptr = !!picked && (state.transitioning || []).map(String).includes(String(picked.vehicle?.id ?? ""));   // a tapped transitioning bus says so
+  // a tapped transitioning bus says so (its own times are off: core/seen.js TRANSITION_TIMES)
+  const pnote = ptr ? `<span class="r-trans">${esc(TRANSITION_TEXT)}</span>` : esc(`Showing ${pname}'s times`);
+  if (picked) h += `<div class="v-note r-busnote" role="status"><span class="v-grow v-sec">${pnote}</span><button type="button" class="v-btn v-btn--quiet" data-action="route:allbuses">Show the next bus at each stop</button></div>`;
+  if (pos.length) h += `<ul class="r-buslist" aria-label="Where the buses are">${pos.map((b) => `<li${b.stale ? ' class="is-stale"' : ""}><button type="button" class="r-busbtn${b.key === pk ? " is-picked" : ""}" data-action="route:bus" data-id="${esc(b.key)}" aria-pressed="${b.key === pk}" aria-label="${esc(`${b.text}. ${b.key === pk ? "Showing its times" : "Show its times"}`)}"><span class="r-dot" style="background:${color}" aria-hidden="true"></span><span class="v-grow">${esc(b.text)}</span></button></li>`).join("")}</ul>${countNote}`;
   h += `<ol class="v-tl r-tl" style="--rc:${color}" aria-label="Stops on ${esc(r.long || r.short || "route")}, in travel order">`;
   ids.forEach((sid, i) => {
     const all = state.liveLoaded ? arrivalsFor(state, sid, { routeId: rid, nowS: now }) : [];

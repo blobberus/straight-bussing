@@ -146,6 +146,24 @@ test('bus layer: in-place updates, recreate only on route change, stale + hidden
   m.remove();
 });
 
+test('bus layer: a transitioning bus carries a mark and says so in its name, in place (owner 2026-11-11)', () => {
+  const m = bareMap('t-bustr');
+  const layer = createBusLayer(m, { onBusTap: () => {} });
+  const o = { routes, hidden: [], focus: null, nowS: 1010 };
+  layer.draw([bus(12, 'r1', 1, 1), bus(4, 'r1', 2, 2)], { ...o, transitioning: ['12'] });
+  const el = () => [...m.getContainer().querySelectorAll('.sb-busicon')].find((e) => e.getAttribute('aria-label').startsWith('Bus 2'));
+  const e12 = el();
+  eq(e12.getAttribute('aria-label'), 'Bus 2, Central, Transitioning to new line', 'the name says it (never by color alone)');
+  ok(e12.querySelector('.sb-bus-tr svg'), 'the two-arrow mark');
+  eq(e12.querySelector('.sb-bus-tr').getAttribute('aria-hidden'), 'true');
+  ok(![...m.getContainer().querySelectorAll('.sb-busicon')].find((e) => e !== e12).querySelector('.sb-bus-tr'), 'the other bus has none');
+  layer.draw([bus(12, 'r1', 1, 1), bus(4, 'r1', 2, 2)], o);
+  ok(el() === e12 && !e12.querySelector('.sb-bus-tr') && e12.getAttribute('aria-label') === 'Bus 2, Central', 'back on its line: the mark goes, same marker');
+  layer.draw([bus(12, 'r1', 1, 1), bus(4, 'r1', 2, 2)], { ...o, transitioning: ['12'] });
+  ok(el() === e12 && e12.querySelector('.sb-bus-tr'), 'and comes back in place');
+  m.remove();
+});
+
 test('bus layer: the bus you ride is never faded', () => {
   const m = bareMap('t-busyou');
   const layer = createBusLayer(m, { onBusTap: () => {} });

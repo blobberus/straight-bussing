@@ -40,7 +40,7 @@ const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "
   "highlightStops", "drawPlan", "drawFavorites", "setTrip", "inView", "setLandmarks", "fitTo", "flyTo", "onStopTap", "onBusTap", "onLineTap", "onUserMove", "onMapTap"];
 const VIS_KEYS = ["hiddenRoutes", "routeFilter", "view", "routeId", "routeOrder", "journey", "activeCustom", "customRoutes"];
 const NET_KEYS = ["routes", "shapes", "routeStops", "stopRoutes", "stops", "theme", ...VIS_KEYS];
-const BUS_KEYS = ["buses", "away", "busNums", "feedTs", "routes", "busId", ...VIS_KEYS];
+const BUS_KEYS = ["buses", "away", "busNums", "transitioning", "feedTs", "routes", "busId", ...VIS_KEYS];
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -115,7 +115,7 @@ function syncMap(s, changed) {
   if (NET_KEYS.some(has)) mapCall("drawNetwork", { routes: s.routes, shapes: s.shapes, routeStops: s.routeStops,
     stopRoutes: s.stopRoutes, stops: s.stops, hidden, focus, order, dark: isDark() });
   if (BUS_KEYS.some(has)) mapCall("drawBuses", s.buses || [], { routes: s.routes, shapes: s.shapes, hidden, focus, nowS: nowS(),
-    selected: busKey(selectedBus(s)), away: (s.away || []).map(busKey), numbers: numberMap(s) });   // the bus picked on the route page is highlighted; away = more than a block off its route (core/offroute.js): removed at once
+    selected: busKey(selectedBus(s)), away: (s.away || []).map(busKey), numbers: numberMap(s), transitioning: s.transitioning || [] });   // the bus picked on the route page is highlighted; away = more than a block off its route (core/offroute.js): removed at once
   if (has("view") || has("stopId") || has("stops")) {
     const st = s.view === "stop" && s.stopId && s.stops ? s.stops[s.stopId] : null;
     mapCall("setSelectedStop", st ? { id: s.stopId, lat: st.lat, lon: st.lon } : null);
