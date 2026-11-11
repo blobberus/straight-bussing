@@ -45,3 +45,5 @@ jobs:
           python tools/test_dst.py
       - name: Timetable for Directions' Leave at (tools/build_gtfs.py build_timetable -> web/data/timetable.json)
         run: python tools/test_timetable.py
+      - name: Flagged lines registry (tools/flag_lines.py -> data/labeled/flags/flagged_lines.csv, docs/FLAGGED-LINES.md)
+        run: python tools/test_flag_lines.py
