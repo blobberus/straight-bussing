@@ -13,7 +13,7 @@ checkup.**
 |---|---|---|
 | `transition_flags.csv` | RouteKnower E30 (`experiments/routeknower/E30-scripts/`) | odd bus behavior at transition times (a line's bus count changing: breaks, shift ends, buses moving lines or vanishing) |
 | `prediction_flags.csv` | RouteKnower E31 (`experiments/routeknower/E31-scripts/`) | lines (stops, hours, leads) with large prediction misses |
-| `display_flags.csv` | RouteKnower E32 | what the shipped display rules (off-route, idle, gone, bus numbers) showed riders around those episodes |
+| `display_flags.csv` | RouteKnower E32 (`experiments/routeknower/E32-scripts/`) | what the shipped display rules (off-route, idle, gone, bus numbers) showed riders around those episodes |
 | **`flagged_lines.csv`** | `tools/flag_lines.py` (never edit by hand) | **all of the above in one registry**: active flags first, then by severity, line and flag |
 | `docs/FLAGGED-LINES.md` | `tools/flag_lines.py` (never edit by hand) | the same, per line in plain English |
 
@@ -107,7 +107,11 @@ Each producer's own rule (it wins over the default; the full text is in its READ
   medium 1.25 x / + 10 points, low 1.1 x / + 5 points; stops without predictions high under 10% with a time 5 min ahead
   on >= 100 arrivals; next-trip and other-trip times high when >= 50% of them are large misses on n >= 100; worse near
   transitions / when behind high at a ratio >= 1.5 on >= 300 rows.
-- **E32 display replay**: see RouteKnower.md E32.
+- **E32 display replay** (`experiments/routeknower/E32-display-replay-tables.md` section 7): high = a measure that
+  misleads riders (ghost times, false hides, planner) at >= 2 x all lines, n >= 300, >= 30 events on >= 3 days and still
+  >= 1.5 x on >= 10 events since Nov 6; medium = >= 1.5 x on the same n and events (bus number churn and ghost badges at
+  most medium: >= 2 x on 100 events); low (`watch`) = >= 1.5 x on 10 to 29 events; graded on all days and on the days
+  since Nov 6, the higher grade wins. Before changing a display rule, rerun its episodes in `web/tests/data-display.js`.
 
 Before acting on a flag, read the producer's "for other agents" notes too (E30's lists which episodes to drop from
 training labels: `feed_drop_mid_route`, `sparse_reporting`, `frozen_gps`, `wrong_line_label`; never from test rows).
@@ -128,7 +132,7 @@ straight-bussing-data, `findings/run_findings.py`) reruns E30 and E31 on all arc
 in `findings/flags/` there, plus its merged copy (`findings/csv/flagged_lines.csv`, `findings/FLAGGED-LINES.md`).
 To adopt a refresh: copy `findings/flags/*_flags.csv` into this folder, run `python tools/flag_lines.py`, read the
 diff of `flagged_lines.csv` (new flags, `resolved` ones, changed severity), then commit. E32's `display_flags.csv`
-needs a browser, so the data repo never reruns it; refresh it here (RouteKnower.md E32).
+needs a browser, so the data repo never reruns it; refresh it here (E32 tables file section 8).
 
 The merge keeps `first_flagged`, turns a flag that a producer's refreshed file no longer reports into `resolved`
 (instead of deleting it), and leaves the flags of a producer whose file is missing as they were (with a warning).
