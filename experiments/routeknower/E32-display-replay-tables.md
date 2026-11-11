@@ -183,7 +183,91 @@ content) plus today's corridors.json and idle.json. The replay takes about 20 s 
 `make_fixtures.py --work <work> --out web/tests/fixtures/display_episodes.json`, then `--expect` (ARCHITECTURE
 "Display rules on real episodes").
 
-## 9. Caveats
+## 9. E32c (2026-11-11): the owner's decisions, replayed before they shipped
+
+The owner's answers to E32's open questions (RouteKnower E32): (1) "Keep hidden bus times off until it reports again";
+(3) "Still show these buses if they are in a transition time to their new route (indicate this on their bus icon (if the
+bus is clicked, have it display: Transitioning to new line)"; (5) "use a wider standing still radius"; (6) "keep numbers
+steady but indicate that this bus count reported by PassioGo is unreliable"; (7) "Accept." (planner_leaving). Each change
+was replayed on Oct 10 to Nov 10 (32 days) with the same inputs as above, through `replay.py --web <copy of the web
+folder>` (a constant changed in a scratch copy), and compared with `compare.py` (only the shipped app, `new`). The final
+table uses the refreshed web/data/idle.json (main 225cfde8) and web/data/service_seen.json (tools/build_service_seen.py,
+RouteKnower E33) in every day's static files, for the shipped code (main 1aa43465) and the new code alike; the choice
+tables below were run on the earlier copies (relative effects). In sample: service_seen.json was learned on the same days.
+
+### 9.1 The choices
+
+| Change | Variant | Result (32 days, all lines) | Chosen |
+|---|---|---|---|
+| 1 held times | a bus core/offroute.js or core/idle.js hid keeps its trip updates dropped after it stops reporting, until it reports again unhidden | times back on screen after a hide 1,729 -> 150 bus-min; 2,843 more hidden minutes, 285 of them a bus that then served | yes |
+| 6 number places | RULE_HOLD_S 5 / 15 min | swaps per 10 service hours 16.5 -> 12.1 / 10.8 (DCC 119 -> 85 / 74; flips 838 -> 315 / 256); route-minutes whose numbers have a gap 711 -> 3,316 / 5,807 | 15 min |
+| 3 times of a marked bus | windows as listed (transitions leave - 30 to join + 30, shift starts +- 30), times kept / badge only | ghost times 4.5% -> 5.6% / 4.5%; ghost badges 2.3% -> 3.5% either way; 10,019 marked bus-min, 23% then served | badge only |
+| 3 who is marked | + heading back toward its line by 100 m (200 m) | marked 3,004 (2,539) bus-min, 37% (40%) then served; ghost badges 2.7% (2.6%) | 100 m |
+| 3 windows after a break | only around the join (the drive to the new line) | marked 2,685 bus-min, 39% then served | yes |
+| 3 distance | marked only within 1 km of its route | of the marked minutes 1 km or more off 20% then served, 300 m to 1 km 60%, under 300 m 33%: marked 1,670 bus-min, 50% then served (FCM 85%, AP/DX 63%) | 1 km |
+| 5 still radius | 120 m everywhere / 150 m / 200 m downtown (north of 41.85) | ghost times -24 / -34 / -35 bus-min, ghost badges -19 / -50 / -73; idle hides +120 / +55 / +149, of them a bus coming to serve +27 / +2 / +19 | 150 m downtown |
+
+### 9.2 Final: shipped rules -> the new rules (refreshed idle.json and service_seen.json)
+
+all: 2026-10-10 to 2026-11-10 (32 days), shipped app, before -> after
+
+| Line | ghost times % | ghost next bus % | ghost badges % | false hides min (% of hidden) | hidden min | risky legs % | number swaps per 10 h | number gaps min | shown after a leave, avg min | times back after a hide, min | transitioning min (coming to serve) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Downtown Campus Connector | 6.5 -> 6.4 | 5.8 | 3.9 | 942 (11.6) -> 810 (9.7) | 8,105 -> 8,326 | 17.8 -> 17.9 | 119.35 -> 73.28 | 375 -> 2,887 | 14.4 -> 14.5 | 410 -> 44 | 0 (0) -> 334 (134) |
+| Friend Center/Metra | 2.1 -> 1.7 | 1.3 -> 1.0 | 0.5 | 344 (45.9) -> 394 (40.7) | 750 -> 969 | 4.6 -> 4.1 | 0.0 | 7 -> 77 | 7.6 -> 6.5 | 134 -> 25 | 0 (0) -> 87 (74) |
+| Red Line/Arts Block | 6.6 -> 6.3 | 5.1 -> 4.6 | 4.1 -> 4.4 | 407 (14.3) -> 388 (13.2) | 2,855 -> 2,943 | 7.5 -> 7.3 | 7.3 -> 3.74 | 48 -> 853 | 15.1 -> 15.4 | 216 -> 9 | 0 (0) -> 223 (36) |
+| Apostolic/Drexel | 4.8 -> 4.6 | 4.2 -> 4.0 | 1.7 -> 2.3 | 1213 (30.9) -> 709 (19.9) | 3,926 -> 3,555 | 6.1 -> 6.2 | 7.5 -> 5.57 | 92 -> 637 | 13.1 -> 14.9 | 263 -> 14 | 0 (0) -> 811 (511) |
+| North | 3.0 -> 2.9 | 1.6 | 1.2 | 214 (20.4) -> 217 (18.3) | 1,047 -> 1,184 | 4.6 -> 4.7 | 0.0 | 4 -> 24 | 9.8 -> 9.7 | 106 -> 0 | 0 (0) -> 5 (5) |
+| South | 6.1 | 4.5 | 3.3 | 202 (12.5) -> 197 (11.2) | 1,611 -> 1,756 | 10.6 | 0.0 | 14 -> 59 | 12.7 -> 12.6 | 133 -> 13 | 0 (0) -> 16 (5) |
+| 53rd Street Express | 3.1 | 2.1 | 1.3 -> 1.4 | 156 (19.7) -> 123 (16.0) | 791 -> 767 | 3.7 | 0.08 | 9 -> 56 | 11.7 -> 12.2 | 41 -> 1 | 0 (0) -> 64 (33) |
+| East | 1.8 | 1.4 | 0.5 | 133 (9.0) -> 125 (7.4) | 1,486 -> 1,694 | 4.3 -> 4.1 | 0.2 -> 0.32 | 16 -> 71 | 6.0 | 178 -> 0 | 0 (0) -> 13 (8) |
+| Central | 3.3 -> 2.8 | 2.8 -> 2.3 | 1.4 | 148 (15.7) -> 137 (10.7) | 942 -> 1,285 | 5.4 | 0.0 | 6 -> 150 | 9.0 -> 8.0 | 171 -> 11 | 0 (0) -> 22 (22) |
+| Midway Metra | 5.1 | 4.6 | 1.2 | 102 (14.4) -> 137 (16.1) | 706 -> 850 | 9.2 -> 9.1 | 0.06 | 16 -> 107 | 8.8 -> 9.0 | 31 -> 0 | 0 (0) -> 20 (1) |
+| Drexel | 2.4 | 2.5 | 0.5 -> 0.6 | 31 (12.6) -> 62 (20.1) | 246 -> 308 | 3.4 | 0.71 -> 0.62 | 9 -> 35 | 6.9 -> 7.8 | 6 -> 0 | 0 (0) -> 46 (3) |
+| Apostolic | 2.5 | 1.8 | 0.8 | 617 (49.5) -> 624 (49.1) | 1,247 -> 1,272 | 4.0 | 34.33 -> 35.77 | 115 -> 505 | 7.0 | 6 | 0 (0) |
+| Regents Express | 2.4 | 2.0 | 0.6 | 64 (53.8) -> 94 (62.7) | 119 -> 150 | 10.1 | 0.0 | 0 | 4.9 | 34 -> 0 | 0 (0) -> 29 (11) |
+| South Loop Shuttle | 1.4 | 1.3 | 0.9 | 41 (29.5) -> 41 (29.5) | 139 | 14.5 -> 14.4 | 0.0 | 0 | 7.3 | 0 | 0 (0) |
+| **all lines** | 4.6 -> 4.4 | 3.3 -> 3.2 | 2.3 -> 2.4 | 4614 (19.2) -> 4058 (16.1) | 23,970 -> 25,198 | 7.0 | 16.53 -> 10.73 | 711 -> 5,461 | 11.9 -> 12.1 | 1,729 -> 123 | 0 (0) -> 1670 (843) |
+
+after: 2026-11-06 to 2026-11-10 (5 days), shipped app, before -> after
+
+| Line | ghost times % | ghost next bus % | ghost badges % | false hides min (% of hidden) | hidden min | risky legs % | number swaps per 10 h | number gaps min | shown after a leave, avg min | times back after a hide, min | transitioning min (coming to serve) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Downtown Campus Connector | 6.0 | 6.1 | 3.0 -> 3.1 | 75 (7.4) -> 66 (6.1) | 1,015 -> 1,087 | 14.7 | 120.42 -> 85.08 | 63 -> 322 | 13.5 -> 13.7 | 73 -> 7 | 0 (0) -> 26 (9) |
+| Red Line/Arts Block | 6.5 -> 6.0 | 3.9 -> 3.4 | 4.2 -> 4.5 | 63 (19.1) -> 69 (19.8) | 329 -> 349 | 6.7 -> 6.6 | 7.36 -> 4.83 | 9 -> 90 | 16.8 -> 16.6 | 42 -> 7 | 0 (0) -> 25 (4) |
+| Friend Center/Metra | 2.6 -> 2.5 | 1.4 -> 1.2 | 1.0 | 95 (66.4) -> 137 (63.7) | 143 -> 215 | 7.5 -> 5.6 | 0.0 | 7 -> 48 | 8.1 -> 7.8 | 30 -> 10 | 0 (0) -> 25 (21) |
+| North | 2.7 | 1.8 | 0.3 | 43 (37.7) -> 51 (41.8) | 114 -> 122 | 2.6 -> 2.8 | 0.0 | 2 -> 11 | 9.0 | 0 | 0 (0) |
+| Apostolic/Drexel | 3.4 | 4.2 | 1.3 | 141 (45.6) -> 76 (28.8) | 309 -> 264 | 4.9 | 3.01 -> 2.25 | 3 -> 64 | 14.6 | 19 -> 0 | 0 (0) -> 65 (65) |
+| East | 1.1 | 0.7 | 0.0 | 5 (6.2) -> 5 (6.2) | 80 | 1.3 | 0.0 | 1 -> 14 | 4.5 | 0 | 0 (0) |
+| South | 1.8 | 1.9 | 0.5 | 35 (29.7) -> 33 (28.4) | 118 -> 116 | 8.8 -> 8.7 | 0.0 | 4 | 6.8 | 0 | 0 (0) -> 2 (2) |
+| Central | 0.6 | 0.6 | 0.0 | 0 (0.0) -> 2 (3.2) | 51 -> 63 | 1.7 | 0.0 | 1 -> 9 | 2.5 | 9 -> 0 | 0 (0) |
+| 53rd Street Express | 4.6 | 2.9 | 1.7 | 15 (16.0) -> 13 (14.1) | 94 -> 92 | 2.6 | 0.57 | 1 | 16.1 | 1 | 0 (0) -> 2 (2) |
+| Midway Metra | 4.5 | 3.6 | 1.2 -> 1.3 | 17 (14.9) -> 17 (13.7) | 114 -> 124 | 8.3 | 0.0 | 3 -> 8 | 9.6 -> 9.8 | 0 | 0 (0) -> 2 (0) |
+| Drexel | 5.9 | 7.6 | 3.0 | 7 (50.0) -> 11 (37.9) | 14 -> 29 | 8.2 | 0.0 | 2 | 18.9 | 0 | 0 (0) |
+| South Loop Shuttle | 0.0 | 0.0 | 0.0 | 0 (0.0) -> 0 (0.0) | 11 | 1.6 | 0.0 | 0 | 0.0 | 0 | 0 (0) |
+| Apostolic | 3.3 | 2.3 | 0.7 | 22 (18.3) -> 22 (18.0) | 120 -> 122 | 5.7 | 17.1 -> 16.28 | 4 -> 78 | 9.6 | 0 | 0 (0) |
+| Regents Express | 0.2 | 0.0 | 0.2 | 5 (83.3) -> 5 (45.5) | 6 -> 11 | 0.0 | 0.0 | 0 | 0.0 | 0 | 0 (0) |
+| **all lines** | 3.8 | 2.8 -> 2.7 | 1.9 | 523 (20.8) -> 507 (18.9) | 2,518 -> 2,685 | 5.7 -> 5.5 | 14.7 -> 10.5 | 100 -> 651 | 11.7 | 174 -> 25 | 0 (0) -> 147 (103) |
+
+Totals, all lines, 32 days (shipped -> new): ghost times 12,344 -> 11,940 bus-min (4.6% -> 4.4% of bus-minutes with
+times); ghost next bus 50,228 -> 47,958 stop-min; ghost badges 7,325 -> 7,795 (2.3% -> 2.4%: the marked transitioning
+badges that did not serve); hidden while coming to serve 4,614 -> 4,058 min (19.2% -> 16.1% of hidden minutes; off-route
+3,280 -> 2,437, held 285 new); Directions legs on a bus that left first 11,758 / 167,020 -> 11,606 / 166,686 (7.0%);
+number swaps 5,063 -> 3,286 (flips 838 -> 253); times back on screen after a hide 1,729 -> 123; marked "Transitioning to
+new line" 1,670 bus-min, 843 of them a bus that then served its line within 15 min. Nov 6 to 10: ghost times 3.8% both,
+ghost next bus 2.8% -> 2.7%, false hides 523 -> 507 min, risky legs 5.7% -> 5.5%, swaps per 10 h 14.7 -> 10.5, times
+back after a hide 174 -> 25, marked 147 bus-min (103 served).
+
+### 9.3 What did not change
+
+- gone_comeback (owner question 2, sent back): GONE is unchanged.
+- parked_rolling and parked_now stay gaps: the wider radius downtown keeps the DCC's still clock from restarting, but IDLE
+  needs no Passio time ahead and PARKED 90 min; a time that slides with the clock is still shown (E32's other option, a
+  label "est.", is not done).
+- idle_linger_comeback (idle.json refreshed by RouteKnower E33, the same cutoff for North at Reynolds Club).
+- planner_leaving: accepted by the owner on 2026-11-11 as a known gap.
+
+## 10. Caveats
 
 - The archived raw polls keep a vehicle only when its report changed, so the replay is one poll smoother than the real
   feed (the 45 s number and badge holds and the one odd empty answer are not exercised). Trip updates are rebuilt from

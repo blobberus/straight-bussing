@@ -842,9 +842,11 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   files, so the daily Pages download carries it), `LiveState.applying` passes `StaticData.corridors`; `OffRouteTests`
   ports the web tests and replays `Fixtures/offroute_golden.json` (11 real cases with the real corridors). Experimental
   build: one commit porting core/offroute.js + corridors.json + its static.js / live.js lines (see its notes).
-- Real episodes (RouteKnower E32, `web/tests/data-display.js`): guard `offroute_garage`; known gaps `offroute_loop`,
-  `offroute_fcm` (hidden on an off-line loop while it comes to serve), `offroute_then_silent` (times back after a hidden
-  bus goes silent); see "Display rules on real episodes".
+- Real episodes (RouteKnower E32, `web/tests/data-display.js`): guards `offroute_garage`, `offroute_then_silent`
+  (since 2026-11-11 its times stay off); known gaps `offroute_loop`, `offroute_fcm` (hidden on an off-line loop while it
+  comes to serve; its badge comes back marked early); see "Display rules on real episodes".
+- 2026-11-11 (owner): a bus heading back to its line inside a transition window of it (web/data/service_seen.json, within
+  1 km) is not hidden but marked "Transitioning to new line", badge only; see "Owner decisions on E32".
 
 ## Idle buses that are not in service (2026-11-06, owner: buses parked "in front of Regenstein library" at 11:50 still showed "as traveling buses"; "avoid showing buses that are not active yet are idle", and "the app doesn't suggest these trips")
 - Measured first (RouteKnower.md E28, `experiments/routeknower/E28-scripts/`, labeled data `data/labeled/end_of_service/`):
@@ -892,8 +894,10 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
 - Refresh the learned cutoffs (monthly, or after a timetable change): `fetch.py` then `endofservice.py --cache` then
   `idle_rules.py --write-idle web/data/idle.json` (RouteKnower.md E28 has the commands); sw cache bump.
 - Real episodes (RouteKnower E32, `web/tests/data-display.js`): guard `idle_parked`; known gaps `idle_linger_comeback`,
-  `parked_rolling` (downtown GPS jitter restarts the still clock), `parked_now` (a time under 2 min that slides with the
+  `parked_rolling` (a time that slides with the clock keeps IDLE off), `parked_now` (a time under 2 min that slides with the
   clock keeps IDLE off); see "Display rules on real episodes".
+- 2026-11-11 (owner: "use a wider standing still radius"): 150 m downtown (north of 41.85), 80 m elsewhere (`stillRadius`);
+  see "Owner decisions on E32".
 
 ## Buses that left their route: no times, no recommendations (2026-11-06, owner: "add to the current display behavior of buses to avoid recommending routes on buses that are about to leave their routes")
 - Measured first (RouteKnower.md E29, `experiments/routeknower/E29-scripts/`, labeled data `data/labeled/transitions/`):
@@ -936,8 +940,10 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   `gone_rule`; docs/DATA.md), and the data repo's `algorithm-test/transitions.py` scores every model in transition
   periods, normal periods and on the rows of a bus about to leave.
 - Real episodes (RouteKnower E32, `web/tests/data-display.js`): guard `gone_shift_end`; known gaps `gone_comeback`
-  (Apostolic 4322 back within 15 min), `planner_leaving` (Directions boards a bus that leaves the line first); see
-  "Display rules on real episodes".
+  (Apostolic 4322 back within 15 min), `planner_leaving` (Directions boards a bus that leaves the line first; accepted by
+  the owner 2026-11-11); see "Display rules on real episodes".
+- 2026-11-11 (owner: "Keep hidden bus times off until it reports again"): HELD, `heldStep`: a bus a rule hid keeps its
+  times off after it goes silent until it reports again unhidden; see "Owner decisions on E32".
 
 ## Display rules on real episodes (RouteKnower E32, 2026-11-11)
 - `web/tests/data-display.js` (in data.test.html) runs 13 real transition episodes of Nov 6 and Nov 9
@@ -955,6 +961,64 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   set (one timetable version). The line flags from the same replay: `data/labeled/flags/display_flags.csv`.
 - iOS has no port of this test yet (it would replay the fixture through `LiveState.applying`); the Kit golden tests
   (offroute, idle, transition) cover the rules one at a time.
+- 2026-11-11 (owner decisions, next section): offroute_then_silent and number_flap are guards now; the fixture carries
+  `seen` (the app's part of service_seen.json) and each poll the marked ids (story `marked`); scoring a rule change before
+  it ships: `replay.py --web <copy of web>` + `measure.py` + `compare.py` (RouteKnower E32c).
+
+## Owner decisions on E32 (2026-11-11): held times, transitioning buses, steady numbers, a wider still radius downtown
+Owner, 2026-11-11, answering RouteKnower E32: "Keep hidden bus times off until it reports again."; "Still show these buses
+if they are in a transition time to their new route (indicate this on their bus icon (if the bus is clicked, have it
+display: Transitioning to new line)."; "use a wider standing still radius."; "keep numbers steady but indicate that this bus
+count reported by PassioGo is unreliable."; "Accept." (planner_leaving). Each was replayed on Oct 10 to Nov 10 before it
+shipped (RouteKnower E32c; experiments/routeknower/E32-display-replay-tables.md section 9).
+- HELD times (core/transition.js `heldStep`, data/live.js after the rules): a bus core/offroute.js or core/idle.js hides
+  that then stops reporting leaves core/operating.js's list after 5 min; its trip updates now stay dropped until it is
+  operating again (a fresh report) and no rule hides it (before, Passio's times came back until GONE at 15 min, never for
+  a sparse reporter). A held bus still predicted is never forgotten, else after KEEP_S. Replay: times back on screen after
+  a hide 1,729 -> 123 bus-min in 32 days. Kit `Transition.held`, `LiveState.heldOff` / `heldIds`.
+- TRANSITIONING (core/seen.js `transitionAt`, core/offroute.js): before it hides a bus off its route, offRouteStep asks
+  whether the bus's report time is in a transition window of its line from `web/data/service_seen.json` (seen service
+  windows, tools/build_service_seen.py, RouteKnower E33; loaded by data/static.js as a LATE file after staticLoaded, so the
+  first paint never waits for it: `LATE_FILES`, `cleanSeen` keeps only what the app reads). A window of line L, on the entry
+  of `lines[L].days` whose `dows` include the service day and whose listed spans equal today's (`hoursKey`), before
+  `valid_until`: a usual direct transition from or to L (TRANSITION_PAD_S 30 min before the median leave to 30 min after
+  the median join), after a break only 30 min around the join (the bus going on its break is not on its way), a usual
+  shift start (a bus slot seen on START_MIN_DAYS 3+ days, +- 30 min); a shift end never. The bus must also head back toward
+  its line (TOWARD_M: 100 m nearer than its farthest point in the stretch off it, track field `dx`) and be within
+  TRANSITION_MAX_M (1 km). Then it is not hidden: offRouteStep returns it in `transitioning`, data/live.js keeps it in
+  store.buses and lists it in `store.transitioning`, and (TRANSITION_TIMES false) drops its trip updates: its badge only,
+  no times (with its times ghost times rose from 4.5% to 5.6% of bus-minutes with times; badge only left them unchanged).
+  A badge-only bus counts as hidden for HELD, so its times stay off if it goes silent. Replay: 1,670 marked bus-min, 50%
+  then served its line within 15 min (Friend Center/Metra 85%, Apostolic/Drexel 63%); ghost badges 2.3% -> 2.4%.
+- The mark (map/layers.js `setTrans`, css `.sb-bus-tr`): a 14 px disc with two arrows at the badge's bottom right, in the
+  badge ring and text colors (forced colors: Canvas / CanvasText); the marker's name / aria-label adds ", Transitioning to
+  new line" (never the mark alone). main.js passes `transitioning` with drawBuses (BUS_KEYS). Tapped (it opens its route
+  page picked, as any bus): the route page note says exactly "Transitioning to new line" (core/seen.js TRANSITION_TEXT)
+  instead of "Showing Bus 2's times", and its "Where the buses are" row "Bus 2: Transitioning to new line". iOS: Kit
+  `Seen` (+ `SeenData` parse, `StaticLoader.files` so the daily download carries service_seen.json), `OffRoute.stepMarked`,
+  `LiveState.transitioning`, App `MapBus.transitioning` / `BusMarker(transitioning:)` (SF Symbol arrow.left.arrow.right,
+  VoiceOver ", Transitioning to new line"), RouteDetailView note and `RouteText.busPositions(transitioning:)`.
+- STEADY NUMBERS (core/busnum.js `numberStep` `held`, RULE_HOLD_S 15 min): the operating buses a rule hides (data/live.js
+  `ruled`: off-route and idle) keep their number place from the hide for 15 min, so a bus that blinks off and on keeps its
+  number and so do the others; past the hold the place is remembered as `out` and never given back while it stays hidden
+  (no flip); a held bus that goes silent gets the usual 45 s drop-out hold. Replay: swaps 16.5 -> 10.7 per 10 service hours
+  (DCC 119 -> 73, flips 838 -> 253); route-minutes whose numbers have a gap ("Bus 1" and "Bus 3" only) 711 -> 5,461. iOS:
+  Kit `BusNumbers.heldStep` / `numberedPairs` (`LiveState.ruleHidden` / `numberHeld`), AppModel.publishBuses.
+- The count line (core/busnum.js COUNT_NOTE = Kit `BusNumbers.countNote`): "Bus count reported by PassioGo can be
+  unreliable." once on the route page, quiet secondary text (`.r-count`, footnote, label-2; never a warning color), under
+  "Where the buses are" or under the count when there is no list; only while the route shows a live bus. Not on the Routes
+  list rows (one per row would crowd the list: an owner decision if wanted).
+- WIDER STILL RADIUS DOWNTOWN (core/idle.js `stillRadius`, STILL_DOWNTOWN_M 150 m north of DOWNTOWN_LAT 41.85, STILL_M 80 m
+  elsewhere; serviceClock / hoursKey moved to core/schedule.js, idle.js re-exports them): replay: ghost times -34 bus-min,
+  ghost badges -50, 2 more hidden minutes that were a bus coming to serve; 120 m everywhere cut fewer and hid 27 more serving
+  minutes, 200 m downtown 19 more. Kit `Idle.stillRadius`.
+- Accepted known gap (owner 2026-11-11): planner_leaving (no live signal predicts a leave, E29). Unchanged: GONE (question 2
+  went back to the owner), sliding times of parked buses (parked_rolling, parked_now), off-line service runs' times
+  (offroute_loop, offroute_fcm: their badges come back marked early).
+- Tests: core-transition.js (heldStep, a hidden bus that goes silent in startLive), core-busnum.js (RULE_HOLD_S), core-idle.js
+  (stillRadius), core-offroute.js (core/seen.js windows, the transitioning exemption), data-static.js (late file, cleanSeen),
+  map-layers.js (the mark), route-busnum.js (count line, transitioning text), data-display.js (13 episodes: 6 guards now).
+  Kit: TransitionTests, BusNumbersTests, IdleTests, SeenTests. sw `sb-v2-150`.
 
 ## Minutes to every station on the Current trip (2026-10-20, owner: "the distance in minutes away is shown on the right side of the station name")
 - Passio splits one bus's predictions over its trip updates (the trip it is on, often 1 to 4 stops left, and its next trip), so
@@ -1082,8 +1146,11 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   numbers what its map draws (BusMotion, 45 s), the same rule. Tests: core-busnum.js (numberStep, routeNumbers,
   arrivalBusName, legBusName), data-live.js (busNums hold), map-layers.js, route-busnum.js, arrive-busnum.js (rows,
   stop page and header, Current trip, My Routes, Directions, station and trip alerts), trip-view.js.
-- Real episodes (RouteKnower E32, `web/tests/data-display.js`): guard `number_join`; known gap `number_flap` (off-route
-  toggles renumber the Downtown Campus Connector); see "Display rules on real episodes".
+- Real episodes (RouteKnower E32, `web/tests/data-display.js`): guards `number_join`, `number_flap` (since 2026-11-11
+  off-route toggles no longer renumber the Downtown Campus Connector); see "Display rules on real episodes".
+- 2026-11-11 (owner: "keep numbers steady but indicate that this bus count reported by PassioGo is unreliable"): a bus a rule
+  hides keeps its number place 15 min (RULE_HOLD_S); the route page line "Bus count reported by PassioGo can be
+  unreliable."; see "Owner decisions on E32".
 
 ## Arriving In, trips with no bus, walk first (2026-10-30, owner: "the time that is shown when the menu is minimized ... should show the time until the next bus will arrive at their stop. Call it Arriving In: ... rather show the current walking time or the duration of the next step if the user's trip has no bus", "if the distance is very close, it is ok to just suggest the user to walk on their first travel option")
 - Current trip header (main.js shows the view's meta at every detent, so also minimized): while a plan journey is on,
