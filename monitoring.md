@@ -59,7 +59,10 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
 1. `cd ~/Documents/straight-bussing && python tools/monitor.py status` (exit 0 HEALTHY, 1 DEGRADED, 2 DOWN), and look
    at the open `collector-health` issues: `gh issue list -l collector-health` here and with `-R blobberus/straight-bussing-data`.
    Then the flagged lines: `python tools/flag_lines.py --check` (exit 0), and for each high flag in `docs/FLAGGED-LINES.md` whether its line's data is complete this time; say so in the Checkups line (`data/labeled/flags/README.md`).
-2. HEALTHY: go to **Report back**.
+2. HEALTHY: go to **Report back**. For a full checkup (or before an analysis) also run the whole-database audit:
+   `python tools/db_audit.py --mirror <clone of blobberus/straight-bussing-data>` (`git fetch origin data` first; exit 1
+   = an error, listed under ERROR; findings this log already explains are listed as notes; `--days` prints the per-day
+   table). It reads every file of the data branch and every archive asset, all days (docs/DATA.md "Safety nets").
 3. DEGRADED / DOWN: for each `[warn]` / `[DOWN]` line, apply the matching row of the fix table.
 4. If it is DOWN and not fixed within ~10 min, **take over locally** (below), and tell the owner.
 5. Run `status` again.

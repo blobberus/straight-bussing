@@ -440,6 +440,15 @@ Actions > Variables), or "Disable workflow" in the Actions tab (the keepalive st
 - **Off-GitHub copy.** Everything collected lives on one GitHub account; `python tools/backup.py` copies the data
   branch's files and every archive release asset to `~/StraightBussing-backup` (incremental, size-checked,
   `MANIFEST.json` with sha256; `--check` verifies). Run it every week or two.
+- **Whole-database audit** (DC-026, 2026-11-11). health.py looks at the last 2 days; `python tools/db_audit.py` checks
+  everything since Oct 8 in about 15 s (origin/data through git, the releases through gh; `--dir` a checkout,
+  `--mirror` a clone of the public data repo, `--days` the per-day table, `--json` every finding): each file's header
+  against its writer's columns; arrivals' time fields against epoch (daylight saving included), ids, sources,
+  coordinates, segment_s, value ranges and duplicates; every service day present and each line against the same
+  weekday's median; predictions' leads, errors, first-seen times, duplicates and their arrival; the keys and times of
+  bus_changes, alerts, gtfs_versions and eta/summary; each archive day's asset kinds for its time and summary rows; the
+  public copy's headers, row counts and methodology. Exit 1 = an error; findings this log already explains are notes.
+  For analysis: arrivals.csv is append-ordered (replays added old days at the end), so sort by epoch first.
 
 It never pushes to main, so Pages never redeploys. One row per bus per stop visit; no rows overnight
 while no shuttles run.
@@ -514,4 +523,7 @@ A separate public repo mirrors this data for browsing, synced every 30 minutes b
 this public repo): `data/arrivals/<service day>/<route>.csv` (GitHub renders each as a table; a service day runs 4 AM to
 3:59 AM), `data/latest.csv`, a viewer page with a time x stop chart of every bus trip
 (https://blobberus.github.io/straight-bussing-data/), and a mirror of the RouteKnower methodology (`methodology/`).
-The source of truth stays here; edit methodology in this repo.
+The source of truth stays here; edit methodology in this repo. From Oct 29, 2026 (22:55 UTC) to Nov 11 its per-day
+files carried the predictions file's 15 columns instead of the 25 arrival columns, and about 4,300 extra rows (its
+sync read `archive/predictions-*.csv` as arrivals; fixed in its `scripts/sync.py`, DC-026): analyse this repo's
+`data` branch, not an old download of the public copy. `python tools/db_audit.py --mirror CLONE` checks the copy.
