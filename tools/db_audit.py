@@ -24,8 +24,8 @@ Checks:
   that moment, duplicates (bus, stop, lead within 300 s), every row has its arrival (bus and stop within 300 s)
 - bus_changes, alerts, gtfs_versions, eta/summary: their keys unique, counts and times consistent, every recorded
   timetable zip present, the timetable record keeps up with the arrivals
-- archive: every finished day has each asset kind of its time (base kinds from the first archived day, alerts from
-  the first alert, bus-changes from 2026-10-30), no near-empty file on a day with service, summary.csv rows exactly
+- archive: every finished day has each asset kind of its time (health.archive_kinds: alerts from 2026-10-14,
+  bus-changes from 2026-10-30), no near-empty file on a day with service, summary.csv rows exactly
   for the archived days (the day before yesterday onwards may still be waiting: GitHub fires the archive cron late)
 - mirror (--mirror): per-day / per-route files have the arrivals header and the data branch's row counts (same rule
   as the data repo's scripts/sync.py: 4 AM service day, exact-key dedupe), index.json agrees with the files, the
@@ -60,8 +60,7 @@ LATE_S = 2 * 3600                      # a row this much older than the rows bef
 SEEN_FROM = 1791829800                 # 2026-10-12 13:30 Chicago: every later row has pred_seen_epoch (docs/DATA.md)
 LINE_LOW, LINE_MIN, DAY_LOW = 0.5, 50, 0.6
 ARCHIVE_FROM = "2026-10-10"
-KIND_FROM = {"raw-polls": ARCHIVE_FROM, "pred-updates": ARCHIVE_FROM, "eta": ARCHIVE_FROM, "gtfs": ARCHIVE_FROM,
-             "bus-changes": "2026-10-30"}          # alerts: from the first alert version's day
+KIND_FROM = {**{k: ARCHIVE_FROM for k in H.ARCHIVE_KINDS}, **H.ARCHIVE_EXTRA}   # kind -> the first day it exists
 EXT = {"raw-polls": ".jsonl.gz", "pred-updates": ".jsonl.gz", "eta": ".csv.gz", "gtfs": ".zip", "alerts": ".csv.gz",
        "bus-changes": ".csv.gz"}
 TINY = {"raw-polls": ARCHIVE_FROM, "pred-updates": H.FIRST_ARCHIVE_DAY, "eta": ARCHIVE_FROM}   # kind -> sized from
@@ -468,8 +467,6 @@ def check_alerts(a, header, rows):
                            "with the epochs"), ("active", "warn", "active_start after active_end"),
                            ("number", "error", "a time that is not a number")):
         a.count(level, f"alerts:{k}", bad[k], f"alerts.csv rows with {text}")
-    firsts = [int(r[c["first_seen"]]) for r in rows if len(r) == len(header) and r[c["first_seen"]].isdigit()]
-    return sday(min(firsts)) if firsts else None
 
 
 def check_gtfs_versions(a, header, rows, names, newest):
@@ -505,7 +502,7 @@ def check_summary(a, header, rows):
     return {k[0] for k in keys}
 
 
-def check_archive(a, assets, now, summary_days, alerts_from, day_rows, first_day=None):
+def check_archive(a, assets, now, summary_days, day_rows, first_day=None):
     """assets: {"YYYY-MM/name": size} or {"name": size}; first_day: the first service day with arrivals."""
     today = sday(now)
     by_day = defaultdict(dict)
@@ -526,7 +523,7 @@ def check_archive(a, assets, now, summary_days, alerts_from, day_rows, first_day
                 break
         else:
             a.add("note", "archive:other", f"release asset of no known kind: {full}")
-    start = {**KIND_FROM, **({"alerts": str(alerts_from)} if alerts_from else {})}
+    start = KIND_FROM
     d, lack, waiting = max(date.fromisoformat(ARCHIVE_FROM), first_day or date.min), [], []
     while d < today:
         have = by_day.get(str(d), {})
@@ -672,13 +669,13 @@ def audit(branch, now, assets=None, mirror=None, main_text=None, route_names=Non
     h, rs = load(gt + "bus_changes.csv", BC.COLUMNS)
     check_bus_changes(a, h, rs)
     h, rs = load(gt + "alerts.csv", AL.COLUMNS)
-    alerts_from = check_alerts(a, h, rs)
+    check_alerts(a, h, rs)
     h, rs = load(gt + "gtfs_versions.csv", GV.COLUMNS)
     check_gtfs_versions(a, h, rs, set(names), max((x["epoch"] for x in arr), default=0))
     h, rs = load("data/eta/summary.csv", SUMMARY_COLUMNS)
     summary_days = check_summary(a, h, rs)
     if assets is not None:
-        check_archive(a, assets, now, summary_days, alerts_from, {d: t["rows"] for d, t in table.items()},
+        check_archive(a, assets, now, summary_days, {d: t["rows"] for d, t in table.items()},
                       min((x["day"] for x in arr), default=None))
     if mirror:
         check_mirror(a, mirror, ah, arows, main_text)

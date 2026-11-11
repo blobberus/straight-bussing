@@ -102,8 +102,7 @@ class World:
         self.summary_days = [d for d in days(FIRST, LAST - timedelta(days=1))]
         self.assets = {}
         for d in days(FIRST, LAST - timedelta(days=1)):
-            for k in ("raw-polls", "pred-updates", "eta", "gtfs") + (("alerts",) if d >= date(2026, 10, 27) else ()) \
-                    + (("bus-changes",) if d >= date(2026, 10, 30) else ()):
+            for k in A.H.archive_kinds(d):
                 self.assets[f"{d:%Y-%m}/{k}-{d}{A.EXT[k]}"] = 50000
 
     def write(self):

@@ -133,13 +133,16 @@ def the_archive_check_lists_missing_days_while_the_artifacts_still_exist():
     assets = set()
     d = date(2026, 10, 12)
     while d <= date(2026, 10, 30):
-        for k in H.ARCHIVE_KINDS:
+        for k in H.archive_kinds(d):
             assets.add(f"{k}-{d}.csv.gz" if k != "gtfs" else f"gtfs-{d}.zip")
         d += timedelta(days=1)
+    assert "alerts" not in H.archive_kinds(date(2026, 10, 13)) and "alerts" in H.archive_kinds(date(2026, 10, 14))
+    assert "bus-changes" not in H.archive_kinds(date(2026, 10, 29)) and "bus-changes" in H.archive_kinds(date(2026, 10, 30))
     assert H.check_archive(assets, now) == {}
-    assets -= {"raw-polls-2026-10-20.csv.gz", "eta-2026-10-21.csv.gz"}
+    assets -= {"raw-polls-2026-10-20.csv.gz", "eta-2026-10-21.csv.gz", "alerts-2026-10-22.csv.gz"}
     p = H.check_archive(assets, now)
     assert "2026-10-20 (raw-polls)" in p["archive:missing"] and "2026-10-21 (eta)" in p["archive:missing"], p
+    assert "2026-10-22 (alerts)" in p["archive:missing"], p   # the optional kinds count from their first day (DC-026)
     assert "about 78 days" in p["archive:missing"], p      # Oct 20 + 90 days = Jan 18
 
 

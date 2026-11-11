@@ -48,6 +48,8 @@ PRED_LOW = 0.5                    # share of (non-gps) arrivals that carry Passi
 OUTAGE_S = 900                    # a run that could not read the vehicle feed this long
 FIRST_ARCHIVE_DAY = "2026-10-12"  # the first day archived with prediction updates
 ARCHIVE_KINDS = ("raw-polls", "pred-updates", "eta", "gtfs")
+ARCHIVE_EXTRA = {"alerts": "2026-10-14", "bus-changes": "2026-10-30"}  # archived from these days on; archive_day.py
+                                  # skips them quietly when they fail, so a missing one is only seen here (DC-026)
 ARTIFACT_DAYS = 85                # run artifacts live 90 days: older days can no longer be archived
 
 
@@ -268,6 +270,11 @@ def check_data(rows, now, days_back=2, refs_days=28, calendar=None):
     return p
 
 
+def archive_kinds(d):
+    """The asset kinds a finished service day d should have on its release."""
+    return ARCHIVE_KINDS + tuple(k for k, since in ARCHIVE_EXTRA.items() if d.isoformat() >= since)
+
+
 def check_archive(assets, now):
     """assets: set of release asset names -> problems: finished days (up to the artifacts' lifetime) whose archive files
     are missing. A day is due once the next day's archive run (about 5:41 AM) has had a day of slack."""
@@ -276,7 +283,7 @@ def check_archive(assets, now):
     missing = []
     d = first
     while d <= today - timedelta(days=2):
-        lack = [k for k in ARCHIVE_KINDS if not any(a.startswith(f"{k}-{d}") for a in assets)]
+        lack = [k for k in archive_kinds(d) if not any(a.startswith(f"{k}-{d}") for a in assets)]
         if lack:
             missing.append(f"{d} ({', '.join(lack)})")
         d += timedelta(days=1)
