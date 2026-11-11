@@ -13,6 +13,7 @@ import coverage as C            # noqa: E402
 import other_trip as O          # noqa: E402
 import misses as X              # noqa: E402
 import flags as G               # noqa: E402
+import report as R              # noqa: E402
 
 TESTS = []
 
@@ -355,6 +356,45 @@ def test_build_flags_in_the_shared_schema():
     w = by["worse_near_transitions"]
     assert w["value"] == "1.8000" and w["baseline"] == "1.1000" and w["severity"] == "high" and w["data_from"] == "2026-10-12"
     assert set(r["category"] for r in rows) == {"prediction_miss"} and all(list(r) == G.COLS for r in rows)
+
+
+# ---------------------------------------------------------------- the tables end to end, and the report
+@test
+def test_tables_end_to_end_and_report():
+    d = tmp()
+    preds = X.enrich(synth_preds(), None, None, log=lambda *_: None)
+    tg = [{"route_id": "A", "route": "Line A", "stop_id": "S0", "stop": "Stop 0", "stop_index": "0", "day": day,
+           "has_5": 1, "has_any": 1} for day in ("2026-10-21", "2026-10-22")]
+    lines, stops, sl = [], [], []
+    for name, (p, t, sc) in X.periods(preds, tg, [], "2026-10-22").items():
+        rows = X.line_summary(p, t, 100, name)
+        lines += rows
+        if name != "before":
+            stops += X.stop_hotspots(p, t, sc, rows, name)
+            sl += X.slices(p, name)
+    M.write_csv(d / "line_summary.csv", X.LINE_COLUMNS, X.add_trends(lines))
+    M.write_csv(d / "stop_hotspots.csv", X.STOP_COLUMNS, stops)
+    M.write_csv(d / "weekly_trend.csv", X.WEEK_COLUMNS, X.weekly(preds, tg))
+    M.write_csv(d / "slices.csv", X.SLICE_COLUMNS, sl)
+    (d / "run.txt").write_text("".join(x + chr(10) for x in ("data_from=2026-10-21", "data_to=2026-10-22",
+                                                             "recent_from=2026-10-22", "days=2", "predictions=8",
+                                                             "targets=2")), encoding="utf-8")
+    st = {(r["period"], r["route_id"], r["stop_id"]): r for r in M_read(d / "stop_hotspots.csv")}
+    assert st[("all", "A", "S0")]["large_early_rate"] == "1.0000" and st[("all", "A", "S0")]["coverage_5"] == "1.0000"
+    assert st[("recent", "A", "S1")]["large_early_rate"] == "0.0000" and st[("all", "B", "S0")]["n"] == "2"
+    wk = M_read(d / "weekly_trend.csv")
+    assert [(w["route_id"], w["week"]) for w in wk] == [("A", "2026-10-19"), ("B", "2026-10-19"), ("ALL", "2026-10-19")]
+    sl_ = {(r["period"], r["route_id"], r["dimension"], r["value"]) for r in M_read(d / "slices.csv")}
+    assert ("all", "A", "hours", "10 AM to 3 PM") in sl_ and ("recent", "ALL", "prediction_age", "under 1 min") in sl_
+    md = R.build(d, d / "no-flags.csv")
+    assert md.startswith("# E31 tables") and "## 3. Per line, 5 min ahead" in md and "| Line A | 2 / 2 |" in md
+    assert "## 10." not in md                                   # no flags file: no flags section
+    assert R.pct("0.2134", 1) == "21.3%" and R.pct("") == "" and R.mins("-1.25") == "-1.2"
+
+
+def M_read(p):
+    with open(p, encoding="utf-8", newline="") as f:
+        return list(csv.DictReader(f))
 
 
 def main():
