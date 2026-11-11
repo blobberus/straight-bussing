@@ -53,7 +53,12 @@ def tables(S):
             out[per]["lines"][rid] = {app: rates(L.get(app, {}), svc) for app in ("new", "old")}
             for app in ("new", "old"):
                 for k, v in L.get(app, {}).items():
-                    tot[app][k] = tot[app].get(k, 0) + v
+                    if isinstance(v, dict):
+                        d = tot[app].setdefault(k, {})
+                        for h, n in v.items():
+                            d[h] = d.get(h, 0) + n
+                    else:
+                        tot[app][k] = tot[app].get(k, 0) + v
         out[per]["all"] = {app: rates(tot[app], svc_all) for app in ("new", "old")}
     return out
 
@@ -65,6 +70,8 @@ def fmt(v):
 def markdown(T):
     lines = []
     for per, P in T.items():
+        if len(per) == 10 and per[4] == "-":   # one-day periods (flags.py counts days with them)
+            continue
         lines.append(f"\n{per}: {P['days'][0]} to {P['days'][-1]} ({len(P['days'])} days). new = shipped rules, old = before them.\n")
         lines.append("| Line | service h | ghost times % new / old | ghost next bus % new / old | ghost badges % new / old "
                      "| leaves | shown after leave, avg min new / old | false hides % (min) | risky plans % new / old (top) "

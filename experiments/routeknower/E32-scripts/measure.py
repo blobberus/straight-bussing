@@ -26,7 +26,14 @@ measure is per minute (the poll on each whole minute) and per line:
                      after the time it was to reach the rider's stop (left_before_alight). top = the first option.
   num_swap           a bus shown in two polls in a row whose number changed from one number to another (Bus 1 to Bus 2);
                      num_flip = a swap undone within 2 min; join / leave = the number changed in a poll where a bus
-                     joined or left the line.
+                     joined or left the line; rule = that bus was operating in both polls and only a rule's verdict
+                     changed (shown -> hidden or back); events = polls with at least one swap on the line.
+A ghost or a risky leg whose bus sent no report at all through the judged span is not counted either (unseen_time_min,
+plan_unseen): it may have driven the line unseen. A bus that reports too rarely for the arrivals log to see it serve (2+ reports within 30 min, median gap over 120 s,
+like 12647 on the DCC on Nov 6) is not judged (the unjudged_sparse_* counts).
+  rolling_min        a candidate rule, not shipped: minutes where a bus within 150 m of where it was 10 min ago shows a time
+                     at its next stop 5+ min later than it showed 10 min ago (rolling_ghost_min = those that were ghosts:
+                     the rule's precision and recall against ghost_time_min).
 The golden check: at each of replay.html's arrivalsFor samples (every stop, every 15 min) this script's own reading of
 the shown times must equal web/js/core/arrivals.js arrivalsFor on the shipped state (mismatches reported, expect 0).
 
@@ -50,6 +57,7 @@ LEAVE_GAP = 1800                  # 30 min without an arrival on the line after 
 AFTER_GRACE = 300                 # a badge in the first 5 min after the last arrival is not counted (end of trip dwell)
 FALSE_WIN = 900                   # a hidden bus that logs an arrival on its line within 15 min was coming to serve
 FLIP_S = 120
+ROLL_S, ROLL_M, ROLL_SLIDE_S = 600, 150, 300   # the ROLLING candidate (not shipped): still 10 min, times slid 5+ min
 SPARSE_S = 120                    # core/transition.js SPARSE_S
 GAP_OK_S = 180                    # a leave's display stretch continues over gaps this short
 BACK_S = 1200                     # ... and ends 20 min before the bus's next arrival (it is coming back)
@@ -132,6 +140,13 @@ class Reports:
         self.pos = {k: [(t, *pos[k][t]) for t in self.t[k]] for k in self.t}
         self.memo = {}
 
+    def seen(self, v, a, b):
+        """Did the bus send a report in [a, b]? A bus that sent none may have driven the line unseen (DCC 4324 left the
+        feed on Lake Shore Drive at 08:28 on Nov 6 and reappeared downtown at 09:34): the arrivals log cannot judge it."""
+        x = self.t.get(v) or []
+        i = bisect.bisect_left(x, a)
+        return i < len(x) and x[i] <= b
+
     def at(self, v, t):
         """The bus's latest reported position at or before t (lat, lon), or None."""
         x = self.pos.get(v) or []
@@ -161,8 +176,21 @@ def day_bounds(day):
     return int(a.timestamp()), int(datetime(n.year, n.month, n.day, 4, tzinfo=CT).timestamp())
 
 
+class Tally(Counter):
+    """Counts, plus hour_<measure> dicts (Chicago clock hour -> count) for the flags' scope."""
+    def __missing__(self, k):
+        if k.startswith("hour_"):
+            self[k] = {}
+            return self[k]
+        return 0
+
+
 def z():
-    return defaultdict(Counter)
+    return defaultdict(Tally)
+
+
+def hr(t):
+    return datetime.fromtimestamp(t, CT).hour
 
 
 def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
@@ -203,6 +231,7 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
                     if a != b and a > 0 and b > 0:
                         c = acc[app][r]
                         c["num_swap"] += 1
+                        c["hour_num_swap"][hr(h)] = c["hour_num_swap"].get(hr(h), 0) + 1
                         c["num_swap_join" if r in joined else "num_swap_leave" if r in left else "num_swap_other"] += 1
                         if r in toggled:
                             c["num_swap_rule"] += 1
@@ -271,11 +300,26 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
                     c["unjudged_sparse_time_min"] += 1
                     continue
                 ghost = not A.any_vr(veh, rid, h - 60, hi + SERVED_PAD)
+                if ghost and not RP.seen(veh, h, hi + SERVED_PAD):
+                    c["unseen_time_min"] += 1      # no report either: it may have served unseen (not counted)
+                    continue
                 c["time_min"] += 1
                 if ghost:
                     c["ghost_time_min"] += 1
+                    c["hour_ghost_time_min"][hr(h)] = c["hour_ghost_time_min"].get(hr(h), 0) + 1
                     ghost_min[app].add((h, veh, rid))
                     vehs[(app, rid, veh)]["ghost_time_min"] += 1
+                # a candidate rule, NOT shipped: ROLLING times = the bus has stayed within ROLL_M for ROLL_S and its time
+                # at its next stop slid ROLL_SLIDE_S or more later over that span (a parked bus whose times stay "18 min"
+                # or "Now": DCC 12645 downtown and AP/DX 12644 at Goldblatt on Nov 6)
+                s0, p0 = min(ahead, key=lambda x: x[1])
+                was = [p for s, p in times[app].get(h - ROLL_S, {}).get((veh, rid), []) if s == s0]
+                if was and p0 - min(was) >= ROLL_SLIDE_S:
+                    q0, q1 = RP.at(veh, h - ROLL_S), RP.at(veh, h)
+                    if q0 and q1 and hav(q0[0], q0[1], q1[0], q1[1]) <= ROLL_M:
+                        c["rolling_min"] += 1
+                        if ghost:
+                            c["rolling_ghost_min"] += 1
                 for s, p in lst:
                     if (s, rid) not in nxt or p < nxt[(s, rid)][0]:
                         nxt[(s, rid)] = (p, ghost)
@@ -292,6 +336,7 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
                 c["badge_min"] += 1
                 if not A.any_vr(veh, rid, h - BADGE_WIN, h + BADGE_WIN):
                     c["ghost_badge_min"] += 1
+                    c["hour_ghost_badge_min"][hr(h)] = c["hour_ghost_badge_min"].get(hr(h), 0) + 1
                     badge_min[app].add((h, veh, rid))
                     vehs[(app, rid, veh)]["ghost_badge_min"] += 1
     # leave episodes: how long the app kept showing the bus (its badge on the line or a time from it) after its last
@@ -370,6 +415,7 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
             c[f"hide_{rule}_min"] += 1
             if false:
                 c[f"false_{rule}_min"] += 1
+                c[f"hour_false_{rule}_min"][hr(h)] = c[f"hour_false_{rule}_min"].get(hr(h), 0) + 1
                 vehs[("new", rid, v)][f"false_{rule}_min"] += 1
             key = (v, rid, rule)
             r = runs.get(key)
@@ -404,8 +450,12 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
                     ghost = not A.any_vr(v, rid, h - 60, bt + SERVED_PAD)
                     reached = A.any_vs(v, als, bt - 60, at + SERVED_PAD) or A.any_vr(v, rid, at - 120, at + SERVED_PAD)
                     left = (not ghost) and not reached
+                    if (ghost and not RP.seen(v, h, bt + SERVED_PAD)) or (left and not RP.seen(v, bt, at + SERVED_PAD)):
+                        c["plan_unseen"] += 1       # the bus sent no report then: it may have served unseen (not counted)
+                        ghost = left = False
                     if ghost or left:
                         c["plan_risky"] += 1
+                        c["hour_plan_risky"][hr(h)] = c["hour_plan_risky"].get(hr(h), 0) + 1
                         c["plan_ghost_board" if ghost else "plan_left_before_alight"] += 1
                         if k == 0:
                             c["plan_top_risky"] += 1
@@ -463,6 +513,7 @@ def main(argv=None):
             print(f"{name} {day} done", file=sys.stderr)
         for e in epi:
             e["period"] = name
+            e["hour"] = hr(int(e["start_epoch"]))
         all_epi += epi
         for (app, rid, v), c in vehs.items():
             all_veh.append({"period": name, "app": app, "route_id": rid, "vehicle_id": v, **c})
