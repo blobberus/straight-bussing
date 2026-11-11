@@ -123,5 +123,12 @@ python tools/flag_lines.py --check-inputs # a producer, before committing its *_
 python tools/test_flag_lines.py           # the tool's own tests (also run by .github/workflows/collector-tests.yml)
 ```
 
+**Weekly, without rerunning anything here:** every Monday the data repo's `findings.yml` (github.com/blobberus/
+straight-bussing-data, `findings/run_findings.py`) reruns E30 and E31 on all archived days and publishes their files
+in `findings/flags/` there, plus its merged copy (`findings/csv/flagged_lines.csv`, `findings/FLAGGED-LINES.md`).
+To adopt a refresh: copy `findings/flags/*_flags.csv` into this folder, run `python tools/flag_lines.py`, read the
+diff of `flagged_lines.csv` (new flags, `resolved` ones, changed severity), then commit. E32's `display_flags.csv`
+needs a browser, so the data repo never reruns it; refresh it here (RouteKnower.md E32).
+
 The merge keeps `first_flagged`, turns a flag that a producer's refreshed file no longer reports into `resolved`
 (instead of deleting it), and leaves the flags of a producer whose file is missing as they were (with a warning).
