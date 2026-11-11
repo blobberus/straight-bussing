@@ -189,6 +189,15 @@ next sync), item 4 (`b4e2b58c`). New: item 3 (`0617f382`, `71d13f75`; monitoring
 next time: the Nov 10 archive (and DC-025's retry if a 5xx comes), that the public copy's files carry the 25 arrival
 columns, the four downtown stops and item 7's late times, and the backup (due Nov 13 to 20).
 
+**Recheck Wed Nov 11, 12:47 PM.** Nov 10 archived by the schedule at 12:01 PM (`43073740828`: all six file kinds;
+114,433 prediction updates, 79,123 position reports, 228,797 table rows, 44 bus drops of which 41 lasting, 5 alert
+versions; no real 5xx came, the run log's 502 / 503 lines are test_eta's simulated ones, so DC-025's retry is still
+untried in a real run). Wed morning: the idle run handed over at 4:15 AM; first arrivals Friend Center/Metra 4:59,
+Drexel 5:01, Apostolic 5:33, Midway Metra 5:39 AM (Tue: Apostolic 6:22, Midway Metra 6:27), so DC-025 item 4's morning
+hole did not repeat. `db_audit.py --mirror` CLEAN (0 errors; 104,707 arrivals = the public copy's 371 files, synced
+18:29 UTC; the line-day warnings are down to Oct 14 Central and Oct 22 East as the medians move). Tag `collector-ok` at
+`c2394d95` (contains `b4e2b58c`); `monitor.py status` HEALTHY (100% since Nov 10 12:47 PM, 8 buses reporting).
+
 ### DC-025 Checkup 2026-11-10: healthy; one archive day lost to a GitHub 503 (fixed); Passio stopped predicting some stops on Oct 27 (open, Passio's side); a Monday morning with four lines missing from the feed (accepted)
 Owner (2026-11-10): "Run a data collection check." Times are Chicago (CST). Sat Nov 7 is compared with the Saturdays Oct
 17, 24 and 31, Sun Nov 8 with the Sundays Oct 18, 25 and Nov 1, Mon Nov 9 with the Mondays Oct 19, 26 and Nov 2. Tue Nov
