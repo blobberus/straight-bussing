@@ -842,6 +842,9 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   files, so the daily Pages download carries it), `LiveState.applying` passes `StaticData.corridors`; `OffRouteTests`
   ports the web tests and replays `Fixtures/offroute_golden.json` (11 real cases with the real corridors). Experimental
   build: one commit porting core/offroute.js + corridors.json + its static.js / live.js lines (see its notes).
+- Real episodes (RouteKnower E32, `web/tests/data-display.js`): guard `offroute_garage`; known gaps `offroute_loop`,
+  `offroute_fcm` (hidden on an off-line loop while it comes to serve), `offroute_then_silent` (times back after a hidden
+  bus goes silent); see "Display rules on real episodes".
 
 ## Idle buses that are not in service (2026-11-06, owner: buses parked "in front of Regenstein library" at 11:50 still showed "as traveling buses"; "avoid showing buses that are not active yet are idle", and "the app doesn't suggest these trips")
 - Measured first (RouteKnower.md E28, `experiments/routeknower/E28-scripts/`, labeled data `data/labeled/end_of_service/`):
@@ -888,6 +891,9 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   `IdleTests` incl. the web's answers on the real polls (`Fixtures/idle_golden.json` = `web/tests/fixtures/idle_golden.json`).
 - Refresh the learned cutoffs (monthly, or after a timetable change): `fetch.py` then `endofservice.py --cache` then
   `idle_rules.py --write-idle web/data/idle.json` (RouteKnower.md E28 has the commands); sw cache bump.
+- Real episodes (RouteKnower E32, `web/tests/data-display.js`): guard `idle_parked`; known gaps `idle_linger_comeback`,
+  `parked_rolling` (downtown GPS jitter restarts the still clock), `parked_now` (a time under 2 min that slides with the
+  clock keeps IDLE off); see "Display rules on real episodes".
 
 ## Buses that left their route: no times, no recommendations (2026-11-06, owner: "add to the current display behavior of buses to avoid recommending routes on buses that are about to leave their routes")
 - Measured first (RouteKnower.md E29, `experiments/routeknower/E29-scripts/`, labeled data `data/labeled/transitions/`):
@@ -929,6 +935,26 @@ Same spec for the iPhone app (another agent ports it to `ios/`). sw `sb-v2-36`.
   `bus_leaves_min`, `bus_leaves_within`, `added_recently`, `break_window`, `leave_spot_dist_m`, `absent_s`,
   `gone_rule`; docs/DATA.md), and the data repo's `algorithm-test/transitions.py` scores every model in transition
   periods, normal periods and on the rows of a bus about to leave.
+- Real episodes (RouteKnower E32, `web/tests/data-display.js`): guard `gone_shift_end`; known gaps `gone_comeback`
+  (Apostolic 4322 back within 15 min), `planner_leaving` (Directions boards a bus that leaves the line first); see
+  "Display rules on real episodes".
+
+## Display rules on real episodes (RouteKnower E32, 2026-11-11)
+- `web/tests/data-display.js` (in data.test.html) runs 13 real transition episodes of Nov 6 and Nov 9
+  (`web/tests/fixtures/display_episodes.json`: the archived raw polls, prediction updates and alerts on the app's 10 s poll
+  grid, with that day's static slices) through `data/live.js` startLive (core/operating.js, transition.js, offroute.js,
+  idle.js, busnum.js) and the planner, via `web/tests/display-run.js` runCase, and compares poll by poll what a rider saw:
+  the buses shown on the line, whose times are kept, who is away, the bus numbers, the next bus at one stop, the top
+  Directions options. `guard` cases are right for riders; `gap` cases are wrong for them and assert the CURRENT
+  behavior with the fix E32 recommends (an owner decision), so a fix shows up as a failing test.
+- Contract: whoever changes one of those rules or data/live.js reruns
+  `python experiments/routeknower/E32-scripts/make_fixtures.py --expect web/tests/fixtures/display_episodes.json`
+  (headless Edge on `web/tests/display-golden.html`, not a test page), checks every story, updates the facts in its
+  "stories in words" test and writes in RouteKnower.md E32 what changed for riders. New episodes: add to `CASES` in
+  make_fixtures.py and data-display.js, run it with `--work` on inputs.py's replay of that day, then `--expect`; all cases share one static
+  set (one timetable version). The line flags from the same replay: `data/labeled/flags/display_flags.csv`.
+- iOS has no port of this test yet (it would replay the fixture through `LiveState.applying`); the Kit golden tests
+  (offroute, idle, transition) cover the rules one at a time.
 
 ## Minutes to every station on the Current trip (2026-10-20, owner: "the distance in minutes away is shown on the right side of the station name")
 - Passio splits one bus's predictions over its trip updates (the trip it is on, often 1 to 4 stops left, and its next trip), so
@@ -1056,6 +1082,8 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
   numbers what its map draws (BusMotion, 45 s), the same rule. Tests: core-busnum.js (numberStep, routeNumbers,
   arrivalBusName, legBusName), data-live.js (busNums hold), map-layers.js, route-busnum.js, arrive-busnum.js (rows,
   stop page and header, Current trip, My Routes, Directions, station and trip alerts), trip-view.js.
+- Real episodes (RouteKnower E32, `web/tests/data-display.js`): guard `number_join`; known gap `number_flap` (off-route
+  toggles renumber the Downtown Campus Connector); see "Display rules on real episodes".
 
 ## Arriving In, trips with no bus, walk first (2026-10-30, owner: "the time that is shown when the menu is minimized ... should show the time until the next bus will arrive at their stop. Call it Arriving In: ... rather show the current walking time or the duration of the next step if the user's trip has no bus", "if the distance is very close, it is ok to just suggest the user to walk on their first travel option")
 - Current trip header (main.js shows the view's meta at every detent, so also minimized): while a plan journey is on,
