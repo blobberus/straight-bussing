@@ -12,6 +12,7 @@ import transitions_near as T    # noqa: E402
 import coverage as C            # noqa: E402
 import other_trip as O          # noqa: E402
 import misses as X              # noqa: E402
+import flags as G               # noqa: E402
 
 TESTS = []
 
@@ -286,6 +287,74 @@ def test_large_miss_rows_only_goal_leads_and_large():
     assert len(rows) == 2 and all(r["direction"] == M.EARLY and r["route_id"] == "A" for r in rows)
     assert rows[0]["error_min"] == 3.0 and rows[0]["lead_min"] == 5 and rows[0]["local_time"] == "2026-10-21 13:00:00"
     assert rows[0]["shown_at"] == "2026-10-21 12:55:00" and rows[0]["predicted"] == EP + 180
+
+
+# ---------------------------------------------------------------- the flags and their severity rule
+@test
+def test_rate_severity_ratio_or_points_with_the_day_range():
+    assert G.rate_severity(0.20, 0.10, 0.12, 300, 5) == "high"          # 2 x the baseline, range above it
+    assert G.rate_severity(0.20, 0.10, 0.09, 300, 5) == "low"           # the range reaches the baseline
+    assert G.rate_severity(0.20, 0.10, 0.12, 299, 5) == "low"           # too few for high / medium
+    assert G.rate_severity(0.13, 0.10, 0.11, 300, 5) == "medium"        # 1.3 x
+    assert G.rate_severity(0.75, 0.60, 0.70, 300, 5) == "high"          # + 15 points (a rate near saturation)
+    assert G.rate_severity(0.70, 0.60, 0.65, 300, 5) == "medium" and G.rate_severity(0.65, 0.6, 0.6, 100, 3) == "low"
+    assert G.rate_severity(0.104, 0.10, 0.1, 1000, 9) is None and G.rate_severity(0.5, 0.1, 0.4, 99, 9) is None
+    assert G.ratio_severity(1.6, 300) == "high" and G.ratio_severity(1.6, 299) == "medium"
+    assert G.ratio_severity(1.2, 100) == "low" and G.ratio_severity(1.2, 100, base=1.21) is None
+    assert G.lead_range(["5", "10"]) == "5-15" and G.lead_range(["30"]) == "30-45" and G.lead_range([]) == ""
+
+
+def flag_tables(d):
+    (d / "run.txt").write_text("".join(x + chr(10) for x in ("data_from=2026-10-12", "data_to=2026-11-10",
+                                                      "recent_from=2026-10-28")), encoding="utf-8")
+    lc = ["period", "route_id", "route", "lead_min", "days", "n", "large_rate", "large_early_rate", "large_early_lo",
+          "large_late_rate", "large_late_lo", "coverage", "before_large_early_rate", "before_large_late_rate",
+          "trend_early", "trend_late", "n_near_transition", "large_rate_near_transition",
+          "large_rate_away_from_transition", "n_behind10", "large_rate_behind10"]
+    rows = []
+    for per in ("all", "recent"):
+        rows += [[per, "ALL", "All lines", "goal", 14, 5000, 0.6, 0.10, 0.09, 0.50, 0.48, 0.7, 0.05, 0.5, "worse",
+                  "same", 500, 0.66, 0.6, 400, 0.7],
+                 [per, "ALL", "All lines", "5", 14, 1000, 0.5, 0.2, 0.18, 0.3, 0.28, 0.7, "", "", "", "", "", "", "",
+                  "", ""],
+                 [per, "1078", "Central", "goal", 14, 600, 0.6, 0.25, 0.2, 0.35, 0.3, 0.5, 0.04, 0.5, "worse", "better",
+                  400, 0.9, 0.5, 100, 0.6],
+                 [per, "1078", "Central", "5", 14, 200, 0.6, 0.6, 0.5, 0.1, 0.05, 0.5, "", "", "", "", "", "", "", "",
+                  ""]]
+    write(d / "line_summary.csv", lc, rows)
+    sc = ["period", "route_id", "route", "stop_id", "stop", "stop_index", "n", "large_early_rate", "large_late_rate",
+          "targets", "coverage_5", "coverage_any", "screen_other_trip_5", "screen_other_trip_early",
+          "screen_other_trip_late", "hotspot"]
+    write(d / "stop_hotspots.csv", sc, [
+        ["all", "1078", "Central", "8613", "Wyler", "1", 100, 0.1, 0.4, 300, 0.4, 0.9, 0, 0, 0, ""],
+        ["recent", "1078", "Central", "8613", "Wyler", "1", 60, 0.1, 0.4, 100, 0.05, 0.6, 0, 0, 0, "no_time"],
+        ["recent", "1078", "Central", "8630", "Levi", "6", 60, 0.5, 0.1, 100, 0.5, 0.9, 40, 38, 0,
+         "large_early|other_trip_times"]])
+    write(d / "slices.csv", ["period", "route_id", "dimension", "value", "n", "large_early_rate", "large_late_rate"],
+          [["recent", "1078", "hours", "3 to 7 PM", 200, 0.4, 0.2]])
+
+
+@test
+def test_build_flags_in_the_shared_schema():
+    d = tmp()
+    flag_tables(d)
+    rows = G.build(d, today="2026-11-11", prev=[{"flag_id": "prediction_miss:large_early_miss:1078",
+                                                 "first_flagged": "2026-11-04"}])
+    by = {r["flag"]: r for r in rows}
+    e = by["large_early_miss"]
+    assert e["flag_id"] == "prediction_miss:large_early_miss:1078" and e["severity"] == "high" and e["status"] == "open"
+    assert e["data_from"] == "2026-10-28" and e["value"] == "0.2500" and e["baseline"] == "0.1000" and e["n"] == "600"
+    assert "lead=5-10" in e["scope"] and "stops=8630" in e["scope"] and "hours=15-19" in e["scope"]
+    assert "Oct 27" in e["agent_action"] and e["first_flagged"] == "2026-11-04" and e["last_checked"] == "2026-11-11"
+    assert "large_late_miss" not in by                             # Central is under the all-lines rate
+    s = by["stops_without_predictions"]
+    assert s["scope"].startswith("stops=8613;lead=0-10;note=a time at any lead 1 to 30 min ahead 60%")
+    assert "before the last 14 days 58% of 200" in s["scope"] and s["value"] == "0.0500" and s["severity"] == "high"
+    o = by["other_trip_times"]                                     # stop position 6: not a first stop
+    assert o["value"] == "0.9500" and o["severity"] == "medium" and "38 of 40 times the bus came earlier" in o["scope"]
+    w = by["worse_near_transitions"]
+    assert w["value"] == "1.8000" and w["baseline"] == "1.1000" and w["severity"] == "high" and w["data_from"] == "2026-10-12"
+    assert set(r["category"] for r in rows) == {"prediction_miss"} and all(list(r) == G.COLS for r in rows)
 
 
 def main():
