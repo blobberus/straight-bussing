@@ -15,6 +15,7 @@
   "breaks[]": "a line's usual breaks inside a shift (same line again 30 min to 3 h later), per stop where they start, seen on 3 days or more: from / to (stats of the break's start = the last stop before it, and end = the first stop after it), days, times, at / back_at (stops), vehicles (top 3, 'bus xdays')",
   "spans_seen": "for a line listed twice a day (Midway Metra): per listed span, the seen first / last stop of the shifts that overlap it most and end_early_min (listed span end - median last stop)",
   "outside_listed": "shifts seen under the line's label with under half their time inside the listed hours widened by 60 min (usually a bus that kept last night's label): counted here, never as a Bus k",
+  "bus_changes_check": "layover_drops / layovers_inside_one_stint, lasting_drops / lasting_at_a_stint_end, last_stop_to_last_report_min_p50 (a leaving bus's last stop to its last report under the label), from (the first day compared)",
   "friday_vs_mon_thu": "per line, Friday's median [first stop, last stop] minus Monday to Thursday's, in minutes (positive = later): the check for Friday nights",
   "transitions[]": "a bus leaving one line and starting another within 3 h: from / to (route ids + names), day_type (of the from line), days (days seen) of of_days, times, kind (direct = median gap up to 30 min, after_break = longer), leave (its last stop on the from line), join (its first stop on the to line), gap_min (median), left_at / joined_at (stops) and left_at_ll / joined_at_ll ([lat, lon] of those stops), from_bus / to_bus (its order on each line that day), label_on_the_way (the label most of its reports between leave and join carried: from, to, other, or none = out of the feed), label_share, to_label_after_min (median minutes after leaving until it first reported under the new line's label), off_line_share (share of its reports on the way farther than 250 m from the drawn line of the label they carried: what the app's off-route rule measures; learned corridors not applied), unseen_on_the_way (times with no report at all on the way), vehicles (top 3)"
  },
@@ -34,7 +35,7 @@
   "Some lines run past the listed end: Central (listed to 23:14) reports until about 23:30 to 00:00 on most nights (E30 after_hours).",
   "The timetable is the operator's plan; Passio's feed shows the buses that actually report. A bus can also serve unseen (its tablet off): `days_seen` and the collector gaps say how much to trust a line's numbers."
  ],
- "layovers_vs_lasting": "Between trips Passio leaves a bus out of the feed for 10 to 27 min (a layover), so a short silence is not the end of service. The same 30-min rule as the collector's bus count changes (tools/bus_changes.py LASTING_S, data/ground_truth/bus_changes.csv `lasting`: a dropped bus back on its line within 30 min is a layover, lasting = 0) joins a bus's arrivals into one stint; a longer gap on the same line (up to 3 h) is a break inside the shift (listed under breaks), and a move to another line is a transition. A bus's seen end is therefore its last stop before at least 3 h without serving the line, never a layover.",
+ "layovers_vs_lasting": "Between trips Passio leaves a bus out of the feed for 10 to 27 min (a layover), so a short silence is not the end of service. The same 30-min rule as the collector's bus count changes (tools/bus_changes.py LASTING_S, data/ground_truth/bus_changes.csv `lasting`: a dropped bus back on its line within 30 min is a layover, lasting = 0) joins a bus's arrivals into one stint; a longer gap on the same line (up to 3 h) is a break inside the shift (listed under breaks), and a move to another line is a transition. A bus's seen end is therefore its last stop before at least 3 h without serving the line, never a layover. `bus_changes_check` says how this agrees with bus_changes.csv (live since 2026-10-30): layover drops that sit inside one stint, and lasting drops that come at a stint end in the hour before the bus's last report (the rest are mostly drops under a wrong label or of a bus that logged too few arrivals to make a stint).",
  "how_the_app_uses_it": "Planned (display-rules work, 2026-11-11): (1) end of service for the idle rule: past a line's usual last stop (the last bus's last_stop p90, today's listed hours equal to `listed`), a still bus of the line is very likely done for the day; (2) transition windows: a bus off its new line's route between a transition's leave and join (from the from line's end spot, under the label shown in label_on_the_way) is on its way to start service, not lost. The app must check `valid_until` and that today's listed hours equal `listed.spans`, and never show these learned times as a schedule. Whoever wires it documents the use in docs/ARCHITECTURE.md.",
  "refresh": "Monthly, after a timetable change, or when valid_until passes (and after a holiday or a break, which are left out). Commands: python experiments/routeknower/E28-scripts/fetch.py --out <dl> --from 2026-10-10 --to <newest complete day>; python tools/build_service_seen.py --dl <dl> --odd data/labeled/transitions/odd_episodes.csv; python tools/test_service_seen.py. About 15 s for 32 days plus the downloads. The data repo's weekly findings run (github.com/blobberus/straight-bussing-data, findings/service_seen/service_seen.json) rebuilds a candidate copy every Monday: adopt it here after a look. docs/DATA.md \"Seen service windows\".",
  "generated": "2026-11-11",
@@ -131,6 +132,14 @@
    20,
    1
   ]
+ },
+ "bus_changes_check": {
+  "lasting_drops": 334,
+  "lasting_at_a_stint_end": 263,
+  "layover_drops": 43,
+  "layovers_inside_one_stint": 36,
+  "from": "2026-10-30",
+  "last_stop_to_last_report_min_p50": 10.8
  },
  "lines": {
   "1075": {"name": "North", "days": [
