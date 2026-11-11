@@ -759,4 +759,6 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5699,Red Line/Arts Block,1794365504,2026-11-10 20:51:44,drop,3,2,4315,67601,Garfield Green Line Station,1794365504,690481,12646;12648,2,2,0,,,1,
 5699,Red Line/Arts Block,1794365874,2026-11-10 20:57:54,drop,2,1,12648,138836,Midway Plaisance & Cottage Grove,1794365874,690529,12646,2,2,0,,,1,
 5704,Downtown Campus Connector,1794366902,2026-11-10 21:15:02,add,3,4,12642,,,1794367208,874028,12645;12647;12649,6,6,0,,,,0
-5704,Downtown Campus Connector,1794369599,2026-11-10 21:59:59,drop,4,3,12645,151793,S (Upper) Wacker Dr & W Adams St,1794369599,874028,12642;12647;12649,6,6,0,,,,
+5704,Downtown Campus Connector,1794369599,2026-11-10 21:59:59,drop,4,3,12645,151793,S (Upper) Wacker Dr & W Adams St,1794369599,874028,12642;12647;12649,6,6,0,,,1,
+5704,Downtown Campus Connector,1794369637,2026-11-10 22:00:37,drop,3,2,12647,8654,59th & Ellis,1794369637,874028,12642;12649,6,4,0,,,1,
+5704,Downtown Campus Connector,1794369668,2026-11-10 22:01:08,drop,2,1,12642,8654,59th & Ellis,1794369668,874028,12649,6,4,0,,,1,
