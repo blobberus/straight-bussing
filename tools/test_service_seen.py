@@ -229,6 +229,15 @@ class Build(unittest.TestCase):
         self.assertIn("different hours", types["fri"]["split"])
         self.assertEqual(types["fri"]["seen"]["last_stop"]["p50"], "24:40")
 
+    def test_timetable_change_keeps_the_newest_listing(self):
+        new = {"routes": {"A": {"days": {k: {"spans": [["08:00", "19:00"]]} for k in B.DOWS[:5]}}, "B": SERVICE["routes"]["B"],
+                          "N": SERVICE["routes"]["N"]}}
+        listed = {"2026-11-02": SERVICE, "2026-11-09": new}          # two Mondays, the timetable changed between them
+        ld = {"2026-11-02": {"first_stop": 420, "last_stop": 600}, "2026-11-09": {"first_stop": 480, "last_stop": 600}}
+        g = B.group_days("A", ["2026-11-02", "2026-11-09"], lambda rid, d: B.listed_spans(listed[d], rid, d), ld)
+        self.assertEqual([(x[0], x[2]) for x in g], [("weekday", ["2026-11-09"])])
+        self.assertIn("1 earlier day", g[0][3])
+
     def test_file_explains_itself_and_is_json(self):
         f = self.folder()
         serve(f, MON, "1", "A", "08:00", "10:00")

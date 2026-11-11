@@ -495,6 +495,17 @@ def group_days(rid, days, listed_of, line_days):
         for d in ds:
             sig[json.dumps(listed_of(rid, d))].append(d)
         parts = list(sig.values())
+        # a listing that changed over time (the same weekday under two listings): keep the newest timetable's days
+        by_dow = defaultdict(set)
+        for k, part in sig.items():
+            for d in part:
+                by_dow[DOWS[date.fromisoformat(d).weekday()]].add(k)
+        if any(len(v) > 1 for v in by_dow.values()):
+            newest = json.dumps(listed_of(rid, max(ds)))
+            old_n = sum(len(v) for k, v in sig.items() if k != newest)
+            groups.append((name, list(dows), sig[newest],
+                           f"the timetable's hours changed: {old_n} earlier day(s) under another listing left out"))
+            continue
         if len(parts) > 1:
             for part in parts:
                 pd = sorted({DOWS[date.fromisoformat(d).weekday()] for d in part}, key=DOWS.index)
