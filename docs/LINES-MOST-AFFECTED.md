@@ -1,4 +1,4 @@
-# Lines most affected by idle buses, odd hours and off-route time (2026-11-06)
+# Lines most affected by idle buses, odd hours and off-route time (2026-11-06; checked against the flagged lines 2026-11-11)
 
 Owner, 2026-11-06: "determine 5 bus lines that are most plagued by the scheduling and routing issue and give them to me
 so I can advertise to those riders." Measured on the archived bus reports of Oct 10 to Nov 5, 2026 (RouteKnower.md E28,
@@ -10,6 +10,67 @@ arrival times given for buses that were not going to serve, minutes far from eve
 outside the listed hours, the share of listed hours with no live bus at all, and the share of all Passio prediction
 misses (E24). Per day = per day the line runs. The app now hides the idle buses (docs/ARCHITECTURE.md "Idle buses that
 are not in service"); the numbers below are what riders saw before.
+
+## Checked against the flagged lines (2026-11-11)
+
+The flagged-lines registry (`data/labeled/flags/flagged_lines.csv`, per line in `docs/FLAGGED-LINES.md`) measures two
+things this ranking did not: odd bus behavior at transition times (RouteKnower E30) and large prediction misses
+(E31), on the data through Nov 10, each line's rate against all lines'. It holds 77 flags on 14 lines, 27 of them
+high. E32 (what the shipped display showed riders) is not in yet.
+
+**All five lines below stay flagged**, with new evidence:
+- **Downtown Campus Connector**, 3 high flags: its last bus left more than 15 min before the listed end on 22 of 22
+  weekdays (all lines: 28 per 100 listed spans); bus 12647 reports only every few minutes; at seven stops
+  (downtown, Lake Park and 55th & University) 2% of the arrivals of the last 14 days had a Passio time 5 min ahead
+  (89% before).
+- **Apostolic/Drexel**, 3 high: the last bus left early on 21 of 22 weekday nights; at 61st & Kimbark 0.2% of
+  arrivals had a time 5 min ahead; at 57th Street & Drexel the screen often showed only the bus's next trip, and 74%
+  of those times missed by more than 2 min.
+- **Red Line/Arts Block**, 2 high: 80% of Passio's times 5 to 30 min ahead were too early by more than the large-miss
+  threshold (the bus came later; all lines 55%), the same as in October; at Midway Plaisance & Cottage Grove 2% of
+  arrivals had a time 5 min ahead.
+- **East**, 2 high: at night the bus came earlier than shown by more than the threshold 18% of the time 5 to 15 min
+  ahead in the last 14 days (3% before; all lines 11%): a rider who trusts the time can miss it; at Regenstein Library,
+  Max Palevsky and Ellis Garage 6% of arrivals had a time 5 min ahead.
+- **Midway Metra**, 1 high: buses report under its name after its listed hours (twice the all-lines rate, mostly 7
+  to 8 PM on the way to the garage); medium: the morning's extra listed bus often does not come, the last morning bus
+  leaves early, and buses drive another line's road under its name.
+
+**Lines as affected as these that the ranking left out**, by high flags:
+- **53rd Street Express**, 4 high, more than any line: since Oct 27, 22% of Passio's times 5 to 20 min ahead were
+  beaten by the bus by more than the threshold (1.4% before); at 53rd St & Kenwood and Kimbark Plaza the screen 5 min
+  ahead showed only the bus's next trip, and all 330 of those times were wrong; at three stops 8% of arrivals had a
+  time 5 min ahead (87% before); the last bus left early on 19 of 22 weekdays.
+- **Central**, 3 high: buses report under its name after its hours 7.5 times as often as all lines (near midnight, to
+  the garage); since Oct 27 the bus beat Passio's time by more than the threshold 24% of the time at night (4.5%
+  before); 212 of 213 next-trip-only times were wrong (the bus came earlier).
+- **South**, 3 high: buses linger on the map not in service three times as often as all lines (Burton-Judson Courts,
+  8 PM to midnight), the bus beats Passio's time at night (12% against 7%), and misses grow when a bus runs behind.
+- **Apostolic**, 3 high: bus 4322 vanishes from the feed mid-route and jumps position on weekday mornings (South
+  Campus Residence Hall, Woodlawn & 61st); at Wyler Pavilion 4% of arrivals had a time 5 min ahead.
+
+**What changed and why.** The Nov 6 ranking weighted what the map showed (idle buses, which the app now hides) and
+each line's share of all misses (bigger lines have more of them). The flags compare each line's rate with all lines'
+and include the change of Tuesday Oct 27, about 6 PM, after which Passio's times run late (the bus comes earlier than
+shown) on the 53rd Street Express, Central, East and the Downtown Campus Connector (E31; docs/DATA-COLLECTION-LOG.md
+DC-025, DC-026). By the flags alone (high flags, then medium) the five would be:
+
+| Rank by flags | Line | High | Medium | Low | On the Nov 6 list |
+|---:|---|---:|---:|---:|---|
+| 1 | 53rd Street Express | 4 | 0 | 0 | no |
+| 2 | Apostolic/Drexel | 3 | 5 | 0 | 2nd |
+| 3 | Central | 3 | 3 | 0 | close behind |
+| 4 | Downtown Campus Connector | 3 | 3 | 0 | 1st |
+| 5 | Apostolic | 3 | 2 | 0 | no |
+| 6 | South | 3 | 1 | 2 | close behind |
+| 7 | East | 2 | 3 | 0 | 4th |
+| 8 | Red Line/Arts Block | 2 | 1 | 2 | 3rd |
+| 10 | Midway Metra | 1 | 3 | 2 | 5th |
+
+(9th: Drexel, 1 / 3 / 4.) Counting flags is coarse: one flag can matter more to riders than three. The owner decides
+whether the advertised five change; for rider safety the lines where the bus now comes earlier than shown (53rd
+Street Express, Central, East, Downtown Campus Connector) matter most. Refresh: `python tools/flag_lines.py` after the
+producers rerun (data/labeled/flags/README.md).
 
 ## The five lines
 
