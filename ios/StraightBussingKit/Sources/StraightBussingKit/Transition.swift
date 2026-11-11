@@ -68,4 +68,27 @@ public enum Transition {
         }
         return (seen, gone)
     }
+
+    /// HELD (owner 2026-11-11: "Keep hidden bus times off until it reports again"; web core/transition.js heldStep,
+    /// RouteKnower E32 offroute_then_silent): a bus that a display rule hides (`OffRoute`, `Idle`) and that then stops
+    /// reporting leaves `Operating`'s list 5 min after its last report, so the rules no longer see it; its Passio times
+    /// used to come back until GONE (15 min, never for a sparse reporter). Now its trip updates stay dropped until it is
+    /// operating again (a fresh report) and no rule hides it. `prev` / `held`: vehicle id -> its report time when a rule
+    /// hid it; `ids`: the held buses no rule hides now (their trip updates to drop too), sorted. A held bus is forgotten
+    /// after `keepS` unless Passio still predicts it.
+    public static func held(_ prev: [String: Double], operating: [VehiclePosition], hidden: [String], trips: [TripUpdate],
+                            now: Double, feedTs: Double) -> (held: [String: Double], ids: [String]) {
+        let ref = feedTs != 0 ? feedTs : now
+        let hid = Set(hidden)
+        var op: [String: VehiclePosition] = [:]
+        for b in operating { if let id = b.vehicle.id, !id.isEmpty { op[id] = b } }
+        var predicted = Set<String>()
+        for tu in trips { if let id = tu.vehicle.id, !id.isEmpty { predicted.insert(id) } }
+        var out: [String: Double] = [:], ids: [String] = []
+        for (id, t) in prev where !hid.contains(id) && op[id] == nil && t.isFinite {   // reporting unhidden: released
+            if ref - t <= keepS || predicted.contains(id) { out[id] = t; ids.append(id) }
+        }
+        for id in hid { out[id] = op[id].map { $0.timestamp != 0 ? $0.timestamp : ref } ?? ref }
+        return (out, ids.sorted())
+    }
 }

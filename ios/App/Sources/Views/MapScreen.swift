@@ -143,7 +143,8 @@ struct MapScreen: View {
                 let isYou = youOnDrawnBus && b.id == youBus
                 let isFaded = faded.contains(b.id)
                 let marker = BusMarker(route: model.route(b.rid), bearing: b.bearing, stale: b.stale, youText: isYou ? you?.text : nil,
-                                       number: b.number, picked: model.selectedBus == SelectedBus(rid: b.rid, vehicleId: b.id), faded: isFaded)
+                                       number: b.number, picked: model.selectedBus == SelectedBus(rid: b.rid, vehicleId: b.id), faded: isFaded,
+                                       transitioning: b.transitioning)
                 Annotation(b.label, coordinate: b.coord.cl, anchor: .center) {
                     if isFaded {
                         // a faded bus takes no tap (the web: pointer-events none): the tap reaches the map, its stops and lines
@@ -464,6 +465,9 @@ struct BusMarker: View {
     /// On a faded route (Kit `RouteVisibility.busFaded`, owner 2026-11-04): smaller and see-through like its line, under
     /// the other buses and not tappable (MapScreen). Label, heading and number stay; a stale faded bus is fainter still.
     var faded = false
+    /// Off its route on its usual way to a new line (Kit `Seen`, owner 2026-11-11; web .sb-bus-tr): a small disc with two
+    /// arrows at the badge's bottom right; VoiceOver says "Transitioning to new line" (never the mark alone).
+    var transitioning = false
     var body: some View {
         let dark = scheme == .dark
         let fill = RouteColor.mapColor(route?.color, dark: dark)
@@ -507,10 +511,21 @@ struct BusMarker: View {
                     .overlay(Circle().stroke(Color(hex: route?.color), lineWidth: 1.5))
                     .offset(x: 16, y: -11)
             }
+            if transitioning {
+                Image(systemName: "arrow.left.arrow.right")
+                    .font(.system(size: 7, weight: .heavy))
+                    .foregroundStyle(Palette.text)
+                    .frame(width: 15, height: 15)
+                    .background(Palette.card, in: Circle())
+                    .overlay(Circle().stroke(Color(hex: fill), lineWidth: 1.5))
+                    .offset(x: 16, y: 11)
+                    .accessibilityHidden(true)
+            }
         }
         .opacity(faded ? (stale ? 0.32 : 0.42) : (stale ? 0.5 : 1))
         .scaleEffect(faded ? 0.8 : 1)
         .accessibilityLabel((youText ?? (number.map { "Bus \($0), \(route?.displayName ?? "Shuttle")" } ?? "\(route?.displayName ?? "Shuttle") bus"))
+                            + (transitioning ? ", \(Seen.transitionText)" : "")
                             + (picked ? ", showing its times" : "") + (stale ? ", location may be old" : ""))
     }
 }

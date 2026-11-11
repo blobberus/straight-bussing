@@ -53,6 +53,19 @@ public struct LiveState: Sendable, Equatable {
     /// ago or more while Passio still predicts them: their trip updates are left out of `trips`.
     public var goneSeen: [String: Transition.Seen] = [:]
     public var goneIds: [String] = []
+    /// `Transition.held` between polls (web data/live.js heldOff): every bus a rule hid (its report time then), and the
+    /// ones silent since (no longer operating, no rule sees them): their trip updates stay dropped until they report
+    /// again unhidden (owner 2026-11-11).
+    public var heldOff: [String: Double] = [:]
+    public var heldIds: [String] = []
+    /// The operating buses a rule hides now (`OffRoute`, `Idle`), and their number places (`BusNumbers.heldStep`, web
+    /// core/busnum.js numberStep `held`): the app numbers the drawn buses plus these, so the other buses keep their
+    /// numbers while one blinks off and on (owner 2026-11-11).
+    public var ruleHidden: [VehiclePosition] = []
+    public var numberHeld: [String: BusNumbers.Held] = [:]
+    /// Buses off their route inside a transition window of their line (`Seen`, owner 2026-11-11; web store.transitioning):
+    /// shown, their badge marked, "Transitioning to new line" when tapped.
+    public var transitioning: [String] = []
     public init() {}
 
     public func staleLevel(now: Double) -> StaleLevel {
@@ -77,7 +90,7 @@ extension LiveState {
     /// is still applied; ONE empty vehicle answer in service keeps the last list (`emptyHoldS`); buses are
     /// filtered to operating vehicles, then buses more than a block off their route (`OffRoute`, kept in `awayBuses`)
     /// and buses idle and not in service (`Idle`) are dropped with their trip updates, and the trip updates of buses gone
-    /// from the feed (`Transition`).
+    /// from the feed (`Transition`) or hidden by a rule and silent since (`Transition.held`).
     public func applying(_ poll: FeedPoll, staticData: StaticData?, now: Double) -> LiveState {
         var s = self
         s.loaded = true
@@ -111,22 +124,32 @@ extension LiveState {
             let ctx = Operating.Context(routes: staticData?.routes ?? [:], service: staticData?.service ?? ServiceData(),
                                         trips: s.trips, feedTs: s.feedTs, now: now, staticLoaded: !(staticData?.isEmpty ?? true))
             s.buses = Operating.operatingBuses(newBuses, ctx)
-            let off = OffRoute.step(s.offTracks, buses: s.buses, shapes: staticData?.shapes ?? [:], corridors: staticData?.corridors,
-                                    service: staticData?.service, alerts: s.alerts, routes: staticData?.routes ?? [:], now: now,
-                                    feedTs: s.feedTs)
+            let off = OffRoute.stepMarked(s.offTracks, buses: s.buses, shapes: staticData?.shapes ?? [:], corridors: staticData?.corridors,
+                                          service: staticData?.service, alerts: s.alerts, routes: staticData?.routes ?? [:],
+                                          seen: staticData?.seen, now: now, feedTs: s.feedTs)
             s.offTracks = off.tracks
             s.offHidden = off.hidden
+            s.transitioning = off.transitioning
             s.awayBuses = OffRoute.awayBuses(s.buses, hidden: off.hidden)
             let idle = Idle.step(s.idleTracks, buses: s.buses, trips: s.trips, service: staticData?.service,
                                  idle: staticData?.idle, now: now, feedTs: s.feedTs)
             s.idleTracks = idle.tracks
             s.idleHidden = idle.hidden
+            let rules = off.hidden + idle.hidden
+            // a transitioning bus shown without its times counts as hidden for its times: silent next, they stay off
+            let timesHidden = Seen.transitionTimes ? rules : rules + off.transitioning
+            let held = Transition.held(s.heldOff, operating: s.buses, hidden: timesHidden, trips: s.trips, now: now, feedTs: s.feedTs)
+            s.heldOff = held.held
+            s.heldIds = held.ids
+            s.ruleHidden = rules.isEmpty ? [] : OffRoute.awayBuses(s.buses, hidden: rules)
+            s.numberHeld = BusNumbers.heldStep(s.numberHeld, hidden: s.ruleHidden, now: now)
         }
-        let hiddenNow = s.offHidden + s.idleHidden + s.goneIds
-        if !hiddenNow.isEmpty && (newBuses != nil || tuOK) {
+        let hiddenNow = s.offHidden + s.idleHidden + s.goneIds + s.heldIds
+        let timesOff = Seen.transitionTimes ? [] : s.transitioning     // a transitioning bus: its badge only, without its times
+        if (!hiddenNow.isEmpty || !timesOff.isEmpty) && (newBuses != nil || tuOK) {
             let d = OffRoute.dropHidden(buses: s.buses, trips: s.trips, hidden: hiddenNow)
             s.buses = d.buses
-            s.trips = d.trips
+            s.trips = timesOff.isEmpty ? d.trips : OffRoute.dropHidden(buses: [], trips: d.trips, hidden: timesOff).trips
         }
         if vpOK && tuOK { s.lastOk = now; s.failed = false } else { s.failed = true }
         return s

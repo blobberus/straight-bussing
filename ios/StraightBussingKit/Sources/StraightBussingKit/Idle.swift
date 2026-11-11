@@ -75,6 +75,14 @@ public struct IdleData: Sendable, Equatable {
 public enum Idle {
     /// A bus within this of where its clock started is still (m).
     public static let stillM = 80.0
+    /// ... downtown (north of `downtownLat`: the Loop, the South Loop, River North), where tall buildings scatter GPS fixes
+    /// (m; owner 2026-11-11 "use a wider standing still radius", RouteKnower E32c; web STILL_DOWNTOWN_M).
+    public static let stillDowntownM = 150.0
+    /// Downtown starts here (latitude; Cermak Road is 41.853, campus 41.79).
+    public static let downtownLat = 41.85
+
+    /// The still radius where a bus's clock started (m; web stillRadius).
+    public static func stillRadius(_ lat: Double) -> Double { lat >= downtownLat ? stillDowntownM : stillM }
     /// Still this long with no Passio prediction `futureS` ahead = hidden (s).
     public static let idleS = 30.0 * 60
     /// Still this long = hidden, whatever Passio predicts (s).
@@ -184,7 +192,7 @@ public enum Idle {
             guard let rid = b.trip.routeId, !rid.isEmpty, b.latitude.isFinite, b.longitude.isFinite else { continue }
             let t = b.timestamp != 0 ? b.timestamp : ref
             let p = tracks[id]
-            let cont = p.map { $0.rid == rid && t >= $0.since && t - $0.last <= gapS && distM($0.lat, $0.lon, b.latitude, b.longitude) <= stillM } ?? false
+            let cont = p.map { $0.rid == rid && t >= $0.since && t - $0.last <= gapS && distM($0.lat, $0.lon, b.latitude, b.longitude) <= stillRadius($0.lat) } ?? false
             let tr = cont ? Track(rid: rid, lat: p!.lat, lon: p!.lon, since: p!.since, last: max(p!.last, t))
                           : Track(rid: rid, lat: b.latitude, lon: b.longitude, since: t, last: t)
             next[id] = tr

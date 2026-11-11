@@ -197,6 +197,8 @@ public struct StaticData: Sendable {
     public var idle: IdleData?
     /// The streets each route's buses really drive (corridors.json, RouteKnower E27c; `OffRoute`); nil when missing or bad.
     public var corridors: CorridorData?
+    /// The seen service windows (service_seen.json; `Seen` transition windows); nil when missing or bad.
+    public var seen: SeenData?
     /// The timetable at every stop (timetable.json; Directions' trip start time, `Timetable`); nil when missing or bad.
     public var timetable: TimetableData?
 
@@ -204,7 +206,7 @@ public struct StaticData: Sendable {
                 shapes: [String: [[LatLon]]] = [:], routeStops: [String: [String]] = [:], routeStopIds: [String]? = nil,
                 addresses: [String: StopAddress] = [:], service: ServiceData = ServiceData(),
                 segments: SegmentsData? = nil, generated: String? = nil, idle: IdleData? = nil, corridors: CorridorData? = nil,
-                timetable: TimetableData? = nil) {
+                timetable: TimetableData? = nil, seen: SeenData? = nil) {
         self.routes = routes
         self.routeIds = routeIds ?? JS.keyOrder(routes.keys)
         self.stops = stops
@@ -218,6 +220,7 @@ public struct StaticData: Sendable {
         self.generated = generated
         self.idle = idle
         self.corridors = corridors
+        self.seen = seen
         self.timetable = timetable
     }
 

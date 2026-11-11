@@ -42,7 +42,8 @@ struct RouteDetailView: View {
         let list = model.staticData.routeStops[rid] ?? []
         let loop = list.count > 2 && list.first == list.last
         let nums = model.busNumbers[rid] ?? [:]
-        let spots = model.liveLoaded ? RouteText.busPositions(model.staticData, buses: model.buses, rid: rid, now: model.now, numbers: nums) : []
+        let spots = model.liveLoaded ? RouteText.busPositions(model.staticData, buses: model.buses, rid: rid, now: model.now, numbers: nums,
+                                                             transitioning: Set(model.transitioning)) : []
         // the picked bus while the map still draws it (a bus missing from one poll stays 45 s): its key and name
         let drawnPick = model.selectedBus.flatMap { s in s.rid == rid ? model.mapBuses.first { $0.rid == rid && $0.id == s.vehicleId } : nil }
         let sel: (vid: String, name: String)? = drawnPick.map { ($0.id, BusNumbers.name(number: nums[$0.id], label: $0.label)) }
@@ -59,6 +60,11 @@ struct RouteDetailView: View {
                 .accessibilityElement(children: .combine)
                 if awayN > 0 {
                     Text(RouteText.awayText(awayN)).font(.footnote).foregroundStyle(Palette.text2)
+                }
+                // the live count and bus numbers come from Passio's feed (owner 2026-11-11): one quiet line, under the
+                // bus list (below) or here under the count (web route.js COUNT_NOTE)
+                if n > 0 && (ids.isEmpty || spots.isEmpty) {
+                    Text(BusNumbers.countNote).font(.footnote).foregroundStyle(Palette.text2)
                 }
                 if quiet != nil {
                     Text(RouteText.noLiveNote(away: awayN)).font(.footnote).foregroundStyle(Palette.text2)
@@ -94,7 +100,9 @@ struct RouteDetailView: View {
                 } else {
                     if let sel {
                         HStack(spacing: 8) {
-                            Text("Showing \(sel.name)'s times").font(.subheadline.weight(.semibold))
+                            // a tapped transitioning bus says so, exactly (owner 2026-11-11, Kit Seen; its times are off)
+                            Text(model.transitioning.contains(sel.vid) ? Seen.transitionText : "Showing \(sel.name)'s times")
+                                .font(.subheadline.weight(.semibold))
                             Spacer()
                             Button { model.selectedBus = nil } label: {
                                 Text("Show the next bus at each stop").font(.subheadline.weight(.semibold))
@@ -126,6 +134,7 @@ struct RouteDetailView: View {
                                 .accessibilityAddTraits(on ? .isSelected : [])
                             }
                         }
+                        Text(BusNumbers.countNote).font(.footnote).foregroundStyle(Palette.text2)
                     }
                     SectionTitle(text: "Stops")
                     Card { stopTimeline(ids: ids, loop: loop, spots: spots, color: Color(hex: r.color), route: r, pick: sel) }

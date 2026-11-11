@@ -104,8 +104,10 @@ public enum OffRoute {
         public var fs: Double?
         public var fn: Int
         public var ff: Int
-        public init(rid: String, since: Double, last: Double, n: Int, fs: Double? = nil, fn: Int = 0, ff: Int = 0) {
-            self.rid = rid; self.since = since; self.last = last; self.n = n; self.fs = fs; self.fn = fn; self.ff = ff
+        /// Its farthest distance from the route in this stretch (m; `Seen.towardM`).
+        public var dx: Double
+        public init(rid: String, since: Double, last: Double, n: Int, fs: Double? = nil, fn: Int = 0, ff: Int = 0, dx: Double = 0) {
+            self.rid = rid; self.since = since; self.last = last; self.n = n; self.fs = fs; self.fn = fn; self.ff = ff; self.dx = dx
         }
     }
 
@@ -209,7 +211,19 @@ public enum OffRoute {
     public static func step(_ tracks: [String: Track], buses: [VehiclePosition], shapes: [String: [[LatLon]]],
                             corridors: CorridorData? = nil, service: ServiceData?, alerts: [ServiceAlert],
                             routes: [String: Route], now: Double, feedTs: Double) -> (tracks: [String: Track], hidden: [String]) {
-        var next: [String: Track] = [:], hidden: [String] = [], seen = Set<String>()
+        let r = stepMarked(tracks, buses: buses, shapes: shapes, corridors: corridors, service: service, alerts: alerts, routes: routes,
+                           now: now, feedTs: feedTs)
+        return (r.tracks, r.hidden)
+    }
+
+    /// `step` with the transition windows (web offRouteStep ctx.seen, owner 2026-11-11): a bus the rule would hide whose
+    /// report time is inside a transition window of its line (`Seen.transitionAt`, within `Seen.transitionMaxM` of its
+    /// route) stays shown and is listed in `transitioning` (input order).
+    public static func stepMarked(_ tracks: [String: Track], buses: [VehiclePosition], shapes: [String: [[LatLon]]],
+                                  corridors: CorridorData? = nil, service: ServiceData?, alerts: [ServiceAlert],
+                                  routes: [String: Route], seen seenData: SeenData? = nil, now: Double,
+                                  feedTs: Double) -> (tracks: [String: Track], hidden: [String], transitioning: [String]) {
+        var next: [String: Track] = [:], hidden: [String] = [], transitioning: [String] = [], seen = Set<String>()
         let ref = feedTs != 0 ? feedTs : now
         let nowT = now != 0 ? now : ref
         var corr: [String: [LatLon]] = [:], checked = Set<String>()       // rid -> corridorFor (once per poll)
@@ -229,9 +243,9 @@ public enum OffRoute {
             let fresh = !cont || t > (p?.last ?? t)                        // a new report (not the same one repeated)
             var tr: Track
             if cont, let p {
-                tr = Track(rid: rid, since: p.since, last: max(p.last, t), n: max(p.n, 1) + (fresh ? 1 : 0))
+                tr = Track(rid: rid, since: p.since, last: max(p.last, t), n: max(p.n, 1) + (fresh ? 1 : 0), dx: max(p.dx, d))
             } else {
-                tr = Track(rid: rid, since: t, last: t, n: 1)
+                tr = Track(rid: rid, since: t, last: t, n: 1, dx: d)
             }
             if d > blockM {
                 if cont, let p, let fs = p.fs, t >= fs {
@@ -249,10 +263,15 @@ public enum OffRoute {
                 || (pts != nil && tr.n >= 2 && t - tr.since >= nearS)      // NEAR
             if !hide { continue }
             if d <= detourMaxM && inListedHours(service, rid, nowT) != false && detourAlert(alerts, routes: routes, rid: rid, now: nowT) { continue }   // official detour
+            if seenData != nil && d <= Seen.transitionMaxM && (!(Seen.towardM > 0) || d < tr.dx - Seen.towardM)
+                && Seen.transitionAt(seenData, service: service, rid: rid, t: t) != nil {
+                transitioning.append(id)                                   // on its way to a new line: shown, marked
+                continue
+            }
             hidden.append(id)
         }
         for (id, p) in tracks where !seen.contains(id) && ref - p.last <= gapS { next[id] = p }
-        return (next, hidden)
+        return (next, hidden, transitioning)
     }
 
     /// The buses and trip updates without the hidden vehicles (trip updates by vehicle id only: trip ids are shared).
