@@ -14,8 +14,9 @@ Rules (what the replayed app did at each whole minute, data/live.js order):
                  longer lists it (5 min stale) and the two rules no longer see it: in the SHIPPED app its Passio times
                  come back until GONE (E32 "times back after a hide"); under the owner's 2026-11-11 rule they stay off
                  until the bus reports again (`times_shown_by_app` says which the replayed code did)
-  held           the replay's own held-off list (poll field `held`, written by replay.html once the owner's rule is in
-                 the code): the times kept off until the bus reports again
+  held           core/transition.js heldStep (the owner's rule, live since 2026-11-11): a bus a rule hid that then stopped
+                 reporting keeps its times off until it reports again (replay.html poll field 8, `held`; field 9 lists the
+                 off-route buses kept on screen as transitioning to a new line, core/seen.js, which are not hides)
 An episode joins the minutes of one (bus, line, rule) no more than 2 min apart; only episodes with at least one minute
 of Passio times 0 to 60 min ahead are written. What the bus did = the data branch's arrivals.csv.
 
@@ -160,14 +161,15 @@ def day_episodes(day, inp, res, A, stops, rstops, names, label):
         g = sorted(b - a for a, b in zip(w, w[1:]))
         return len(w) >= 2 and g[len(g) // 2] > SPARSE_S
 
-    last_hid = {}
+    last_hid, marks = {}, Counter()
     state = {}                      # minute -> {veh: (rule, rid, why)}
     times = {}                      # minute -> {veh: [(stop, p)]}
     shown = {}                      # minute -> set of veh shown on the map
     minutes = []
     for rp in res["polls"]:
         h, op, off, idle, gone = rp[0], rp[1], rp[2], rp[3], rp[4]
-        held = set(poll_field(rp, 9, []) or [])
+        held = set(poll_field(rp, 8, []) or [])        # replay.html since cc0ef86c: [.., oldNums, held, marked]
+        marked = set(poll_field(rp, 9, []) or [])      # off-route buses kept on screen as transitioning (core/seen.js)
         offs, idles, gones = set(off), {v: w for v, w in idle}, set(gone)
         oprid = {v: r for v, r in op}
         for v in offs | set(idles):
@@ -188,6 +190,9 @@ def day_episodes(day, inp, res, A, stops, rstops, names, label):
                 srid.setdefault(veh, rid)
         times[h] = tm
         shown[h] = {v for v in oprid if v not in offs and v not in idles}
+        for v in marked:
+            marks["_marked_min"] += 1
+            marks["_marked_times_min"] += bool(tm.get(v))
         st = {}
         for v in set(oprid) | set(srid) | gones | held:
             rid = oprid.get(v) or srid.get(v)
@@ -277,6 +282,7 @@ def day_episodes(day, inp, res, A, stops, rstops, names, label):
     for r in runs.values():
         close(r)
     out.sort(key=lambda e: (e["_start"], e["vehicle"], e["rule"]))
+    no_times.update(marks)
     return out, no_times
 
 
@@ -299,14 +305,20 @@ def header(rows, d0, d1, label, n_days, totals):
         "parked / past / linger); gone = core/transition.js GONE (silent 15 min while the feed is alive, its times",
         "dropped); not_operating = after an off_route / idle hide the bus stopped reporting and left the operating list",
         "(5 min stale), so in the shipped code its Passio times came back until GONE (E32 'times back after a hide');",
-        "held = the times kept off until the bus reports again (the owner's rule, once it is in the replayed code).",
-        f"DATA: service days {d0} to {d1} ({n_days} replayed) with the rule set '{label}' (shipped = the display rules on",
-        "main when the replay ran, live in the app since 2026-11-06, applied to every day: what they WOULD have hidden).",
+        "held = core/transition.js heldStep (the owner's rule, live since 2026-11-11): the times of a bus a rule hid that",
+        "then stopped reporting stay off until it reports again (in the replays of code from before it: none).",
+        f"DATA: service days {d0} to {d1} ({n_days} replayed) with the rule set '{label}' (the web/js the replay ran:",
+        "shipped = the rules live 2026-11-06 to 11-11; main@<commit> = main at that commit), applied to every day: what",
+        "those rules WOULD have hidden. Off-route buses kept on screen as transitioning to a new line (core/seen.js) are",
+        f"not hides and not listed: {totals.get('_marked_min', 0)} bus-minutes marked, "
+        f"{totals.get('_marked_times_min', 0)} of them with Passio times.",
         "Episodes join the minutes of one (bus, line, rule) at most 2 min apart; only those with Passio times are listed.",
         "COLUMNS:", *(f"  {k}: {v}" for k, v in DOCS.items()),
         "TOTALS: " + ", ".join(f"{k} {by_rule[k]} episodes ({served[k]} came to serve within 15 min)"
                                for k in PRIORITY if by_rule[k]) + f"; hidden episodes without Passio times (not listed): "
-        + ", ".join(f"{k} {totals.get(k, 0)}" for k in PRIORITY if totals.get(k)),
+        + ", ".join(f"{k} {totals.get(k, 0)}" for k in PRIORITY if totals.get(k)) + "; Passio bus-minutes of times "
+        "per rule: " + ", ".join(f"{k} {sum(int(r['passio_times_min']) for r in rows if r['rule'] == k)}"
+                                 for k in PRIORITY if by_rule[k]),
         "REFRESH: weekly by the data repo's findings.yml when its replay step runs (findings/hidden_buses/), else by hand:",
         "  python experiments/routeknower/E32-scripts/inputs.py --dl <fetch.py dir> --alerts <dl>/alerts.csv --days ... --out <work>",
         "  python experiments/routeknower/E32-scripts/replay.py --work <work> --results <results> --days ... --plan 0",

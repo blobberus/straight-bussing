@@ -35,7 +35,7 @@ class Replay:
         self.inp["polls"].append([h, vs, snap_ix, []])
         poll = [h, [[v, "A"] for v in op], list(off), [[v, w] for v, w in idle], list(gone), {}, [], {}]
         if held is not None:
-            poll += [None, list(held)]
+            poll += [list(held), []]                       # replay.html fields 8 (held) and 9 (marked transitioning)
         self.res["polls"].append(poll)
         return h
 
