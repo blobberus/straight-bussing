@@ -21,9 +21,9 @@ measure is per minute (the poll on each whole minute) and per line:
                      arrival on its line within 15 min: it was coming to serve riders. Episodes = hidden stretches
                      (minutes merge within 2 min) with at least one such minute.
   plan_risky         planner samples (replay.html: stop pairs on each line that shows a bus, every 5 min): a bus leg
-                     on a live time whose bus logged no arrival on the leg's line from 1 min before the sample until 15
-                     min after the boarding time (ghost_board), or did but logged none from 2 min before to 15 min
-                     after the time it was to reach the rider's stop (left_before_alight). top = the first option.
+                     on a live time whose bus made a lasting leave of the line (its last arrival before 30+ min without
+                     one) before it reached the boarding stop (ghost_board) or after boarding and before the rider's
+                     stop (left_before_alight), while it kept reporting after it left. top = the first option.
   num_swap           a bus shown in two polls in a row whose number changed from one number to another (Bus 1 to Bus 2);
                      num_flip = a swap undone within 2 min; join / leave = the number changed in a poll where a bus
                      joined or left the line; rule = that bus was operating in both polls and only a rule's verdict
@@ -31,6 +31,9 @@ measure is per minute (the poll on each whole minute) and per line:
 A ghost or a risky leg whose bus sent no report at all through the judged span is not counted either (unseen_time_min,
 plan_unseen): it may have driven the line unseen. A bus that reports too rarely for the arrivals log to see it serve (2+ reports within 30 min, median gap over 120 s,
 like 12647 on the DCC on Nov 6) is not judged (the unjudged_sparse_* counts).
+  reshown_time_min   minutes a bus's times are back on screen after core/offroute.js or core/idle.js hid it (within
+                     15 min) because it stopped reporting: no longer operating, the rules no longer see it, and GONE
+                     waits 15 min after its last report.
   rolling_min        a candidate rule, not shipped: minutes where a bus within 150 m of where it was 10 min ago shows a time
                      at its next stop 5+ min later than it showed 10 min ago (rolling_ghost_min = those that were ghosts:
                      the rule's precision and recall against ghost_time_min).
@@ -114,6 +117,18 @@ class Arrivals:
             return None
         i = bisect.bisect_right(x, a)
         return x[i] if i < len(x) else None
+
+    def leave_in(self, v, rid, a, b):
+        """The last arrival of a lasting leave of the line (LEAVE_GAP or more without an arrival after it) in [a, b]."""
+        x = self.vr.get((v, rid))
+        if not x:
+            return None
+        i = bisect.bisect_left(x, a)
+        while i < len(x) and x[i] <= b:
+            if i + 1 == len(x) or x[i + 1] - x[i] >= LEAVE_GAP:
+                return x[i]
+            i += 1
+        return None
 
     def leaves(self, t0, t1):
         """(v, rid, last arrival, next arrival or None) for every leave whose last arrival is in [t0, t1)."""
@@ -206,6 +221,7 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
     service = Counter()                # line -> minutes with an operating bus
     prev = {"new": None, "old": None}
     prev_op = None
+    last_hid = {}                      # vehicle -> last poll core/offroute.js or core/idle.js hid it
     last_change = {"new": {}, "old": {}}
     for k, rp in enumerate(rpolls):
         h, op, off, idle, gone, nums, away, onums = rp
@@ -245,6 +261,8 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
                         vehs[(app, r, v)]["num_swap"] += 1
             prev[app] = (sh, nm)
         prev_op = oprid
+        for v in offs | idles:
+            last_hid[v] = h
         if h % 60:
             continue
         for r in set(oprid.values()):
@@ -268,6 +286,12 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
             rids = {snaps[i][2] for i in ip[2] if snaps[i][0] == v and snaps[i][2]}
             hl += [(v, r, "gone") for r in rids]
         hidden[h] = hl
+        # RESHOWN: a bus hidden off route or idle that then stops reporting leaves core/operating.js's list (5 min), so
+        # the rules no longer see it and its Passio times are back on screen until GONE (15 min after its last report)
+        for (veh, rid), lst in tn.items():
+            if veh not in oprid and h - last_hid.get(veh, -10 ** 9) <= 900:
+                acc["new"][rid]["reshown_time_min"] += 1
+                vehs[("new", rid, veh)]["reshown_time_min"] += 1
     for r, n in service.items():
         acc["svc"][r]["service_min"] += n
     # golden check of this script's reading of the shown times against arrivalsFor
@@ -447,11 +471,17 @@ def measure_day(day, inp, res, A, acc, epi, vehs, gold, work):
                     c["plan_live_legs"] += 1
                     if k == 0:
                         c["plan_top_live_legs"] += 1
-                    ghost = not A.any_vr(v, rid, h - 60, bt + SERVED_PAD)
-                    reached = A.any_vs(v, als, bt - 60, at + SERVED_PAD) or A.any_vr(v, rid, at - 120, at + SERVED_PAD)
-                    left = (not ghost) and not reached
-                    if (ghost and not RP.seen(v, h, bt + SERVED_PAD)) or (left and not RP.seen(v, bt, at + SERVED_PAD)):
-                        c["plan_unseen"] += 1       # the bus sent no report then: it may have served unseen (not counted)
+                    # risky = the bus made a lasting leave of the line (its last arrival before 30+ min without one)
+                    # before the boarding stop (ghost_board) or between boarding and the rider's stop (left_before_alight),
+                    # and it kept reporting after that last arrival (parked, garage, another line: not a feed drop, which
+                    # may hide service). A late bus is not a leave: it logs its arrivals later.
+                    lv = A.leave_in(v, rid, h - LEAVE_GAP, bt + 60)
+                    ghost = lv is not None and not A.any_vs(v, bs, h - 60, bt + SERVED_PAD)
+                    lv2 = None if ghost else A.leave_in(v, rid, bt - 60, at - 60)
+                    left = lv2 is not None and not A.any_vs(v, als, bt - 60, at + SERVED_PAD)
+                    L = lv if ghost else lv2
+                    if (ghost or left) and not RP.seen(v, L + 300, L + LEAVE_GAP):
+                        c["plan_unseen"] += 1       # no report after it left the line: it may have served unseen (not counted)
                         ghost = left = False
                     if ghost or left:
                         c["plan_risky"] += 1

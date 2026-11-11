@@ -38,6 +38,9 @@ def rates(c, svc):
         "plan_top_risky": g("plan_top_risky"),
         "num_swap": g("num_swap"), "num_flip": g("num_flip"), "num_swap_per_10h": round(10 * g("num_swap") / (svc / 60), 2) if svc else None,
         "unjudged_sparse_min": g("unjudged_sparse_time_min") + g("unjudged_sparse_badge_min"),
+        "unseen_time_min": g("unseen_time_min"), "plan_unseen": g("plan_unseen"),
+        "reshown_time_min": g("reshown_time_min"), "reshown_per_10h": round(10 * g("reshown_time_min") / (svc / 60), 2) if svc else None,
+        "rolling_min": g("rolling_min"), "rolling_ghost_min": g("rolling_ghost_min"),
     }
 
 
