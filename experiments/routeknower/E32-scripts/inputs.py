@@ -15,8 +15,9 @@ Per Chicago service day (04:00 to 04:00), from the archived release assets (tool
                     trip), stops in sequence order, route from the day's GTFS trips.txt.
   serviceAlerts     data branch alerts.csv: every alert version from first_seen to last_seen + 120 s.
 The static files the app loads (routes, stops, shapes, route_stops, service) are built from the day's own GTFS zip with
-tools/build_gtfs.py (cached by zip content) plus today's learned web/data/corridors.json and idle.json (core/offroute.js
-and core/idle.js check the line and the hours they were learned against, so an older timetable simply does not use them).
+tools/build_gtfs.py (cached by zip content) plus today's learned web/data/corridors.json, idle.json and service_seen.json
+(core/offroute.js, core/idle.js and core/seen.js check the line and the hours they were learned against, so an older
+timetable simply does not use them; without service_seen.json no off-route bus is kept on screen as transitioning).
 
 Output (one JSON file per day, read by replay.html):
   {day, grid_s, slack_s, static: <folder name>, alerts: [GTFS-rt alert], snaps: [[veh, trip, rid, [[stop, time], ...]]],
@@ -34,6 +35,7 @@ REPO = Path(__file__).resolve().parents[3]
 CT = ZoneInfo("America/Chicago")
 GRID_S = 10          # web/js/data/live.js intervalMs
 FRESH_S = 300        # core/operating.js STALE_S
+LEARNED = ("corridors.json", "idle.json", "service_seen.json")   # learned web/data files the replayed rules read
 SLACK_S = 60         # a logged prediction stays on display this long after the logger last saw it
 ALERT_SLACK_S = 120
 
@@ -66,8 +68,9 @@ def static_for(zpath, cache):
         out.mkdir(parents=True, exist_ok=True)
         subprocess.run([sys.executable, str(REPO / "tools" / "build_gtfs.py"), "--zip", str(zpath), "--out", str(out),
                         "--patterns", str(out / "route_patterns.json")], check=True, capture_output=True)
-        for f in ("corridors.json", "idle.json"):
-            shutil.copy2(REPO / "web" / "data" / f, out / f)
+        for f in LEARNED:
+            if (REPO / "web" / "data" / f).exists():
+                shutil.copy2(REPO / "web" / "data" / f, out / f)
     return key
 
 
