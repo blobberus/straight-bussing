@@ -68,7 +68,8 @@ FLAGS = ROOT / "data" / "labeled" / "flags" / "collection_flags.csv"
 FIRST_DAY = "2026-10-08"
 RECENT_DAYS = 14                     # the "last 14 service days" grade (like E31)
 PRED_JOIN_S = 60                     # an arrival has a Passio time when predictions.csv has a row within this (E31)
-PRED_FROM = 1792171200               # 2026-10-12 12:20 CDT: the first predictions.csv row
+PRED_FROM = 1791825600               # 2026-10-12 12:20 CDT: the first predictions.csv row (the files' own first
+                                     # arrival is used when it is later)
 DOUBLE_S = AL.SAME_VISIT_S           # 900 s: same bus + stop with nothing between = one visit
 AFTER_END_S, BEFORE_START_S = 900, 1800   # E30 after_hours: outside the listed hours by more than this
 THIN_SHARE, THIN_MIN_MEDIAN = 0.5, 20     # db_audit.py's thin line-day rule
@@ -247,7 +248,7 @@ def double_logged(arr):
     return out
 
 
-def arrival_facts(arr, pred_keys, statics, det):
+def arrival_facts(arr, pred_keys, statics, det, pred_from=PRED_FROM):
     """{(day, route_id): Counter} from the arrival rows (MEASURES' columns plus `trip_unknown` / `trip_other_route`)
     and {route_id: name}; det gets where each measure's events fell."""
     F = defaultdict(Counter)
@@ -269,7 +270,7 @@ def arrival_facts(arr, pred_keys, statics, det):
         if id(r) in double:
             c["double_rows"] += 1
             mark(det, d, rid, "double_logged_visits", e, r["vehicle_id"], r["stop_id"])
-        if pred_keys is not None and not gps and e >= PRED_FROM:
+        if pred_keys is not None and not gps and e >= pred_from:
             c["pred_target_rows"] += 1
             det[(d, rid, "no_passio_time:all")]["s"][r["stop_id"]] += 1
             if not near(pred_keys.get((r["vehicle_id"], r["stop_id"]), ()), e, PRED_JOIN_S):
@@ -721,7 +722,8 @@ def collect(dl, d0=FIRST_DAY, d1=None, cache=None, polls=True, log=print):
     if not preds:
         log(f"no predictions*.csv in {dl}: no_passio_time is not measured")
     det = defaultdict(new_det)
-    F, names = arrival_facts(arr, pred_keys, statics, det)
+    pred_from = max(PRED_FROM, min((v[0] for v in pred_keys.values() if v), default=PRED_FROM)) if pred_keys else PRED_FROM
+    F, names = arrival_facts(arr, pred_keys, statics, det, pred_from)
     days = sorted({r["day"] for r in arr})
     routes = sorted({rid for _, rid in F})
     thin_days(F, statics, days, routes)
@@ -808,6 +810,7 @@ def summarize(col):
             tot_d = sum(c[den] for (d, _), c in F.items() if d in dset)
             base = rate(tot_n, tot_d)
             ev_col = EVENTS.get(m, num)
+            mdays = [d for d in days if any(F[(d, r)][den] for r in routes)] or days
             for rid in routes + ["ALL"]:
                 cs = [(d, F[(d, rid)]) for d in days] if rid != "ALL" else None
                 if rid == "ALL":
@@ -831,7 +834,7 @@ def summarize(col):
                 row = {"period": per, "route_id": rid, "route": names.get(rid, "All lines") if rid != "ALL" else "All lines",
                        "measure": m, "value": round(v, 3), "baseline": round(base, 3), "numerator": round(n_, 1),
                        "denominator": round(d_, 1), "unit": unit, "events": int(round(ev)), "days": dd,
-                       "data_from": days[0] if days else "", "data_to": days[-1] if days else "",
+                       "data_from": mdays[0] if mdays else "", "data_to": mdays[-1] if mdays else "",
                        "ratio": round(v / base, 3) if base else "", "excess": round(v - base, 3)}
                 for g in ("high", "medium", "low"):
                     row[f"days_over_{g}"] = over.get(g, "")
@@ -882,6 +885,7 @@ def stop_summary(col):
     for per, days in periods(col["days"]).items():
         sl = stop_logging(col, days)
         lines = sorted({rid for rid, _ in sl})
+        pdays = [d for d in days if d in set(col.get("poll_days") or days)] or days
         for m in STOP_MEASURES:
             pick = (lambda f: f["rare"] and f["closest_m"] is not None and f["closest_m"] <= NEAR_M)                 if m == "stops_rarely_logged" else (lambda f: f["rare"] and (f["closest_m"] is None or f["closest_m"] > NEAR_M))
             tot_n = sum(1 for f in sl.values() if pick(f))
@@ -894,7 +898,7 @@ def stop_summary(col):
                 row = {"period": per, "route_id": rid, "route": names.get(rid, rid) if rid != "ALL" else "All lines",
                        "measure": m, "value": round(v, 3), "baseline": round(base, 3), "numerator": len(hit),
                        "denominator": len(mine), "unit": STOP_MEASURES[m], "events": len(hit),
-                       "days": len(days), "data_from": days[0], "data_to": days[-1],
+                       "days": len(pdays), "data_from": pdays[0], "data_to": pdays[-1],
                        "ratio": round(v / base, 3) if base else "", "excess": round(v - base, 3),
                        "days_over_high": "", "days_over_medium": "", "days_over_low": "", "grade": "",
                        "stops": [(k[1], mine[k]) for k in hit]}
