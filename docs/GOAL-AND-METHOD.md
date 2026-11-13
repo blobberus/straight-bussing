@@ -221,8 +221,9 @@ past days only.
 4. **Score with section 2** and compare on the same arrivals.
 5. **Slices**: a method that wins on average but loses badly on one route, time of day, weekday/weekend or class
    vs break week is not shipped.
-   Every active flag in `data/labeled/flags/flagged_lines.csv` (lines with odd transitions or large misses,
-   narrowed to their stops, hours and buses) is a slice too: `data/labeled/flags/README.md`.
+   Every active flag in `data/labeled/flags/flagged_lines.csv` (lines with odd transitions, large misses or gaps
+   and misfiled rows in the collected data, narrowed to their stops, hours and buses) is a slice too:
+   `data/labeled/flags/README.md`.
 
 ### 5.4 When a new version may reach riders (the ship gate)
 
