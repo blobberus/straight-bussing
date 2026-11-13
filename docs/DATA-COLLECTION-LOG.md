@@ -158,6 +158,22 @@ owner's call).**
   rule has timed that stop, log it at that closest report if it was within `NEAR_M` (120 m) and the bus was moving past
   it (source `transition`). It needs no list of stops, and the replay of Oct 12 to Nov 12 (`tools/replay_day.py`) must
   show rows added only at such stops and none changed. Expected: about 13 rows a day for South and 6 for Regents Express.
+
+**5. North logged half its arrivals on both evenings: few or no North buses in the feed (accepted: the feed's or the
+operator's side; recheck next time).**
+- Wed Nov 11: 56 arrivals (Wednesdays 110 / 101 / 95 / 111). Mostly one bus (listed 2 at 4 PM and 9 to 11 PM): 4322 4 to
+  6:45 PM and 8 PM to midnight, 4326 6:45 to 7:45 PM. 4322 reported in bursts: 9 fresh reports 4:30 to 4:45 PM, 15 at
+  6:45, 9 at 8:30 (a bus reporting normally sends about 90 in 15 min); it is the bus E30 flags on Apostolic mornings
+  (`feed_drop_mid_route`, `position_jump`), and it did the same on Apostolic that morning (item 3). With no report near a
+  stop, no rule can time it. No North bus at all in the feed for 95 min of the listed service before midnight (5:15 to
+  5:30, 6:05 to 6:20 and 9:00 to 9:30 PM the longest).
+- Thu Nov 12: 59 arrivals (Thursdays 110 / 80 / 102 / 100). 12644 ran 4:27 PM, stood at Reynolds Club 6:00 to 7:05 PM (no
+  moving report) and left the feed; 4326 came over from 53rd Street Express at 6:33 PM and left the feed at 8:56 PM; then
+  no North bus 9 PM to midnight (listed 2 at 9 and 10 PM, 1 at 11 PM): 195 min without a North bus before midnight. Central
+  and East had one bus each that evening (median 2). No operator alert besides the nightly NightRide notice.
+- The weekdays Oct 27 to Nov 10 had 0 to 95 min without a North bus before midnight (median about 23), so Nov 12 is the
+  most so far. Not the collection: every 30-s window had an answer and the other lines logged as usual. The audit's
+  half-the-median rule did not fire (56 is 53% of 106).
 ### DC-026 Checkup 2026-11-11: healthy; the public data repo's per-day files had the prediction columns since Oct 29 (fixed); a whole-database audit (new); the archive check missed two file kinds (fixed); Passio's missing stop times unchanged and its times late on four lines since Oct 27 (open)
 Owner (2026-11-11): "Check this project on the repo and the straight bussing database repo. From here, run a database
 check and an analysis." This entry is the database check of both repositories; the analyses run in parallel (E30 odd
