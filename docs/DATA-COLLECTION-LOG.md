@@ -88,6 +88,47 @@ and downloads stayed off the repo (job folder).
 - alerts.csv: 2 versions a day, both the nightly NightRide notice ("every 30 minutes for the entire evening", 3:25 PM to
   midnight); no detour or stop alert. gtfs_versions: one timetable since Nov 1.
 - Backup off GitHub refreshed (item 10).
+
+**3. Every line, Nov 11 and 12 (the owner's focus).** Per line: arrivals against the same weekday's median (four weeks),
+the sources (Passio-named / GPS pass / GPS sweep), the share with a Passio time, the stops logged against the timetable's
+stop list (rebuilt from the timetable in use, `708be9d370e2`: the committed `web/data` still has the stop lists from
+before Oct 26, without Kimbark Garage and 61st & Kimbark; CI rebuilds them every run, so collection is unaffected), the
+minutes of listed service with no bus of the line in the feed (5-min bins; after midnight the night lines never have one,
+the known empty night feed, so only minutes before midnight count), and a stop-pass check on the raw polls (a moving bus
+within 30 m of a stop of its line): every line logged 89 to 100% of its passes; the rest are stops a line passes in both
+directions (Apostolic/Drexel's Kimbark Garage: 64 and 67 rows a day, as many as its other stops) and the 27-m pair at
+57th St. & Metra, which the detector tells apart by direction. A stop Passio names for a line that still gets almost no
+row: only the two of item 4. "Late" = the bus came more than 2 min earlier than the time shown 5 min ahead (DC-026 item
+7); before Oct 27 6 PM all lines 4.8%, Oct 27 6 PM to Nov 10 21.3%, Nov 11 / 12 20.0% / 18.4%.
+
+| Line (route id) | What is wrong (Nov 11 / Nov 12) | Since | Numbers | Status |
+|---|---|---|---|---|
+| 53rd Street Express (4346) | data complete; Passio's times late; first stops without a time; no bus after about 6:35 PM | Oct 27 6 PM (late), Oct 28 (first stops), every weekday (end) | 442 / 439 arrivals (medians 425 / 383), 16 of 16 stops; late 52% / 51% (before 0.8%); a Passio time at 53rd St & Kenwood, Kimbark Plaza and stop 138837 on 34 of 84 / 44 of 84; no bus 6:35 to 7:25 PM (listed to 7:25) | Passio's side (open); end of service accepted |
+| Apostolic (5702) | data complete; bus 4322 reports in bursts; Wyler Pavilion without a time | Oct 10 (4322, E30), Oct 28 (Wyler) | 243 / 307 (248 / 264); first arrival 5:33 / 5:02 AM (no bus 5:00 to 5:30 Wed); 4322 Wed morning about 20 fresh reports per 15 min (4317: 89); Wyler Pavilion 3 of 26 / 2 of 31 with a time | accepted (the bus's reporting; the other buses cover the stops); Passio's side |
+| Apostolic/Drexel (6126) | more rows than its own service: Friend Center/Metra's bus filed under it in the evening (Thu); 61st & Kimbark without a time; no bus after 12:05 AM | Oct 23 (wrong label, DC-024), Oct 28 (Kimbark) | 804 / 869 (622 / 545), 12 of 12 stops; 4331, labeled Apostolic/Drexel, drove Friend Center/Metra's loop 6:10 to 8:50 PM Thu; 61st & Kimbark 6 of 62 / 2 of 66 with a time; 57th Street & Drexel's times come under another trip id (flag `other_trip_times`; 66 of 69 / 71 of 76 have one); no bus 12:05 to 12:55 AM (listed) | open (wrong label: the owner's call, DC-024); Passio's side |
+| Central (1078) | data complete; Passio's times late; one bus Thursday evening; buses after the listed end | Oct 27 6 PM (late) | 226 / 185 (206 / 245), 14 of 14; 2 / 1 buses (median 2, listed 1); late 72% / 63% (before 7.7%); 65 / 75 min of reports after the listed 11:14 PM end | Passio's side (open); accepted |
+| Downtown Campus Connector (5704) | data complete; four downtown stops without a time; Passio's times late; two buses report sparsely | Oct 27 6:30 PM (stops), Oct 27 6 PM (late) | 571 / 570 (498 / 456), 14 of 14, 13 / 12 buses; Gleacher Center, River East, Randolph & Michigan, Michigan & Roosevelt: a time on 1 of 150 / 0 of 159 (Oct 26: 155 of 156); all seven flagged stops 111 of 275 / 92 of 274; late 42% / 34% (before 2.2%); buses 12642 and 12648 4.0 to 4.4 fresh reports a minute while in the feed, the lowest of all buses (median 5.9; E30's flag names 12647, which reported normally, 5.8); no bus 10:10 PM to 12:25 AM (listed) | Passio's side (open: tell Passio); watch (sparse buses) |
+| Drexel (5701) | nothing wrong | | 193 / 199 (208 / 159), 7 of 7; first arrival 5:01 / 5:00 AM; Passio time 96% / 78% (medians 94% / 89%) | fine |
+| East (1077) | data complete; Passio's times late; first stops without a time; one bus Thursday | Oct 27 6 PM (late), Oct 28 (first stops) | 179 / 170 (166 / 202), 13 of 13; 3 / 1 buses (median 2, listed 1); late 42% / 42% (before 3.5%); Regenstein Library and the next two stops 9 of 41 / 1 of 40 with a time | Passio's side (open) |
+| Friend Center/Metra (5700) | Thursday evening without its own bus in the feed: its loop driven by a bus labeled Apostolic/Drexel | Oct 23 (DC-024): 12 of the 15 weekdays since | 360 / 299 (312 / 334); Thu no Friend Center/Metra bus 6:05 to 8:55 PM, 0 rows 6 to 9 PM; Wed complete (bus missing 6:00 to 6:50 PM only); 12 of 12 stops; 100% of stop passes logged | open (wrong label: the owner's call) |
+| Midway Metra (5703) | data complete except Thursday's first hour; fewer buses than listed every morning; Passio's times late; a bus on Red Line after its end | Oct 27 6 PM (late); every weekday (buses) | 382 / 455 (452 / 440), 14 of 14; Thu no bus 5:40 to 6:15 AM, first arrival 6:21 AM (Thursdays 5:41 to 5:54); the timetable lists 3 to 6 buses 6 to 10 AM, the feed shows 2; late 13% / 22% (before 1.6%); 12646, labeled Midway Metra, drove Red Line/Arts Block 7:10 to 7:40 PM Thu (flag `after_hours`) | accepted (the feed / the operator's service); Passio's side |
+| North (1075) | half its arrivals both evenings: few or no North buses in the feed | Nov 11 | 56 / 59 (106 / 101), 7 of 7 stops; 95 / 195 min of listed service before midnight with no North bus (Oct 27 to Nov 10: 0 to 95, median about 23); item 5 | accepted (the feed / the operator's service; recheck next time) |
+| Red Line/Arts Block (5699) | data complete; a third of the rows from the GPS sweep; Passio's times late the other way; one stop without a time | DC-003 (sweep); Oct 28 (stop) | 580 / 567 (594 / 544), 11 of 11; `gps` rows 115 / 184 (DC-003: Passio freezes its buses' stops); the bus came more than 2 min later than shown 5 min ahead 69% / 69% (Oct 28 to Nov 10 65%; flag `large_late_miss`); stop 138836 5 of 43 / 4 of 35 with a time | Passio's side; accepted |
+| Regents Express (5715) | its namesake stop is never logged | since logging began (Oct 8) | 48 / 47 (36 / 36), 6 of 7 stops: Regents Park Apartments 2 rows in 26 service days (both Oct 9); item 4. Late the other way 48% / 41% (Oct 28 to Nov 10 52%) | **open** (detector; item 4) |
+| South (1076) | Logan Center almost never logged; one bus in the evening against two listed; two listed stops not served | since logging began (Logan) | 202 / 196 (181 / 182), 13 / 14 of 16 stops; Logan Center 22 rows in 36 service days (item 4); Stony Island Parking Lot and 59th St & Metra in the timetable's stop list, but the buses stay 198 to 275 m away (rows only Oct 9 and Oct 30); 1 bus 4 to 9 PM (listed 2); 89% of stop passes logged (61st & Woodlawn and Woodlawn & 61st, passed both ways) | **open** (Logan Center: detector; item 4); the rest accepted |
+| South Loop Shuttle (5716) | not listed Wed / Thu (Fri and Sat 6 PM to 12:55 AM) | | no service on these days | nothing to check |
+
+High flags rechecked (`data/labeled/flags/README.md`, "Data agents"; `flag_lines.py --check` ok, 30 high flags on 13
+lines): every flagged line's data was complete on Nov 11 and 12 except where the table says (North, Friend
+Center/Metra Thursday evening, Midway Metra's first hour Thursday), and no pattern changed since Nov 10: the prediction
+flags (`large_early_miss`, `stops_without_predictions`, `first_stop_next_trip_times`, `other_trip_times`,
+`large_late_miss`) read the same numbers as above; the transition flags hold: `service_end_early` (53rd 6:35 PM,
+Apostolic/Drexel 12:05 AM, Connector 10:10 PM, both days), `after_hours` (Central 65 / 75 min after 11:14 PM, Midway
+Metra's bus on Red Line Thu), Apostolic's 4322 `feed_drop_mid_route` / `position_jump` (still in bursts Wed; Thu it
+drove the Connector); one moved: the Connector's `sparse_reporting` names 12647, but on Nov 11 and 12 the sparse
+Connector buses were 12642 and 12648 (12647 normal); the display flags (Friend Center/Metra `false_hide_offroute_serving_bus`,
+South `false_hide_idle_serving_bus`, the Connector's `planner_recommends_leaving_bus`) need E32's browser replay, not
+rechecked here.
 ### DC-026 Checkup 2026-11-11: healthy; the public data repo's per-day files had the prediction columns since Oct 29 (fixed); a whole-database audit (new); the archive check missed two file kinds (fixed); Passio's missing stop times unchanged and its times late on four lines since Oct 27 (open)
 Owner (2026-11-11): "Check this project on the repo and the straight bussing database repo. From here, run a database
 check and an analysis." This entry is the database check of both repositories; the analyses run in parallel (E30 odd
