@@ -424,8 +424,10 @@ consistent version. Nothing new needs logging for now.
 Each run logs for 70 min and, 40 min in, starts its own successor (`tools/collect_chain.py`), so runs
 overlap by ~30 min. Why: GitHub fired only ~4 of the 48 scheduled runs on 2026-10-09 (23% coverage). The
 :07/:37 cron stays as a backstop that restarts the chain if it ever stops. It can't run away: two
-concurrency slots (a/b) cap it at 2 running collect runs, and a run dispatches at most once, only while it
-is the only active collect run (tests: `tools/test_chain.py`, incl. a 72-h simulation with crashes and
+concurrency slots (a/b) cap it at 2 running collect runs, and a run starts at most one successor, only while it
+is the only active collect run: it dispatches again only when GitHub ended the run it started without running
+its job (`startup_failure`, or `failure` with no job; it follows the new run until its job starts, DC-027)
+(tests: `tools/test_chain.py`, incl. a 72-h simulation with crashes and
 manual dispatches). Off switch: repo variable `COLLECT_CHAIN=off` (Settings > Secrets and variables >
 Actions > Variables), or "Disable workflow" in the Actions tab (the keepalive step respects that). Each run:
 1. checks out main, refreshes `web/data` from the GTFS zip (falls back to the committed copy),
