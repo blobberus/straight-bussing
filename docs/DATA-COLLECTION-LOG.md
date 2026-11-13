@@ -296,6 +296,18 @@ an Apostolic/Drexel label: the owner's call, DC-024) and Passio's side (item 8).
 run's archived polls). For the owner: decide item 4, tell Passio about item 8, set the secret `COLLECT_DISPATCH_TOKEN` in
 the data repo. Recheck next time: North's evenings, the first collect run that confirms its dispatch, the Nov 12 archive
 (below), DC-025's retry in a real run, South's and Regents Express's stops if the rule ships.
+
+**Recheck Fri Nov 13, 12:47 PM.** Nov 12 archived by the schedule at 12:00 PM (`43478324632`: all six file kinds;
+123,289 prediction updates, 83,505 position reports, 241,370 table rows, 47 bus drops of which 40 lasting, 2 alert
+versions: the same counts and file sizes as the build on this PC this morning). The 502 / 503 lines in its log are
+test_eta's simulated ones again, so DC-025's retry is still untried in a real run. `db_audit.py --mirror` CLEAN, 0 errors
+and 0 warnings (113,280 arrivals = the public copy's 397 files, synced 18:40 UTC). Tag `collector-ok` at `2d46cc8a`
+(contains `6ba7aea1` and `887d6f69`: runs on today's chain code finished healthy). `monitor.py status` HEALTHY (100% since
+Nov 12 12:48 PM, 10 buses reporting); `monitor.py holes` for today: the one 5:26 AM gap of item 9 and a 21-s hand-over at
+4:16, nothing since. Fri morning, first arrivals to noon against Fri Nov 6 / Tue / Wed / Thu: Friend Center/Metra 6:44
+AM (4:59 to 5:06; no bus of the line in the feed before then, 113 rows to noon against 124 to 168), Midway Metra 6:39
+(5:39 to 6:27), Red Line/Arts Block 6:53 (6:09 to 6:34), the other lines on time; no operator alert besides the standing
+route-assistance notice. The feed's or the operator's side, like DC-025 item 4; recheck it next time.
 ### DC-026 Checkup 2026-11-11: healthy; the public data repo's per-day files had the prediction columns since Oct 29 (fixed); a whole-database audit (new); the archive check missed two file kinds (fixed); Passio's missing stop times unchanged and its times late on four lines since Oct 27 (open)
 Owner (2026-11-11): "Check this project on the repo and the straight bussing database repo. From here, run a database
 check and an analysis." This entry is the database check of both repositories; the analyses run in parallel (E30 odd
