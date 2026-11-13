@@ -13,6 +13,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 ## Checkups
 | When (Chicago) | Verdict | Coverage | Data | Notes |
 |---|---|---|---|---|
+| 2026-11-13 03:30 | healthy; bus line issues recorded per line (DC-027) | 100% since Nov 12 02:56 (collecting 85%, idle with no bus 15%); all 54 finished runs since Wed 12:32 PM succeeded, every chain hand-off on its first try, no hole between runs; an idle run since 2:05 AM Fri, collecting from 4:15 AM | arrivals: 4,286 on Wed Nov 11 and 4,362 on Thu Nov 12 (the most of any Wednesday / Thursday; Nov 12 the most of any day); whole-database audit 0 errors (111,637 arrivals, 476,007 prediction rows, public copy in step); Passio time on 86% / 84% of non-`gps` arrivals; timetable 708be9d370e2 unchanged; archive complete through Nov 11; weather daily; data repo synced every 25 min except Wed 2:36 to 7:48 PM | DC-027: per-line table (item 3) |
 | 2026-11-11 03:45 | healthy; the public data repo's per-day files had the wrong columns since Oct 29 (fixed) | 100% since Nov 10 03:19 (collecting 84%, idle with no bus 16%); all 34 finished runs since Tue 12:32 AM succeeded, every chain hand-off on its first try, no hole between runs; an idle run since 1:29 AM Wed, collecting from 4:15 AM | arrivals: 3,897 on Tue Nov 10 (Tuesdays 3,704 to 4,151; no Apostolic bus in the feed until 6:15 AM; Goldblatt Pavilion bypassed 9 AM to about 4 PM for repaving, per the operator's alert); first whole-database audit (new `tools/db_audit.py`): 102,989 arrivals Oct 8 to Nov 10 and 437,521 prediction rows, 0 errors (0 duplicates, 0 time fields off, 0 predictions without their arrival), 4 old line-days flagged; Passio time on 82% of non-`gps` arrivals; ~103,000 rows; timetable 708be9d370e2 unchanged; archive complete through Nov 9 (the schedule, 12:13 PM Tue); weather daily; Pages deploys succeed again; data repo synced every 25 min; flagged lines check: 0 flags yet | DC-026: the data repo's `scripts/sync.py` read `archive/predictions-*.csv` as arrivals since Oct 29 (all 363 per-day files had the 15 prediction columns, 4,297 rows too many), fixed there (`36126a1`, with a test before every rebuild); health's archive check now also wants the alerts / bus-changes files (`b4e2b58c`); the four Downtown Campus Connector downtown stops still without Passio times; since Oct 27 6 PM Passio's times run late on Central, 53rd Street Express, East and the Connector (5 min ahead, the bus more than 2 min earlier than shown: all lines 4.9% -> 21.3%; E31); wrong-line labels Nov 10: 1 episode, 1.2 bus-hours; issue #1 stayed closed; backup verified (Nov 6, due Nov 13 to 20) |
 | 2026-11-10 02:50 | healthy; one archive day lost to a GitHub 503 (fixed) | 100% since Nov 9 02:23 (collecting 82%, idle with no bus 18%); all 78 finished runs since Sat Nov 7 12:38 PM succeeded, every chain hand-off on its first try, no hole between runs; an idle run since 12:32 AM Tue, collecting from 4:15 AM | arrivals: 756 on Sat Nov 7 (Saturdays 929 to 1,065: 1 bus a line all evening), 1,017 on Sun Nov 8 (the most of any Sunday), 3,949 on Mon Nov 9 (Mondays 3,925 to 4,070; Apostolic, Midway Metra, Friend Center/Metra and Red Line absent from the feed until 7 to 7:30 AM); 0 duplicates, 0 rows missing ids; Passio time on 82% / 85% / 83% of non-`gps` arrivals; ~101,800 rows; timetable 708be9d370e2 unchanged; archive of Nov 8 failed on one HTTP 503, dispatched by hand (complete through Nov 8); weather daily; data repo synced every 25 min except Mon 12:22 to 2:57 PM (a run GitHub never started); weekly findings ran Mon 6:50 PM (7 h late), +27 rows, no signal ready | DC-025: archive retry on 5xx (`de1d192f`); since Oct 27 evening Passio publishes no time for 4 Downtown Campus Connector stops (Gleacher Center, River East, Randolph & Michigan, Michigan & Roosevelt) and gives the first stops after a terminal their time under another trip id: the Passio share fell from 85 to 93% to 81 to 85% (the owner may tell Passio); wrong-line labels Nov 9: 4 episodes, 3.5 bus-hours; issue #1 closed Nov 8, reopened Nov 9 for the archive, closed again; backup verified (Nov 6, not due) |
 | 2026-11-07 13:00 | healthy; nothing lost since the Nov 5 gap | 100% since Nov 6 12:58 (collecting 54%, idle with no bus 46%); 62 of 62 runs since Nov 5 12:39 PM succeeded, every chain hand-off went through on its first try; an idle run since 10:20 AM Sat, collecting from 3:15 PM for the 4 PM Saturday lines | arrivals: 3,987 on Fri Nov 6 (14 lines, 93 stations, 20 buses; Fridays Oct 16 / 23 / 30: 3,995 / 3,944 / 4,203), Sat Nov 7 48 by 4:25 PM (first bus 3:45 PM, 4 lines; earlier Saturdays 29 to 60 by then); 0 duplicates, 0 rows missing ids; Passio prediction on 85% of non-`gps` arrivals (Fridays 85 to 93%), `gps` rows back to 364 (Nov 4 / 5: 611 / 552); ~96,400 rows; timetable 708be9d370e2 unchanged (last seen Nov 7 05:30); archive complete through Nov 6 (by the schedule, 10:37 AM Nov 7); weather daily; data repo synced every 25 min | `collector-health` issue #1 still open for the Nov 5 gap only (closes itself on Nov 8); DC-024: buses driving another line than Passio's label measured over 12 days (Nov 6: 10 episodes, 7.2 bus-hours, the most of any day), the Downtown Campus Connector's real streets against its drawn line, archive polls holding one bus twice, a false "no new arrivals for 3 h" warning at service starts (fixed `0e0699d3`); backup verified (Nov 6, 151 files; not due) |
@@ -35,6 +36,58 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 
 ## Errors
 
+### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line
+Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
+repositories with every issue found written down per bus line (item 3 is the table, one row per line). The flagged-lines
+registry gets a new `collection` category from the same day's line-issues work (`data/labeled/flags/`). Times are
+Chicago (CST). Wed Nov 11 is compared with the Wednesdays Oct 14, 21, 28 and Nov 4, Thu Nov 12 with the Thursdays Oct 15,
+22, 29 and Nov 5 (Nov 5 had the 2-hour gap of DC-023), per line too. Nov 12's day files were built on this PC from the
+run artifacts (`archive_day.py --day 2026-11-12 --no-upload`, read-only; the archive builds them later today). Scripts
+and downloads stayed off the repo (job folder).
+
+**1. Collector: healthy, nothing lost from the arrivals (nothing to fix there).**
+- Runs: all 54 finished collect and idle runs from Wed Nov 11 12:32 PM to Fri 12:59 AM succeeded (41 collect runs started
+  by the chain, 11 by the cron backstop, 2 idle runs); an idle run is watching now. No hole between runs, never more than 2
+  logging at once; the pre-flight self-test passed in all 54 (main's code; tag `collector-ok` = main `6df322e2`). The 51
+  logging runs had 0 processing errors, 0 failed feed reads (of 420 each), 0 failed alert polls, no rejected push and
+  `health run: all clear` each. Every chain hand-off went through on its first dispatch; 10 runs stood down as followers
+  when a backstop took the lead. One chain check read a GitHub 502 (Wed 2:33 PM, `43091332455`: "GitHub API error, not
+  dispatching"); the watcher waited for the older run and dispatched at 3:02 PM, as designed (rule 4 of
+  `collect_chain.py`).
+- Gate: collecting Wed to Thu 1:01 AM (the last run stopped early, no bus for 30 min), idle 1:01 to 4:16 AM, collecting
+  Thu 4:16 AM (first bus in the feed 4:20 AM) to Fri 12:48 AM (last bus 12:05 AM), idle since. The 12:28 AM backstop found
+  no bus and became the idle watch, handed over at 2:05 AM (its time limit) to the idle run now watching. Coverage 100%
+  since Nov 12 2:56 AM (collecting 85%, idle with no bus 15%).
+- `collector-health` issue #1 stayed closed (since Tue Nov 10 2:25 AM); the data repo's watchdog issue stayed closed.
+  `health.py data` and `health.py archive` all clear.
+- Archive: Nov 11 archived by the schedule at 12:35 PM Thu (`43281125654`: 116,069 prediction updates, 77,329 position
+  reports, 231,105 table rows, 50 bus drops of which 34 lasting, 2 alert versions; all six file kinds). The 502 / 503
+  lines in its log are test_eta's simulated ones again ("gh api x"), so DC-025's retry is still untried in a real run.
+  Nov 12 is due by the schedule today (about noon). One run's polls of Nov 11 never reached the archive: item 6.
+- Weather context daily (Thu 12:58 PM). Timetable `708be9d370e2` unchanged (last used Fri 12:47 AM; the feed is valid Oct
+  31 to Dec 1). Site: the daily scheduled deploy (Thu 11:36 AM) and every push deploy since Nov 11 succeeded.
+  collector-tests green on the last pushes (Nov 11).
+- Data repo: 81 sync runs Wed 12:04 PM to Fri 2:51 AM, 79 succeeded, 1 running, and 1 that GitHub never started (Wed 2:36
+  PM, `43097056343`, `startup_failure`, no jobs): the chain stopped there until the cron backstop restarted it at 7:48
+  PM, so the public copy and the watchdog paused 5 h 12 min (item 7). The secret `COLLECT_DISPATCH_TOKEN` is still unset
+  (the repo has no secrets at all; owner, DC-021).
+- Flagged lines: `python tools/flag_lines.py --check` ok (99 flags, 0 problems); each high flag's line in item 3.
+
+**2. Database: the whole-database audit is clean; Nov 11 and 12 are the busiest Wednesday and Thursday logged.**
+- `python tools/db_audit.py --mirror <data repo clone>` (data branch at Fri 12:48 AM, public copy synced 12:16 AM): **0
+  errors**, 111,637 arrivals over 36 service days (Oct 8 to Nov 12) and 476,007 prediction rows, the public copy's 389
+  files hold the same 111,637 rows with the 25 arrival columns (DC-026 item 2's fix held), methodology in step. 0
+  duplicates, 0 rows missing ids, 0 time fields off. Warnings: Central Oct 14 and East Oct 22 (DC-026 item 3), and new as
+  the Wednesday median rose with Nov 11, South Wed Oct 28 (97 arrivals, median 198): its one bus stood parked 8 to 9 PM
+  and 9:15 to 10:45 PM (raw polls), plus the DC-021 outage that evening; the operator's side, no collection gap.
+- Wed Nov 11: 4,286 arrivals (Wednesdays 3,995 / 4,124 / 3,728 / 4,080), Thu Nov 12: 4,362 (Thursdays 3,804 / 3,757 /
+  4,168 / 3,656), the most of any day so far. 13 lines, 92 stations, 20 and 22 buses. `gps` rows 187 and 311 (the weeks
+  before 359 to 611: Passio named more of the stops itself), Passio time on 86% / 84% of non-`gps` arrivals (since Oct 28
+  81 to 85%), 19,670 / 18,816 prediction rows (since Oct 28 14,253 to 18,723), bus changes 50 / 48 adds, 35 / 40 lasting
+  drops. Every 30-s window of service had an answer; 4,551 / 5,381 polls were Passio's empty lists (DC-015).
+- alerts.csv: 2 versions a day, both the nightly NightRide notice ("every 30 minutes for the entire evening", 3:25 PM to
+  midnight); no detour or stop alert. gtfs_versions: one timetable since Nov 1.
+- Backup off GitHub refreshed (item 10).
 ### DC-026 Checkup 2026-11-11: healthy; the public data repo's per-day files had the prediction columns since Oct 29 (fixed); a whole-database audit (new); the archive check missed two file kinds (fixed); Passio's missing stop times unchanged and its times late on four lines since Oct 27 (open)
 Owner (2026-11-11): "Check this project on the repo and the straight bussing database repo. From here, run a database
 check and an analysis." This entry is the database check of both repositories; the analyses run in parallel (E30 odd
