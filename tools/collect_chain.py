@@ -17,10 +17,11 @@ so a 70-min run overlaps its successor by ~30 min and never more than 2 runs exi
      A dispatch call that fails is tried again up to DISPATCH_TRIES times, 1, 2, 4, then 5 min apart, with the
      run list read again before each try (GitHub's API answered 500 / 502 for minutes on 2026-11-05 and three
      tries one minute apart all failed: a 2-hour gap, docs/DATA-COLLECTION-LOG.md DC-023).
-     A dispatch that went through is then looked up in the run list (state 'confirming', up to CONFIRM_S): a new run
-     that GitHub ended without running it (conclusion startup_failure, or failure with no job: the data repo's sync
-     chain stopped 2 h 35 min on 2026-11-09 and 5 h 12 min on 2026-11-11 so, DC-025 / DC-027) counts as a failed try
-     and is dispatched again, after the same back-off and the same run-list check. Not listed yet = done as before.
+     A dispatch that went through is then followed in the run list (state 'confirming', up to CONFIRM_S) until the
+     new run's job starts: a new run that GitHub ends without running it (conclusion startup_failure, or failure
+     with no job: the data repo's sync chain stopped 2 h 35 min on 2026-11-09 and 5 h 12 min on 2026-11-11 so,
+     DC-025 / DC-027) counts as a failed try and is dispatched again, after the same back-off and the same run-list
+     check. Not seen starting within CONFIRM_S = done as before.
   5. Kill switches: repo variable COLLECT_CHAIN=off (runs that start afterwards never dispatch), or
      disable the workflow in the Actions tab (checked before every dispatch; the keepalive step respects it).
 `wait` keeps the job alive while the watcher still has a duty (state 'sleeping' or 'leader'), then prints the
@@ -72,16 +73,23 @@ def _epoch(iso):
         return None
 
 
-def confirm(runs, me, since, skew=60):
-    """After a dispatch at `since` (epoch s): 'started' if a run created since then (not me) is waiting, queued,
-    running or ended in any other way than never running; 'failed' if every such run ended without running its job
-    (NEVER_RAN: GitHub's startup_failure, or failure with no job; DC-025, DC-027); None if none is listed yet."""
+def confirm(runs, me, since, job_started=None, skew=60):
+    """After a dispatch at `since` (epoch s), over the runs created since then (not me): 'started' if one has a
+    running job (job_started(run id) says when; without it, in_progress counts), is parked behind its slot's
+    running run (pending: GitHub starts it when the slot frees) or ended in any other way than never running;
+    'failed' if every one ended without running its job (NEVER_RAN: GitHub's startup_failure, or failure with no
+    job; DC-025, DC-027; the one of 2026-11-11 took 5 min to be marked so); None if none is listed or the new run is
+    only queued so far (look again)."""
     new = [r for r in runs if int(r.get("databaseId") or 0) != me and (_epoch(r.get("createdAt")) or 0) >= since - skew]
-    if not new:
-        return None
-    if any(r.get("status") != "completed" or r.get("conclusion") not in NEVER_RAN for r in new):
-        return "started"
-    return "failed"
+    for r in new:
+        st = r.get("status")
+        if st == "pending" or (st == "completed" and r.get("conclusion") not in NEVER_RAN):
+            return "started"
+        if st == "in_progress" and (job_started is None or job_started(int(r["databaseId"]))):
+            return "started"
+    if new and all(r.get("status") == "completed" for r in new):
+        return "failed"
+    return None
 
 
 class _Confirm:
@@ -98,7 +106,7 @@ class _Confirm:
             return
         self.next_at = now + self.every
         try:
-            got = confirm(self.api.list_runs(), self.me, self.sent_at)
+            got = confirm(self.api.list_runs(), self.me, self.sent_at, self.api.job_started)
         except Exception:                        # an API error: look again at the next check
             got = None
         if got == "started":
@@ -112,7 +120,7 @@ class _Confirm:
             self.next_at = now + retry_in(self.failures, self.every)
             return self._set(self.RETRY_STATE, why)
         if now - self.sent_at >= CONFIRM_S or now >= self.deadline:
-            return self._set("done:dispatched", f"{self.sent_why} (not in the run list yet)")
+            return self._set("done:dispatched", f"{self.sent_why} (not seen starting yet)")
 
 
 def decide(runs, me):

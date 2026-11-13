@@ -71,8 +71,9 @@ class FakeApi:
             raise RuntimeError("HTTP 500")
         self.dispatched.append(slot)
         self.modes.append(mode)
-        if self.listed and self.now is not None:
-            self.runs.append(run(max(int(r["databaseId"]) for r in self.runs) + 1, "queued", self.now))
+        if self.listed and self.now is not None:     # its job starts at once
+            self.runs.append(dict(run(max(int(r["databaseId"]) for r in self.runs) + 1, "in_progress", self.now),
+                                  job=iso(self.now)))
 
 
 def drive(w, t0, t1, step=10):
@@ -218,19 +219,29 @@ def failed_dispatch_that_still_started_a_run_is_not_repeated():
 
 
 class NeverRan(FakeApi):
-    """GitHub accepts the dispatch call, but the first `bad` runs it creates end at once without a job (2026-11-11
-    in the data repo: startup_failure; 2026-11-09: failure with no job; DC-027)."""
+    """GitHub accepts the dispatch call, but the first `bad` runs it creates stay queued for `after` s and then end
+    without a job (2026-11-11 in the data repo: startup_failure after 5 min 25 s; 2026-11-09: failure with no job
+    after 53 s; DC-027)."""
 
-    def __init__(self, runs, bad=1, conclusion="startup_failure"):
+    def __init__(self, runs, bad=1, conclusion="startup_failure", after=0):
         super().__init__(runs)
-        self.bad, self.conclusion, self.at = bad, conclusion, []
+        self.bad, self.conclusion, self.after, self.at, self.doomed = bad, conclusion, after, [], []
 
     def dispatch(self, slot, mode="collect"):
         self.at.append(self.now)
         super().dispatch(slot, mode)
         if self.bad:
             self.bad -= 1
-            self.runs[-1].update(status="completed", conclusion=self.conclusion)
+            r = self.runs[-1]
+            r.update(status="queued")
+            r.pop("job", None)
+            self.doomed.append((r, self.now + self.after))
+
+    def list_runs(self):
+        for r, at in self.doomed:
+            if self.now >= at:
+                r.update(status="completed", conclusion=self.conclusion)
+        return super().list_runs()
 
 
 @test
@@ -241,28 +252,34 @@ def confirm_rules():
         return C.confirm([me, *others], 7, since)
     assert got() is None                                                         # not listed yet
     assert got(run(6, "completed", T - 3000)) is None                            # older runs do not count
-    for st in ("pending", "queued", "in_progress", "requested", "waiting"):
-        assert got(run(8, st, T + 2401)) == "started", st
+    assert got(run(8, "pending", T + 2401)) == "started"                         # parked: starts when the slot frees
+    assert got(run(8, "in_progress", T + 2401)) == "started"                     # no job lookup given
+    for st in ("queued", "requested", "waiting"):                                # not started yet: look again
+        assert got(run(8, st, T + 2401)) is None, st
+    jobs = {8: None, 9: "2027-01-15T08:40:00Z"}
+    assert C.confirm([me, run(8, "in_progress", T + 2401)], 7, T + 2400, jobs.get) is None    # no job yet
+    assert C.confirm([me, run(9, "in_progress", T + 2401)], 7, T + 2400, jobs.get) == "started"
     assert got(dict(run(8, "completed", T + 2401), conclusion="success")) == "started"
     assert got(dict(run(8, "completed", T + 2401), conclusion="cancelled")) == "started"   # someone's decision
     assert got(dict(run(8, "completed", T + 2401))) == "started"                 # no conclusion field: not a failure
     assert got(dict(run(8, "completed", T + 2401), conclusion="startup_failure")) == "failed"
     assert got(dict(run(8, "completed", T + 2401), conclusion="failure")) == "failed"
     assert got(dict(run(8, "completed", T + 2401), conclusion="startup_failure"), run(9, "pending", T + 2405)) == "started"
-    assert got(run(8, "queued", T + 2350)) == "started"                          # clock skew: up to 60 s before
-    assert got(run(8, "queued", T + 2300)) is None
+    assert got(dict(run(8, "completed", T + 2401), conclusion="startup_failure"), run(9, "queued", T + 2405)) is None
+    assert got(run(8, "pending", T + 2350)) == "started"                         # clock skew: up to 60 s before
+    assert got(run(8, "pending", T + 2300)) is None
     assert C.confirm([me], 7, T + 2400) is None and "confirming" in C.WAITING
 
 
 @test
 def a_dispatched_run_that_never_starts_is_dispatched_again():
     T = 1_800_000_000
-    for conclusion in ("startup_failure", "failure"):
-        api = NeverRan([run(7, "in_progress", T)], bad=1, conclusion=conclusion)
+    for conclusion, after, seen in (("startup_failure", 0, 60), ("failure", 53, 60), ("startup_failure", 325, 360)):
+        api = NeverRan([run(7, "in_progress", T)], bad=1, conclusion=conclusion, after=after)
         w = C.Watcher(api, 7, "a", T)
         drive(w, T, T + 9000)
         assert w.state == "done:dispatched" and api.dispatched == ["b", "b"], (conclusion, w.state, w.why, api.dispatched)
-        assert api.at == [T + 2400, T + 2400 + 60 + C.retry_in(1, 60)], api.at        # seen at the next check, then backed off
+        assert api.at == [T + 2400, T + 2400 + seen + C.retry_in(1, 60)], api.at   # seen failed at a check, then backed off
     # GitHub keeps failing to start them: every try counts, the chain ends with an error (the cron backstop remains)
     api = NeverRan([run(7, "in_progress", T)], bad=99)
     w = C.Watcher(api, 7, "a", T)
@@ -284,7 +301,7 @@ def a_dispatch_the_run_list_does_not_show_yet_is_not_repeated():
     drive(w, T, T + 2400 + C.CONFIRM_S - 10)
     assert w.state == "confirming" and api.dispatched == ["b"], w.state
     drive(w, T + 2400 + C.CONFIRM_S, T + 9000)
-    assert w.state == "done:dispatched" and "not in the run list yet" in w.why and api.dispatched == ["b"], w.why
+    assert w.state == "done:dispatched" and "not seen starting yet" in w.why and api.dispatched == ["b"], w.why
     api = FakeApi([run(7, "in_progress", T)])
     api.fail_list = 3                                                            # API errors while confirming: look again
     w = C.Watcher(api, 7, "a", T)
