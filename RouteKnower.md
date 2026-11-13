@@ -291,7 +291,7 @@ Formulas and the existing backtest: `docs/ALGORITHMS.md` §9.
 Route; daypart; weekday/weekend; lead bin; segment length (< 60 s, 60-180 s, > 180 s); timepoint vs interpolated stop;
 **calendar regime** (class / reading / finals / break / holiday); **weather class** (dry / light rain / heavy rain / snow,
 from `wx_*`); **fleet index tercile** (calm / normal / congested day).
-**Flagged lines** (`data/labeled/flags/flagged_lines.csv`, summary `docs/FLAGGED-LINES.md`, rules in its README): every active flag is its own slice, the line narrowed by the flag's `scope` (stops, hours, days, buses, lead); report n; the data repo bench scores every model on them (`algorithm-test/run_all.py --only 13`).
+**Flagged lines** (`data/labeled/flags/flagged_lines.csv`, summary `docs/FLAGGED-LINES.md`, rules in its README): every active flag is its own slice, the line narrowed by the flag's `scope` (stops, hours, days, buses, lead); report n; the data repo bench scores every model on them (`algorithm-test/run_all.py --only 13`). Categories: `transition` (E30), `prediction_miss` (E31), `display` (E32) and, since 2026-11-13, `collection` (`tools/collection_flags.py`, `data/labeled/collection/`): where a line's collected data is GPS-only, misfiled under another line's label, without Passio times or missing a stop the buses serve; its truth rows there are thinner or filed wrong, so slice them and keep the rows of `wrong_label_episodes.csv` out of training labels.
 
 ### 6.5 Significance
 Compare methods on the **same rows**. Per test day, compute the MAE difference (candidate - baseline); bootstrap over
@@ -391,7 +391,7 @@ Dates are targets; the gates in §6.6 decide. Calendar dates from the 2026-27 Co
 8. **Sources:** use only the vetted sources in §3.4. A new source needs the same vetting (terms allow storing and
    modelling, documented API, coverage of our streets) written into §3.4 before use. Never scrape Google Maps.
 9. **Privacy:** the data has no rider information. Keep it that way; never join user locations or devices.
-10. **Flagged lines:** read `data/labeled/flags/README.md` first; score every active flag as a slice (§6.4), keep flagged episodes out of training labels where its `agent_action` says so, and write a new pattern as a flag in the producer's file (never by hand in `flagged_lines.csv`), then run `python tools/flag_lines.py`.
+10. **Flagged lines:** read `data/labeled/flags/README.md` first (and, for the `collection` flags, `data/labeled/collection/README.md`); score every active flag as a slice (§6.4), keep flagged episodes out of training labels where its `agent_action` says so, and write a new pattern as a flag in the producer's file (never by hand in `flagged_lines.csv`), then run `python tools/flag_lines.py`.
 
 Template:
 ```
