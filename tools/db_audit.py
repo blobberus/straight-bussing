@@ -69,7 +69,12 @@ TINY_BYTES = 1000                      # a gzip file this small holds (next to) 
 KNOWN = {"days:gap:2026-10-28": "DC-021: Passio's vehicle feed timed out 7:31 to 8:11 PM, nothing to log",
          "days:line:2026-10-08:South": "DC-002: only the stops Passio named were logged then; no polls kept to replay",
          "days:line:2026-10-09:South": "DC-002: only the stops Passio named were logged then; no polls kept to replay",
-         "days:gap:2026-11-05": "DC-023: GitHub's API failed the chain's dispatches, nothing ran 10:39 AM to 12:39 PM"}
+         "days:gap:2026-11-05": "DC-023: GitHub's API failed the chain's dispatches, nothing ran 10:39 AM to 12:39 PM",
+         "days:line:2026-10-14:Central": "DC-027: one bus, 4322, reporting in bursts; no Central bus in the feed 6:15 "
+                                         "to 6:45 PM",
+         "days:line:2026-10-22:East": "DC-027: no East bus in the feed 4 to 5:30 PM and 9:15 to 10:15 PM",
+         "days:line:2026-10-28:South": "DC-027: its one bus stood parked 8 to 9 PM and 9:15 to 10:45 PM (and the "
+                                       "DC-021 outage)"}
 MIRROR_LAG_S = 2 * 3600                # the public copy syncs about every 30 min: the newest hours may lag
 
 

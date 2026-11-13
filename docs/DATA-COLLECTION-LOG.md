@@ -77,9 +77,12 @@ and downloads stayed off the repo (job folder).
 - `python tools/db_audit.py --mirror <data repo clone>` (data branch at Fri 12:48 AM, public copy synced 12:16 AM): **0
   errors**, 111,637 arrivals over 36 service days (Oct 8 to Nov 12) and 476,007 prediction rows, the public copy's 389
   files hold the same 111,637 rows with the 25 arrival columns (DC-026 item 2's fix held), methodology in step. 0
-  duplicates, 0 rows missing ids, 0 time fields off. Warnings: Central Oct 14 and East Oct 22 (DC-026 item 3), and new as
-  the Wednesday median rose with Nov 11, South Wed Oct 28 (97 arrivals, median 198): its one bus stood parked 8 to 9 PM
-  and 9:15 to 10:45 PM (raw polls), plus the DC-021 outage that evening; the operator's side, no collection gap.
+  duplicates, 0 rows missing ids, 0 time fields off. Warnings: three old evening line-days under half their weekday's
+  median, each with one bus and other lines logging meanwhile (so no collection gap), now explained from the archived
+  raw polls and listed as known notes (`db_audit.py` KNOWN): Central Wed Oct 14 (98, median 248: one bus, 4322,
+  reporting in bursts, the bus of item 5; no Central bus in the feed 6:15 to 6:45 PM), East Thu Oct 22 (109, median 236:
+  no East bus in the feed 4 to 5:30 PM and 9:15 to 10:15 PM) and, new as the Wednesday median rose with Nov 11, South Wed
+  Oct 28 (97, median 198: its one bus stood parked 8 to 9 PM and 9:15 to 10:45 PM, plus the DC-021 outage that evening).
 - Wed Nov 11: 4,286 arrivals (Wednesdays 3,995 / 4,124 / 3,728 / 4,080), Thu Nov 12: 4,362 (Thursdays 3,804 / 3,757 /
   4,168 / 3,656), the most of any day so far. 13 lines, 92 stations, 20 and 22 buses. `gps` rows 187 and 311 (the weeks
   before 359 to 611: Passio named more of the stops itself), Passio time on 86% / 84% of non-`gps` arrivals (since Oct 28
