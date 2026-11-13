@@ -129,6 +129,35 @@ drove the Connector); one moved: the Connector's `sparse_reporting` names 12647,
 Connector buses were 12642 and 12648 (12647 normal); the display flags (Friend Center/Metra `false_hide_offroute_serving_bus`,
 South `false_hide_idle_serving_bus`, the Connector's `planner_recommends_leaving_bus`) need E32's browser replay, not
 rechecked here.
+
+**4. South and Regents Express lose one stop on every lap, since logging began (open: a detector gap; the fix is the
+owner's call).**
+- What: South's Logan Center (8589) has 22 rows in 36 service days, while the stop before it (Cottage & 61st, 141863)
+  has 461 and the one after (South Campus Residence Hall, 8623) 457: about 440 South visits to Logan Center have no row.
+  Regents Express's namesake stop, Regents Park Apartments (8578), has 2 rows in 26 service days (both Oct 9), Shoreland
+  before it 147 and Regenstein Library after it 148: about 145 visits without a row. East logs Regents Park Apartments
+  normally (491 rows since Oct 12), and so do 53rd Street Express and Midway Metra at Logan Center.
+- Why (raw polls of Nov 10 to 12): the stop is one point in Passio's timetable, shared by the lines. East's buses pass
+  Regents Park Apartments within 4 m of it; Regents Express's buses pass or stop 74 to 90 m from it. South's bus passes
+  Logan Center 55 to 81 m from the point (53rd Street Express and Midway Metra: 233 and 285 rows there since Nov 2).
+  Passio's vehicle feed does name the stop for those buses (Regents Express: as the bus's stop for about 15 min each
+  lap, until the trip id changes at Law School, 1.4 km on; South: 3 to 5 min each lap), but none of the detector's
+  rules can time it: a
+  proximity arrival and the GPS pass / sweep need the bus within 40 m (`RADIUS_M`), and a transition needs the bus within
+  120 m (`NEAR_M`) when Passio switches to the next stop or in the 8 reports kept before it (`HIST`, about 80 s): when
+  Passio switches, the bus is already 300 m to 1.4 km past the stop and its closest report has left the history. So the
+  visit is skipped (`skipped`) and the next stops are logged by the GPS pass. A scan of every line's stops (named by
+  Passio at least 3 times in the 3 days, under half as many rows, or never within 40 m) found only these two, plus two
+  South stops the buses do not drive by at all (item 3).
+- Impact: those visits have no row and no Passio score; the segment time logged across them (Cottage & 61st to South
+  Campus Residence Hall, Shoreland to Regenstein Library) spans two stops (`prev_stop_id` says so, so nothing is wrong,
+  only coarser). For riders: no effect (the app reads Passio's times, not these rows), but a learned model would have no
+  data for those two stops on those lines.
+- Proposed fix (not made: it changes which rows are logged, so like DC-024's GPS fallback it waits for the owner and a
+  replay): while Passio names a stop for a bus, remember the bus's closest report to it; when Passio switches away and no
+  rule has timed that stop, log it at that closest report if it was within `NEAR_M` (120 m) and the bus was moving past
+  it (source `transition`). It needs no list of stops, and the replay of Oct 12 to Nov 12 (`tools/replay_day.py`) must
+  show rows added only at such stops and none changed. Expected: about 13 rows a day for South and 6 for Regents Express.
 ### DC-026 Checkup 2026-11-11: healthy; the public data repo's per-day files had the prediction columns since Oct 29 (fixed); a whole-database audit (new); the archive check missed two file kinds (fixed); Passio's missing stop times unchanged and its times late on four lines since Oct 27 (open)
 Owner (2026-11-11): "Check this project on the repo and the straight bussing database repo. From here, run a database
 check and an analysis." This entry is the database check of both repositories; the analyses run in parallel (E30 odd
