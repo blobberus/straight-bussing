@@ -161,6 +161,14 @@ owner's call).**
   rule has timed that stop, log it at that closest report if it was within `NEAR_M` (120 m) and the bus was moving past
   it (source `transition`). It needs no list of stops, and the replay of Oct 12 to Nov 12 (`tools/replay_day.py`) must
   show rows added only at such stops and none changed. Expected: about 13 rows a day for South and 6 for Regents Express.
+- Tried (a prototype of that rule in a scratch copy of the tools, not committed): `replay_day.py` of Nov 11 with it,
+  against the same replay with today's code: 0 rows removed, 4,249 identical, 6 re-timed by 8 s at most (5 `gps` rows
+  became `transition`), 47 added: South 15 (14 at Logan Center), Regents Express 8 (7 at Regents Park Apartments), and 24
+  at other lines' stops where the bus came 40 to 81 m from the stop point and drove on (the Connector's River East 7,
+  Midway Metra's 59th St & Kimbark / Lab School 5, passed at 7 to 11 m/s, North 3, Apostolic/Drexel 3, Apostolic 2,
+  Friend Center/Metra and East 1 each); 218 more prediction rows (Passio's times for the added visits). Most look like
+  real visits; the fast passes at 60 to 76 m may be a parallel street, so the owner can pick the window (120 m as
+  proposed, or smaller) before it ships, with a week's replay.
 - Flagged: the same day's `collection` flags (`data/labeled/flags/collection_flags.csv`, `tools/collection_flags.py`)
   carry both as `stops_rarely_logged` (high) and South's two undriven stops as `listed_stops_not_driven` (low), so models
   and later checkups slice them.
