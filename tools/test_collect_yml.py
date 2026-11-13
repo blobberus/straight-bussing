@@ -4,7 +4,7 @@ safety nets of the risk review 2026-11-01 (DC-021) work where it matters: a norm
 timetable it used; a merge that would lose rows is stopped by tools/check_merge.py before anything reaches the data
 branch. Needs git and bash (Git Bash on Windows). About 10 s.
   python tools/test_collect_yml.py        -> prints 'ok N tests', exits 1 on failure"""
-import os, shutil, subprocess, sys, tempfile, time, traceback, zipfile
+import json, os, shutil, subprocess, sys, tempfile, time, traceback, zipfile
 from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parent
@@ -130,6 +130,38 @@ def a_merge_that_would_lose_rows_never_reaches_the_data_branch():
     assert "Push stopped: rows would be lost" in r.stdout and "row(s) lost" in r.stdout, r.stdout[-1500:]
     assert data_file(origin, "data/ground_truth/arrivals.csv") == before, "the data branch must be unchanged"
     assert (temp / "guard-blocked.txt").exists()
+
+
+@test
+def the_logging_check_counts_the_loggers_minutes_not_the_uploads_after_it():
+    # DC-027: run 43085079274 logged 70 min, then GitHub's artifact service hung its uploads for 21 min and the summary
+    # said 'logger: 91 min'. Counted that way, a logger that stopped after 50 min would not be reported as short.
+    yml = (ROOT / ".github" / "workflows" / "collect.yml").read_text(encoding="utf-8")
+    check = step(yml, "Check the logging run")
+    py = check[check.index("<<'EOF'\n") + len("<<'EOF'\n"):check.rindex("EOF")]
+    d = Path(tempfile.mkdtemp(prefix="sb-yml-check-"))
+    now = int(time.time())
+    t0 = now - 91 * 60                                  # the summary step runs 91 min after logging began
+    (d / "log.t0").write_text(str(t0), encoding="utf-8")
+    base = {"started": t0 + 1, "polls": 420, "rows": 187, "errors": 0, "fetch_errors": 0, "first_error": ""}
+
+    def check_run(status):
+        if status is None:
+            (d / "logger.json").unlink(missing_ok=True)
+        else:
+            (d / "logger.json").write_text(json.dumps(status), encoding="utf-8")
+        summ = d / "summary.md"
+        summ.write_text("", encoding="utf-8")
+        r = subprocess.run([sys.executable, "-", str(d)], input=py, capture_output=True, text=True,
+                           env={**os.environ, "OUTCOME": "success", "GITHUB_STEP_SUMMARY": str(summ)})
+        assert r.returncode == 0, r.stderr
+        return r.stdout
+    out = check_run({**base, "ended": t0 + 70 * 60})
+    assert "logger: 70 min, 420 polls" in out and "logging stopped after" not in out, out
+    out = check_run({**base, "ended": t0 + 50 * 60, "polls": 300})
+    assert "logger: 50 min" in out and "logging stopped after 50 of 70 min" in out, out
+    out = check_run(None)                               # no status file (a crash): the wall clock, as before
+    assert "logger: 91 min, no status" in out and "wrote no status file" in out, out
 
 
 def main():

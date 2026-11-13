@@ -194,13 +194,14 @@ jobs:
           import json, os, sys, time
           d = sys.argv[1]
           try:
-              ran = (time.time() - int(open(f"{d}/log.t0").read())) / 60
-          except (OSError, ValueError):
-              ran = 0.0
-          try:
               s = json.load(open(f"{d}/logger.json"))
           except (OSError, ValueError):
               s = None
+          try:   # the logger's own minutes (its status file says when it ended), not the artifact uploads after it:
+              t0 = int(open(f"{d}/log.t0").read())     # GitHub's artifact service once hung them 21 min (DC-027)
+              ran = (float((s or {}).get("ended") or time.time()) - t0) / 60
+          except (OSError, ValueError, TypeError):
+              ran = 0.0
           warn = []
           if os.environ.get("OUTCOME") != "success":
               warn.append(f"the logging step ended '{os.environ.get('OUTCOME')}'")
