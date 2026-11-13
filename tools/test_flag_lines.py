@@ -293,6 +293,24 @@ def no_flags_yet():
     assert "No flags yet" in r.md.read_text(encoding="utf-8")
 
 
+@test
+def collection_flags_are_a_known_producer():
+    r = Repo()
+    r.write("collection_flags.csv", [row("collection", "gps_only_rows", "5699", scope="vehicles=4331|4315;days=weekday",
+                                         evidence="data/labeled/collection/line_summary.csv; tools/collection_flags.py")])
+    r.write("transition_flags.csv", [row()])
+    code, out, err = r.run()
+    assert code == 0, (out, err)
+    reg = {x["flag_id"]: x for x in r.registry()}
+    assert reg["collection:gps_only_rows:5699"]["category"] == "collection"
+    assert "collection" in r.md.read_text(encoding="utf-8")
+    code, out, err = r.run("--check")
+    assert code == 0, (out, err)
+    r.write("collection_flags.csv", [row("transition", "gps_only_rows", "5699")])     # wrong category in the file
+    code, out, err = r.run("--check-inputs")
+    assert code == 1 and "category 'transition' in the collection file" in err, err
+
+
 def main():
     failed = 0
     for fn in TESTS:

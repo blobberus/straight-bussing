@@ -7,6 +7,8 @@ Producers write one file each in data/labeled/flags/ (schema and rules: data/lab
   transition_flags.csv  category transition       odd bus behavior at transition times (RouteKnower E30)
   prediction_flags.csv  category prediction_miss  lines with large prediction misses (RouteKnower E31)
   display_flags.csv     category display          what the shipped display rules showed riders (RouteKnower E32)
+  collection_flags.csv  category collection       per-line issues in the collected data (tools/collection_flags.py,
+                                                  data/labeled/collection/)
 This tool validates them and merges them into data/labeled/flags/flagged_lines.csv (active flags first, then by
 severity, route and flag) and docs/FLAGGED-LINES.md (a per-line summary in plain English, generated: never edit it by
 hand). A flag keeps its first_flagged date across refreshes; a flag that a producer's refreshed file no longer reports
@@ -35,7 +37,8 @@ COMBINED = "flagged_lines.csv"
 
 COLS = ["flag_id", "route_id", "route", "category", "flag", "severity", "scope", "metric", "value", "baseline", "n",
         "data_from", "data_to", "evidence", "agent_action", "first_flagged", "last_checked", "status"]
-FILES = {"transition_flags.csv": "transition", "prediction_flags.csv": "prediction_miss", "display_flags.csv": "display"}
+FILES = {"transition_flags.csv": "transition", "prediction_flags.csv": "prediction_miss", "display_flags.csv": "display",
+         "collection_flags.csv": "collection"}
 SEVERITY = ("high", "medium", "low")
 STATUS = ("open", "watch", "resolved")
 ACTIVE = ("open", "watch")
@@ -306,7 +309,8 @@ def md_text(rows, stop_names=None):
          "Unofficial analysis of the public Passio feed; not a statement by the operator or the University. Official "
          "service information: 773.702.8181.", ""]
     if not rows:
-        L += ["No flags yet: the producers (RouteKnower E30, E31, E32) have not written their files.", ""]
+        L += ["No flags yet: the producers (RouteKnower E30, E31, E32, tools/collection_flags.py) have not written their "
+              "files.", ""]
         return "\n".join(L) + "\n"
     sev = {s: sum(r["severity"] == s for r in active) for s in SEVERITY}
     lines = sorted({(r["route"], r["route_id"]) for r in active}, key=lambda x: (min(
