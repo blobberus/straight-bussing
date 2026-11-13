@@ -133,6 +133,18 @@ Connector buses were 12642 and 12648 (12647 normal); the display flags (Friend C
 South `false_hide_idle_serving_bus`, the Connector's `planner_recommends_leaving_bus`) need E32's browser replay, not
 rechecked here.
 
+Collection flags (new the same day, the line-issues work): the registry has a `collection` category, 38 flags on 13
+lines (6 high, 20 medium, 12 low; 137 active flags in all, `flag_lines.py --check` clean), from `tools/collection_flags.py`
+with its evidence in `data/labeled/collection/`; the data repo's weekly findings run reruns it (first run `43402431148`).
+It confirms this checkup: `stops_rarely_logged` (high) for South's Logan Center (closest pass 53 m) and Regents Express's
+Regents Park Apartments (71 m), item 4; South's 59th St & Metra and Stony Island Parking Lot listed but not driven (closest
+222 and 334 m); bus 4322 carries the report gaps of three lines (Apostolic, North, Central: item 5, item 2). Its other high
+flags: the Connector's rows without a Passio time 23.8% against 11.9% for all lines (36.5% in the last 14 days: item 8),
+Red Line/Arts Block's rows from the GPS only 26.0% against 8.8% (buses 4331, 4315), and stops Passio never names on
+South 38.0% and Regents Express 19.4% against 7.9 / 8.8%. And what it found clean: no empty or unknown route id in
+2,062,255 vehicle reports, every trip id in its line's timetable, 99.55% of GPS drive-bys logged (every line at least
+98.8%).
+
 **4. South and Regents Express lose one stop on every lap, since logging began (open: a detector gap; the fix is the
 owner's call).**
 - What: South's Logan Center (8589) has 22 rows in 36 service days, while the stop before it (Cottage & 61st, 141863)
