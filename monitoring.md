@@ -12,6 +12,11 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   A failed dispatch (GitHub's API answering 5xx) is tried up to 10 times, 1, 2, 4, then 5 min apart (DC-023: on
   Nov 5, 2026 three tries in two minutes all failed and nothing collected for 2 hours); `dispatch failed (10/10)` in a
   run's Self-chain line means the API was down for over half an hour: dispatch by hand once it answers.
+  A dispatch that went through is then followed until the new run's job starts (state `confirming`, up to 10 min):
+  GitHub can accept the call and end the new run without a job (`startup_failure`, or `failure` with no job; it
+  stopped the data repo's sync chain for 2 h 35 min on Nov 9 and 5 h 12 min on Nov 11, 2026, DC-027), and such a run
+  counts as a failed try and is dispatched again. The data repo's sync chain does the same (it watches the new run for
+  6 min). `the run it started never ran` in a Self-chain line = this happened and was handled.
   Off switch: repo variable `COLLECT_CHAIN=off`, or Disable workflow. A run's summary says `Self-chain: done:dispatched`. Each run merges its rows with `tools/merge_arrivals.py`
   (drops overlap duplicates) into `data/ground_truth/arrivals.csv` on the orphan **`data`** branch, refreshes
   `web/data/learned.json` there, and re-enables itself (60-day idle rule). Schema and details: `docs/DATA.md`.
@@ -63,6 +68,14 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
    `python tools/db_audit.py --mirror <clone of blobberus/straight-bussing-data>` (`git fetch origin data` first; exit 1
    = an error, listed under ERROR; findings this log already explains are listed as notes; `--days` prints the per-day
    table). It reads every file of the data branch and every archive asset, all days (docs/DATA.md "Safety nets").
+   Then **every bus line** (owner 2026-11-13, DC-027 item 3 is the form): one row per line of `web/data/routes.json`
+   with what is wrong, since when, the numbers and the status (open / fixed / accepted / Passio's side): arrivals
+   against the same weekday's median, the stops logged against the line's stop list, minutes of listed service with
+   no bus of the line in the feed, Passio's times, buses filed under another line. Build the stop lists from the
+   timetable the collector used (`python tools/build_gtfs.py --zip <the data branch's gtfs/gtfs-<version>.zip> --out
+   <dir> --patterns <dir>/route_patterns.json`): the committed `web/data` can be older than the timetable (on Nov 13,
+   2026 it lacked the two stops added on Oct 26). The audit's line rule flags only a line under half its median, so
+   compare each line yourself, and recheck the open per-line rows of the last checkup.
 3. DEGRADED / DOWN: for each `[warn]` / `[DOWN]` line, apply the matching row of the fix table.
 4. If it is DOWN and not fixed within ~10 min, **take over locally** (below), and tell the owner.
 5. Run `status` again.
@@ -95,6 +108,7 @@ Git Bash gotcha: it rewrites `rev:path` arguments (`git show origin/data:data/..
 | issue: `The no-rows-lost guard ... stopped this run's push` | A merge bug | Do not push by hand. Reproduce with the artifact `unmerged-<run>` and `tools/check_merge.py`; fix the merge; then merge the artifact's run files (`python tools/merge_arrivals.py --into ... --add run.csv`, same for predictions) and push. |
 | issue: `The daily archive lacks files for N day(s)` | The archive job failed or did not fire | `gh workflow run archive.yml` (catches up 85 days); a day with only some files: `gh workflow run archive.yml -f day=YYYY-MM-DD -f replace=true`. Before the artifacts expire (the issue says how many days are left). |
 | data-repo issue: `the collector looks stopped` (watchdog) | The self-chain and the cron backstop both stopped | `python tools/monitor.py dispatch`; then find why (the last run's Self-chain line). |
+| a run (here or in the data repo) with conclusion `startup_failure`, or `failure` with no job, right after a chain dispatch | GitHub accepted the dispatch and never ran the job (DC-025, DC-027) | Nothing, if the chain went on (since 2026-11-13 both chains watch the new run and dispatch again: Self-chain line `the run it started never ran`). If it did not (`gh run list -w collect.yml` / `-R blobberus/straight-bussing-data -w sync.yml` shows nothing newer): `python tools/monitor.py dispatch` (data repo: `gh workflow run sync.yml -R blobberus/straight-bussing-data`); log it. |
 
 ## Take over locally
 Start it with the **Bash tool, `run_in_background: true`**:
