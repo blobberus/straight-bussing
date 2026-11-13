@@ -229,6 +229,10 @@ line than their label: Nov 11 3 episodes, 2.3 bus-hours (4328 labeled Midway Met
 labeled 53rd Street Express and 12648 labeled Red Line on the Connector 11 AM to noon), Nov 12 2 episodes, 2.2
 bus-hours (item 3: 4331 on Friend Center/Metra, 12646 on Red Line); weekdays Oct 23 to Nov 12: 0.5 to 7.3. The secret
 `COLLECT_DISPATCH_TOKEN` in the data repo: still unset.
+
+**10. Off-GitHub backup refreshed (it was due Nov 13 to 20).** `python tools/backup.py`, Fri 3:07 AM: the data branch's
+files plus 36 new archive release assets (46.2 MB; 138 were already there), 187 files, 379 MB in the backup folder, done
+in 39 s; `python tools/backup.py --check` ok. The one before was Nov 6 (151 files, 301 MB). Next due about Nov 20 to 27.
 ### DC-026 Checkup 2026-11-11: healthy; the public data repo's per-day files had the prediction columns since Oct 29 (fixed); a whole-database audit (new); the archive check missed two file kinds (fixed); Passio's missing stop times unchanged and its times late on four lines since Oct 27 (open)
 Owner (2026-11-11): "Check this project on the repo and the straight bussing database repo. From here, run a database
 check and an analysis." This entry is the database check of both repositories; the analyses run in parallel (E30 odd
