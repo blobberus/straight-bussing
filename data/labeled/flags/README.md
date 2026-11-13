@@ -2,7 +2,8 @@
 
 Owner, 2026-11-11: "The analysis should check for buses that have odd behavior during transition times and lines that
 have large prediction misses. Create or indicate wherever appropriate for another agent to analyze and notice and
-account for this data. Flag these lines and also tell me."
+account for this data. Flag these lines and also tell me." And 2026-11-13: "Run a data collection check recording bus
+line issues" (category `collection`).
 
 A **flag** says: on this line (and these stops, hours, buses), the data behaves differently enough from the other
 lines that a model, a display rule or a data check must treat it on its own. One row per (category, flag, line).
@@ -14,6 +15,7 @@ checkup.**
 | `transition_flags.csv` | RouteKnower E30 (`experiments/routeknower/E30-scripts/`) | odd bus behavior at transition times (a line's bus count changing: breaks, shift ends, buses moving lines or vanishing) |
 | `prediction_flags.csv` | RouteKnower E31 (`experiments/routeknower/E31-scripts/`) | lines (stops, hours, leads) with large prediction misses |
 | `display_flags.csv` | RouteKnower E32 (`experiments/routeknower/E32-scripts/`) | what the shipped display rules (off-route, idle, gone, bus numbers) showed riders around those episodes |
+| `collection_flags.csv` | `tools/collection_flags.py` (evidence `data/labeled/collection/`) | lines whose **collected data** is less complete or less right than the others' (rows only the GPS saw, stops Passio never names, rows without a Passio time, buses under another line's label, stops the collector rarely logs, listed hours with no bus, report gaps) |
 | **`flagged_lines.csv`** | `tools/flag_lines.py` (never edit by hand) | **all of the above in one registry**: active flags first, then by severity, line and flag |
 | `docs/FLAGGED-LINES.md` | `tools/flag_lines.py` (never edit by hand) | the same, per line in plain English |
 
@@ -44,7 +46,9 @@ information: 773.702.8181.
   safety first: stale or doubtful data is labeled, not silently removed.
 - **Data agents** (checkups, `monitoring.md`, `docs/DATA-COLLECTION-LOG.md`): at every checkup run
   `python tools/flag_lines.py --check`, look at each high flag's line (is its data complete? did the pattern
-  change?), and note in the checkup what you saw. A flagged line with missing data is worth a DC entry.
+  change?), and note in the checkup what you saw. A flagged line with missing data is worth a DC entry. The
+  `collection` flags say where a line's data is expected to be thin or odd (a line-day under its median on a flagged
+  hour is not a new gap); a line newly in one, or a high one whose number moves a lot, is.
 - **Everyone:** never write a flag into `flagged_lines.csv` or `docs/FLAGGED-LINES.md` by hand. Fix the producer's
   script (or its file), rerun `python tools/flag_lines.py`, commit all three.
 
@@ -55,7 +59,7 @@ information: 773.702.8181.
 | flag_id | `<category>:<flag>:<route_id>`; stable across refreshes (the merge keys on it) |
 | route_id | GTFS route id from `web/data/routes.json` (never passiogo.com ids) |
 | route | the line's name; the registry rewrites it from routes.json |
-| category | `transition` (transition_flags.csv), `prediction_miss` (prediction_flags.csv), `display` (display_flags.csv) |
+| category | `transition` (transition_flags.csv), `prediction_miss` (prediction_flags.csv), `display` (display_flags.csv), `collection` (collection_flags.csv) |
 | flag | short snake_case code, e.g. `phantom_times_after_leave` |
 | severity | `high`, `medium`, `low` (rules below) |
 | scope | where and when, `;`-separated `key=value` parts (grammar below); empty or `all` = the whole line |
@@ -112,9 +116,16 @@ Each producer's own rule (it wins over the default; the full text is in its READ
   >= 1.5 x on >= 10 events since Nov 6; medium = >= 1.5 x on the same n and events (bus number churn and ghost badges at
   most medium: >= 2 x on 100 events); low (`watch`) = >= 1.5 x on 10 to 29 events; graded on all days and on the days
   since Nov 6, the higher grade wins. Before changing a display rule, rerun its episodes in `web/tests/data-display.js`.
+- **Collection** (`data/labeled/collection/README.md`, "Severity rule (collection)"): ratio = the line's rate / all
+  lines'; high = ratio >= 2 with the measure's minimum excess (e.g. 10 points for shares of rows), n >= 300, >= 30
+  events and >= 3 service days over 2 x; medium = 1.5 x on n >= 100, 10 events, 3 days; low (`watch`) = 1.25 x on n >= 30,
+  5 events, 2 days; graded on all collected days and on the last 14, the higher grade wins; thin line-days at most
+  medium; `stops_rarely_logged` high when a stop the buses come within 120 m of gets under a tenth of the line's median
+  rows on 7+ days.
 
 Before acting on a flag, read the producer's "for other agents" notes too (E30's lists which episodes to drop from
-training labels: `feed_drop_mid_route`, `sparse_reporting`, `frozen_gps`, `wrong_line_label`; never from test rows).
+training labels: `feed_drop_mid_route`, `sparse_reporting`, `frozen_gps`, `wrong_line_label`; the collection README's
+adds the rows of `data/labeled/collection/wrong_label_episodes.csv`, all day; never from test rows).
 
 ## Refresh
 
