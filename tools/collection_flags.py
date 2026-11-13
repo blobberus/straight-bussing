@@ -269,7 +269,7 @@ def arrival_facts(arr, pred_keys, statics, det):
         if id(r) in double:
             c["double_rows"] += 1
             mark(det, d, rid, "double_logged_visits", e, r["vehicle_id"], r["stop_id"])
-        if not gps and e >= PRED_FROM:
+        if pred_keys is not None and not gps and e >= PRED_FROM:
             c["pred_target_rows"] += 1
             det[(d, rid, "no_passio_time:all")]["s"][r["stop_id"]] += 1
             if not near(pred_keys.get((r["vehicle_id"], r["stop_id"]), ()), e, PRED_JOIN_S):
@@ -717,7 +717,9 @@ def collect(dl, d0=FIRST_DAY, d1=None, cache=None, polls=True, log=print):
     if not arr:
         raise SystemExit(f"no arrival rows in {dl / 'arrivals.csv'} between {d0} and {d1}")
     preds = sorted(dl.glob("predictions-*.csv")) + ([dl / "predictions.csv"] if (dl / "predictions.csv").exists() else [])
-    pred_keys = load_prediction_keys(preds)
+    pred_keys = load_prediction_keys(preds) if preds else None      # no predictions file: no_passio_time is skipped
+    if not preds:
+        log(f"no predictions*.csv in {dl}: no_passio_time is not measured")
     det = defaultdict(new_det)
     F, names = arrival_facts(arr, pred_keys, statics, det)
     days = sorted({r["day"] for r in arr})
@@ -1232,8 +1234,10 @@ MISS_COLS = ["service_day", "local_time", "vehicle_id", "route_id", "route", "st
 
 
 def fmt(v):
+    """Floats with at most 3 decimals and no trailing zeros (2.250 -> 2.25, 3.0 -> 3)."""
     if isinstance(v, float):
-        return f"{v:.1f}" if abs(v - round(v)) > 1e-9 else str(int(round(v)))
+        t = f"{v:.3f}".rstrip("0").rstrip(".")
+        return "0" if t in ("-0", "") else t
     return v
 
 

@@ -293,8 +293,8 @@ def test_write_csv_is_deterministic_and_gzips_without_a_timestamp():
         C.write_csv(a, ["x", "y"], rows, gz=True)
         C.write_csv(b, ["x", "y"], rows, gz=True)
         assert a.read_bytes() == b.read_bytes()
-        assert gzip.decompress(a.read_bytes()).decode() == "x,y\n1,2.2\ns,3\n" or \
-            gzip.decompress(a.read_bytes()).decode() == "x,y\n1,2.3\ns,3\n"
+        assert gzip.decompress(a.read_bytes()).decode() == "x,y\n1,2.25\ns,3\n"
+        assert C.fmt(0.0004) == "0" and C.fmt(12.5) == "12.5" and C.fmt(-1.0) == "-1"
 
 
 @test
@@ -316,6 +316,21 @@ def test_stop_logging_tells_a_missed_stop_from_one_not_driven():
     assert r["grade"] == "high" and r["numerator"] == 1 and [x for x, _ in r["stops"]] == ["s4"]
     assert rows[("all", "A", "listed_stops_not_driven")]["grade"] == "low"
     assert rows[("all", "ALL", "stops_rarely_logged")]["grade"] == ""
+
+
+@test
+def test_collect_without_predictions_skips_no_passio_time():
+    with tempfile.TemporaryDirectory() as tmp:
+        cols = ["epoch", "route_id", "route_name", "trip_id", "vehicle_id", "stop_id", "source"]
+        with open(Path(tmp) / "arrivals.csv", "w", encoding="utf-8", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(cols)
+            for k in range(3):
+                w.writerow([at(12) + 600 * k, "A", "Route A", "t1", "1", f"a{k}", "transition"])
+        col = C.collect(tmp, d1=DAY, polls=False, log=lambda *a: None)
+        c = col["F"][(DAY, "A")]
+        assert c["rows"] == 3 and c["pred_target_rows"] == 0 and c["nopred_rows"] == 0
+        assert C.newest_day(tmp, polls=False) == "2026-11-09"     # the day before the newest row's service day
 
 
 if __name__ == "__main__":
