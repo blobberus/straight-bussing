@@ -192,6 +192,25 @@ arrivals and predictions are complete).**
 - Not changed: a second upload try later in the job would hold the run's concurrency slot 10 to 20 min longer, and the
   chain waits for an older run to end before it starts the next one, so a retry could open a hole in the arrivals
   themselves, worse than 11 min of archived polls.
+
+**7. A dispatched run that GitHub never starts stopped a chain silently (fixed: both chains now watch that the new
+run starts).**
+- What: the data repo's sync chain dispatched its next run on Wed 2:36 PM (`43097056343`); GitHub accepted the call,
+  then ended the run at 2:41 PM as `startup_failure` with no job. The dispatch had "succeeded", so nothing retried, and
+  the chain, the public copy and the watchdog stopped until the cron backstop fired at 7:48 PM (5 h 12 min). The same
+  happened on Mon Nov 9 (`42673420807`, `failure` with no job: DC-025 item 1, 2 h 35 min). The collector's own chain
+  had the same blind spot: no such failure in its 1,194 runs so far, but its backstop fired only 11 times in the 37 h
+  checked, so one would have meant hours without collecting (DC-023's kind of gap).
+- Fix (`e39b0001`, `887d6f69`, `tools/collect_chain.py`): after a dispatch call that goes through, the watcher and the
+  idle run follow the new run in the run list (state `confirming`, every check for up to 10 min): its job running, the
+  run parked behind its slot (pending) or ended normally = done; ended without running (`startup_failure`, or
+  `failure`) = a failed try, dispatched again with the same back-off and run-list check; only queued = look again; not
+  seen starting in 10 min = done as before. On the real run lists it reads the Nov 11 case as failed and the current
+  runs as started. test_chain 26/26 (new: the rules, a run marked failed after 0, 53 and 325 s, a dispatch not listed
+  yet), the simulations as bounded as before (24 x 72 h: worst gap 0.0 min), collector-tests green. Data repo
+  (`987c910`, `sync.yml`): the chain step watches the run it dispatched for 6 min (it waits behind this run in the same
+  concurrency group) and dispatches again if it never ran; the first sleep is 19 min instead of 25, so the sync cadence
+  stays the same. monitoring.md: "What is running" and a fix-table row (`4fe8c4ac`).
 ### DC-026 Checkup 2026-11-11: healthy; the public data repo's per-day files had the prediction columns since Oct 29 (fixed); a whole-database audit (new); the archive check missed two file kinds (fixed); Passio's missing stop times unchanged and its times late on four lines since Oct 27 (open)
 Owner (2026-11-11): "Check this project on the repo and the straight bussing database repo. From here, run a database
 check and an analysis." This entry is the database check of both repositories; the analyses run in parallel (E30 odd
