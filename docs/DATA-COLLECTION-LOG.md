@@ -47,7 +47,8 @@ and downloads stayed off the repo (job folder).
 
 **1. Collector: healthy, nothing lost from the arrivals (nothing to fix there).**
 - Runs: all 54 finished collect and idle runs from Wed Nov 11 12:32 PM to Fri 12:59 AM succeeded (41 collect runs started
-  by the chain, 11 by the cron backstop, 2 idle runs); an idle run is watching now. No hole between runs, never more than 2
+  by the chain, 11 by the cron backstop, 2 idle runs); an idle run is watching now. No hole between runs (their logging
+  windows too, not only their job windows: item 9), never more than 2
   logging at once; the pre-flight self-test passed in all 54 (main's code; tag `collector-ok` = main `6df322e2`). The 51
   logging runs had 0 processing errors, 0 failed feed reads (of 420 each), 0 failed alert polls, no rejected push and
   `health run: all clear` each. Every chain hand-off went through on its first dispatch; 10 runs stood down as followers
@@ -270,11 +271,22 @@ bus-hours (item 3: 4331 on Friend Center/Metra, 12646 on Red Line); weekdays Oct
   each time two collect runs had begun within 25 s of each other at the morning start. No other hole between runs:
   every other stretch without a logger is an idle window (no bus) or DC-023's gap. Impact: about 1.5 min of the first
   service hour on those mornings, 2 or 3 lines running; a stop visit inside it may have no row. Fix: below (item 9a).
+
+**9a. Fixed (`6ba7aea1`): a cron backstop stands down next to a collect run that just started.** A backstop (mode auto)
+whose gate says collect now ends at once (mode `none`) when a collect run (`Collect ground truth`: started by the chain,
+an idle run or by hand) had its job start less than 5 min ago: that run carries the chain and dispatches its successor
+40 min in, into the slot the backstop frees, so the runs overlap again. Explicit modes are kept, and any API error means
+collect, as before (rule 5 of `collect_chain.py`). The run list it reads now includes the run names. test_chain 27/27
+(new: the rule and the gate command); the gated week simulation applies it: holes while buses run 4.4 to 2.0 a week
+(16.9 to 9.2 min), worst 7.7 to 6.3 min, lowest coverage of bus time 99.55% to 99.70% (8 seeds; with three times the
+backstops 8.4 to 2.8 holes). The first real morning with it is Mon Nov 16 (weekend backstops at 3:15 PM may show it
+sooner).
 **10. Off-GitHub backup refreshed (it was due Nov 13 to 20).** `python tools/backup.py`, Fri 3:07 AM: the data branch's
 files plus 36 new archive release assets (46.2 MB; 138 were already there), 187 files, 379 MB in the backup folder, done
 in 39 s; `python tools/backup.py --check` ok. The one before was Nov 6 (151 files, 301 MB). Next due about Nov 20 to 27.
 
-**Status.** Collector healthy, no arrival lost (items 1, 2). Fixed: a dispatched run that GitHub never starts no longer
+**Status.** Collector healthy, no arrival lost in the 37 h checked (items 1, 2), but 49 to 148 s without a logger on seven
+mornings since Oct 28 (item 9; fixed in item 9a, `6ba7aea1`). Fixed too: a dispatched run that GitHub never starts no longer
 ends a chain silently (item 7: `e39b0001`, `887d6f69`, data repo `987c910`; first real use in the data repo Fri 4:02 AM:
 dispatched, watched 6 min, the new run started); the run check's logger minutes (`4fd98f17`); the audit's three old
 line-days explained (`5308c7aa`); monitoring.md (`4fe8c4ac`) and docs/DATA.md (`8ab394d0`). Open: item 4 (South at Logan
