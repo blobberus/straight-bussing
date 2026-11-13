@@ -4,7 +4,7 @@ single dispatch / waiting / kill switches / API failures, and a multi-day simula
 concurrency slots, dropped and late crons, queue latency, slow merges, crashed loggers) showing that
 runs never exceed 2, never multiply, and keep the collection gap-free.
   python tools/test_chain.py        -> prints 'ok N tests', exits 1 on failure (hermetic, ~5 s)"""
-import json, os, random, sys, tempfile, traceback
+import json, os, random, sys, tempfile, time, traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -631,6 +631,68 @@ def gate_command_auto_idles_itself_without_a_bus():
 
 
 @test
+def a_backstop_stands_down_next_to_a_collect_run_that_just_started():
+    # DC-027 item 9: on Nov 13 the 3:54 AM backstop, parked behind the night's idle run, started at 4:16 next to the
+    # collect run the idle run had just started; both logged 70 min, ended together, and nothing logged 5:26:46 to 5:28:15.
+    T = 1_800_000_000
+
+    class Api:
+        def __init__(self, runs, fail=False):
+            self.runs, self.fail = runs, fail
+
+        def list_runs(self):
+            if self.fail:
+                raise RuntimeError("HTTP 502")
+            return self.runs
+
+        def job_started(self, rid):
+            return next((r.get("job") for r in self.runs if r["databaseId"] == rid), None)
+
+    def r(i, title, job, status="in_progress"):
+        return {"databaseId": i, "status": status, "displayTitle": title, "job": iso(job) if job else None}
+    me = r(9, "Collect ground truth (backstop: collect or idle)", T)
+    assert C.collect_twin(Api([me, r(8, C.COLLECT_TITLE, T - 4)]), 9, T) == (8, 4)
+    assert C.collect_twin(Api([me, r(8, C.COLLECT_TITLE, T - 299)]), 9, T)[0] == 8
+    assert C.collect_twin(Api([me, r(8, C.COLLECT_TITLE, T - 301)]), 9, T) is None      # an ordinary overlap
+    assert C.collect_twin(Api([me, r(8, "Collector idle: no buses running (checks the feed every 2 min)", T - 4)]), 9, T) is None
+    assert C.collect_twin(Api([me, r(8, "Collect ground truth (backstop: collect or idle)", T - 4)]), 9, T) is None
+    assert C.collect_twin(Api([me, r(8, C.COLLECT_TITLE, None, "queued")]), 9, T) is None
+    assert C.collect_twin(Api([me, r(8, C.COLLECT_TITLE, T - 4, "completed")]), 9, T) is None
+    assert C.collect_twin(Api([r(9, C.COLLECT_TITLE, T - 4)]), 9, T) is None             # never myself
+    assert C.collect_twin(Api([me, r(8, C.COLLECT_TITLE, T - 4)], fail=True), 9, T) is None   # unsure: collect
+    # the gate command: an auto run with buses about to run stands down next to the twin, collects without one
+    import io, contextlib
+    d = Path(tempfile.mkdtemp(prefix="sb-gate-twin-"))
+    out, svc = d / "out.txt", d / "service.json"
+    svc.write_text("{}", encoding="utf-8")
+    old = C.G.probe, C.GhApi, {k: os.environ.get(k) for k in ("GITHUB_OUTPUT", "COLLECT_CHAIN", "GITHUB_RUN_ID")}
+    os.environ.update(GITHUB_OUTPUT=str(out), GITHUB_RUN_ID="9")
+    os.environ.pop("COLLECT_CHAIN", None)
+    C.G.probe = lambda: (True, 2)
+    try:
+        for others, want in (([r(8, C.COLLECT_TITLE, int(time.time()) - 20)], "none"), ([], "collect"),
+                             ([r(8, C.COLLECT_TITLE, int(time.time()) - 2400)], "collect")):
+            C.GhApi = lambda repo, ref="main", rs=others: Api([me, *rs])
+            out.write_text("", encoding="utf-8")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                assert C.main(["gate", "--mode", "auto", "--slot", "b", "--service", str(svc)]) == 0
+            assert out.read_text(encoding="utf-8").strip() == f"mode={want}", (others, buf.getvalue())
+        out.write_text("", encoding="utf-8")                                        # an explicit mode is kept
+        C.GhApi = lambda repo, ref="main": Api([me, r(8, C.COLLECT_TITLE, int(time.time()) - 20)])
+        with contextlib.redirect_stdout(io.StringIO()):
+            C.main(["gate", "--mode", "collect", "--slot", "b", "--service", str(svc)])
+        assert out.read_text(encoding="utf-8").strip() == "mode=collect"
+    finally:
+        C.G.probe, C.GhApi = old[0], old[1]
+        for k, v in old[2].items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+@test
 def live_gate_wakes_on_a_changed_service_alert():
     sigs = ["A", "A", "B"]
     gate = C.live_gate(None, probe=lambda: (True, 0), alerts=lambda: sigs.pop(0), every_alerts=600)
@@ -671,8 +733,9 @@ class GatedSim:
 
     BASE = int(datetime(2026, 10, 19, tzinfo=G.CT).timestamp())          # a Monday, 00:00 Chicago
 
-    def __init__(self, seed, cron_p=0.1, empty_p=0.35, crash_p=0.0):
+    def __init__(self, seed, cron_p=0.1, empty_p=0.35, crash_p=0.0, lockstep=True):
         self.rnd, self.cron_p, self.empty_p, self.crash_p = random.Random(seed), cron_p, empty_p, crash_p
+        self.lockstep, self.stood_down = lockstep, 0
         self.runs, self.live, self.future, self.next_id, self.t = [], [], [], 1, 0
         week = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
         self.service = {"routes": {
@@ -711,7 +774,9 @@ class GatedSim:
             if o["slot"] == slot and o["status"] == "pending":
                 o["status"], o["end"] = "completed", t
         r = {"id": self.next_id, "slot": slot, "event": event, "mode": mode, "status": "pending", "created": t,
-             "ciso": iso(t), "start": None, "dispatches": 0, "end": None, "log0": None, "log1": None}
+             "ciso": iso(t), "start": None, "dispatches": 0, "end": None, "log0": None, "log1": None,
+             "title": {"collect": C.COLLECT_TITLE, "sleep": "Collector idle: no buses running"}.get(
+                 mode, "Collect ground truth (backstop: collect or idle)")}
         self.next_id += 1
         self.runs.append(r)
         self.live.append(r)
@@ -724,7 +789,8 @@ class GatedSim:
                 return "active"
 
             def list_runs(self):
-                return [{"databaseId": r["id"], "status": r["status"], "createdAt": r["ciso"]} for r in sim.runs[-40:]]
+                return [{"databaseId": r["id"], "status": r["status"], "createdAt": r["ciso"], "displayTitle": r["title"]}
+                        for r in sim.runs[-40:]]
 
             def job_started(self, rid):
                 r = next(x for x in sim.runs if x["id"] == rid)
@@ -745,6 +811,10 @@ class GatedSim:
         limits = {}
         if r["mode"] == "auto":                    # an auto run with no bus becomes a short idle run itself
             mode, _ = self.gate(t)
+            if mode == "collect" and self.lockstep and C.collect_twin(self.api(r), r["id"], t):
+                r["mode"], r["status"], r["end"] = "none", "completed", t        # rule 5: the twin carries the chain
+                self.stood_down += 1
+                return
             r["mode"] = mode
             limits = {"until": 4500, "hard": 5100}
             r["job_limit"] = 95 * 60

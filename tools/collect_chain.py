@@ -22,7 +22,10 @@ so a 70-min run overlaps its successor by ~30 min and never more than 2 runs exi
      with no job: the data repo's sync chain stopped 2 h 35 min on 2026-11-09 and 5 h 12 min on 2026-11-11 so,
      DC-025 / DC-027) counts as a failed try and is dispatched again, after the same back-off and the same run-list
      check. Not seen starting within CONFIRM_S = done as before.
-  5. Kill switches: repo variable COLLECT_CHAIN=off (runs that start afterwards never dispatch), or
+  5. A cron backstop (mode auto) that would collect next to a collect run whose job started less than LOCKSTEP_S
+     ago stands down (mode none): two runs that start together end together, and their successor can start only
+     after them, which left 49 to 148 s without a logger at seven morning starts since Oct 28 (DC-027 item 9).
+  6. Kill switches: repo variable COLLECT_CHAIN=off (runs that start afterwards never dispatch), or
      disable the workflow in the Actions tab (checked before every dispatch; the keepalive step respects it).
 `wait` keeps the job alive while the watcher still has a duty (state 'sleeping' or 'leader'), then prints the
 outcome and a ::warning:: if the chain did not continue. Stdlib + the gh CLI (GH_TOKEN). Tests: test_chain.py.
@@ -52,6 +55,8 @@ DISPATCH_TRIES = 10       # a failed dispatch call is tried this often in all (D
 DISPATCH_BACKOFF = 300    # longest wait between two tries (s)
 CONFIRM_S = 600           # after a dispatch, look this long for the new run in the run list (DC-027)
 NEVER_RAN = {"startup_failure", "failure"}    # a new run that ended so within minutes never ran its job
+LOCKSTEP_S = 300          # a backstop stands down next to a collect run whose job started this recently (DC-027)
+COLLECT_TITLE = "Collect ground truth"        # collect.yml's run-name for mode collect (the chain, idle runs, by hand)
 
 
 def retry_in(failures, every):
@@ -89,6 +94,23 @@ def confirm(runs, me, since, job_started=None, skew=60):
             return "started"
     if new and all(r.get("status") == "completed" for r in new):
         return "failed"
+    return None
+
+
+def collect_twin(api, me, now, within=LOCKSTEP_S):
+    """A collect run (not me) whose job started at most `within` s ago -> (run id, seconds ago), else None. Only runs
+    named COLLECT_TITLE count (mode collect: started by the chain, an idle run or by hand); another auto run may be
+    idling. Any API error: None (when unsure, collect)."""
+    try:
+        for r in api.list_runs():
+            rid = int(r.get("databaseId") or 0)
+            if rid == me or r.get("status") != "in_progress" or r.get("displayTitle") != COLLECT_TITLE:
+                continue
+            t = _epoch(api.job_started(rid))
+            if t is not None and 0 <= now - t <= within:
+                return rid, now - t
+    except Exception:
+        return None
     return None
 
 
@@ -331,7 +353,7 @@ class GhApi:
 
     def list_runs(self):
         return json.loads(self._gh("run", "list", "-R", self.repo, "-w", WORKFLOW, "-L", "40",
-                                   "--json", "databaseId,status,conclusion,createdAt,event"))
+                                   "--json", "databaseId,status,conclusion,createdAt,event,displayTitle"))
 
     def job_started(self, run_id):
         out = self._gh("api", f"repos/{self.repo}/actions/runs/{run_id}/jobs", "--jq",
@@ -463,7 +485,8 @@ def cmd_gate(a):
     (set by the run that started this one) is kept. auto (cron backstop, manual runs, runs started by a collector
     of before 2026-10-18): probe + schedule; idle = this run becomes a short idle run itself (collect.yml passes
     --until 4500: its job limit is 95 min), so it carries the chain on whether or not an older run still has to;
-    a newer run makes it a follower and it ends. 'none' only with COLLECT_CHAIN=off."""
+    a newer run makes it a follower and it ends. 'none' with COLLECT_CHAIN=off, or when it would collect next to a
+    collect run that started less than LOCKSTEP_S ago (collect_twin: that run carries the chain; rule 5)."""
     def emit(mode, why):
         print(f"mode {mode}: {why}", flush=True)
         out = os.environ.get("GITHUB_OUTPUT")
@@ -479,6 +502,11 @@ def cmd_gate(a):
     ok, buses = G.probe()
     v = G.decide(now, G.spans_around(service, now), None, ok, buses, names)
     if v.mode == "collect":
+        me = int(a.run_id or os.environ.get("GITHUB_RUN_ID") or 0)
+        twin = collect_twin(GhApi(a.repo, a.ref), me, now) if me and chain_enabled() else None
+        if twin:
+            return emit("none", f"{v.why}; but collect run {twin[0]} started {twin[1]:.0f} s ago and carries the chain "
+                                "(two runs started together end together and leave a gap: DC-027)")
         return emit("collect", v.why)
     if not chain_enabled():
         return emit("none", f"{v.why}; COLLECT_CHAIN is off, so no idle run either")
