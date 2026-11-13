@@ -30,7 +30,7 @@ information: 773.702.8181.
 |---|---|---|---:|
 | `gps_only_rows` | rows the GPS sweep logged alone (`source = gps`: Passio's next stop for the bus was frozen or wrong; no Passio time, previous stop, segment or dwell; `trip_id` blank when frozen) / rows | arrivals | 8.8% |
 | `feed_skipped_stops` | rows for stops Passio's feed never named as the next stop (`source = pass`, timed at the closest approach) / rows | arrivals | 7.9% |
-| `no_passio_time` | non-gps rows with no row in predictions.csv at any lead (same bus and stop within 60 s), since Oct 12 noon / those rows | arrivals, predictions | 12.8% |
+| `no_passio_time` | non-gps rows with no row in predictions.csv at any lead (same bus and stop within 60 s), since Oct 12 noon / those rows | arrivals, predictions | 11.9% |
 | `trip_not_in_timetable` | non-gps rows whose `trip_id` is not a trip of that line in the day's `trips.txt` / non-gps rows with a trip id | arrivals, gtfs | 0% |
 | `double_logged_visits` | rows repeating the bus's previous row at the same stop within 15 min (one visit logged twice; the merge dedupes only within 5 min) / rows | arrivals | 0.06% |
 | `rows_outside_hours` | rows more than 15 min after the end or 30 min before the start of the line's listed hours (E30's pads), or on a day it is not listed / rows | arrivals, gtfs | 0.7% |
@@ -131,8 +131,8 @@ stops outside its 40 m radius, buses under the wrong label, and what Passio's fe
   `thin_line_days` (Oct 20, Nov 2) low.
 - **Red Line/Arts Block**: `gps_only_rows` **high** (26.0%, last 14 days 29.5%; buses 4331 and 4315: frozen trip
   assignments, DC-003), `row_time_off_gps` low (Garfield Red Line Station EB 69624), `wrong_line_label` low.
-- **Downtown Campus Connector**: `no_passio_time` **high** (26.7%, last 14 days 36.5%: the four downtown stops with no
-  Passio time since Oct 27, DC-025), `feed_skipped_stops`, `report_gaps` and `frozen_gps` medium (bus 12647: the
+- **Downtown Campus Connector**: `no_passio_time` **high** (23.8%, last 14 days 36.5%: the four downtown stops with no
+  Passio time since Oct 27, DC-025, and 59th & Ellis), `feed_skipped_stops`, `report_gaps` and `frozen_gps` medium (bus 12647: the
   sparse reporter of DC-023 and E30), `listed_time_no_bus` low (10 PM to midnight).
 - **Apostolic/Drexel and Friend Center/Metra**: the 5 PM handover (DC-024): Apostolic/Drexel `wrong_line_label` medium
   (3.9%; 4331, 6 to 8 PM; 359 rows filed under it meanwhile) and `service_under_other_label` medium; Friend Center/Metra
@@ -142,7 +142,7 @@ stops outside its 40 m radius, buses under the wrong label, and what Passio's fe
   and mornings), `listed_time_no_bus` medium (10 AM to noon: the listed late morning without a bus).
 - **Central**: `gps_only_rows` medium (18.4%), `rows_outside_hours` medium (4.9%, 11 PM to midnight: the nightly
   bus after the listed end), `report_gaps` low (bus 4322).
-- **North and East**: `no_passio_time` medium (North 21.1%, last 14 days 31.9%; East last 14 days 26.4%; the first
+- **North and East**: `no_passio_time` medium (North 19.1%, last 14 days 31.9%; East last 14 days 26.4%; the first
   stops Regenstein Library, Max Palevsky, Ellis Garage: Passio gives them the next trip's id, DC-025); East
   `report_gaps` and `service_under_other_label` low.
 - **Drexel**: `rows_outside_hours` medium (last 14 days 4.3%, 10 AM to 1 PM: the bus after the 10:15 AM end).

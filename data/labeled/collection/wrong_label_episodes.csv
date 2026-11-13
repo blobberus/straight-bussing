@@ -18,7 +18,7 @@ service_day,vehicle_id,label_route_id,label_route,driven_route_id,driven_route,s
 2026-10-15,12643,5703,Midway Metra,6126,Apostolic/Drexel,2026-10-15 22:00:00,2026-10-15 23:40:00,70,4
 2026-10-16,4317,1078,Central,5702,Apostolic,2026-10-16 04:50:00,2026-10-16 06:20:00,60,0
 2026-10-16,4538,1077,East,5702,Apostolic,2026-10-16 05:20:00,2026-10-16 06:30:00,50,0
-2026-10-16,4331,5699,Red Line/Arts Block,6126,Apostolic/Drexel,2026-10-16 15:10:00,2026-10-16 20:50:00,150,1
+2026-10-16,4331,5699,Red Line/Arts Block,5700,Friend Center/Metra,2026-10-16 15:10:00,2026-10-16 20:50:00,150,1
 2026-10-16,12648,5704,Downtown Campus Connector,5715,Regents Express,2026-10-16 17:20:00,2026-10-16 18:00:00,40,0
 2026-10-16,12644,5703,Midway Metra,6126,Apostolic/Drexel,2026-10-16 19:10:00,2026-10-16 21:20:00,90,5
 2026-10-19,12643,5703,Midway Metra,5699,Red Line/Arts Block,2026-10-19 19:10:00,2026-10-19 19:50:00,40,3
@@ -43,7 +43,7 @@ service_day,vehicle_id,label_route_id,label_route,driven_route_id,driven_route,s
 2026-10-23,12647,5699,Red Line/Arts Block,6126,Apostolic/Drexel,2026-10-23 20:40:00,2026-10-23 21:30:00,50,0
 2026-10-26,4325,1077,East,5703,Midway Metra,2026-10-26 06:50:00,2026-10-26 07:30:00,40,0
 2026-10-26,4331,5704,Downtown Campus Connector,5699,Red Line/Arts Block,2026-10-26 11:30:00,2026-10-26 12:30:00,50,1
-2026-10-26,12648,5704,Downtown Campus Connector,5703,Midway Metra,2026-10-26 15:40:00,2026-10-26 17:10:00,50,1
+2026-10-26,12648,5704,Downtown Campus Connector,4346,53rd Street Express,2026-10-26 15:40:00,2026-10-26 17:10:00,50,1
 2026-10-26,12646,5704,Downtown Campus Connector,5699,Red Line/Arts Block,2026-10-26 15:50:00,2026-10-26 17:30:00,90,0
 2026-10-26,12643,6126,Apostolic/Drexel,5704,Downtown Campus Connector,2026-10-26 17:30:00,2026-10-26 18:10:00,40,0
 2026-10-26,4315,6126,Apostolic/Drexel,5700,Friend Center/Metra,2026-10-26 18:10:00,2026-10-26 18:50:00,30,6
