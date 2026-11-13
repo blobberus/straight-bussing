@@ -515,14 +515,14 @@ def wrong_label_episodes(tracks, lidx):
                 acc[r[0] // BIN_S].append((r[1], lidx.lines_at(r[3], r[4])))
         bins = {}
         for b, xs in acc.items():
-            lab = Counter(x[0] for x in xs).most_common(1)[0][0]
+            lab = top_key(Counter(x[0] for x in xs))
             xs = [x for x in xs if x[0] == lab]
             n = len(xs)
             on = sum(lab in x[1] for x in xs) / n
             other = Counter(ln for x in xs for ln in x[1] if ln != lab)
-            best, cnt = other.most_common(1)[0] if other else ("", 0)
-            if n >= WL_MIN_MOVING and on < WL_LABEL_MAX and best and cnt / n >= WL_OTHER_MIN:
-                bins[b] = (lab, best)
+            best = top_key(other)
+            if n >= WL_MIN_MOVING and on < WL_LABEL_MAX and best and other[best] / n >= WL_OTHER_MIN:
+                bins[b] = (lab, best, other)
         off = sorted(bins)
         i = 0
         while i < len(off):
@@ -530,10 +530,18 @@ def wrong_label_episodes(tracks, lidx):
             while j + 1 < len(off) and off[j + 1] - off[j] <= WL_MERGE_BINS and bins[off[j + 1]][0] == bins[off[i]][0]:
                 j += 1
             if j - i + 1 >= WL_MIN_BINS:
-                drv = Counter(bins[k][1] for k in off[i:j + 1]).most_common(1)[0][0]
+                tot = Counter()                         # two lines sharing the streets tie in a bin: the episode's
+                for k in off[i:j + 1]:                  # moving reports on each line decide, then the route id
+                    tot.update(bins[k][2])
+                drv = top_key(tot)
                 out.append((veh, bins[off[i]][0], drv, off[i] * BIN_S, (off[j] + 1) * BIN_S, j - i + 1))
             i = j + 1
     return out
+
+
+def top_key(c):
+    """The counter's most common key; ties go to the smallest key (never to set or hash order), '' when empty."""
+    return min(c.items(), key=lambda kv: (-kv[1], str(kv[0])))[0] if c else ""
 
 
 def frozen_runs(tr):
@@ -1163,7 +1171,7 @@ def flag_note(m, ra, rr, use, d, col, rid, days, names):
     bits.append(f"{use['events']} {EVENT_WORD.get(m, 'rows')} on {use['days']} days"
                 + (" (last 14 days)" if use is rr and ra is not rr else ""))
     if m in ("wrong_line_label", "service_under_other_label") and d["o"]:
-        lines = ", ".join(names.get(k, k) for k, _ in d["o"].most_common(3))
+        lines = ", ".join(names.get(k, k) for k, _ in sorted(d["o"].items(), key=lambda kv: (-kv[1], str(kv[0])))[:3])
         bits.append(("lines driven " if m == "wrong_line_label" else "labels used ") + lines)
     if m == "wrong_line_label":
         rows = sum(e[7] for e in col["episodes"] if e[2] == rid and e[0] in set(days))

@@ -333,6 +333,18 @@ def test_collect_without_predictions_skips_no_passio_time():
         assert C.newest_day(tmp, polls=False) == "2026-11-09"     # the day before the newest row's service day
 
 
+@test
+def test_ties_never_follow_hash_order():
+    assert C.top_key(Counter({"6126": 5, "5700": 5, "5699": 2})) == "5700"
+    assert C.top_key(Counter({"b": 1, "a": 1})) == "a" and C.top_key(Counter()) == ""
+    # a bus labeled A on B's street where B and a second line C share every metre: the tie goes to the smaller id
+    st = St()
+    st.shapes["C"] = [list(map(list, st.shapes["B"][0]))]
+    t0 = (at(12) // C.BIN_S) * C.BIN_S
+    eps = C.wrong_label_episodes({"7": track_on("A", t0, 40, street="B")}, C.LineIndex(st.shapes))
+    assert [e[2] for e in eps] == ["B"]
+
+
 if __name__ == "__main__":
     failed = 0
     for fn in TESTS:
