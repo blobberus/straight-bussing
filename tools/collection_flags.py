@@ -72,7 +72,8 @@ FRESH_S = SS.FRESH_S                 # 300 s: a report at most this old at its p
 RADIUS_M = AL.RADIUS_M               # 40 m: the collector's stop radius
 MAX_GAP_S = AL.MAX_GAP               # 60 s: the longest report gap a pass is drawn across (the detector's rule)
 MIN_MOVE_M = AL.PASS_MIN_MOVE_M      # 15 m: shorter moves are GPS jitter
-VISIT_MERGE_S = 300                  # hits of one bus at one stop within this = one visit
+VISIT_MERGE_S = 900                  # hits of one bus at one stop within this = one visit (every line's lap is longer:
+                                     # 5th percentile 16 to 39 min; a route passing near its own stop twice merges)
 VISIT_MATCH_S = 600                  # a visit is logged when a row of that bus and stop lies within this
 ROW_OFF_S = 120                      # ... and that row's time is off the GPS pass when more than this away
 BIN_S = 600                          # 10-min bins (wrong-line test, listed time)
@@ -603,7 +604,7 @@ def poll_facts(day, polls, s, arr_by_veh, det):
                 if same:
                     c["logged"] += 1
                     F[rid]["visits_logged"] += 1
-                    if min(abs(r["epoch"] - g[0]) for r in same) > ROW_OFF_S:
+                    if min(abs(r["epoch"] - t) for r in same for t in g) > ROW_OFF_S:
                         c["row_off"] += 1
                         F[rid]["visits_row_off"] += 1
                         mark(det, day, rid, "row_time_off_gps", g[0], veh, sid)
@@ -624,6 +625,9 @@ def poll_facts(day, polls, s, arr_by_veh, det):
     for rows in arr_by_veh.values():
         for r in rows:
             seen_bins[r["route_id"]].add(r["epoch"] // BIN_S)
+    driven = defaultdict(set)                           # the route had a bus on it, under another line's label
+    for veh, lab, drv, a, b, nb, rows in eps:
+        driven[drv].update(range(a // BIN_S, b // BIN_S))
     for rid, sp in spans.items():
         for a, b in sp:
             for bn in range(-(-a // BIN_S), b // BIN_S):
@@ -633,7 +637,11 @@ def poll_facts(day, polls, s, arr_by_veh, det):
                     F[rid]["listed_feed_silent_bins"] += 1
                     continue
                 F[rid]["listed_bins"] += 1
-                if bn not in seen_bins[rid]:
+                if bn in seen_bins[rid]:
+                    continue
+                if bn in driven[rid]:
+                    F[rid]["listed_other_label_bins"] += 1
+                else:
                     F[rid]["listed_nobus_bins"] += 1
                     mark(det, day, rid, "listed_time_no_bus", bn * BIN_S)
     return F, eps, missed, stop_c
@@ -811,3 +819,440 @@ def grade(m, row):
                 and row["events"] >= ev_min and (row[f"days_over_{g}"] or 0) >= days_min):
             return g
     return ""
+
+
+# ---------------------------------------------------------------- flags
+import flag_lines as FL                   # noqa: E402  (the registry's columns and scope grammar)
+
+EVID = "data/labeled/collection/"
+TEXT = {   # measure: (metric, agent_action, extra evidence files)
+    "gps_only_rows": (
+        "share of the line's arrival rows the GPS sweep logged alone (source gps: Passio's next stop for the bus was "
+        "frozen or wrong; such a row has no Passio time, previous stop, segment or dwell, and a blank trip_id when the "
+        "feed was frozen)",
+        "train and score with the source in mind: never read a gps row's empty Passio time, dwell or previous stop as "
+        "zero, and a scorer that needs Passio's time scores this line on fewer rows (the rest are real arrivals, keep "
+        "them as truth); DC-003",
+        ""),
+    "feed_skipped_stops": (
+        "share of the line's arrival rows for stops Passio's feed never named as the bus's next stop (source pass: "
+        "timed at the GPS track's closest approach)",
+        "these visits exist in the data only because the GPS track went past the stop: Passio's stop sequence (and "
+        "anything built on it, like next-stop features or Passio's share of rows with a time) skips them; a pass "
+        "row's time is a drive-by, not a dwell",
+        ""),
+    "no_passio_time": (
+        "share of the line's non-gps arrival rows with no Passio prediction at any lead 1 to 30 min (predictions.csv, "
+        "the same bus and stop within 60 s), since Oct 12 noon",
+        "Passio's scoring sample on this line is smaller and not random (whole stops and first stops drop out): slice "
+        "or weight by stop (scope) and never compare this line's Passio share with another's unweighted; the all-lead, "
+        "all-stop collection side of E31's stops_without_predictions (5 min ahead, last 14 days); Passio's side "
+        "(DC-025), the rows themselves are complete",
+        ""),
+    "trip_not_in_timetable": (
+        "share of the line's non-gps arrival rows whose trip_id is not a trip of that line in the day's timetable",
+        "join these rows to the timetable by time, not by trip_id",
+        ""),
+    "double_logged_visits": (
+        "share of the line's arrival rows that repeat the bus's previous row at the same stop within 15 min (one "
+        "visit logged twice)",
+        "drop the second row of each pair before counting visits or headways",
+        ""),
+    "rows_outside_hours": (
+        "share of the line's arrival rows more than 15 min after the end or 30 min before the start of its listed "
+        "hours (or on a day it is not listed)",
+        "rows no listed trip explains (timetable features blank): keep them as truth (riders were served) but score "
+        "them as their own slice and never learn the line's hours from them; the bus-level side is E30's after_hours",
+        ""),
+    "thin_line_days": (
+        "listed service days with under half the line's median rows for that weekday, % of the line's listed days",
+        "a checkup must not read these days as normal and volume or headway baselines leave them out; look at the "
+        "day's raw polls first (the bus missing from Passio's feed or filed under another line, DC-024, DC-026)",
+        ""),
+    "stops_missed": (
+        "share of the stop visits the GPS track drove past (within 40 m, the route's direction, its listed hours) "
+        "with no arrival row of that bus at that stop within 10 min",
+        "visit counts and headways at the scope's stops are undercounted: never read a missing row there as a skipped "
+        "stop; every miss is in missed_visits.csv.gz (a detector change to log them is a replay, the owner's call)",
+        "stop_coverage.csv; missed_visits.csv.gz"),
+    "row_time_off_gps": (
+        "share of the logged stop visits whose row is more than 2 min from the GPS track's pass of the stop",
+        "segment and dwell times built on these rows are off by minutes: drop segments longer than the GPS allows or "
+        "weight these stops' rows down",
+        "stop_coverage.csv"),
+    "wrong_line_label": (
+        "share of the line's labeled bus time a bus spent driving another line's route (DC-024's test all day: 10-min "
+        "bins with under 30% of the moving reports on the label's line and 85% or more on one other, 30 min or "
+        "more)",
+        "the episodes' rows (wrong_label_episodes.csv) are visits of the line driven filed under this line: leave them "
+        "out of this line's training labels and score them apart (refiling them by GPS is a replay, the owner's call, "
+        "DC-024); E30's wrong_line_label is the part inside transition windows",
+        "wrong_label_episodes.csv"),
+    "service_under_other_label": (
+        "bus time this line's route was driven by a bus labeled with another line (the same test), as a share of the "
+        "line's own labeled bus time",
+        "this line's rows miss those visits (they are filed under the label's line where both serve the stop, else "
+        "not logged): its visit counts, headways and bus counts are undercounted then (wrong_label_episodes.csv, "
+        "driven = this line)",
+        "wrong_label_episodes.csv"),
+    "listed_time_no_bus": (
+        "share of the line's listed 10-min bins with no bus of the line reporting or logged, while the collector "
+        "polled and the feed had other buses",
+        "the timetable lists service the data has no trace of: no rows to learn or score there; never fill those hours "
+        "with timetable times as if observed, and a checkup reads 0 rows there as the feed's, not a collection gap; "
+        "E30's service_start_missing / service_end_early are the transition-window part",
+        ""),
+    "report_gaps": (
+        "share of the line's labeled bus time inside report gaps over 2 min while the bus drove on (200 m or more) "
+        "and the feed had other buses",
+        "arrivals inside these gaps were timed by interpolation or missed: weight down segments that span a gap; "
+        "E30's feed_drop_mid_route / sparse_reporting are the 5-min-plus gaps near transitions",
+        ""),
+    "frozen_gps": (
+        "share of the line's labeled bus time with the GPS position frozen while the bus was moving (5 or more "
+        "reports over 5 min or more at identical coordinates)",
+        "no arrival can be detected while the position is frozen: rows around these runs are missing or late; the "
+        "same runs as E30's frozen_gps (inside transition windows), measured here all day",
+        ""),
+}
+EVENT_WORD = {"wrong_line_label": "episodes", "service_under_other_label": "episodes", "report_gaps": "gaps",
+              "frozen_gps": "frozen runs", "thin_line_days": "thin days", "listed_time_no_bus": "empty bins",
+              "stops_missed": "missed visits", "row_time_off_gps": "visits"}
+STOP_SCOPED = {"stops_missed": "stops_missed:all", "no_passio_time": "no_passio_time:all", "gps_only_rows": "rows:all",
+               "feed_skipped_stops": "rows:all", "row_time_off_gps": "stops_missed:all"}
+HOUR_SCOPED = {"wrong_line_label", "service_under_other_label", "listed_time_no_bus", "rows_outside_hours", "report_gaps"}
+BUS_SCOPED = {"wrong_line_label", "service_under_other_label", "report_gaps", "frozen_gps", "gps_only_rows"}
+SEV_ORDER = {"high": 0, "medium": 1, "low": 2, "": 3}
+
+
+def det_sum(det, days, rid, m):
+    out = new_det()
+    for d in days:
+        x = det.get((d, rid, m))
+        if x:
+            for k in out:
+                out[k].update(x[k])
+    return out
+
+
+def hour_ranges(h, share=0.6, max_hours=6):
+    """The fewest clock hours holding >= share of the events (at most max_hours) as scope ranges '17-20|22-24', or ''."""
+    tot = sum(h.values())
+    if not tot:
+        return ""
+    got, acc = [], 0
+    for hr, n in sorted(h.items(), key=lambda x: (-x[1], x[0])):
+        got.append(hr)
+        acc += n
+        if acc >= share * tot:
+            break
+    if acc < share * tot or len(got) > max_hours:
+        return ""
+    got.sort()
+    runs = [[got[0], got[0]]]
+    for x in got[1:]:
+        if x == runs[-1][1] + 1:
+            runs[-1][1] = x
+        else:
+            runs.append([x, x])
+    return "|".join(f"{a}-{b + 1}" for a, b in runs)
+
+
+def top_share(c, share=0.6, max_items=3):
+    """The fewest keys (at most max_items) holding >= share of the counter, or []."""
+    tot = sum(c.values())
+    got, acc = [], 0
+    for k, n in sorted(c.items(), key=lambda x: (-x[1], str(x[0]))):
+        if len(got) == max_items:
+            break
+        got.append(k)
+        acc += n
+        if acc >= share * tot:
+            return got
+    return []
+
+
+def hot_stops(num, den, line_rate, min_den=20, max_stops=6, min_explain=0.25):
+    """Stops where the measure concentrates: own rate >= 1.5 x the line's and >= the line's + 5 points on >= min_den,
+    most events first; [] when they explain under min_explain of the line's events (it is line-wide)."""
+    tot = sum(num.values())
+    if not tot:
+        return []
+    hot = [s for s in num if den.get(s, 0) >= min_den and rate(num[s], den[s]) >= max(1.5 * line_rate, line_rate + 5)]
+    hot.sort(key=lambda s: (-num[s], s))
+    hot = hot[:max_stops]
+    return hot if sum(num[s] for s in hot) >= min_explain * tot else []
+
+
+def day_kind(col, rid, m, days):
+    """'weekday' / 'weekend' when >= 90% of the measure's events fell on such days, else ''."""
+    num = MEASURES[m][0]
+    wd = we = 0.0
+    for d in days:
+        v = col["F"].get((d, rid), {}).get(num, 0)
+        if date.fromisoformat(d).weekday() >= 5:
+            we += v
+        else:
+            wd += v
+    if wd + we <= 0:
+        return ""
+    return "weekday" if wd >= 0.9 * (wd + we) else ("weekend" if we >= 0.9 * (wd + we) else "")
+
+
+def scope_for(col, rid, m, days, line_rate):
+    det = col["det"]
+    d = det_sum(det, days, rid, m)
+    parts = []
+    if m in STOP_SCOPED:
+        hs = hot_stops(d["s"], det_sum(det, days, rid, STOP_SCOPED[m])["s"], line_rate)
+        if hs:
+            parts.append("stops=" + "|".join(hs))
+    if m in HOUR_SCOPED:
+        hr = hour_ranges(d["h"])
+        if hr:
+            parts.append("hours=" + hr)
+    dk = day_kind(col, rid, m, days)
+    if dk:
+        parts.append("days=" + dk)
+    if m == "thin_line_days":
+        thin = [x for x in days if col["F"].get((x, rid), {}).get("thin_day")]
+        if thin:
+            parts.append("dates=" + "|".join(thin))
+    if m in BUS_SCOPED:
+        vs = top_share(d["v"])
+        if vs:
+            parts.append("vehicles=" + "|".join(vs))
+    return parts, d
+
+
+def flag_note(m, ra, rr, use, d, col, rid, days, names):
+    """Plain words for the note= part: both periods, the chosen period's events, and what else the measure knows."""
+    def pc(x):
+        return f"{x:.1f}%" if x >= 0.95 or x == 0 else f"{x:.2f}%"
+    bits = []
+    if ra:
+        bits.append(f"all days {pc(ra['value'])} (all lines {pc(ra['baseline'])})")
+    if rr:
+        bits.append(f"last 14 days {pc(rr['value'])} (all lines {pc(rr['baseline'])})")
+    bits.append(f"{use['events']} {EVENT_WORD.get(m, 'rows')} on {use['days']} days"
+                + (" (last 14 days)" if use is rr and ra is not rr else ""))
+    if m in ("wrong_line_label", "service_under_other_label") and d["o"]:
+        lines = ", ".join(names.get(k, k) for k, _ in d["o"].most_common(3))
+        bits.append(("lines driven " if m == "wrong_line_label" else "labels used ") + lines)
+    if m == "wrong_line_label":
+        rows = sum(e[7] for e in col["episodes"] if e[2] == rid and e[0] in set(days))
+        bits.append(f"{rows} rows filed under this line meanwhile")
+    if m == "listed_time_no_bus":
+        ol = sum(col["F"].get((x, rid), {}).get("listed_other_label_bins", 0) for x in days)
+        if ol:
+            bits.append(f"{ol} more bins had the route driven under another label (not counted)")
+    if m == "thin_line_days":
+        bits.append("rows vs median " + ", ".join(
+            f"{x} {col['F'][(x, rid)]['rows']}/{col['F'][(x, rid)]['weekday_median']}"
+            for x in days if col["F"].get((x, rid), {}).get("thin_day")))
+    return "; ".join(bits).replace(";", ",").replace("=", " ")
+
+
+def build_flags(summary, col, today, prev=None):
+    """-> collection flag rows (flag_lines.COLS) from the graded summary rows; prev: the previous collection_flags.csv
+    rows (first_flagged is kept)."""
+    first = {r["flag_id"]: r["first_flagged"] for r in prev or () if FL.valid_date(r.get("first_flagged", ""))}
+    by = defaultdict(dict)
+    for r in summary:
+        if r["route_id"] != "ALL":
+            by[(r["route_id"], r["measure"])][r["period"]] = r
+    pers = periods(col["days"])
+    out = []
+    for (rid, m), pr in sorted(by.items()):
+        ra, rr = pr.get("all"), pr.get("recent")
+        ga, gr = (ra or {}).get("grade", ""), (rr or {}).get("grade", "")
+        if not ga and not gr:
+            continue
+        use, per = (ra, "all") if SEV_ORDER[ga] <= SEV_ORDER[gr] else (rr, "recent")
+        sev = use["grade"]
+        parts, d = scope_for(col, rid, m, pers[per], use["value"])
+        parts.append("note=" + flag_note(m, ra, rr, use, d, col, rid, pers[per], col["names"]))
+        metric, action, extra = TEXT[m]
+        metric += " (percent; " + ("last 14 service days" if per == "recent" else "all collected days") + ")"
+        fid = f"{CATEGORY}:{m}:{rid}"
+        ev = "; ".join([EVID + "line_summary.csv", EVID + "line_days.csv"] + [EVID + x.strip() for x in extra.split(";")
+                        if x.strip()] + ["tools/collection_flags.py"])
+        out.append({"flag_id": fid, "route_id": rid, "route": col["names"].get(rid, rid), "category": CATEGORY,
+                    "flag": m, "severity": sev, "scope": ";".join(parts), "metric": metric,
+                    "value": f"{use['value']:.3f}", "baseline": f"{use['baseline']:.3f}",
+                    "n": str(int(round(use["denominator"]))), "data_from": use["data_from"], "data_to": use["data_to"],
+                    "evidence": ev, "agent_action": action[:1].upper() + action[1:] + ".",
+                    "first_flagged": min(first.get(fid, today), today), "last_checked": today,
+                    "status": "watch" if sev == "low" else "open"})
+    out.sort(key=lambda r: (SEV_ORDER[r["severity"]], r["route"].lower(), r["flag"]))
+    return out
+
+
+# ---------------------------------------------------------------- evidence files
+DAY_COLS = ["service_day", "dow", "route_id", "route", "rows", "gps_rows", "pass_rows", "pred_target_rows", "nopred_rows",
+            "trip_rows", "trip_bad_rows", "trip_unknown", "trip_other_route", "double_rows", "hours_rows", "outside_rows",
+            "listed_day", "weekday_median", "thin_day", "online_min", "visits", "visits_logged", "visits_other_line",
+            "visits_missed", "visits_row_off", "wrong_label_min", "wl_episodes", "wrong_label_rows", "other_label_min",
+            "ol_episodes", "listed_bins", "listed_nobus_bins", "listed_other_label_bins", "listed_feed_silent_bins",
+            "gap_min", "gaps",
+            "frozen_min", "frozen_runs"]
+SUMMARY_COLS = ["period", "route_id", "route", "measure", "value", "baseline", "ratio", "excess", "numerator",
+                "denominator", "unit", "events", "days", "days_over_high", "days_over_medium", "days_over_low", "grade",
+                "data_from", "data_to"]
+STOP_COLS = ["period", "route_id", "route", "stop_id", "stop", "visits", "logged", "logged_other_line", "missed",
+             "missed_share", "row_off", "row_off_share", "line_missed_share", "rows", "gps_rows", "pass_rows",
+             "pred_target_rows", "nopred_rows", "nopred_share", "hotspot"]
+EP_COLS = ["service_day", "vehicle_id", "label_route_id", "label_route", "driven_route_id", "driven_route", "start",
+           "end", "minutes", "rows_filed_under_label"]
+MISS_COLS = ["service_day", "local_time", "vehicle_id", "route_id", "route", "stop_id", "stop"]
+
+
+def fmt(v):
+    if isinstance(v, float):
+        return f"{v:.1f}" if abs(v - round(v)) > 1e-9 else str(int(round(v)))
+    return v
+
+
+def write_csv(path, cols, rows, gz=False):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=cols, lineterminator="\n", extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow({c: fmt(r.get(c, "")) for c in cols})
+    data = buf.getvalue().encode("utf-8")
+    if gz:
+        with open(path, "wb") as f:
+            with gzip.GzipFile(fileobj=f, mode="wb", mtime=0, filename="") as g:
+                g.write(data)
+    else:
+        path.write_bytes(data)
+
+
+def stop_names(col):
+    names = {}
+    for s in col["statics"].by_key.values():
+        for sid, x in (s["st"].stops or {}).items():
+            names[str(sid)] = x.get("name", "")
+    return names
+
+
+def stop_rows(col, summary):
+    names, sn = col["names"], stop_names(col)
+    line_rate = {(r["period"], r["route_id"]): r["value"] for r in summary if r["measure"] == "stops_missed"}
+    out = []
+    for per, days in periods(col["days"]).items():
+        dset = set(days)
+        acc = defaultdict(Counter)
+        for (d, rid, sid), c in col["stops"].items():
+            if d in dset:
+                acc[(rid, sid)].update(c)
+        for (d, rid, m), x in col["det"].items():
+            if d not in dset or m not in ("rows:all", "gps_only_rows", "feed_skipped_stops", "no_passio_time:all",
+                                          "no_passio_time"):
+                continue
+            key = {"rows:all": "rows", "gps_only_rows": "gps_rows", "feed_skipped_stops": "pass_rows",
+                   "no_passio_time:all": "pred_target_rows", "no_passio_time": "nopred_rows"}[m]
+            for sid, n in x["s"].items():
+                acc[(rid, sid)][key] += n
+        for (rid, sid), c in sorted(acc.items()):
+            lr = line_rate.get((per, rid), 0.0)
+            ms = rate(c["missed"], c["visits"])
+            hot = []
+            if c["visits"] >= 20 and ms >= max(1.5 * lr, lr + 5):
+                hot.append("missed")
+            if c["pred_target_rows"] >= 30 and rate(c["nopred_rows"], c["pred_target_rows"]) >= 75:
+                hot.append("no_passio_time")
+            out.append({"period": per, "route_id": rid, "route": names.get(rid, rid), "stop_id": sid,
+                        "stop": sn.get(sid, ""), "visits": c["visits"], "logged": c["logged"],
+                        "logged_other_line": c["logged_other_line"], "missed": c["missed"],
+                        "missed_share": round(ms, 2), "row_off": c["row_off"],
+                        "row_off_share": round(rate(c["row_off"], c["logged"]), 2), "line_missed_share": round(lr, 2),
+                        "rows": c["rows"], "gps_rows": c["gps_rows"], "pass_rows": c["pass_rows"],
+                        "pred_target_rows": c["pred_target_rows"], "nopred_rows": c["nopred_rows"],
+                        "nopred_share": round(rate(c["nopred_rows"], c["pred_target_rows"]), 2),
+                        "hotspot": "|".join(hot)})
+    return out
+
+
+def local(t):
+    return datetime.fromtimestamp(t, CT).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def write_evidence(out_dir, col, summary):
+    out_dir = Path(out_dir)
+    names, sn = col["names"], stop_names(col)
+    days = []
+    for (d, rid), c in sorted(col["F"].items()):
+        if not rid:
+            continue
+        r = {"service_day": d, "dow": DOWS[date.fromisoformat(d).weekday()], "route_id": rid, "route": names.get(rid, rid)}
+        r.update({k: c.get(k, 0) for k in DAY_COLS[4:]})
+        days.append(r)
+    write_csv(out_dir / "line_days.csv", DAY_COLS, days)
+    write_csv(out_dir / "line_summary.csv", SUMMARY_COLS,
+              sorted(summary, key=lambda r: (r["period"] != "all", r["measure"], r["route_id"] == "ALL", r["route"])))
+    write_csv(out_dir / "stop_coverage.csv", STOP_COLS, stop_rows(col, summary))
+    write_csv(out_dir / "wrong_label_episodes.csv", EP_COLS, [
+        {"service_day": d, "vehicle_id": veh, "label_route_id": lab, "label_route": names.get(lab, lab),
+         "driven_route_id": drv, "driven_route": names.get(drv, drv), "start": local(a), "end": local(b),
+         "minutes": nb * BIN_S // 60, "rows_filed_under_label": rows}
+        for d, veh, lab, drv, a, b, nb, rows in sorted(col["episodes"], key=lambda e: (e[4], e[1]))])
+    write_csv(out_dir / "missed_visits.csv.gz", MISS_COLS, [
+        {"service_day": d, "local_time": local(t), "vehicle_id": veh, "route_id": rid, "route": names.get(rid, rid),
+         "stop_id": sid, "stop": sn.get(sid, "")}
+        for d, veh, rid, sid, t in sorted(col["missed"], key=lambda m: (m[4], m[1], m[3]))], gz=True)
+
+
+def run_facts(col, summary, flags):
+    days, pdays = col["days"], col["poll_days"]
+    fleet = Counter()
+    for c in col["fleet"].values():
+        fleet.update(c)
+    sev = Counter(f["severity"] for f in flags)
+    return {"data_from": days[0], "data_to": days[-1], "service_days": len(days),
+            "poll_days": len(pdays), "poll_from": pdays[0] if pdays else "", "poll_to": pdays[-1] if pdays else "",
+            "recent_from": recent_from(days), "arrival_rows": int(sum(c.get("rows", 0) for c in col["F"].values())),
+            "stop_visits": int(sum(c.get("visits", 0) for c in col["F"].values())),
+            "wrong_label_episodes": len(col["episodes"]), "missed_visits": len(col["missed"]),
+            "reports": int(fleet["reports"]), "unknown_route_reports": int(fleet["unknown_route_reports"]),
+            "empty_route_reports": int(fleet["empty_route_reports"]),
+            "listed_feed_silent_bins": int(fleet["listed_feed_silent_bins"]),
+            "flags": len(flags), "high": sev["high"], "medium": sev["medium"], "low": sev["low"]}
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--dl", required=True, help="folder with arrivals.csv, predictions*.csv, raw-polls-<day>, gtfs-<day>")
+    ap.add_argument("--from", dest="d0", default=FIRST_DAY)
+    ap.add_argument("--to", dest="d1", default=None, help="newest service day (default: the newest archived raw polls)")
+    ap.add_argument("--cache", default=None, help="timetable cache (default <dl>/collection-static)")
+    ap.add_argument("--out-dir", default=str(OUT_DIR))
+    ap.add_argument("--flags", default=str(FLAGS))
+    ap.add_argument("--prev", default=None, help="previous collection_flags.csv (default: --flags)")
+    ap.add_argument("--today", default=None)
+    ap.add_argument("--json", default=None)
+    ap.add_argument("--no-polls", action="store_true", help="arrival-row measures only (no raw polls)")
+    a = ap.parse_args(argv)
+    today = a.today or FL.today_chicago()
+    col = collect(a.dl, a.d0, a.d1, a.cache, polls=not a.no_polls,
+                  log=lambda *x: print(*x, file=sys.stderr, flush=True))
+    summary = summarize(col)
+    prev_path = Path(a.prev or a.flags)
+    prev = FL.read_rows(prev_path)[1] if prev_path.exists() else []
+    flags = build_flags(summary, col, today, prev)
+    write_evidence(a.out_dir, col, summary)
+    facts = run_facts(col, summary, flags)
+    (Path(a.out_dir) / "run.txt").write_text("".join(f"{k}={v}\n" for k, v in facts.items()), encoding="utf-8")
+    write_csv(a.flags, FL.COLS, flags)
+    if a.json:
+        Path(a.json).write_text(json.dumps({"run": facts, "summary": summary}, indent=1), encoding="utf-8")
+    print(f"collection_flags: {facts['service_days']} days ({facts['data_from']} to {facts['data_to']}; raw polls "
+          f"{facts['poll_days']} days), {len(flags)} flags ({facts['high']} high, {facts['medium']} medium, "
+          f"{facts['low']} low) -> {a.flags}; evidence in {a.out_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

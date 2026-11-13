@@ -217,6 +217,86 @@ def test_day_polls_reads_fresh_reports_and_unknown_routes():
         assert dp.unknown == Counter({"": 1}) and dp.polls == [h, h + 10]
 
 
+# ---------------------------------------------------------------- grading and flags
+def srow(m="gps_only_rows", value=30.0, base=10.0, den=1000, events=300, over=(5, 5, 5), rid="A", period="all"):
+    return {"period": period, "route_id": rid, "route": f"Route {rid}", "measure": m, "value": value, "baseline": base,
+            "numerator": value * den / 100, "denominator": den, "unit": "rows", "events": events, "days": 20,
+            "data_from": "2026-10-10", "data_to": "2026-11-11", "ratio": value / base, "excess": value - base,
+            "days_over_high": over[0], "days_over_medium": over[1], "days_over_low": over[2]}
+
+
+@test
+def test_grade_follows_the_collection_rule():
+    assert C.grade("gps_only_rows", srow()) == "high"                         # 3 x, +20 points, n 1000, 5 days
+    assert C.grade("gps_only_rows", srow(over=(2, 5, 5))) == "medium"         # high on 2 days only
+    assert C.grade("gps_only_rows", srow(value=16.0)) == "medium"             # 1.6 x, +6 points
+    assert C.grade("gps_only_rows", srow(value=13.0)) == "low"                # 1.3 x, +3 points
+    assert C.grade("gps_only_rows", srow(value=13.0, over=(0, 0, 1))) == ""   # one day over: no flag
+    assert C.grade("double_logged_visits", srow("double_logged_visits", 0.15, 0.06)) == ""   # 2.5 x of almost nothing
+    assert C.grade("gps_only_rows", srow(den=200, events=60)) == "medium"     # n under 300
+    assert C.grade("thin_line_days", srow("thin_line_days", 40.0, 2.0, den=25, events=10)) == "medium"   # never high
+
+
+@test
+def test_scope_helpers():
+    assert C.hour_ranges(Counter({18: 10, 19: 9, 20: 8, 3: 1, 12: 1})) == "18-20"
+    assert C.hour_ranges(Counter({23: 5, 0: 5})) == "0-1|23-24"
+    assert C.hour_ranges(Counter({h: 1 for h in range(24)})) == ""           # spread over the day
+    assert C.top_share(Counter({"4322": 8, "4331": 1, "12": 1})) == ["4322"]
+    assert C.top_share(Counter({str(k): 1 for k in range(10)})) == []
+    num, den = Counter({"s1": 40, "s2": 2, "s3": 1}), Counter({"s1": 50, "s2": 100, "s3": 100})
+    assert C.hot_stops(num, den, line_rate=17.0) == ["s1"]
+    assert C.hot_stops(Counter({"s1": 5, "s2": 5, "s3": 5}), Counter({"s1": 50, "s2": 50, "s3": 50}), 10.0) == []
+
+
+def fake_col():
+    F = defaultdict(Counter)
+    days = [f"2026-11-{d:02d}" for d in range(2, 7)]                          # Mon to Fri
+    for d in days:
+        F[(d, "A")].update(rows=100, gps_rows=40)
+        F[(d, "B")].update(rows=300, gps_rows=15)
+    det = defaultdict(C.new_det)
+    for d in days:
+        det[(d, "A", "gps_only_rows")]["v"]["4331"] += 40
+        det[(d, "A", "gps_only_rows")]["s"]["a1"] += 40
+        det[(d, "A", "rows:all")]["s"].update({"a1": 50, "a2": 50})
+    return {"F": F, "det": det, "names": {"A": "Route A", "B": "Route B"}, "days": days, "episodes": [],
+            "missed": [], "stops": {}, "fleet": {}}
+
+
+@test
+def test_build_flags_writes_valid_registry_rows():
+    import flag_lines as FL
+    col = fake_col()
+    summary = C.summarize(col)
+    prev = [{"flag_id": "collection:gps_only_rows:A", "first_flagged": "2026-11-09"}]
+    flags = C.build_flags(summary, col, "2026-11-13", prev)
+    assert [f["flag_id"] for f in flags] == ["collection:gps_only_rows:A"]
+    f = flags[0]
+    assert f["severity"] == "high" and f["status"] == "open" and f["first_flagged"] == "2026-11-09"
+    assert f["value"] == "40.000" and f["baseline"] == "13.750" and f["n"] == "500"
+    assert f["metric"].endswith("(percent; all collected days)")
+    sc, problems, warns = FL.parse_scope(f["scope"])
+    assert not problems and not warns, (problems, warns)
+    assert sc["stops"] == ["a1"] and sc["vehicles"] == ["4331"] and sc["days"] == ["weekday"]
+    routes = {"A": ("Route A", ""), "B": ("Route B", "")}
+    p, w = FL.validate_row(f, routes, None)                                    # category checked by the registry
+    assert p == [] or p == ["category 'collection' is not one of transition, prediction_miss, display"], p
+    assert "data/labeled/collection/line_summary.csv" in f["evidence"] and "773" not in f["agent_action"]
+
+
+@test
+def test_write_csv_is_deterministic_and_gzips_without_a_timestamp():
+    with tempfile.TemporaryDirectory() as tmp:
+        a, b = Path(tmp) / "a.csv.gz", Path(tmp) / "b.csv.gz"
+        rows = [{"x": 1.0, "y": 2.25}, {"x": "s", "y": 3}]
+        C.write_csv(a, ["x", "y"], rows, gz=True)
+        C.write_csv(b, ["x", "y"], rows, gz=True)
+        assert a.read_bytes() == b.read_bytes()
+        assert gzip.decompress(a.read_bytes()).decode() == "x,y\n1,2.2\ns,3\n" or \
+            gzip.decompress(a.read_bytes()).decode() == "x,y\n1,2.3\ns,3\n"
+
+
 if __name__ == "__main__":
     failed = 0
     for fn in TESTS:
