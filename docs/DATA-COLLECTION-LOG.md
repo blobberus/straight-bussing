@@ -161,6 +161,9 @@ owner's call).**
   rule has timed that stop, log it at that closest report if it was within `NEAR_M` (120 m) and the bus was moving past
   it (source `transition`). It needs no list of stops, and the replay of Oct 12 to Nov 12 (`tools/replay_day.py`) must
   show rows added only at such stops and none changed. Expected: about 13 rows a day for South and 6 for Regents Express.
+- Flagged: the same day's `collection` flags (`data/labeled/flags/collection_flags.csv`, `tools/collection_flags.py`)
+  carry both as `stops_rarely_logged` (high) and South's two undriven stops as `listed_stops_not_driven` (low), so models
+  and later checkups slice them.
 
 **5. North logged half its arrivals on both evenings: few or no North buses in the feed (accepted: the feed's or the
 operator's side; recheck next time).**
@@ -195,6 +198,9 @@ arrivals and predictions are complete).**
 - Not changed: a second upload try later in the job would hold the run's concurrency slot 10 to 20 min longer, and the
   chain waits for an older run to end before it starts the next one, so a retry could open a hole in the arrivals
   themselves, worse than 11 min of archived polls.
+- Fixed on the way (`4fd98f17`): the run check's "logger: N min" (and its "logging stopped after N of 70 min" warning)
+  now comes from the logger's own end time, so slow uploads no longer hide a short logging run (test in
+  `test_collect_yml.py`, which fails on the old step).
 
 **7. A dispatched run that GitHub never starts stopped a chain silently (fixed: both chains now watch that the new
 run starts).**
@@ -214,6 +220,15 @@ run starts).**
   (`987c910`, `sync.yml`): the chain step watches the run it dispatched for 6 min (it waits behind this run in the same
   concurrency group) and dispatches again if it never ran; the first sleep is 19 min instead of 25, so the sync cadence
   stays the same. monitoring.md: "What is running" and a fix-table row (`4fe8c4ac`).
+
+**8. Still open from DC-024 to DC-026 (Passio's side, numbers in item 3).** The four Connector downtown stops: a time on 1
+of 150 and 0 of 159 arrivals (since Oct 27 6:30 PM). Passio's times late on 53rd Street Express, Central, East and the
+Connector since Oct 27 6 PM: all lines 20.0% / 18.4% (before 4.8%), no sign of a change. First stops after a terminal
+still mostly without a time (North 0 of 8 / 1 of 9, East 3 of 15 / 1 of 14, 53rd 8 of 56 / 20 of 56). Buses on another
+line than their label: Nov 11 3 episodes, 2.3 bus-hours (4328 labeled Midway Metra on Red Line 10:20 to 11:10 AM; 12643
+labeled 53rd Street Express and 12648 labeled Red Line on the Connector 11 AM to noon), Nov 12 2 episodes, 2.2
+bus-hours (item 3: 4331 on Friend Center/Metra, 12646 on Red Line); weekdays Oct 23 to Nov 12: 0.5 to 7.3. The secret
+`COLLECT_DISPATCH_TOKEN` in the data repo: still unset.
 ### DC-026 Checkup 2026-11-11: healthy; the public data repo's per-day files had the prediction columns since Oct 29 (fixed); a whole-database audit (new); the archive check missed two file kinds (fixed); Passio's missing stop times unchanged and its times late on four lines since Oct 27 (open)
 Owner (2026-11-11): "Check this project on the repo and the straight bussing database repo. From here, run a database
 check and an analysis." This entry is the database check of both repositories; the analyses run in parallel (E30 odd
