@@ -174,6 +174,24 @@ operator's side; recheck next time).**
 - The weekdays Oct 27 to Nov 10 had 0 to 95 min without a North bus before midnight (median about 23), so Nov 12 is the
   most so far. Not the collection: every 30-s window had an answer and the other lines logged as usual. The audit's
   half-the-median rule did not fire (56 is 53% of 106).
+
+**6. One run's raw polls and prediction updates never reached the archive (accepted: GitHub's artifact service; the
+arrivals and predictions are complete).**
+- What: run `43085079274` (Wed 1:12 PM) logged 70 min as usual (187 rows, merged), but both its artifact uploads failed:
+  GitHub's artifact service answered an HTML error page five times each, 2:23 to 2:44 PM (`Failed to CreateArtifact`),
+  the same minutes the chain's run-list read got a 502 (item 1). The upload steps are non-fatal by design, so the run
+  ended green and nothing flagged it. The run's summary said `logger: 91 min` because that clock counts the 21 min of
+  failed uploads too; the logger itself polled 70 min.
+- Impact: the Nov 11 archive (`raw-polls-2026-11-11`, `pred-updates-2026-11-11`, and so the `eta` table built from them)
+  has no polls from 1:42:39 to 1:53:33 PM (11 min), when only that run was logging; the overlapping runs cover the rest
+  of its 70 min. `arrivals.csv`, `predictions.csv`, the alerts and the bus changes are complete (they reach the data
+  branch through the merge, not the artifacts). Not recoverable (the runner is gone); a replay of Nov 11 (`replay_day.py`)
+  has no polls for those 11 min either.
+- How rare: the only lost upload in the 967 logging runs since Oct 12 noon (86 others kept only the raw polls: no
+  prediction to upload in a night or weekend run; the 82 of them read said `No files were found`).
+- Not changed: a second upload try later in the job would hold the run's concurrency slot 10 to 20 min longer, and the
+  chain waits for an older run to end before it starts the next one, so a retry could open a hole in the arrivals
+  themselves, worse than 11 min of archived polls.
 ### DC-026 Checkup 2026-11-11: healthy; the public data repo's per-day files had the prediction columns since Oct 29 (fixed); a whole-database audit (new); the archive check missed two file kinds (fixed); Passio's missing stop times unchanged and its times late on four lines since Oct 27 (open)
 Owner (2026-11-11): "Check this project on the repo and the straight bussing database repo. From here, run a database
 check and an analysis." This entry is the database check of both repositories; the analyses run in parallel (E30 odd
