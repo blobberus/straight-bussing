@@ -250,6 +250,26 @@ labeled 53rd Street Express and 12648 labeled Red Line on the Connector 11 AM to
 bus-hours (item 3: 4331 on Friend Center/Metra, 12646 on Red Line); weekdays Oct 23 to Nov 12: 0.5 to 7.3. The secret
 `COLLECT_DISPATCH_TOKEN` in the data repo: still unset.
 
+**9. Fri Nov 13 morning: collecting from 4:16 AM; no Friend Center/Metra bus in the feed by 5:52 AM; a 1.5-min hole at
+5:26 AM, the seventh morning so since Oct 28 (open).**
+- Gate: the idle run handed over at 4:16 AM (45 min before Friend Center/Metra's 5 AM start); first bus in the feed 5:04
+  AM (Drexel 4318; Thu 4:20, Wed 4:30), Apostolic 4327 at 5:07 and 4324 at 5:17. First arrivals: Drexel 5:09, Apostolic
+  5:11 (Fri Nov 6 / Tue / Wed / Thu: Drexel 4:58 / 4:45 / 5:01 / 5:00; Apostolic 5:02 / none before 6:15 / 5:33 / 5:02).
+  Friend Center/Metra: no bus in the feed at all to 5:52 AM (listed from 5:00; first arrival 4:59 to 5:06 on those
+  days); Midway Metra (listed from 5:40): none yet at 5:52 (its 5:40 start often has none: Tue 6:27, Thu 6:21). No
+  operator alert. The feed's or the operator's side; rechecked with the archive after noon.
+- The first collect runs on today's chain code: the 3:54 AM backstop, parked in slot b behind the night's idle run,
+  started the moment it ended (4:16), next to the collect run the idle run had just started in slot a, so two runs
+  logged side by side 4:16 to 5:26. The newer one waited for the older to end (rule 3 of `collect_chain.py`), dispatched
+  at 5:27:56 and saw the new run's job running 59 s later (item 7's check, its first real use on the collector:
+  `confirming`, then `done:dispatched`).
+- But nothing logged from 5:26:46 to 5:28:15 AM: two runs that start together end together, and their successor can
+  start only after them. The logging windows of all 602 logging runs since Oct 23 (not the job windows, which overlap:
+  so earlier checkups and item 1 read "no hole between runs") show the same hole after the same lockstep start on Oct
+  28 (77 s), Nov 2 (148 s, at 4:38 AM), Nov 3 (91 s), Nov 4 (91 s), Sun Nov 8 (49 s), Nov 11 (91 s) and today (89 s):
+  each time two collect runs had begun within 25 s of each other at the morning start. No other hole between runs:
+  every other stretch without a logger is an idle window (no bus) or DC-023's gap. Impact: about 1.5 min of the first
+  service hour on those mornings, 2 or 3 lines running; a stop visit inside it may have no row. Fix: below (item 9a).
 **10. Off-GitHub backup refreshed (it was due Nov 13 to 20).** `python tools/backup.py`, Fri 3:07 AM: the data branch's
 files plus 36 new archive release assets (46.2 MB; 138 were already there), 187 files, 379 MB in the backup folder, done
 in 39 s; `python tools/backup.py --check` ok. The one before was Nov 6 (151 files, 301 MB). Next due about Nov 20 to 27.
