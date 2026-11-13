@@ -203,6 +203,23 @@ def test_coverage_math():
     assert abs(frac - 4200 / 9000) < 1e-6 and gaps == [(now - 9000, now - 5400), (now - 1200, now)], (frac, gaps)
 
 
+def test_logging_holes_come_from_the_logging_windows():
+    m = load_monitor(TOOLS.parent)
+    T = 1_800_000_000
+    # Nov 13, 2026 (DC-027 item 9): two runs logged side by side 4:16 to 5:26:46, the next began at 5:28:15
+    logs = [(T, T + 4191), (T + 26, T + 4217), (T + 4306, T + 8506)]
+    assert m.logging_holes(logs, [], T, T + 8506) == [(T + 4217, T + 4306, "runs")]
+    # an idle run covers its stretch (no bus ran); the setup next to it is a hand-over, not a real gap
+    idle = [(T + 8540, T + 20000)]
+    assert m.logging_holes(logs, idle, T, T + 20000) == [(T + 4217, T + 4306, "runs"), (T + 8506, T + 8540, "hand-over")]
+    assert m.logging_holes(logs, [(T - 900, T - 21)], T - 900, T + 8506)[0] == (T - 21, T, "hand-over")
+    # a gap under min_s is no hole; the span's ends are 'edge'; a window inside another does not move the edge back
+    assert m.logging_holes([(T, T + 100), (T + 115, T + 200)], [], T, T + 200) == []
+    assert m.logging_holes([(T, T + 100)], [], T - 50, T + 300) == [(T - 50, T, "edge"), (T + 100, T + 300, "edge")]
+    assert m.logging_holes([(T, T + 500), (T + 10, T + 100), (T + 530, T + 600)], [], T, T + 600) == [(T + 500, T + 530, "runs")]
+    assert m.logging_holes([], [], T, T + 10) == []
+
+
 def test_idle_runs_count_as_covered_and_are_never_parked():
     """2026-10-18: while no bus runs, one idle run (collect.yml mode sleep) watches the feed for up to 5 h 40 min."""
     m = load_monitor(TOOLS.parent)

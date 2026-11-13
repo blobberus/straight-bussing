@@ -68,6 +68,10 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
    `python tools/db_audit.py --mirror <clone of blobberus/straight-bussing-data>` (`git fetch origin data` first; exit 1
    = an error, listed under ERROR; findings this log already explains are listed as notes; `--days` prints the per-day
    table). It reads every file of the data branch and every archive asset, all days (docs/DATA.md "Safety nets").
+   Holes between runs: `python tools/monitor.py holes --days 7` (exit 1 = a gap between two logging runs; the
+   20 to 50 s hand-overs next to an idle run, while no bus runs, are listed, not counted) reads every run's logging step;
+   `status`'s coverage uses job windows (which overlap by the setup and the merge) and ignores gaps under 2 min, so
+   it never showed the 49 to 148 s without a logger at seven morning starts (DC-027 item 9).
    Then **every bus line** (owner 2026-11-13, DC-027 item 3 is the form): one row per line of `web/data/routes.json`
    with what is wrong, since when, the numbers and the status (open / fixed / accepted / Passio's side): arrivals
    against the same weekday's median, the stops logged against the line's stop list, minutes of listed service with

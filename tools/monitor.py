@@ -231,6 +231,76 @@ def log_window(run_id, token, now):
     return None
 
 
+def step_windows(run_id, token, now):
+    """{'log': (start, end) of the 'Log arrivals' step, 'idle': the same of 'Idle until buses run'} from the jobs API
+    (end = now while it runs; None for a step that did not run), or None on an API error."""
+    out = {"log": None, "idle": None}
+    try:
+        for j in gh(f"/repos/{REPO}/actions/runs/{run_id}/jobs", token).get("jobs", []):
+            for st in j.get("steps") or []:
+                name = str(st.get("name", ""))
+                key = "log" if name.startswith("Log arrivals") else "idle" if name.startswith("Idle until buses run") else None
+                if key and st.get("started_at") and st.get("conclusion") != "skipped":
+                    out[key] = (epoch(st["started_at"]), epoch(st["completed_at"]) if st.get("completed_at") else now)
+    except Exception:
+        return None
+    return out
+
+
+def logging_holes(logs, idle, start, end, min_s=20):
+    """[(from, to, kind)] of at least min_s in [start, end] with no run logging (logs: [(start, end)] of 'Log
+    arrivals' steps) and no run idling (idle: the same; no bus ran, nothing to log). kind 'runs' = between two
+    logging runs: a real gap; 'hand-over' = next to an idle run (a run's 20 to 50 s of setup while no bus runs);
+    'edge' = at the start or end of the span. A run's job lasts longer than its logging (setup before, merge after),
+    so only the logging windows show the seconds between two runs: DC-027 item 9, 49 to 148 s at seven morning starts
+    that the job windows (and status's 2-min gap rule) never showed."""
+    iv = sorted([(s, e, "log") for s, e in logs] + [(s, e, "idle") for s, e in idle])
+    iv = [x for x in iv if x[1] > start and x[0] < end]
+    holes, cur, prev = [], start, None
+    for s, e, kind in iv:
+        if s - cur >= min_s:
+            holes.append((cur, s, "edge" if prev is None else "runs" if prev == kind == "log" else "hand-over"))
+        if e >= cur:
+            cur, prev = e, kind
+    if end - cur >= min_s:
+        holes.append((cur, end, "edge"))
+    return holes
+
+
+def holes(ctx, a):
+    """Every stretch of the last --days with no run logging and no idle run (one jobs API call per run). Exit 1 if
+    one lies between two logging runs (a real gap); hand-overs next to an idle run are listed, not counted."""
+    token, now = github_token(), time.time()
+    since = now - a.days * 86400
+    runs, page = [], 1
+    while page <= 20:
+        rs = gh(f"/repos/{REPO}/actions/workflows/{WORKFLOW}/runs?per_page=100&page={page}", token)["workflow_runs"]
+        runs += rs
+        if not rs or epoch(rs[-1]["created_at"]) < since - 6 * 3600:
+            break
+        page += 1
+    logs, idle, unread = [], [], 0
+    for r in runs:
+        if r["status"] not in ("in_progress", "completed") or r.get("conclusion") not in (None, "success"):
+            continue
+        if epoch(r.get("updated_at") or r["created_at"]) < since:
+            continue
+        w = step_windows(r["id"], token, now)
+        if w is None:
+            unread += 1
+            continue
+        logs += [w["log"]] if w["log"] else []
+        idle += [w["idle"]] if w["idle"] else []
+    found = logging_holes(logs, idle, since, now)
+    real = [h for h in found if h[2] == "runs"]
+    print(f"holes since {ts(since)[:16]}: {len(real)} between two logging runs, {len(found) - len(real)} at a hand-over "
+          f"with an idle run or the span's edge (20 s or more with no run logging or idling; logging windows of "
+          f"{len(logs)} runs, {len(idle)} idle; {unread} run(s) not readable)")
+    for g0, g1, kind in found:
+        print(f"  {time.strftime('%a %m-%d', time.localtime(g0))} {ts(g0)[11:19]} - {ts(g1)[11:19]} ({age(g1 - g0)}) {kind}")
+    return 1 if real else 0
+
+
 def last_start(runs, now, window_of):
     """Newest real logging start. A run that waited in its concurrency slot keeps its creation time as
     run_started_at, so on 2026-10-14 the newest run read 79 min old while it had started logging 12 min before
@@ -822,7 +892,7 @@ def dispatch(ctx, a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["status", "local", "resume", "stop", "dispatch"])
+    ap.add_argument("cmd", choices=["status", "local", "resume", "stop", "dispatch", "holes"])
     ap.add_argument("--hours", type=float, default=0, help="local/resume: run this long (0 = until stopped)")
     ap.add_argument("--chunk-min", type=float, default=30, help="local: minutes per logger chunk")
     ap.add_argument("--interval", type=float, default=10, help="local: seconds between polls")
@@ -832,10 +902,13 @@ def main():
                     help="local: collect all the time (default: only while buses run, tools/service_gate.py)")
     ap.add_argument("-n", type=int, default=8, help="status: runs to list")
     ap.add_argument("--wait", type=float, default=90, help="stop: seconds to wait before forcing")
+    ap.add_argument("--days", type=float, default=2, help="holes: how far back (one API call per run)")
     a = ap.parse_args()
     ctx = Ctx(remote=a.remote)
     if a.cmd == "status":
         return status(ctx, a)
+    if a.cmd == "holes":
+        return holes(ctx, a)
     if a.cmd in ("local", "resume"):
         return local(ctx, a, resume=a.cmd == "resume")
     return {"stop": stop, "dispatch": dispatch}[a.cmd](ctx, a)
