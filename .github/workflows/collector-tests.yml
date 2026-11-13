@@ -48,5 +48,7 @@ jobs:
         run: python tools/test_timetable.py
       - name: Flagged lines registry (tools/flag_lines.py -> data/labeled/flags/flagged_lines.csv, docs/FLAGGED-LINES.md)
         run: python tools/test_flag_lines.py
+      - name: Collection flags (tools/collection_flags.py -> data/labeled/flags/collection_flags.csv, data/labeled/collection/)
+        run: python tools/test_collection_flags.py
       - name: Seen service windows (tools/build_service_seen.py -> web/data/service_seen.json)
         run: python tools/test_service_seen.py
