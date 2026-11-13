@@ -46,9 +46,12 @@ def decide_rules():
 
 
 class FakeApi:
-    def __init__(self, runs, state="active"):
+    """GitHub for one run. A dispatch that goes through lists a new queued run (created at self.now, which drive()
+    sets), as GitHub does; listed=False: never listed (an API that lags)."""
+
+    def __init__(self, runs, state="active", listed=True):
         self.runs, self.state, self.dispatched, self.fail_list, self.fail_dispatch = runs, state, [], 0, 0
-        self.modes = []
+        self.modes, self.listed, self.now = [], listed, None
 
     def workflow_state(self):
         return self.state
@@ -68,11 +71,15 @@ class FakeApi:
             raise RuntimeError("HTTP 500")
         self.dispatched.append(slot)
         self.modes.append(mode)
+        if self.listed and self.now is not None:
+            self.runs.append(run(max(int(r["databaseId"]) for r in self.runs) + 1, "queued", self.now))
 
 
 def drive(w, t0, t1, step=10):
     t = t0
     while t <= t1 and not w.done:
+        if isinstance(w.api, FakeApi):
+            w.api.now = t
         w.step(t)
         t += step
     return t
@@ -210,11 +217,88 @@ def failed_dispatch_that_still_started_a_run_is_not_repeated():
     assert len(runs) == 2 and w.state == "done:gave-up", (len(runs), w.state)
 
 
+class NeverRan(FakeApi):
+    """GitHub accepts the dispatch call, but the first `bad` runs it creates end at once without a job (2026-11-11
+    in the data repo: startup_failure; 2026-11-09: failure with no job; DC-027)."""
+
+    def __init__(self, runs, bad=1, conclusion="startup_failure"):
+        super().__init__(runs)
+        self.bad, self.conclusion, self.at = bad, conclusion, []
+
+    def dispatch(self, slot, mode="collect"):
+        self.at.append(self.now)
+        super().dispatch(slot, mode)
+        if self.bad:
+            self.bad -= 1
+            self.runs[-1].update(status="completed", conclusion=self.conclusion)
+
+
+@test
+def confirm_rules():
+    T = 1_800_000_000
+    me = run(7, "in_progress", T)
+    def got(*others, since=T + 2400):
+        return C.confirm([me, *others], 7, since)
+    assert got() is None                                                         # not listed yet
+    assert got(run(6, "completed", T - 3000)) is None                            # older runs do not count
+    for st in ("pending", "queued", "in_progress", "requested", "waiting"):
+        assert got(run(8, st, T + 2401)) == "started", st
+    assert got(dict(run(8, "completed", T + 2401), conclusion="success")) == "started"
+    assert got(dict(run(8, "completed", T + 2401), conclusion="cancelled")) == "started"   # someone's decision
+    assert got(dict(run(8, "completed", T + 2401))) == "started"                 # no conclusion field: not a failure
+    assert got(dict(run(8, "completed", T + 2401), conclusion="startup_failure")) == "failed"
+    assert got(dict(run(8, "completed", T + 2401), conclusion="failure")) == "failed"
+    assert got(dict(run(8, "completed", T + 2401), conclusion="startup_failure"), run(9, "pending", T + 2405)) == "started"
+    assert got(run(8, "queued", T + 2350)) == "started"                          # clock skew: up to 60 s before
+    assert got(run(8, "queued", T + 2300)) is None
+    assert C.confirm([me], 7, T + 2400) is None and "confirming" in C.WAITING
+
+
+@test
+def a_dispatched_run_that_never_starts_is_dispatched_again():
+    T = 1_800_000_000
+    for conclusion in ("startup_failure", "failure"):
+        api = NeverRan([run(7, "in_progress", T)], bad=1, conclusion=conclusion)
+        w = C.Watcher(api, 7, "a", T)
+        drive(w, T, T + 9000)
+        assert w.state == "done:dispatched" and api.dispatched == ["b", "b"], (conclusion, w.state, w.why, api.dispatched)
+        assert api.at == [T + 2400, T + 2400 + 60 + C.retry_in(1, 60)], api.at        # seen at the next check, then backed off
+    # GitHub keeps failing to start them: every try counts, the chain ends with an error (the cron backstop remains)
+    api = NeverRan([run(7, "in_progress", T)], bad=99)
+    w = C.Watcher(api, 7, "a", T)
+    drive(w, T, T + 9000)
+    assert w.state in ("done:error", "done:gave-up") and len(api.dispatched) >= 3, (w.state, len(api.dispatched))
+    assert len(api.dispatched) <= C.DISPATCH_TRIES
+    # an idle run confirms its dispatch the same way
+    api = NeverRan([run(7, "in_progress", T)], bad=1)
+    s = C.Sleeper(api, 7, "a", T, lambda now: ("collect", "2 buses reporting live"))
+    drive_sleeper(s, T, T + 3000)
+    assert s.state == "done:dispatched" and api.modes == ["collect", "collect"], (s.state, s.why, api.modes)
+
+
+@test
+def a_dispatch_the_run_list_does_not_show_yet_is_not_repeated():
+    T = 1_800_000_000
+    api = FakeApi([run(7, "in_progress", T)], listed=False)
+    w = C.Watcher(api, 7, "a", T)
+    drive(w, T, T + 2400 + C.CONFIRM_S - 10)
+    assert w.state == "confirming" and api.dispatched == ["b"], w.state
+    drive(w, T + 2400 + C.CONFIRM_S, T + 9000)
+    assert w.state == "done:dispatched" and "not in the run list yet" in w.why and api.dispatched == ["b"], w.why
+    api = FakeApi([run(7, "in_progress", T)])
+    api.fail_list = 3                                                            # API errors while confirming: look again
+    w = C.Watcher(api, 7, "a", T)
+    drive(w, T, T + 2399)
+    drive(w, T + 2400, T + 9000)
+    assert w.state == "done:dispatched" and api.dispatched == ["b"], (w.state, w.why)
+
+
 @test
 def wait_reports_and_returns():
     d = Path(tempfile.mkdtemp(prefix="sb-chain-"))
     p = d / "chain.json"
-    for state, warn in (("done:dispatched", False), ("follower", False), ("done:gave-up", True), ("leader", True)):
+    for state, warn in (("done:dispatched", False), ("follower", False), ("done:gave-up", True), ("leader", True),
+                        ("confirming", False)):
         p.write_text(json.dumps({"state": state, "why": "x", "deadline": 0, "pid": os.getpid()}), encoding="utf-8")
         import io, contextlib
         buf = io.StringIO()
@@ -414,11 +498,7 @@ def live_choice_collects_when_unsure_and_follows_the_logger_otherwise():
 
 
 def drive_sleeper(s, t0, t1, step=10):
-    t = t0
-    while t <= t1 and not s.done:
-        s.step(t)
-        t += step
-    return t
+    return drive(s, t0, t1, step)
 
 
 @test

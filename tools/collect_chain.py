@@ -17,6 +17,10 @@ so a 70-min run overlaps its successor by ~30 min and never more than 2 runs exi
      A dispatch call that fails is tried again up to DISPATCH_TRIES times, 1, 2, 4, then 5 min apart, with the
      run list read again before each try (GitHub's API answered 500 / 502 for minutes on 2026-11-05 and three
      tries one minute apart all failed: a 2-hour gap, docs/DATA-COLLECTION-LOG.md DC-023).
+     A dispatch that went through is then looked up in the run list (state 'confirming', up to CONFIRM_S): a new run
+     that GitHub ended without running it (conclusion startup_failure, or failure with no job: the data repo's sync
+     chain stopped 2 h 35 min on 2026-11-09 and 5 h 12 min on 2026-11-11 so, DC-025 / DC-027) counts as a failed try
+     and is dispatched again, after the same back-off and the same run-list check. Not listed yet = done as before.
   5. Kill switches: repo variable COLLECT_CHAIN=off (runs that start afterwards never dispatch), or
      disable the workflow in the Actions tab (checked before every dispatch; the keepalive step respects it).
 `wait` keeps the job alive while the watcher still has a duty (state 'sleeping' or 'leader'), then prints the
@@ -42,9 +46,11 @@ import service_gate as G
 WORKFLOW = "collect.yml"
 MODES = ("collect", "sleep")
 ACTIVE = {"queued", "in_progress", "requested", "waiting"}   # 'pending' = parked behind its slot's running run
-WAITING = {"sleeping", "leader"}                              # states in which the job must stay alive
+WAITING = {"sleeping", "leader", "confirming"}                # states in which the job must stay alive
 DISPATCH_TRIES = 10       # a failed dispatch call is tried this often in all (DC-023: 3 tries in 2 min were too few)
 DISPATCH_BACKOFF = 300    # longest wait between two tries (s)
+CONFIRM_S = 600           # after a dispatch, look this long for the new run in the run list (DC-027)
+NEVER_RAN = {"startup_failure", "failure"}    # a new run that ended so within minutes never ran its job
 
 
 def retry_in(failures, every):
@@ -57,6 +63,56 @@ def _start_key(r):
     """When the run's job really started (a run parked by concurrency starts long after it was created);
     not started yet = newest."""
     return (r.get("jobStartedAt") or "~", r.get("createdAt") or "", int(r.get("databaseId") or 0))
+
+
+def _epoch(iso):
+    try:
+        return datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def confirm(runs, me, since, skew=60):
+    """After a dispatch at `since` (epoch s): 'started' if a run created since then (not me) is waiting, queued,
+    running or ended in any other way than never running; 'failed' if every such run ended without running its job
+    (NEVER_RAN: GitHub's startup_failure, or failure with no job; DC-025, DC-027); None if none is listed yet."""
+    new = [r for r in runs if int(r.get("databaseId") or 0) != me and (_epoch(r.get("createdAt")) or 0) >= since - skew]
+    if not new:
+        return None
+    if any(r.get("status") != "completed" or r.get("conclusion") not in NEVER_RAN for r in new):
+        return "started"
+    return "failed"
+
+
+class _Confirm:
+    """'confirming' after a dispatch call that went through (shared by Watcher and Sleeper; RETRY_STATE is the state
+    a failed try waits in)."""
+
+    def _sent(self, now, why):
+        self.sent_at, self.sent_why = now, why
+        self.next_at = now + self.every
+        self._set("confirming", why)
+
+    def _confirm(self, now):
+        if now < self.next_at:
+            return
+        self.next_at = now + self.every
+        try:
+            got = confirm(self.api.list_runs(), self.me, self.sent_at)
+        except Exception:                        # an API error: look again at the next check
+            got = None
+        if got == "started":
+            return self._set("done:dispatched", self.sent_why)
+        if got == "failed":
+            self.failures += 1
+            why = (f"the run it started never ran (GitHub ended it without a job); "
+                   f"dispatch failed ({self.failures}/{DISPATCH_TRIES})")
+            if self.failures >= DISPATCH_TRIES:
+                return self._set("done:error", why)
+            self.next_at = now + retry_in(self.failures, self.every)
+            return self._set(self.RETRY_STATE, why)
+        if now - self.sent_at >= CONFIRM_S or now >= self.deadline:
+            return self._set("done:dispatched", f"{self.sent_why} (not in the run list yet)")
 
 
 def decide(runs, me):
@@ -93,7 +149,7 @@ def check(api, me):
         return "unknown", f"GitHub API error, not dispatching: {str(ex)[:200]}"
 
 
-class Watcher:
+class Watcher(_Confirm):
     """The chain rules for one run as a step function (the CLI drives it with the real clock, tests with a fake).
     choose(now) -> (mode, why): what the next run does ('collect' / 'sleep'; default collect). early(now) -> True
     once this run's logger stopped because no bus runs: the first check is then at once, not `after` s in."""
@@ -119,9 +175,13 @@ class Watcher:
     def _set(self, state, why):
         self.state, self.why = state, why
 
+    RETRY_STATE = "leader"
+
     def step(self, now):
         if self.done:
             return
+        if self.state == "confirming":
+            return self._confirm(now)
         if now < self.next_at:
             if not (self.state == "sleeping" and self.early and self.early(now)):
                 return
@@ -139,7 +199,7 @@ class Watcher:
                 return self._set("done:dry-run", f"would start {what}")
             try:
                 self.api.dispatch(self.next_slot, mode)
-                return self._set("done:dispatched", f"started {what}")
+                return self._sent(now, f"started {what}")
             except Exception as ex:          # if it did start a run anyway, the next check sees 2 and stops
                 self.failures += 1
                 verdict, why = "leader", f"dispatch failed ({self.failures}/{DISPATCH_TRIES}): {str(ex)[:200]}"
@@ -149,7 +209,7 @@ class Watcher:
         self._set(verdict, why)
 
 
-class Sleeper:
+class Sleeper(_Confirm):
     """An idle run as a step function: no logging; it starts a collect run as soon as gate(now) says buses run
     (gate(now) -> (mode, why), e.g. live_gate()), and before its own time limit it starts the next idle run.
     It dispatches under the chain rules (only while it is the only active run; dispatch at most once), and
@@ -175,9 +235,13 @@ class Sleeper:
     def _set(self, state, why):
         self.state, self.why = state, why
 
+    RETRY_STATE = "waking"
+
     def step(self, now):
         if self.done or now < self.next_at:
             return
+        if self.state == "confirming":
+            return self._confirm(now)
         self.next_at = now + self.every
         if now >= self.t0 + self.hard:
             return self._set("done:gave-up", f"no dispatch within {self.hard / 60:.0f} min; last: {self.why}")
@@ -212,7 +276,7 @@ class Sleeper:
             return self._set("done:dry-run", f"would start {what}")
         try:
             self.api.dispatch(self.next_slot, nxt)
-            return self._set("done:dispatched", f"started {what}")
+            return self._sent(now, f"started {what}")
         except Exception as ex:
             self.failures += 1
             self._set("waking", f"dispatch failed ({self.failures}/{DISPATCH_TRIES}): {str(ex)[:200]}")
@@ -259,7 +323,7 @@ class GhApi:
 
     def list_runs(self):
         return json.loads(self._gh("run", "list", "-R", self.repo, "-w", WORKFLOW, "-L", "40",
-                                   "--json", "databaseId,status,createdAt,event"))
+                                   "--json", "databaseId,status,conclusion,createdAt,event"))
 
     def job_started(self, run_id):
         out = self._gh("api", f"repos/{self.repo}/actions/runs/{run_id}/jobs", "--jq",
@@ -367,7 +431,7 @@ def cmd_wait(a):
     state, why = s.get("state"), s.get("why", "")
     line = f"chain {state}: {why}"
     print(line)
-    if state == "done:dispatched":
+    if state in ("done:dispatched", "confirming"):     # confirming: dispatched, not in the run list yet at the end
         print(f"::notice title=Collect chain::{why}")
     elif state == "follower" or state == "done:off" or state == "done:dry-run":
         pass                                # another run leads / switched off on purpose
