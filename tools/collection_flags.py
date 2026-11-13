@@ -30,6 +30,10 @@ Measures (data/labeled/collection/README.md has the rules and the severity rule)
                            are missing from this line or filed under the other)
     listed_time_no_bus     10-min bins inside the listed hours with no bus of the line reporting, while the feed had
                            other buses and the collector polled
+    row_time_off_gps       logged visits whose row is more than 2 min from the GPS track's pass of the stop
+    stops_rarely_logged    stops the line's buses come within 120 m of that get under a quarter of the line's median
+                           rows per stop (the 40 m radius misses them)
+    listed_stops_not_driven  stops of the route order the buses do not come within 120 m of (no rows expected)
     report_gaps            share of a line's bus time in report gaps over 2 min while the bus drove on unseen
     frozen_gps             share of a line's bus time with the GPS position frozen while the bus was moving
   fleet facts (no line): reports with an empty or unknown route id, feed-silent listed time.
@@ -76,6 +80,9 @@ VISIT_MERGE_S = 900                  # hits of one bus at one stop within this =
                                      # 5th percentile 16 to 39 min; a route passing near its own stop twice merges)
 VISIT_MATCH_S = 600                  # a visit is logged when a row of that bus and stop lies within this
 ROW_OFF_S = 120                      # ... and that row's time is off the GPS pass when more than this away
+APPROACH_M = 500                     # closest approach of a line's buses to each of its stops is measured up to this
+NEAR_M = AL.NEAR_M                   # 120 m: buses come this close = the line serves the stop (the detector's own reach)
+RARE_SHARE, RARE_LOW_SHARE, RARE_MIN_MEDIAN = 0.25, 0.10, 40   # a stop under 25% (10%) of the line's median rows
 BIN_S = 600                          # 10-min bins (wrong-line test, listed time)
 DOWS = SS.DOWS
 CATEGORY = "collection"
@@ -412,6 +419,23 @@ class RouteStops:
                 per.setdefault(sid, [s["lat"], s["lon"], []])[2].append(heading(order, st.stops, j))
             self.by[str(rid)] = [(sid, la, lo, hds) for sid, (la, lo, hds) in per.items()]
 
+    def closest(self, rid, la0, lo0, la1, lo1, out, within=APPROACH_M):
+        """For each stop of the route within `within` m of the segment: out[stop] = min(out[stop], distance)."""
+        kx, ky = kxy(la0)
+        mx, my = (lo1 - lo0) * kx, (la1 - la0) * ky
+        L2 = mx * mx + my * my
+        pad = within / 111320.0
+        lat_lo, lat_hi = min(la0, la1) - pad, max(la0, la1) + pad
+        lon_lo, lon_hi = min(lo0, lo1) - 1.4 * pad, max(lo0, lo1) + 1.4 * pad
+        for sid, la, lo, _ in self.by.get(rid, ()):
+            if not (lat_lo <= la <= lat_hi and lon_lo <= lo <= lon_hi):
+                continue
+            ax, ay = (lo0 - lo) * kx, (la0 - la) * ky
+            f = 0.0 if L2 <= 1e-9 else max(0.0, min(1.0, -(ax * mx + ay * my) / L2))
+            d = math.hypot(ax + f * mx, ay + f * my)
+            if d <= within and d < out.get(sid, math.inf):
+                out[sid] = d
+
     def hits(self, rid, la0, lo0, la1, lo1):
         """[(stop_id, f)] stops of the route whose RADIUS_M circle the segment enters or crosses, moving the route's
         direction there (f = where along the segment it comes closest). A segment that starts inside the circle is
@@ -566,7 +590,7 @@ def poll_facts(day, polls, s, arr_by_veh, det):
         eps.append((veh, lab, drv, a, b, nb, rows))
     spans = {rid: spans_of(st.service, rid, day) for rid in routes}
     padded = {rid: [(a - BEFORE_START_S, b + AFTER_END_S) for a, b in sp] for rid, sp in spans.items()}
-    missed, stop_c = [], defaultdict(Counter)
+    missed, stop_c, closest = [], defaultdict(Counter), defaultdict(dict)
     for veh, tr in polls.tracks.items():
         wr = wrong.get(veh, ())
         hits = defaultdict(list)
@@ -584,6 +608,7 @@ def poll_facts(day, polls, s, arr_by_veh, det):
                     mark(det, day, rid, "report_gaps", p[0], veh, w=dt / 60)
             if dt > MAX_GAP_S or not in_any(padded.get(rid, ()), q[0]) or in_any(wr, q[0]):
                 continue
+            geo.closest(rid, p[3], p[4], q[3], q[4], closest[rid])
             for sid, f in geo.hits(rid, p[3], p[4], q[3], q[4]):
                 hits[(rid, sid)].append(p[0] + f * dt)
         for rid, a, b in frozen_runs(tr):
@@ -644,6 +669,9 @@ def poll_facts(day, polls, s, arr_by_veh, det):
                 else:
                     F[rid]["listed_nobus_bins"] += 1
                     mark(det, day, rid, "listed_time_no_bus", bn * BIN_S)
+    for rid, per in closest.items():
+        for sid, d in per.items():
+            stop_c[(rid, sid)]["closest_m"] = round(d, 1)       # a min, not a sum: collect() keeps it per day
     return F, eps, missed, stop_c
 
 
@@ -699,7 +727,7 @@ def collect(dl, d0=FIRST_DAY, d1=None, cache=None, polls=True, log=print):
     for r in arr:
         by_day_veh[r["day"]][r["vehicle_id"]].append(r)
     out = {"F": F, "det": det, "names": names, "days": days, "poll_days": [], "episodes": [], "missed": [],
-           "stops": defaultdict(Counter), "fleet": defaultdict(Counter), "statics": statics}
+           "stops": defaultdict(Counter), "fleet": defaultdict(Counter), "statics": statics, "line_stops": {}}
     if not polls:
         return out
     for d in days:
@@ -715,6 +743,9 @@ def collect(dl, d0=FIRST_DAY, d1=None, cache=None, polls=True, log=print):
             names.setdefault(rid, s["st"].route_name(rid))
         for (rid, sid), c in stop_c.items():
             out["stops"][(d, rid, sid)].update(c)
+        for rid, order in (s["st"].route_stops or {}).items():
+            vonly = s["st"].variant_only.get(rid, set())
+            out["line_stops"][(d, rid)] = {sid for j, sid in enumerate(order) if j not in vonly}
         out["episodes"] += [(d,) + e for e in eps]
         out["missed"] += [(d,) + m for m in missed]
         fl = out["fleet"][d]
@@ -803,6 +834,75 @@ def summarize(col):
                 for g in ("high", "medium", "low"):
                     row[f"days_over_{g}"] = over.get(g, "")
                 row["grade"] = grade(m, row) if rid != "ALL" else ""
+                out.append(row)
+    return out + (stop_summary(col) if col.get("line_stops") else [])
+
+
+def stop_logging(col, days):
+    """{(route_id, stop_id): facts} for every stop of a line's route order on the period's days with raw polls: rows
+    (any source), the line's median rows per stop, the days the stop was listed, and the median over those days of the
+    closest approach of the line's buses (None = never within APPROACH_M)."""
+    dset = set(days)
+    rows = defaultdict(Counter)
+    for (d, rid, m), x in col["det"].items():
+        if m == "rows:all" and d in dset:
+            rows[rid].update(x["s"])
+    listed = defaultdict(list)
+    for (d, rid), sids in col.get("line_stops", {}).items():
+        if d in dset and col["F"].get((d, rid), {}).get("rows"):
+            for sid in sids:
+                c = col["stops"].get((d, rid, sid))
+                listed[(rid, sid)].append(c["closest_m"] if c and "closest_m" in c else None)
+    by_line = defaultdict(list)
+    for (rid, sid) in listed:
+        by_line[rid].append(sid)
+    out = {}
+    for rid, sids in by_line.items():
+        med = statistics.median(rows[rid].get(x, 0) for x in sids)
+        for sid in sids:
+            ap = listed[(rid, sid)]
+            got = sorted(x for x in ap if x is not None)
+            # days with no approach at all count as farther than any measured one
+            close = statistics.median(got + [math.inf] * (len(ap) - len(got))) if ap else None
+            out[(rid, sid)] = {"rows": rows[rid].get(sid, 0), "line_median": med, "days_listed": len(ap),
+                               "closest_m": None if close is None or close == math.inf else round(close),
+                               "rare": med >= RARE_MIN_MEDIAN and rows[rid].get(sid, 0) < RARE_SHARE * med}
+    return out
+
+
+STOP_MEASURES = {"stops_rarely_logged": "stops the line's buses come within 120 m of (the line's route order)",
+                 "listed_stops_not_driven": "stops of the line's route order"}
+
+
+def stop_summary(col):
+    """line_summary.csv rows for the two stop-level measures (whole-period counts, not daily rates)."""
+    names, out = col["names"], []
+    for per, days in periods(col["days"]).items():
+        sl = stop_logging(col, days)
+        lines = sorted({rid for rid, _ in sl})
+        for m in STOP_MEASURES:
+            pick = (lambda f: f["rare"] and f["closest_m"] is not None and f["closest_m"] <= NEAR_M)                 if m == "stops_rarely_logged" else (lambda f: f["rare"] and (f["closest_m"] is None or f["closest_m"] > NEAR_M))
+            tot_n = sum(1 for f in sl.values() if pick(f))
+            tot_d = len(sl)
+            base = rate(tot_n, tot_d)
+            for rid in lines + ["ALL"]:
+                mine = {k: f for k, f in sl.items() if rid == "ALL" or k[0] == rid}
+                hit = sorted((k for k, f in mine.items() if pick(f)), key=lambda k: (mine[k]["rows"], k))
+                v = rate(len(hit), len(mine))
+                row = {"period": per, "route_id": rid, "route": names.get(rid, rid) if rid != "ALL" else "All lines",
+                       "measure": m, "value": round(v, 3), "baseline": round(base, 3), "numerator": len(hit),
+                       "denominator": len(mine), "unit": STOP_MEASURES[m], "events": len(hit),
+                       "days": len(days), "data_from": days[0], "data_to": days[-1],
+                       "ratio": round(v / base, 3) if base else "", "excess": round(v - base, 3),
+                       "days_over_high": "", "days_over_medium": "", "days_over_low": "", "grade": "",
+                       "stops": [(k[1], mine[k]) for k in hit]}
+                if rid != "ALL" and hit:
+                    worst = min(mine[k]["rows"] / mine[k]["line_median"] for k in hit)
+                    long_ = max(mine[k]["days_listed"] for k in hit)
+                    if m == "stops_rarely_logged":
+                        row["grade"] = "high" if worst < RARE_LOW_SHARE and long_ >= 7 else "medium"
+                    else:
+                        row["grade"] = "low"
                 out.append(row)
     return out
 
@@ -908,6 +1008,19 @@ TEXT = {   # measure: (metric, agent_action, extra evidence files)
         "arrivals inside these gaps were timed by interpolation or missed: weight down segments that span a gap; "
         "E30's feed_drop_mid_route / sparse_reporting are the 5-min-plus gaps near transitions",
         ""),
+    "stops_rarely_logged": (
+        "share of the line's stops (its route order) that its buses come within 120 m of but that get under a quarter "
+        "of the line's median rows per stop (the collector's 40 m radius misses the stop as the buses drive it)",
+        "the scope's stops have almost no ground truth although the buses serve them: never score or train them as "
+        "if visits were rare (the rows are missing, not the service); a detector that keeps the closest approach to a "
+        "named stop within 120 m would log them (a replay, the owner's call)",
+        "stop_coverage.csv"),
+    "listed_stops_not_driven": (
+        "share of the line's stops (its route order) that its buses do not come within 120 m of on most days and that "
+        "get under a quarter of the line's median rows per stop",
+        "the timetable lists stops these buses do not drive to: expect no rows there (no collection gap) and never "
+        "count them in the line's stop coverage",
+        "stop_coverage.csv"),
     "frozen_gps": (
         "share of the line's labeled bus time with the GPS position frozen while the bus was moving (5 or more "
         "reports over 5 min or more at identical coordinates)",
@@ -1030,6 +1143,13 @@ def flag_note(m, ra, rr, use, d, col, rid, days, names):
     def pc(x):
         return f"{x:.1f}%" if x >= 0.95 or x == 0 else f"{x:.2f}%"
     bits = []
+    if m in STOP_MEASURES:
+        sn = stop_names(col)
+        for sid, f in use["stops"]:
+            ap = f"closest {f['closest_m']} m" if f["closest_m"] is not None else f"never within {APPROACH_M} m"
+            bits.append(f"{sid} {sn.get(sid, '')} {f['rows']} rows (line median {f['line_median']:g}), {ap}")
+        bits.append(f"{use['numerator']} of {use['denominator']} stops, {use['days']} days")
+        return "; ".join(bits).replace(";", ",").replace("=", " ")
     if ra:
         bits.append(f"all days {pc(ra['value'])} (all lines {pc(ra['baseline'])})")
     if rr:
@@ -1070,7 +1190,10 @@ def build_flags(summary, col, today, prev=None):
             continue
         use, per = (ra, "all") if SEV_ORDER[ga] <= SEV_ORDER[gr] else (rr, "recent")
         sev = use["grade"]
-        parts, d = scope_for(col, rid, m, pers[per], use["value"])
+        if m in STOP_MEASURES:
+            parts, d = ["stops=" + "|".join(sid for sid, _ in use["stops"])], new_det()
+        else:
+            parts, d = scope_for(col, rid, m, pers[per], use["value"])
         parts.append("note=" + flag_note(m, ra, rr, use, d, col, rid, pers[per], col["names"]))
         metric, action, extra = TEXT[m]
         metric += " (percent; " + ("last 14 service days" if per == "recent" else "all collected days") + ")"
@@ -1100,8 +1223,9 @@ SUMMARY_COLS = ["period", "route_id", "route", "measure", "value", "baseline", "
                 "denominator", "unit", "events", "days", "days_over_high", "days_over_medium", "days_over_low", "grade",
                 "data_from", "data_to"]
 STOP_COLS = ["period", "route_id", "route", "stop_id", "stop", "visits", "logged", "logged_other_line", "missed",
-             "missed_share", "row_off", "row_off_share", "line_missed_share", "rows", "gps_rows", "pass_rows",
-             "pred_target_rows", "nopred_rows", "nopred_share", "hotspot"]
+             "missed_share", "row_off", "row_off_share", "line_missed_share", "rows", "line_median_rows",
+             "days_listed", "closest_m", "gps_rows", "pass_rows", "pred_target_rows", "nopred_rows", "nopred_share",
+             "hotspot"]
 EP_COLS = ["service_day", "vehicle_id", "label_route_id", "label_route", "driven_route_id", "driven_route", "start",
            "end", "minutes", "rows_filed_under_label"]
 MISS_COLS = ["service_day", "local_time", "vehicle_id", "route_id", "route", "stop_id", "stop"]
@@ -1147,7 +1271,10 @@ def stop_rows(col, summary):
         acc = defaultdict(Counter)
         for (d, rid, sid), c in col["stops"].items():
             if d in dset:
-                acc[(rid, sid)].update(c)
+                acc[(rid, sid)].update({k: v for k, v in c.items() if k != "closest_m"})
+        sl = stop_logging(col, days) if col.get("line_stops") else {}
+        for k in sl:
+            acc[k]
         for (d, rid, m), x in col["det"].items():
             if d not in dset or m not in ("rows:all", "gps_only_rows", "feed_skipped_stops", "no_passio_time:all",
                                           "no_passio_time"):
@@ -1164,12 +1291,18 @@ def stop_rows(col, summary):
                 hot.append("missed")
             if c["pred_target_rows"] >= 30 and rate(c["nopred_rows"], c["pred_target_rows"]) >= 75:
                 hot.append("no_passio_time")
+            f = sl.get((rid, sid))
+            if f and f["rare"]:
+                hot.append("rarely_logged" if f["closest_m"] is not None and f["closest_m"] <= NEAR_M else "not_driven")
             out.append({"period": per, "route_id": rid, "route": names.get(rid, rid), "stop_id": sid,
                         "stop": sn.get(sid, ""), "visits": c["visits"], "logged": c["logged"],
                         "logged_other_line": c["logged_other_line"], "missed": c["missed"],
                         "missed_share": round(ms, 2), "row_off": c["row_off"],
                         "row_off_share": round(rate(c["row_off"], c["logged"]), 2), "line_missed_share": round(lr, 2),
-                        "rows": c["rows"], "gps_rows": c["gps_rows"], "pass_rows": c["pass_rows"],
+                        "rows": c["rows"], "line_median_rows": f["line_median"] if f else "",
+                        "days_listed": f["days_listed"] if f else "",
+                        "closest_m": (f["closest_m"] if f["closest_m"] is not None else f">{APPROACH_M}") if f else "",
+                        "gps_rows": c["gps_rows"], "pass_rows": c["pass_rows"],
                         "pred_target_rows": c["pred_target_rows"], "nopred_rows": c["nopred_rows"],
                         "nopred_share": round(rate(c["nopred_rows"], c["pred_target_rows"]), 2),
                         "hotspot": "|".join(hot)})

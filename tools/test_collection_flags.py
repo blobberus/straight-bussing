@@ -297,6 +297,27 @@ def test_write_csv_is_deterministic_and_gzips_without_a_timestamp():
             gzip.decompress(a.read_bytes()).decode() == "x,y\n1,2.3\ns,3\n"
 
 
+@test
+def test_stop_logging_tells_a_missed_stop_from_one_not_driven():
+    days = [f"2026-11-{d:02d}" for d in range(2, 12)]                        # 10 days
+    col = {"F": defaultdict(Counter), "det": defaultdict(C.new_det), "names": {"A": "Route A"}, "days": days,
+           "stops": defaultdict(Counter), "line_stops": {}, "episodes": [], "missed": []}
+    for d in days:
+        col["F"][(d, "A")]["rows"] = 400
+        col["line_stops"][(d, "A")] = {"s1", "s2", "s3", "s4", "s5"}
+        col["det"][(d, "A", "rows:all")]["s"].update({"s1": 100, "s2": 100, "s3": 100, "s4": 2, "s5": 1})
+        for sid, m in (("s1", 5), ("s2", 8), ("s3", 3), ("s4", 63)):                # s5: never within 500 m
+            col["stops"][(d, "A", sid)]["closest_m"] = m
+    sl = C.stop_logging(col, days)
+    assert sl[("A", "s4")]["rare"] and sl[("A", "s4")]["closest_m"] == 63 and sl[("A", "s4")]["line_median"] == 1000
+    assert sl[("A", "s5")]["rare"] and sl[("A", "s5")]["closest_m"] is None and not sl[("A", "s1")]["rare"]
+    rows = {(r["period"], r["route_id"], r["measure"]): r for r in C.stop_summary(col)}
+    r = rows[("all", "A", "stops_rarely_logged")]
+    assert r["grade"] == "high" and r["numerator"] == 1 and [x for x, _ in r["stops"]] == ["s4"]
+    assert rows[("all", "A", "listed_stops_not_driven")]["grade"] == "low"
+    assert rows[("all", "ALL", "stops_rarely_logged")]["grade"] == ""
+
+
 if __name__ == "__main__":
     failed = 0
     for fn in TESTS:
