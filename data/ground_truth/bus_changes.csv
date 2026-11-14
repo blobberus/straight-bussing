@@ -1038,4 +1038,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5704,Downtown Campus Connector,1794629370,2026-11-13 22:09:30,drop,4,3,12647,8612,Goldblatt Pavilion,1794629370,874028,12642;12645;4324,6,4,0,,,1,
 5704,Downtown Campus Connector,1794629555,2026-11-13 22:12:35,drop,3,2,12645,132963,Gleacher Center,1794629555,874028,12642;4324,6,4,0,,,1,
 5704,Downtown Campus Connector,1794630020,2026-11-13 22:20:20,drop,2,1,12642,155005,S Lake Park Ave & E Hyde Park Blvd,1794630020,874028,4324,6,4,0,,,1,
-1075,North,1794630262,2026-11-13 22:24:22,drop,2,1,12648,8637,Alumni House (NW Corner),1794630262,501606,12644,2,1,0,1076,,,
+1075,North,1794630262,2026-11-13 22:24:22,drop,2,1,12648,8637,Alumni House (NW Corner),1794630262,501606,12644,2,1,0,1076,,1,
