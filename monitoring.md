@@ -19,7 +19,8 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
   6 min). `the run it started never ran` in a Self-chain line = this happened and was handled.
   GitHub can also keep a dispatched run **queued** for over an hour (75 min on Nov 16, 2026: nothing logged 12:02 to
   12:47 PM, DC-028). Since then a run holds (collect_chain.py rule 7): from 65 min on its watcher checks every minute
-  whether another run's `Log arrivals` step is running, and if none is, the logger keeps going past its 70 min until one
+  whether another collect run is running (any run whose job started: an idle run too), and if none is, the logger keeps
+  going past its 70 min until one
   is, at most 90 min more (job limit 185 min). The run summary then says `held N min past the 70 (why)`, with a notice.
   Off switch: repo variable `COLLECT_CHAIN=off`, or Disable workflow. A run's summary says `Self-chain: done:dispatched`. Each run merges its rows with `tools/merge_arrivals.py`
   (drops overlap duplicates) into `data/ground_truth/arrivals.csv` on the orphan **`data`** branch, refreshes
@@ -117,7 +118,7 @@ Git Bash gotcha: it rewrites `rev:path` arguments (`git show origin/data:data/..
 | issue: `The daily archive lacks files for N day(s)` | The archive job failed or did not fire | `gh workflow run archive.yml` (catches up 85 days); a day with only some files: `gh workflow run archive.yml -f day=YYYY-MM-DD -f replace=true`. Before the artifacts expire (the issue says how many days are left). |
 | data-repo issue: `the collector looks stopped` (watchdog) | The self-chain and the cron backstop both stopped | `python tools/monitor.py dispatch`; then find why (the last run's Self-chain line). |
 | a run (here or in the data repo) with conclusion `startup_failure`, or `failure` with no job, right after a chain dispatch | GitHub accepted the dispatch and never ran the job (DC-025, DC-027) | Nothing, if the chain went on (since 2026-11-13 both chains watch the new run and dispatch again: Self-chain line `the run it started never ran`). If it did not (`gh run list -w collect.yml` / `-R blobberus/straight-bussing-data -w sync.yml` shows nothing newer): `python tools/monitor.py dispatch` (data repo: `gh workflow run sync.yml -R blobberus/straight-bussing-data`); log it. |
-| a run's summary `held N min past the 70 (...)` / notice `Logger held past 70 min` | No other run was logging at its 70 min: the run it started sat in GitHub's queue (DC-028), its dispatch failed, or the API failed | Nothing if the next run then started (the hold bridged it). Several in a row, or `held 90 min`: check https://www.githubstatus.com and `gh run list -w collect.yml` for a run stuck in `queued`; `python tools/monitor.py holes --days 1`; log it. A run that held while another run did log = a bug in `collect_chain.py other_logger` (`python tools/test_chain.py`). |
+| a run's summary `held N min past the 70 (...)` / notice `Logger held past 70 min` | No other run was running at its 70 min: the run it started sat in GitHub's queue (DC-028), its dispatch failed, or the API failed | Nothing if the next run then started (the hold bridged it). Several in a row, or `held 90 min`: check https://www.githubstatus.com and `gh run list -w collect.yml` for a run stuck in `queued`; `python tools/monitor.py holes --days 1`; log it. A run that held while another run was running = a bug in `collect_chain.py other_running` (`python tools/test_chain.py`). |
 
 ## Take over locally
 Start it with the **Bash tool, `run_in_background: true`**:

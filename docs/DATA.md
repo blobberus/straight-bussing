@@ -430,9 +430,11 @@ its job (`startup_failure`, or `failure` with no job; it follows the new run unt
 (tests: `tools/test_chain.py`, incl. a 72-h simulation with crashes and
 manual dispatches). **Hold** (since 2026-11-16, DC-028, `collect_chain.py` rule 7): GitHub can accept a dispatch and
 keep the new run queued for over an hour (75 min on Nov 16, 2026: nothing logged 12:02 to 12:47 PM), so from 65 min on
-the watcher asks every minute whether another run's `Log arrivals` step has been running for a minute; if none has (or
+the watcher asks every minute whether another collect run's job has been running for a minute; if none has (or
 the API fails: when unsure, collect) it writes `hold` into its state file and the logger (`truth_logger.py --hold-file`)
-keeps polling past its 70 min until another run logs, at most 90 min more (job limit 185 min). The hold never
+keeps polling past its 70 min until another run runs, at most 90 min more (job limit 185 min). Any running run counts,
+idle runs too: an idle run waits for the older run to end before it starts a collect run, so holding next to it would
+deadlock the two (the week simulation found it in the first version, live 2:15 to 2:57 PM Nov 16). The hold never
 dispatches anything; a run that held says `held N min past the 70 (why)` in its summary, with a notice.
 Off switch: repo variable `COLLECT_CHAIN=off` (Settings > Secrets and variables >
 Actions > Variables), or "Disable workflow" in the Actions tab (the keepalive step respects that). Each run:
