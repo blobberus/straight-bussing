@@ -299,6 +299,16 @@ def check_archive(assets, now):
                                 "before then.")}
 
 
+def watchdog_runs(runs):
+    """collect.yml's run list (gh run list --json status,displayTitle) -> (collecting, idle, queued) counts. Only a run in
+    progress logs or watches: a run GitHub keeps queued does nothing (on 2026-11-16 one sat queued 75 min and nothing
+    logged 12:01 to 12:47 PM, DC-028; this watchdog counted it as collecting)."""
+    idle = lambda x: str(x.get("displayTitle", "")).startswith("Collector idle")
+    running = [x for x in runs if x.get("status") == "in_progress"]
+    queued = [x for x in runs if x.get("status") in ("queued", "waiting", "requested", "pending")]
+    return sum(not idle(x) for x in running), sum(idle(x) for x in running), len(queued)
+
+
 def check_watchdog(buses, newest, now, collecting, idle_only=False):
     """The collector seen from outside (the public data repo's sync chain, which runs on its own schedule, so it still
     runs when the collector's self-chain and its cron backstop have both stopped). buses = live buses Passio reports
@@ -530,13 +540,11 @@ def cmd_watchdog(a):
     if r.returncode:
         print(f"health watchdog: cannot list {a.app_repo}'s runs ({(r.stderr or '').strip()[:200]}): saying nothing")
         return
-    active = [x for x in json.loads(r.stdout or "[]") if x.get("status") in ("in_progress", "queued", "waiting", "requested")]
-    idle = [x for x in active if str(x.get("displayTitle", "")).startswith("Collector idle")]
-    collecting = len(active) > len(idle)
+    collecting, idle, queued = watchdog_runs(json.loads(r.stdout or "[]"))
     print(f"health watchdog: feed {'ok' if ok else 'unreadable'}, {buses} live bus(es); newest arrival "
           f"{'none' if newest is None else f'{(time.time() - newest) / 60:.0f} min old'}; "
-          f"{len(active) - len(idle)} collecting run(s), {len(idle)} idle")
-    problems = check_watchdog(buses, newest, time.time(), collecting, bool(idle)) if ok else {}
+          f"{collecting} collecting run(s), {idle} idle, {queued} queued or waiting")
+    problems = check_watchdog(buses, newest, time.time(), collecting > 0, idle > 0) if ok else {}
     if problems and os.environ.get("COLLECT_DISPATCH_TOKEN"):
         d = subprocess.run(["gh", "workflow", "run", "collect.yml", "-R", a.app_repo, "--ref", "main", "-f", "slot=a",
                             "-f", "mode=collect"], capture_output=True, text=True, timeout=60,

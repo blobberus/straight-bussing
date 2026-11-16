@@ -190,6 +190,19 @@ def the_watchdog_speaks_only_when_buses_run_and_nothing_collects_them():
     assert "no arrival on the data branch" in H.check_watchdog(2, None, now, False)["watchdog:stopped"]
 
 
+@test
+def the_watchdog_counts_only_runs_in_progress_as_collecting():
+    # DC-028: on 2026-11-16 12:01-12:47 PM the only collect run was 'queued' (GitHub held it 75 min) and the watchdog
+    # counted it as collecting, so it could never have spoken
+    coll, idle = "Collect ground truth", "Collector idle: no buses running (checks the feed every 2 min)"
+    runs = [{"status": "queued", "displayTitle": coll}, {"status": "completed", "displayTitle": coll}]
+    assert H.watchdog_runs(runs) == (0, 0, 1)
+    assert H.watchdog_runs(runs + [{"status": "in_progress", "displayTitle": idle}]) == (0, 1, 1)
+    assert H.watchdog_runs(runs + [{"status": "in_progress", "displayTitle": coll + " (backstop: collect or idle)"},
+                                   {"status": "pending", "displayTitle": coll}]) == (1, 0, 2)
+    assert H.watchdog_runs([]) == (0, 0, 0)
+
+
 class FakeIssues:
     def __init__(self):
         self.issue, self.log = None, []
