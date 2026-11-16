@@ -125,9 +125,11 @@ jobs:
         run: |
           # --live / --logger-status: the next run collects or idles (service_gate), and starts at once if the
           # logger stops early (no bus for 30 min, or a crash); --hold-after: from 65 min on, every minute, whether
-          # another collect run is running (else the logger holds past its 70 min: rule 7, DC-028)
+          # another collect run is running (else the logger holds past its 70 min: rule 7, DC-028). Only if these tools
+          # know it: the fallback code (tag collector-ok) can be older than this file, and an unknown option stops it
+          HOLD=(); python tools/collect_chain.py watch --help 2>/dev/null | grep -q -- --hold-after && HOLD=(--hold-after 3900)
           nohup python tools/collect_chain.py watch --slot "$SLOT" --state "$RUNNER_TEMP/chain.json" \
-            --live "$RUNNER_TEMP/live.json" --logger-status "$RUNNER_TEMP/logger.json" --hold-after 3900 \
+            --live "$RUNNER_TEMP/live.json" --logger-status "$RUNNER_TEMP/logger.json" "${HOLD[@]}" \
             > "$RUNNER_TEMP/chain.log" 2>&1 < /dev/null &
           echo "slot $SLOT, watcher pid $!, COLLECT_CHAIN='${COLLECT_CHAIN}'"
       - name: Refresh static network data
@@ -169,11 +171,14 @@ jobs:
           # 2 -> 1 bus transitions; merged into data/ground_truth/bus_changes.csv below and classified there);
           # --stop-when-idle: stop once no bus has reported for 30 min and no route is about to start (service_gate.py);
           # --hold-file / --hold-max: past the 70 min while the chain watcher says no other run runs yet, at most 90 min
+          # (only if these tools know it: the fallback code can be older than this file; an unknown option = no logger)
+          HOLD=(); python tools/truth_logger.py --help 2>/dev/null | grep -q -- --hold-file \
+            && HOLD=(--hold-file "$RUNNER_TEMP/chain.json" --hold-max 5400)
           python tools/truth_logger.py --duration 4200 --seed "$RUNNER_TEMP/seed.csv" --out "$RUNNER_TEMP/run.csv" \
             --status-file "$RUNNER_TEMP/logger.json" --raw-out "$RUNNER_TEMP/raw/raw-polls.jsonl" \
             --pred-out "$RUNNER_TEMP/run_pred.csv" --pred-log "$RUNNER_TEMP/pred/pred-updates.jsonl" \
             --alerts-out "$RUNNER_TEMP/run_alerts.csv" --changes-out "$RUNNER_TEMP/run_changes.csv" \
-            --stop-when-idle --live-file "$RUNNER_TEMP/live.json" --hold-file "$RUNNER_TEMP/chain.json" --hold-max 5400
+            --stop-when-idle --live-file "$RUNNER_TEMP/live.json" "${HOLD[@]}"
       - name: Keep the raw position polls (RouteKnower E03; artifact, 90 days, never on the data branch)
         if: always() && steps.gate.outputs.mode == 'collect'
         continue-on-error: true

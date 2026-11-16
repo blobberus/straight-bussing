@@ -178,14 +178,53 @@ def the_hold_is_wired_between_the_watcher_and_the_logger():
     import re
     yml = (ROOT / ".github" / "workflows" / "collect.yml").read_text(encoding="utf-8")
     watch, log = step(yml, "Start the self-chain watcher"), step(yml, "Log arrivals")
-    assert "--hold-after 3900" in watch and '--state "$RUNNER_TEMP/chain.json"' in watch, watch
-    assert '--hold-file "$RUNNER_TEMP/chain.json" --hold-max 5400' in log and "--duration 4200" in log, log
+    assert "HOLD=(--hold-after 3900)" in watch and '--state "$RUNNER_TEMP/chain.json"' in watch, watch
+    assert 'HOLD=(--hold-file "$RUNNER_TEMP/chain.json" --hold-max 5400)' in log and "--duration 4200" in log, log
+    assert watch.count('"${HOLD[@]}"') == 1 and log.count('"${HOLD[@]}"') == 1, (watch, log)
     head = yml[yml.index("- name: Log arrivals"):]
     step_min = int(re.search(r"timeout-minutes: (\d+)", head[:head.index("run: |")]).group(1))   # the step's own limit
     job_min = int(re.search(r"timeout-minutes: \$\{\{ inputs.mode == 'sleep' && 355 \|\| (\d+) \}\}", yml).group(1))
     assert step_min * 60 >= 4200 + 5400 + 60 and job_min >= step_min + 15, (step_min, job_min)
     import collect_chain as C
     assert C.Hold(None, 0, 0).until >= 4200 + 5400, "the watcher must decide the hold for as long as the logger may hold"
+
+
+@test
+def older_fallback_tools_get_no_hold_options():
+    # DC-028: a run whose main code fails its self-test uses tools/ of the tag collector-ok with THIS workflow file. On
+    # Nov 16 the tag could not move past 714d7f7b (no --hold-*): passing the options regardless would stop its logger
+    # (argparse: unrecognized arguments) and its watcher. Run each step's HOLD=... lines against both kinds of tools.
+    yml = (ROOT / ".github" / "workflows" / "collect.yml").read_text(encoding="utf-8")
+    bash = shutil.which("bash") or r"C:\Program Files\Git\bin\bash.exe"
+    env = {**os.environ, "RUNNER_TEMP": "/tmp/rt"}
+    if os.name == "nt":
+        env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
+    old_tools = {"truth_logger.py": "import argparse\nap = argparse.ArgumentParser()\nap.add_argument('--duration')\n"
+                                    "ap.parse_args()\n",
+                 "collect_chain.py": "import argparse\nap = argparse.ArgumentParser()\ns = ap.add_subparsers()\n"
+                                     "w = s.add_parser('watch')\nw.add_argument('--slot')\nap.parse_args()\n"}
+    for name, tool in (("Start the self-chain watcher", "collect_chain.py"), ("Log arrivals", "truth_logger.py")):
+        script = step(yml, name)
+        i = script.index("HOLD=()")
+        j = script.index(")", script.index("HOLD=(-", i)) + 1          # through the assignment (it may span 2 lines)
+        snippet = script[i:j] + '\nprintf "<%s>" "${HOLD[@]}"\n'
+        for kind in ("new", "old"):
+            d = Path(tempfile.mkdtemp(prefix="sb-yml-hold-"))
+            (d / "tools").mkdir()
+            if kind == "new":
+                for f in ("truth_logger.py", "collect_chain.py"):
+                    shutil.copy(TOOLS / f, d / "tools" / f)
+                for f in TOOLS.glob("*.py"):                            # their imports
+                    if not (d / "tools" / f.name).exists():
+                        shutil.copy(f, d / "tools" / f.name)
+                shutil.copytree(ROOT / "web" / "data", d / "web" / "data")
+            else:
+                (d / "tools" / tool).write_text(old_tools[tool], encoding="utf-8")
+            r = subprocess.run([bash, "-e", "-c", snippet], cwd=d, capture_output=True, text=True, env=env, timeout=120)
+            assert r.returncode == 0, (name, kind, r.stderr[-500:])
+            want = ("<--hold-after><3900>" if tool == "collect_chain.py" else
+                    "<--hold-file></tmp/rt/chain.json><--hold-max><5400>") if kind == "new" else "<>"
+            assert r.stdout == want, (name, kind, r.stdout, r.stderr[-300:])
 
 
 def main():
