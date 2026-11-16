@@ -44,6 +44,8 @@ BUSY = 0.9                        # a slot is "normally busy" when this share of
 GAP_SLOTS = 2                     # this many busy slots in a row with no arrival = a collection gap (20 min)
 VOLUME = 0.6                      # a day with fewer arrivals than this share of its usual count
 ROUTE_LOW, ROUTE_MIN = 0.2, 100   # a route under this share of its usual count (routes that usually log >= ROUTE_MIN)
+ROUTE_ZERO_MIN = 20               # a route that usually logs this many but logged none (DC-028: Regents Express, about
+                                  # 40 a weekday, logged 0 on Fri Nov 13, 2026 and no check said so)
 PRED_LOW = 0.5                    # share of (non-gps) arrivals that carry Passio's prediction (usual 80 to 95%)
 OUTAGE_S = 900                    # a run that could not read the vehicle feed this long
 FIRST_ARCHIVE_DAY = "2026-10-12"  # the first day archived with prediction updates
@@ -245,8 +247,9 @@ def check_data(rows, now, days_back=2, refs_days=28, calendar=None):
                 got = per_route.get(d, Counter())
                 for name in sorted({n for x in refs for n in per_route[x]}):
                     m = statistics.median(per_route[x].get(name, 0) for x in refs)
-                    if m >= ROUTE_MIN and got.get(name, 0) < ROUTE_LOW * m:
-                        p[f"data:route:{d}:{name}"] = (f"{name} logged {got.get(name, 0)} arrivals on {day_label(d)} (usually about "
+                    n = got.get(name, 0)
+                    if (m >= ROUTE_MIN and n < ROUTE_LOW * m) or (m >= ROUTE_ZERO_MIN and n == 0):
+                        p[f"data:route:{d}:{name}"] = (f"{name} logged {n} arrivals on {day_label(d)} (usually about "
                                                        f"{m:,.0f}). If it did not run (check the operator's alerts), nothing to fix.")
         if finished and mine:
             bad = sum(1 for r in mine if not r[6])

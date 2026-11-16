@@ -115,6 +115,32 @@ def the_data_check_flags_a_thin_day_a_missing_route_duplicates_and_missing_predi
 
 
 @test
+def a_small_route_that_logged_nothing_is_flagged():
+    """DC-028: Regents Express (about 40 arrivals a weekday evening) logged none on Fri Nov 13, 2026; the 20% rule only
+    looked at routes with >= 100 a day, so nothing said so. A route that usually logs >= ROUTE_ZERO_MIN and logged 0 is
+    flagged; one that logged a few is left to the checkups (a short evening is normal for it)."""
+    def small(d, n):
+        return [(at(d, 18) + 300 * i, "Regents", "R1", f"S{i % 7}", "transition", True, True) for i in range(n)]
+    def tiny(d, n):
+        return [(at(d, 19) + 600 * i, "Tiny", "T1", f"S{i % 3}", "transition", True, True) for i in range(n)]
+    rows, d0 = [], date(2026, 10, 19)
+    target, other = date(2026, 11, 13), date(2026, 11, 12)
+    for k in range(26):
+        d = d0 + timedelta(days=k)
+        if d.weekday() >= 5:
+            continue
+        rows += day_rows(d)
+        rows += small(d, 0 if d == target else 10 if d == other else 40)
+        rows += tiny(d, 0 if d == target else 12)
+    p = H.check_data(rows, at(date(2026, 11, 14), 9), calendar={})
+    assert "data:route:2026-11-13:Regents" in p and "logged 0 arrivals" in p["data:route:2026-11-13:Regents"], p
+    assert "usually about 40" in p["data:route:2026-11-13:Regents"], p
+    assert "data:route:2026-11-12:Regents" not in p, p      # 10 of 40: the 20% rule is for routes of >= 100 only
+    assert not any(":Tiny" in k for k in p), p                # usually 12: under ROUTE_ZERO_MIN, never flagged
+    assert not any(k.startswith(("data:volume", "data:gap")) for k in p), p
+
+
+@test
 def breaks_and_holidays_pause_the_data_checks():
     rows, d0 = [], date(2026, 11, 2)
     for k in range(24):
