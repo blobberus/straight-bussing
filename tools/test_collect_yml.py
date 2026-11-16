@@ -227,6 +227,73 @@ def older_fallback_tools_get_no_hold_options():
             assert r.stdout == want, (name, kind, r.stdout, r.stderr[-300:])
 
 
+@test
+def the_tag_moves_even_when_github_refuses_a_workflow_change():
+    # DC-028: from Nov 16 GitHub refused the run's token to move collector-ok from 714d7f7b to a commit whose
+    # collect.yml differs ("refusing to allow a GitHub App to create or update workflow ... without workflows
+    # permission"), so the fallback code froze. A pre-receive hook plays GitHub here.
+    yml = (ROOT / ".github" / "workflows" / "collect.yml").read_text(encoding="utf-8")
+    script = step(yml, "Mark main's collector code as good")
+    bash = shutil.which("bash") or r"C:\Program Files\Git\bin\bash.exe"
+    zero = "0" * 40
+    hook = ("#!/bin/sh\nwhile read old new ref; do\n"
+            f"  [ \"$old\" = {zero} ] && continue\n"
+            "  if ! git diff --quiet \"$old\" \"$new\" -- .github/workflows; then\n"
+            "    echo 'refusing to allow a GitHub App to create or update workflow without workflows permission' >&2; exit 1\n"
+            "  fi\ndone\n")
+
+    def repo(refuse):
+        d = Path(tempfile.mkdtemp(prefix="sb-yml-tag-"))
+        origin, work, temp = d / "origin.git", d / "work", d / "temp"
+        git(d, "init", "-q", "--bare", str(origin))
+        if refuse:
+            (origin / "hooks" / "pre-receive").write_text(hook, encoding="utf-8", newline="\n")
+        work.mkdir()
+        temp.mkdir()
+        git(work, "init", "-q")
+        git(work, "remote", "add", "origin", str(origin))
+        for k, v in (("user.name", "t"), ("user.email", "t@t")):
+            git(work, "config", k, v)
+        (work / "tools").mkdir()
+        (work / ".github" / "workflows").mkdir(parents=True)
+        return work, origin, temp
+
+    def commit(work, tools, wf, msg):
+        (work / "tools" / "x.py").write_text(tools, encoding="utf-8")
+        (work / ".github" / "workflows" / "collect.yml").write_text(wf, encoding="utf-8")
+        git(work, "add", "-A")
+        git(work, "commit", "-qm", msg)
+        return git(work, "rev-parse", "HEAD").strip()
+
+    def run_step(work, temp):
+        env = {**os.environ, "RUNNER_TEMP": str(temp)}
+        env.pop("GIT_INDEX_FILE", None)
+        return subprocess.run([bash, "-e", "-c", script], cwd=work, capture_output=True, text=True, env=env, timeout=120)
+
+    def tag(origin, path):
+        r = subprocess.run(["git", "--git-dir", str(origin), "show", f"collector-ok:{path}"], capture_output=True,
+                           text=True, env={**os.environ, "MSYS_NO_PATHCONV": "1"})
+        return r.stdout
+    for refuse in (False, True):
+        work, origin, temp = repo(refuse)
+        old = commit(work, "v1", "wf1", "old")
+        git(work, "push", "-q", "-f", "origin", f"{old}:refs/tags/collector-ok")
+        new = commit(work, "v2", "wf2", "new: tools and the workflow changed")
+        r = run_step(work, temp)
+        assert r.returncode == 0, (refuse, r.stdout, r.stderr)
+        assert tag(origin, "tools/x.py") == "v2", (refuse, r.stdout, r.stderr)     # the fallback gets main's tools
+        if refuse:
+            assert "refusing" in r.stdout and tag(origin, ".github/workflows/collect.yml") == "wf1", r.stdout
+            assert "the old tag's .github/" in r.stdout and "::warning" not in r.stdout, r.stdout
+            again = run_step(work, temp)                                     # the next run: nothing to move
+            assert again.returncode == 0 and "already has main's tools/" in again.stdout, again.stdout
+            commit(work, "v2", "wf3", "only the workflow changed")
+            r = run_step(work, temp)
+            assert r.returncode == 0 and "already has main's tools/" in r.stdout and tag(origin, "tools/x.py") == "v2", r.stdout
+        else:
+            assert git(origin, "rev-parse", "collector-ok").strip() == new and "collector-ok: " in r.stdout, r.stdout
+
+
 def main():
     if not (shutil.which("bash") or Path(r"C:\Program Files\Git\bin\bash.exe").exists()):
         print("ok 0/0 tests (no bash here)")

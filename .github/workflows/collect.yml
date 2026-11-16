@@ -356,7 +356,29 @@ jobs:
           head=$(git rev-parse HEAD)
           cur=$(git ls-remote origin refs/tags/collector-ok | cut -f1)
           if [ "$cur" = "$head" ]; then echo "collector-ok is already $head"; exit 0; fi
-          git push -f origin "$head:refs/tags/collector-ok" && echo "collector-ok: ${cur:-none} -> $head"
+          if git push -f origin "$head:refs/tags/collector-ok" 2> "$RUNNER_TEMP/tag.err"; then
+            echo "collector-ok: ${cur:-none} -> $head"; exit 0
+          fi
+          cat "$RUNNER_TEMP/tag.err"
+          # GitHub refuses this run's token a push that moves a ref across a change of .github/workflows (no 'workflows'
+          # permission; DC-028: the tag stuck at 714d7f7b from Nov 16). The fallback only needs tools/: tag a commit with
+          # main's files but the old tag's .github/, on top of the old tag, so the move changes no workflow file.
+          [ -n "$cur" ] && git fetch -q --no-tags --depth 1 origin "+refs/tags/collector-ok:refs/tags/collector-ok" || {
+            echo "::warning title=collector-ok not moved::$(head -c 300 "$RUNNER_TEMP/tag.err" | tr '\n' ' ')"; exit 1; }
+          if [ "$(git rev-parse HEAD:tools)" = "$(git rev-parse collector-ok:tools)" ]; then
+            echo "collector-ok already has main's tools/ (main $head)"; exit 0
+          fi
+          export GIT_INDEX_FILE="$RUNNER_TEMP/tag.index"
+          git read-tree HEAD && git rm -r -q --cached .github && git read-tree --prefix=.github/ "collector-ok:.github"
+          c=$(GIT_AUTHOR_NAME=github-actions GIT_AUTHOR_EMAIL=41898282+github-actions[bot]@users.noreply.github.com \
+              GIT_COMMITTER_NAME=github-actions GIT_COMMITTER_EMAIL=41898282+github-actions[bot]@users.noreply.github.com \
+              git commit-tree "$(git write-tree)" -p "$cur" -m "collector-ok: main $head (its tools/; .github/ of $cur, DC-028)")
+          if git push -f origin "$c:refs/tags/collector-ok"; then
+            echo "collector-ok: $cur -> $c (main $head's files, the old tag's .github/)"
+          else
+            echo "::warning title=collector-ok not moved::GitHub refused the tag; move it by hand: git push -f origin main:refs/tags/collector-ok"
+            exit 1
+          fi
       - name: Keep the schedule alive (unless someone disabled the workflow by hand)
         if: always()
         env: { GH_TOKEN: "${{ github.token }}" }
