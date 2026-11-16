@@ -511,7 +511,7 @@ def cmd_watch(a):
                 return 0
             wake = [time.time() + 30] if early or h is not None else []
             wake += [w.deadline, w.next_at] if not w.done else []
-            wake += [h.next_at] if h is not None else []
+            wake += [h.next_at] if h is not None and not h.over(now) and not ended() else []   # else no 1-s spin
             time.sleep(max(1.0, min(wake) - time.time()))
     except BaseException as ex:
         w.state, w.why = "done:crash", repr(ex)[:300]

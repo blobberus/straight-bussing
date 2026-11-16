@@ -402,6 +402,81 @@ def the_state_file_carries_the_hold_for_the_logger():
     assert TL.hold_why(str(d / "bad.json"), T) is None
 
 
+@test
+def watch_command_holds_while_the_next_run_is_queued_then_ends_with_the_logger():
+    """The real `watch` loop (simulated clock, fake GitHub): it dispatches at 40 min, GitHub keeps the new run queued until
+    80 min (DC-028), so the state file holds from 65 min on; once the new run has logged a minute the hold lets go, the
+    logger ends, and the watcher exits without spinning."""
+    T0 = 1_800_000_000.0
+    d = Path(tempfile.mkdtemp(prefix="sb-watch-"))
+    p, ls = d / "chain.json", d / "logger.json"
+    seen = []
+
+    class Clock:
+        now, sleeps = T0, 0
+
+        @classmethod
+        def time(cls):
+            return cls.now
+
+        @classmethod
+        def sleep(cls, s):
+            cls.sleeps += 1
+            cls.now += s
+            st = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+            seen.append((cls.now - T0, st.get("hold")))
+            fresh = cls.now - (st.get("hold_t") or 0) <= C.HOLD_STALE_S
+            if cls.now - T0 >= 4200 and not (st.get("hold") is True and fresh) and not ls.exists():
+                ls.write_text(json.dumps({"ended": cls.now}), encoding="utf-8")   # the logger stops (truth_logger rule)
+
+    class Api:
+        runs = [{"databaseId": 7, "status": "in_progress", "createdAt": iso(T0), "log": T0 + 30}]
+
+        def __init__(self, repo, ref="main"):
+            pass
+
+        def workflow_state(self):
+            return "active"
+
+        def list_runs(self):
+            for r in self.runs:                                  # GitHub starts the queued run at 80 min
+                if r["status"] == "queued" and Clock.now - T0 >= 4800:
+                    r.update(status="in_progress", log=T0 + 4820)
+            return [dict(r) for r in self.runs]
+
+        def job_started(self, rid):
+            r = next(x for x in self.runs if x["databaseId"] == rid)
+            return iso(r["log"] - 20) if r["status"] == "in_progress" else None
+
+        def logging_started(self, rid):
+            r = next(x for x in self.runs if x["databaseId"] == rid)
+            return iso(r["log"]) if r["status"] == "in_progress" and r["log"] <= Clock.now else None
+
+        def dispatch(self, slot, mode="collect"):
+            self.runs.append({"databaseId": 8, "status": "queued", "createdAt": iso(Clock.now), "log": None})
+
+    old, env = (C.time, C.GhApi), os.environ.pop("COLLECT_CHAIN", None)
+    C.time, C.GhApi = Clock, Api
+    try:
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            assert C.main(["watch", "--slot", "a", "--state", str(p), "--run-id", "7", "--hold-after", "3900",
+                           "--logger-status", str(ls)]) == 0
+    finally:
+        C.time, C.GhApi = old
+        if env is not None:
+            os.environ["COLLECT_CHAIN"] = env
+    out, s = buf.getvalue(), json.loads(p.read_text(encoding="utf-8"))
+    on = [t for t, hold in seen if hold is True]
+    assert on and 3900 <= min(on) <= 3990 and max(on) < 4820 + 3 * 60, (on[:3], on[-3:])
+    ended = json.loads(ls.read_text(encoding="utf-8"))["ended"] - T0
+    assert 4820 + C.HOLD_MARGIN_S <= ended <= 4820 + C.HOLD_MARGIN_S + 120, ended     # held 10+ min past the 70
+    assert s["state"] == "done:dispatched" and s["hold"] is False and "run 8 has been logging" in s["hold_why"], s
+    assert "hold on: no other collect run" in out and "hold off: run 8" in out, out
+    assert Clock.now - T0 <= ended + 60 and Clock.sleeps < 400, (Clock.now - T0, Clock.sleeps)   # no 1-s spin
+
+
 # ------------------------------------------------------------------ simulation of GitHub Actions
 class Sim:
     """10-second ticks. Runs: pending (parked by its slot's concurrency group) -> queued -> in_progress ->
