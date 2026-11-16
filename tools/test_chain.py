@@ -407,10 +407,13 @@ class Sim:
     """10-second ticks. Runs: pending (parked by its slot's concurrency group) -> queued -> in_progress ->
     completed. A job: setup, 70 min logging, merge, then the final 'wait' step while the watcher is
     sleeping/leader (up to its deadline); job timeout 95 min. Crons at :07 (slot a) and :37 (slot b) fire
-    with probability cron_p, 0-40 min late."""
+    with probability cron_p, 0-40 min late. slow_p: a dispatched run waits 30 to 75 min in GitHub's queue (DC-028:
+    75 min on 2026-11-16). hold: rule 7 (collect.yml since DC-028): the logger keeps going while its Hold says no
+    other run logs, at most 90 min past its 70, job timeout 185 min."""
 
-    def __init__(self, seed, cron_p=0.1, crash_p=0.0, manual_p=0.0, stale_s=10):
+    def __init__(self, seed, cron_p=0.1, crash_p=0.0, manual_p=0.0, stale_s=10, slow_p=0.0, hold=False):
         self.rnd, self.cron_p, self.crash_p, self.manual_p, self.stale_s = random.Random(seed), cron_p, crash_p, manual_p, stale_s
+        self.slow_p, self.hold = slow_p, hold
         self.runs, self.live, self.future, self.next_id, self.t, self.cancelled = [], [], [], 1, 0, 0
 
     def create(self, t, slot, event):
@@ -440,6 +443,11 @@ class Sim:
                 r = next(x for x in sim.runs if x["id"] == rid)
                 return iso(r["start"]) if r["start"] is not None and r["status"] == "in_progress" else None
 
+            def logging_started(self, rid):
+                r = next(x for x in sim.runs if x["id"] == rid)
+                logging = r["status"] == "in_progress" and r.get("log0") is not None and r["log0"] <= sim.t < r["log1"]
+                return iso(r["log0"]) if logging else None
+
             def dispatch(self, slot, mode="collect"):
                 me["dispatches"] += 1
                 sim.create(sim.t, slot, "workflow_dispatch")
@@ -460,18 +468,33 @@ class Sim:
             if not busy and pend:
                 r = pend[0]
                 r["status"], r["ready"] = "queued", t + self.rnd.uniform(5, 90)
+                if self.slow_p and r["event"] == "workflow_dispatch" and self.rnd.random() < self.slow_p:
+                    r["ready"] = t + self.rnd.uniform(1800, 4500)
         for r in list(self.live):
             if r["status"] == "queued" and t >= r["ready"]:
                 r["status"], r["start"] = "in_progress", t
                 r["log0"] = t + self.rnd.uniform(40, 120)                  # checkout, python, GTFS, seed
                 dur = self.rnd.uniform(60, 4200) if self.rnd.random() < self.crash_p else 4200
                 r["log1"] = r["log0"] + dur
-                r["merged"] = r["log1"] + self.rnd.uniform(20, 240)
+                r["mdur"] = self.rnd.uniform(20, 240)
+                r["merged"] = r["log1"] + r["mdur"]
                 r["w"] = C.Watcher(self.api(r), r["id"], r["slot"], t + 20)
+                r["crash"], r["plan1"] = dur < 4200, r["log1"]
+                if self.hold:
+                    r["h"] = C.Hold(self.api(r), r["id"], t + 20, after=3900, until=10200)
             if r["status"] == "in_progress":
                 r["w"].step(t)
+                if self.hold and not r["crash"] and not r.get("released"):
+                    if t <= r["log1"]:
+                        r["h"].step(t)                     # the watcher decides while the logger runs
+                    if r["log1"] <= t:                     # the logger at (or past) its planned end
+                        h = r["h"]
+                        if h.hold and h.t is not None and t - h.t <= C.HOLD_STALE_S and t + 10 <= r["plan1"] + 5400:
+                            r["log1"], r["merged"] = t + 10, t + 10 + r["mdur"]
+                        else:
+                            r["released"] = True
                 duty = r["w"].state in C.WAITING and t < r["w"].deadline
-                if (t >= r["merged"] and not duty) or t >= r["start"] + 95 * 60:
+                if (t >= r["merged"] and not duty) or t >= r["start"] + (185 if self.hold else 95) * 60:
                     r["status"], r["end"] = "completed", t
         self.live = [r for r in self.live if r["status"] != "completed"]
 
@@ -540,6 +563,34 @@ def simulation_stress_crashes_manual_dispatches_stale_api():
         assert all(r["dispatches"] <= 1 for r in s.runs)
         chained = sum(1 for r in s.runs if r["event"] == "workflow_dispatch")
         assert chained <= hours * 3600 / 2400 + 2, (seed, chained)
+
+
+@test
+def simulation_a_queued_successor_is_bridged_by_the_hold():
+    """DC-028: GitHub kept a dispatched run queued 75 min. Without the hold such a delay leaves a gap of up to 45 min
+    (the old run stops at its 70); with it the old run logs on until the new one logs: still <= 2 runs, no extra
+    dispatches, gap-free."""
+    hours = 72
+    worst_old = worst_new = 0
+    cover_new, held = 1.0, 0
+    for seed in range(6):
+        old = Sim(seed, cron_p=0.1, slow_p=0.15).go(hours)
+        worst_old = max(worst_old, old.report(600, hours * 3600 - 600)[3])
+        s = Sim(seed, cron_p=0.1, slow_p=0.15, hold=True).go(hours)
+        mx_run, mx_log, frac, longest, started = s.report(600, hours * 3600 - 600)
+        assert mx_run <= 2 and mx_log <= 2, (seed, mx_run, mx_log)
+        assert all(r["dispatches"] <= 1 for r in s.runs)
+        crons = sum(1 for r in s.runs if r["event"] == "schedule")
+        assert started <= hours * 3600 / 2400 + crons + 2, (seed, started, crons)
+        worst_new, cover_new = max(worst_new, longest), min(cover_new, frac)
+        held += sum(1 for r in s.runs if r.get("plan1") is not None and r["log1"] > r["plan1"] + 120)
+    print(f"    queued successors: worst gap {worst_old / 60:.1f} min without the hold, {worst_new / 60:.1f} min with it "
+          f"({held} runs held), worst coverage {cover_new:.2%}")
+    assert worst_old >= 20 * 60, worst_old                     # the simulation does produce the DC-028 gap
+    assert held and worst_new <= 4 * 60 and cover_new >= 0.995, (held, worst_new, cover_new)
+    # without slow queues the hold changes nothing: every run stops at its planned end
+    s = Sim(1, cron_p=0.1, hold=True).go(48)
+    assert not any(r.get("plan1") is not None and r["log1"] > r["plan1"] + 120 for r in s.runs)
 
 
 # ------------------------------------------------------------------ only while buses run (2026-10-18)
