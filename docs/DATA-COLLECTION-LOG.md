@@ -220,6 +220,14 @@ Saturday, and Monday did not need it.**
 - DC-025's archive retry on a 5xx: no 5xx in the three archive runs since (Nov 13, 14, 15), still untried in a real
   run.
 
+**8. Archives: Nov 13, 14 and 15 on `data-archive-2026-11`, all six file kinds.** Nov 13 by the schedule Sat 10:44 AM
+(`43617071900`: 118,288 prediction updates, 83,823 position reports, 214,913 table rows, 40 bus drops of which 37
+lasting, 3 alert versions), Nov 14 Sun 11:23 AM (`43740735589`: 20,618 / 15,986 / 52,129, 2 drops, 2 lasting, 1 alert
+version). Nov 15's cron had not fired by Mon 2:08 PM (9.5 h late; it fired 6 to 10 h late every day since Nov 1), so it
+was dispatched by hand per the fix table (`43946662624`, 2:09 PM: 14,413 / 12,173 / 39,772, 2 drops, 2 lasting, 1 alert
+version; every older day `already archived`). Each day: `raw-polls`, `pred-updates`, `eta`, `gtfs` (timetable
+`708be9d370e2`), `alerts`, `bus-changes`. The audit counts 37 archived days, none missing.
+
 ### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line (South and Regents Express lose a stop on every lap: open; North half its rows two evenings: accepted); a run GitHub never started stopped the data repo's chain 5 h (fixed in both chains); one run's polls not archived (accepted)
 Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
 repositories with every issue found written down per bus line (item 3 is the table, one row per line). The flagged-lines
