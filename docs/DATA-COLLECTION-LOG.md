@@ -72,6 +72,29 @@ polls from the run artifacts (the archive builds them tomorrow). Scripts and dow
   `COLLECT_DISPATCH_TOKEN` is still unset (the repo has no secrets; owner, DC-021).
 - Flagged lines: `python tools/flag_lines.py --check` ok (137 flags, 0 problems); the high flags' lines in item 3.
 
+**2. Database: the whole-database audit is clean once Monday's gap and Friday's two lines are explained.**
+- `python tools/db_audit.py --mirror <data repo clone>` (data branch at Mon 1:57 PM, public copy synced 2:17 PM): first
+  run 1 error, Monday's gap (item 5), and 1 warning, South on Fri Nov 13 (26 arrivals, median 172: item 4); with both
+  explained and listed as known notes (`5187a40e`) **0 errors, 0 warnings**: 118,733 arrivals over 40 service days (Oct
+  8 to Nov 16) and 503,861 prediction rows, the public copy's 419 files hold the same 118,733 rows, methodology in step.
+  0 duplicates, 0 rows missing ids, 0 time fields off. The audit's line rule looked only at lines of 50 or more a day,
+  so Regents Express's empty Friday (median 34) raised nothing; it now flags a line that usually logs 20 or more and
+  logged none (item 4), which in all 40 days raises only that Friday.
+- Fri Nov 13: 3,644 arrivals (Fridays 3,994 / 3,944 / 4,203 / 3,987): about 150 South and 37 Regents Express arrivals
+  short (item 4), the rest spread over the lines whose buses carried other labels that evening (item 3). 13 lines (no
+  Regents Express), 89 stations, 20 buses; `gps` rows 297, Passio time on 81% of non-`gps` arrivals (Fridays 85 to 93%),
+  14,557 prediction rows (Fridays 17,677 on Nov 6), 40 bus adds and 40 drops (37 lasting).
+- Sat Nov 14: 926 (Saturdays 1,027 / 1,065 / 929 / 756), 5 lines, 37 stations, 7 buses; Sun Nov 15: 715 (Sundays 729 /
+  856 / 776 / 1,017), 4 lines, 35 stations, 5 buses. Passio time on 77% / 80% (South's bus Saturday: item 3). `gps`
+  rows 167 / 99.
+- Mon Nov 16 to 1:55 PM: 1,811 arrivals (Mondays to 2 PM: 2,061 / 1,969 / 1,908 / 1,622), 8 lines, 60 stations, 18
+  buses; the weekdays Oct 19 to Nov 13 logged 91 to 135 arrivals (5 lines) in the 45 min that Monday's gap took, so
+  about 120 visits have no row (item 5).
+- alerts.csv: the standing "UGo Bus Route Assistance" notice every day, the nightly NightRide notice on Friday, and one
+  new alert, Fri 2:50 PM: "The South route will have a delayed start time this evening, beginning service at 6:15 p.m."
+  (Passio's id 38738 = South Loop Shuttle, whose bus came at 6:15 PM; it says nothing about South or Regents Express).
+  gtfs_versions: one timetable since Nov 1.
+
 ### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line (South and Regents Express lose a stop on every lap: open; North half its rows two evenings: accepted); a run GitHub never started stopped the data repo's chain 5 h (fixed in both chains); one run's polls not archived (accepted)
 Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
 repositories with every issue found written down per bus line (item 3 is the table, one row per line). The flagged-lines
