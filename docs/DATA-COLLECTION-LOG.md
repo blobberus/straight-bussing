@@ -278,6 +278,26 @@ watcher and is logging in the renamed step ("Log arrivals (70 min, longer while 
 backstop waits behind its slot (`pending`, a park in the concurrency group, not GitHub's queue). Its end and the
 `collector-ok` tag on the new code are for the next checkup. `monitor.py status` HEALTHY (9 buses reporting).
 
+**Recheck Mon Nov 16, 4:07 PM (the lead): the hold worked as meant; the fallback tag had frozen (fixed).**
+- Run `43953508138` (the first rule) ended 3:59 PM after 70 min of logging (`logger: 70 min, 420 polls, 169 rows, 0
+  errors`): its watcher was a follower of the 2:16 PM backstop `43947991680` (which started 3:18 PM on the corrected
+  code and collected), and at 3:53 PM wrote `hold off: run 43947991680 has been logging for 34 min`; no hold, no `held`.
+  The backstop then started `43965565421` (3:59 PM) once the older run ended, as rule 3 says.
+- Found: its last step could not move the tag `collector-ok` to its code: `! [remote rejected] 4db57387 -> collector-ok
+  (refusing to allow a GitHub App to create or update workflow .github/workflows/collect.yml without workflows
+  permission)`. The step has `continue-on-error`, so the run showed green. Every run since `d521bc26` (the first change
+  of collect.yml today) gets the same, so the fallback code froze at `714d7f7b`. On Nov 13 the same step had moved the
+  tag across a collect.yml change (`6df322e2` -> `8ab394d0`, over `4fd98f17`) without complaint, so GitHub's check is
+  new or stricter. Impact: none yet (main's code passed every self-test). Risk: a broken push to main would have run
+  `714d7f7b`'s tools under today's collect.yml, which passes `--hold-file` / `--hold-after`; old argparse stops on an
+  unknown option, so the fallback would not have logged at all.
+- Fix: `afdc78d7` (collect.yml passes the hold options only to tools whose `--help` lists them; tested against
+  `714d7f7b`'s real tools), `14854d0d` (when GitHub refuses the move, the step tags a commit with main's files and the
+  old tag's `.github/`, on top of the old tag: the fallback needs only `tools/` and the move changes no workflow file;
+  a warning with the manual command if GitHub still refuses; test with a bare remote whose pre-receive hook refuses
+  such moves). test_collect_yml 6/6. Recheck: the first healthy run on `14854d0d` or later (about 5:50 PM) should log
+  `collector-ok: 714d7f7b... -> <new commit> (main ...'s files, the old tag's .github/)`.
+
 ### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line (South and Regents Express lose a stop on every lap: open; North half its rows two evenings: accepted); a run GitHub never started stopped the data repo's chain 5 h (fixed in both chains); one run's polls not archived (accepted)
 Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
 repositories with every issue found written down per bus line (item 3 is the table, one row per line). The flagged-lines
