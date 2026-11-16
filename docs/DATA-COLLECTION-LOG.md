@@ -129,6 +129,30 @@ collection flags `stops_rarely_logged` (South's Logan Center, Regents Express's 
 `listed_stops_not_driven` (South) unchanged (0 rows again). The display flags need E32's browser replay, not rechecked
 here.
 
+**4. Fri Nov 13: South's evening under the Connector's label, and no Regents Express bus at all (accepted: a wrong label
+and the operator's side); nothing flagged Regents Express (fixed: a line that logs nothing is now flagged).**
+- What: South logged 26 arrivals (Fridays 172 / 170 / 234 / 174), all from 10:29 PM on; Regents Express none (Fridays
+  34 / 33 / 41 / 40). `health.py` raised South on Sat 5:26 AM (issue #1) and the audit warned about it, but neither said
+  anything about Regents Express: their per-line rules look only at lines of 100 (health) and 50 (audit) arrivals a day.
+- Why (raw polls): no bus carried South's label until 10:15 PM (12648, which had been North's 9:30 to 10:15 PM). Bus
+  4324, labeled Downtown Campus Connector all day, drove South's loop 4:10 to 4:50 PM and 6:00 to 9:50 PM (94 to 100% of
+  its moving reports on South's line in each 10 minutes); Passio never relabeled it. The collector files a visit under
+  the bus's label, so it logged 8 of those visits as Connector arrivals (stops both lines share) and none at South's eight
+  own stops (South Campus Residence Hall, Cottage & 61st, 63rd & Ellis and the rest). Regents Express: no bus under its
+  label 5:20 to 9 PM, and none drove its loop (the only buses mostly on its line were 53rd Street Express and East buses
+  on the streets the lines share). The one operator alert that evening (2:50 PM, item 2) says "The South route will
+  have a delayed start", but it is filed under South Loop Shuttle's id and that line's bus came at 6:15 PM as it said;
+  nothing about South or Regents Express. So in Passio's feed, and so in this app, South had no bus from 4 to 10:15 PM
+  and Regents Express none: the operator's service and Passio's labels, not the collection (every 30-s window had an
+  answer, the other lines logged as usual).
+- Impact: about 150 South visits and all of Regents Express's (about 37 a Friday) have no row; 4324's South visits are
+  in the polls, so a refiling rule (DC-024, the owner's call) could rebuild them; Regents Express's cannot be.
+- Fixed (`b7e49554`, `5187a40e`): `health.py` flags a line that usually logs at least 20 arrivals and logged none
+  (`ROUTE_ZERO_MIN`; text "Regents Express logged 0 arrivals on Fri Nov 13 (usually about 40) ..."), and `db_audit.py`
+  warns about one (`LINE_ZERO_MIN`); both rules kept as before for a line that only fell short. Tests in
+  `test_health.py` and `test_db_audit.py` fail on the old code; replayed on every day from Oct 12 to Nov 16 the new rule
+  raises only this Friday. Both lines of Friday are known notes of the audit now.
+
 ### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line (South and Regents Express lose a stop on every lap: open; North half its rows two evenings: accepted); a run GitHub never started stopped the data repo's chain 5 h (fixed in both chains); one run's polls not archived (accepted)
 Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
 repositories with every issue found written down per bus line (item 3 is the table, one row per line). The flagged-lines
