@@ -376,6 +376,19 @@ def test_push_race_remerges():
     assert sorted(remote_trips(bare)) == ["MINE0", "MINE1", "THEIRS"], remote_trips(bare)
 
 
+def test_a_run_github_keeps_queued_is_reported():
+    """DC-028: on 2026-11-16 GitHub kept dispatched run 43919278638 'queued' 75 min (status listed it, no warning).
+    A run parked behind its own slot is 'pending', not queued, and a run queued a few minutes is normal."""
+    m = load_monitor(TOOLS.parent)
+    iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+    now = 1_800_000_000
+    mk = lambda i, ago, st: dict(id=i, created_at=iso(now - ago), run_started_at=iso(now - ago), status=st)
+    runs = [mk(3, 31 * 60, "queued"), mk(2, 5 * 60, "queued"), mk(1, 60 * 60, "pending"), mk(0, 80 * 60, "in_progress")]
+    got = m.stuck_queued(runs, now)
+    assert [(r["id"], int(s)) for r, s in got] == [(3, 31 * 60)], got
+    assert m.stuck_queued(runs, now, limit=40 * 60) == []
+
+
 TESTS = [v for k, v in dict(globals()).items() if k.startswith("test_")]
 
 

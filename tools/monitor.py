@@ -219,6 +219,14 @@ def parked(r, now):
     return r["status"] == "completed" and r["conclusion"] == "success" and epoch(r["updated_at"]) - s > RUN_S + 600
 
 
+def stuck_queued(runs, now, limit=600):
+    """[(run, seconds)] for runs GitHub has kept 'queued' (waiting for a runner, not 'pending' behind their own slot)
+    longer than `limit`: on 2026-11-16 a dispatched run waited 75 min so (DC-028); the hold of collect_chain.py rule 7
+    keeps the old run logging meanwhile."""
+    return [(r, now - epoch(r["created_at"])) for r in runs
+            if r.get("status") == "queued" and now - epoch(r["created_at"]) > limit]
+
+
 def log_window(run_id, token, now):
     """(start, end) of the run's 'Log arrivals' step from the jobs API (end = now while it runs), or None."""
     try:
@@ -472,6 +480,11 @@ def status(ctx, a):
                 issues.append((2, "the last 3 runs failed", "read the failing step log (see monitoring.md 'Runs failing')"))
             elif any(r["conclusion"] == "failure" and now - epoch(r["created_at"]) < 86400 for r in done):
                 issues.append((1, "a run failed in the last 24 h", "read its log (monitoring.md 'Runs failing')"))
+            for r, waited in stuck_queued(runs[:20], now):
+                issues.append((1, f"run {r['id']} has waited {age(waited)} in GitHub's queue (created "
+                                  f"{ts(epoch(r['created_at']))[11:16]})",
+                               "nothing if a run is logging (the older run holds past its 70 min, DC-028); check "
+                               "https://www.githubstatus.com; over 90 min: cancel it, then " + DISPATCH))
             for r in [r for r in runs if now - epoch(r["created_at"]) < 86400 + 2 * RUN_S and auto_run(r)][:16]:
                 r["idle"] = auto_idle(r["id"], token)               # a few a day (the cron backstop); bounded API use
             for r in [r for r in runs if now - epoch(r["created_at"]) < 86400 + 2 * RUN_S and parked(r, now)
