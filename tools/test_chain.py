@@ -926,12 +926,15 @@ class GatedSim:
     """A week of GitHub Actions with the gate: buses report on a weekday / weekend pattern (with a surprise
     night bus) unlike the timetable (night routes 'until 4:29', a weekend route that never runs), Passio answers
     empty on 35% of reads, crons fire rarely and late. Collect runs: 70 min logging that stops when the Activity
-    says idle, Watcher with choose/early. Idle runs: Sleeper with a probing gate. Auto (cron) runs gate first."""
+    says idle, Watcher with choose/early. Idle runs: Sleeper with a probing gate. Auto (cron) runs gate first.
+    slow_p / hold as in Sim (DC-028): a dispatched run waits 30 to 75 min in GitHub's queue; a collect run's logger
+    holds past its 70 min while no other run logs (rule 7), job limit 185 min."""
 
     BASE = int(datetime(2026, 10, 19, tzinfo=G.CT).timestamp())          # a Monday, 00:00 Chicago
 
-    def __init__(self, seed, cron_p=0.1, empty_p=0.35, crash_p=0.0, lockstep=True):
+    def __init__(self, seed, cron_p=0.1, empty_p=0.35, crash_p=0.0, lockstep=True, slow_p=0.0, hold=False):
         self.rnd, self.cron_p, self.empty_p, self.crash_p = random.Random(seed), cron_p, empty_p, crash_p
+        self.slow_p, self.hold = slow_p, hold
         self.lockstep, self.stood_down = lockstep, 0
         self.runs, self.live, self.future, self.next_id, self.t = [], [], [], 1, 0
         week = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -1021,6 +1024,8 @@ class GatedSim:
         r["log0"] = t + self.rnd.uniform(40, 120)
         r["log_cap"] = r["log0"] + (self.rnd.uniform(60, 4200) if self.rnd.random() < self.crash_p else 4200)
         r["act"], r["idle"] = None, False
+        if self.hold:
+            r["h"] = C.Hold(self.api(r), r["id"], t + 20, after=3900, until=10200)
         sim = self
 
         def choose(now):
@@ -1043,6 +1048,8 @@ class GatedSim:
             pend = [r for r in self.live if r["slot"] == slot and r["status"] == "pending"]
             if not busy and pend:
                 pend[0]["status"], pend[0]["ready"] = "queued", t + self.rnd.uniform(5, 90)
+                if self.slow_p and pend[0]["event"] == "workflow_dispatch" and self.rnd.random() < self.slow_p:
+                    pend[0]["ready"] = t + self.rnd.uniform(1800, 4500)
         for r in list(self.live):
             if r["status"] == "queued" and t >= r["ready"]:
                 self.begin(r, t)
@@ -1061,12 +1068,17 @@ class GatedSim:
                     r["gate_at"] = t + 60
                     if r["act"].verdict(self.BASE + t).mode == "sleep":
                         r["idle"], r["log1"] = True, t
+                if r["log1"] is None and self.hold:
+                    r["h"].step(t)                                         # the watcher decides while it logs
                 if r["log1"] is None and t >= r["log_cap"]:
-                    r["log1"] = t
+                    h, planned = r.get("h"), r["log_cap"] >= r["log0"] + 4200      # not a crash
+                    if not (h and planned and h.hold and h.t is not None and t - h.t <= C.HOLD_STALE_S
+                            and t < r["log0"] + 4200 + 5400):
+                        r["log1"] = t
                 if r["log1"] is not None:
                     r["merged"] = r["log1"] + self.rnd.uniform(20, 240)
             duty = r["w"].state in C.WAITING and t < r["w"].deadline
-            if (r["log1"] is not None and t >= r["merged"] and not duty) or t >= r["start"] + 95 * 60:
+            if (r["log1"] is not None and t >= r["merged"] and not duty) or t >= r["start"] + (185 if self.hold else 95) * 60:
                 if r["log1"] is None and r["log0"] is not None and t >= r["log0"]:
                     r["log1"] = t
                 r["status"], r["end"] = "completed", t
@@ -1141,6 +1153,26 @@ def simulation_gated_with_crashing_loggers_stays_bounded():
         rep = s.report(72 * 3600)
         assert rep["max_running"] <= 2 and all(r["dispatches"] <= 1 for r in s.runs), (seed, rep)
         assert rep["bus_cover"] >= 0.97, (seed, rep)
+
+
+@test
+def simulation_a_week_with_the_hold_idle_runs_and_slow_queues():
+    """Rule 7 next to idle runs (DC-028). With GitHub starting runs on time the hold changes nothing: no run holds, the
+    same coverage (a first version that let go only for a LOGGING run deadlocked next to a cron backstop that had become
+    an idle run: worst gap 6 -> 160 min). With 10% of dispatched runs queued 30 to 75 min (46 x the real rate, Oct 28 to
+    Nov 16) it lifts the bus time covered; what is left is the accepted idle-to-collect hand-over case."""
+    hours, held_n, lines = 7 * 24, lambda s: sum(1 for x in s.runs if x.get("log0") is not None and x["log1"] is not None
+                                                 and x["log1"] > x["log_cap"] + 120), []
+    for seed in range(2):
+        base, hold = (GatedSim(seed, cron_p=0.1, hold=h).go(hours).report(hours * 3600) for h in (False, True))
+        assert hold == base, (seed, base, hold)                       # identical week: the hold never fired
+        slow0 = GatedSim(seed, cron_p=0.1, slow_p=0.1).go(hours)
+        slow1 = GatedSim(seed, cron_p=0.1, slow_p=0.1, hold=True).go(hours)
+        r0, r1 = slow0.report(hours * 3600), slow1.report(hours * 3600)
+        assert r1["max_running"] <= 2 and all(r["dispatches"] <= 1 for r in slow1.runs), (seed, r1)
+        assert held_n(slow1) >= 5 and r1["bus_cover"] >= max(0.99, r0["bus_cover"] + 0.02), (seed, r0, r1)
+        lines.append(f"{r0['bus_cover']:.1%} -> {r1['bus_cover']:.1%} ({held_n(slow1)} held)")
+    print(f"    slow queues, bus time covered without -> with the hold: {'; '.join(lines)}")
 
 
 def main():
