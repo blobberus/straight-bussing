@@ -59,6 +59,7 @@ DUP_S = 300
 LATE_S = 2 * 3600                      # a row this much older than the rows before it was appended later
 SEEN_FROM = 1791829800                 # 2026-10-12 13:30 Chicago: every later row has pred_seen_epoch (docs/DATA.md)
 LINE_LOW, LINE_MIN, DAY_LOW = 0.5, 50, 0.6
+LINE_ZERO_MIN = 20                     # a line that usually logs this many but logged none (DC-028: Regents Express)
 ARCHIVE_FROM = "2026-10-10"
 KIND_FROM = {**{k: ARCHIVE_FROM for k in H.ARCHIVE_KINDS}, **H.ARCHIVE_EXTRA}   # kind -> the first day it exists
 EXT = {"raw-polls": ".jsonl.gz", "pred-updates": ".jsonl.gz", "eta": ".csv.gz", "gtfs": ".zip", "alerts": ".csv.gz",
@@ -70,11 +71,17 @@ KNOWN = {"days:gap:2026-10-28": "DC-021: Passio's vehicle feed timed out 7:31 to
          "days:line:2026-10-08:South": "DC-002: only the stops Passio named were logged then; no polls kept to replay",
          "days:line:2026-10-09:South": "DC-002: only the stops Passio named were logged then; no polls kept to replay",
          "days:gap:2026-11-05": "DC-023: GitHub's API failed the chain's dispatches, nothing ran 10:39 AM to 12:39 PM",
+         "days:gap:2026-11-16": "DC-028: GitHub queued the run the chain started 75 min (job at 12:46 PM), nothing "
+                                "logged 12:02 to 12:47 PM",
          "days:line:2026-10-14:Central": "DC-027: one bus, 4322, reporting in bursts; no Central bus in the feed 6:15 "
                                          "to 6:45 PM",
          "days:line:2026-10-22:East": "DC-027: no East bus in the feed 4 to 5:30 PM and 9:15 to 10:15 PM",
          "days:line:2026-10-28:South": "DC-027: its one bus stood parked 8 to 9 PM and 9:15 to 10:45 PM (and the "
-                                       "DC-021 outage)"}
+                                       "DC-021 outage)",
+         "days:line:2026-11-13:South": "DC-028: no South-labeled bus until 10:15 PM; bus 4324 drove South's loop "
+                                       "under the Downtown Campus Connector label 4:10 to 9:50 PM",
+         "days:line:2026-11-13:Regents Express": "DC-028: no bus of the line (or driving its loop) in the feed all "
+                                                 "evening; no operator alert"}
 MIRROR_LAG_S = 2 * 3600                # the public copy syncs about every 30 min: the newest hours may lag
 
 
@@ -341,7 +348,7 @@ def check_days(a, arr, now, calendar=None):
         for line in sorted({n for x in refs for n in per[x]}):
             m = statistics.median(per[x].get(line, 0) for x in refs)
             got = per[d].get(line, 0)
-            if m >= LINE_MIN and got < LINE_LOW * m:
+            if (m >= LINE_MIN and got < LINE_LOW * m) or (m >= LINE_ZERO_MIN and got == 0):
                 a.add("warn", f"days:line:{d}:{line}", f"{d:%a %b} {d.day}: {line} logged {got} arrivals (the same "
                                                        f"weekday's median {m:,.0f}; a service change, a relabeled "
                                                        "bus or a collection gap: check the alerts and the runs)")

@@ -236,6 +236,28 @@ def test_missing_day_line_drop_and_late_block():
 
 
 @test
+def test_a_small_line_that_logged_nothing_is_a_warning():
+    """DC-028: a line of about 40 arrivals a day (Regents Express) logged none on Fri Nov 13, 2026; the half-the-median
+    rule only looks at lines of >= 50 a day. A line that usually logs >= LINE_ZERO_MIN and logged 0 is a warning."""
+    w = world()
+    try:
+        for d in days():
+            if d.weekday() >= 5:
+                continue
+            if d != date(2026, 11, 9):
+                w.arr += [arrival(at(d, 18) + 300 * i, "5715", "Regents", "R1", f"S{i % 6}", i % 6) for i in range(30)]
+                w.arr += [arrival(at(d, 19) + 600 * i, "5716", "Tiny", "T1", f"S{i % 3}", i % 3) for i in range(12)]
+        res = w.run()
+        warn = [f for f in res.found if f["check"] == "days:line:2026-11-09:Regents"]
+        assert warn and warn[0]["level"] == "warn" and "logged 0 arrivals" in warn[0]["text"], res.found
+        assert not any(f["check"].startswith("days:line:2026-11-09:Tiny") for f in res.found), res.found
+        assert not any(f["check"].startswith("days:line:") and ":Regents" in f["check"] and "11-09" not in f["check"]
+                       for f in res.found), res.found
+    finally:
+        w.close()
+
+
+@test
 def test_prediction_consistency_and_orphans():
     w = world()
     try:
