@@ -179,6 +179,22 @@ while the run it started is queued).**
   monitoring.md `6d12b4de` (with a fix-table row for "held N min past the 70"). test_chain 30/30, test_truth 61/61,
   test_collect_yml 4/4, test_monitor 13/13, `collector_selftest.py` ok. The audit lists the gap as a known note
   (`5187a40e`).
+- Corrected the same afternoon (the lead, after this item was first written): that first rule let go only once another
+  run's `Log arrivals` step ran. The service-hours week simulation (idle runs, cron backstops) showed it deadlocks next
+  to a cron backstop that has become an idle run while a collect run collects: the idle run waits for the older run to
+  end before it starts a collect run (rule 3), the older run held because nobody logged, until the idle run gave up and
+  the chain stopped (one seed: worst gap 6 -> 160 min, with GitHub starting every run on time). `09a36894`: any other
+  collect.yml run whose job has run a minute releases the hold (`other_running`, via `job_started`; `logging_started`
+  is gone); only a queued run, a failed dispatch or an API error holds. `cfe0de14`: the week simulation with the hold is
+  identical to the one without when queues are normal (the first rule failed this), and with 10% of dispatched runs
+  queued 30 to 75 min (46 x the real rate) bus time covered goes 96.2 -> 99.2% and 93.7 -> 99.8%; the gaps left there
+  are the hand-over case below. Wording: `66422c0d` (collect.yml), `2bb761d9` (docs/DATA.md, monitoring.md).
+  test_chain 32/32. The first rule was on main 2:15 to 2:57 PM; only run `43953508138` (2:48 PM) started with it, and
+  its successor is running when it reaches 65 min, which releases the hold under either rule.
+- Also found (the lead): the data repo's outside watchdog (`health.py watchdog`) counted a queued collect run as
+  collecting, so it could not have spoken during this gap (it also waits until the newest arrival is 45 min old, so
+  12:46 PM at the earliest). `cee71529`: only a run in progress counts (`watchdog_runs`; test_health 13/13); the data
+  repo's sync runs main's `health.py`, so it applies there at once.
 - Accepted (residual): an idle run that wakes a collect run which GitHub then queues cannot log itself, so that
   hand-over (about 2 a day, mostly the morning start) still has the gap; with 1 queued run in 460 that is about once in
   230 days.
@@ -245,7 +261,9 @@ that GitHub queues (item 5, about once in 230 days).
 **Status.** Collector healthy over the 74 h checked except Monday's 46-min gap while 10 buses ran (item 5: GitHub queued
 the run the chain started 75 min; about 120 visits without a row, not recoverable): fixed by the lead the same
 afternoon (a run keeps logging while the run it started is queued: `13b91e8a`, `fe33e0c4`, `9442f057`, `d521bc26`,
-`78b9eaa0`, `4a14d554`, `a54aeb3c`, docs `5dc0c779`, `6d12b4de`). The lockstep fix of DC-027 held (item 6: two
+`78b9eaa0`, `4a14d554`, `a54aeb3c`, docs `5dc0c779`, `6d12b4de`; its release rule corrected to any running run after
+the week simulation found a deadlock next to idle runs, `09a36894`, `cfe0de14`; the outside watchdog no longer counts a
+queued run as collecting, `cee71529`). The lockstep fix of DC-027 held (item 6: two
 stand-downs Saturday, no morning hole since). Friday evening South's loop ran under the Connector's label and Regents
 Express had no bus at all (item 4: the operator's service and Passio's labels, accepted); nothing flagged Regents
 Express, now fixed (`b7e49554`, `5187a40e`: a line that usually logs 20 or more and logged none is flagged by the health
