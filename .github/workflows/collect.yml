@@ -16,8 +16,8 @@ run-name: >-
 # Bounds (details in tools/collect_chain.py): two concurrency slots (a/b) mean GitHub never runs more than
 # 2 collect runs at once; a run dispatches at most once, only while it is the only queued/in-progress
 # collect run. Kill switches: repo variable COLLECT_CHAIN=off, or "Disable workflow" in the Actions tab.
-# Hold (DC-028, collect_chain.py rule 7): a run whose logger reaches its 70 min while no other run logs (GitHub kept the
-# next run queued 75 min on 2026-11-16: nothing logged 12:02-12:47 PM) logs on until another run logs, at most 90 min more.
+# Hold (DC-028, collect_chain.py rule 7): a run whose logger reaches its 70 min while no other run is running (GitHub kept
+# the next run queued 75 min on 2026-11-16: nothing logged 12:02-12:47 PM) logs on until one runs, at most 90 min more.
 # Each run writes only its own rows, then merges them into data/ground_truth/arrivals.csv on the orphan
 # 'data' branch (tools/merge_arrivals.py drops the duplicates from the overlap; predictions.csv and the
 # service alert versions in alerts.csv sit next to it) and refreshes web/data/learned.json there. Nothing is ever pushed to main, so this never triggers a Pages deploy.
@@ -124,7 +124,7 @@ jobs:
         run: |
           # --live / --logger-status: the next run collects or idles (service_gate), and starts at once if the
           # logger stops early (no bus for 30 min, or a crash); --hold-after: from 65 min on, every minute, whether
-          # another run logs (else the logger holds past its 70 min: rule 7, DC-028)
+          # another collect run is running (else the logger holds past its 70 min: rule 7, DC-028)
           nohup python tools/collect_chain.py watch --slot "$SLOT" --state "$RUNNER_TEMP/chain.json" \
             --live "$RUNNER_TEMP/live.json" --logger-status "$RUNNER_TEMP/logger.json" --hold-after 3900 \
             > "$RUNNER_TEMP/chain.log" 2>&1 < /dev/null &
@@ -153,7 +153,7 @@ jobs:
           else
             : > "$RUNNER_TEMP/seed.csv"
           fi
-      - name: Log arrivals (70 min, longer while no other run logs, or until no bus has run for 30 min)
+      - name: Log arrivals (70 min, longer while no other run is running, or until no bus has run for 30 min)
         id: log
         if: steps.gate.outputs.mode == 'collect'
         timeout-minutes: 165
@@ -167,7 +167,7 @@ jobs:
           # --changes-out: bus count changes per route as they are confirmed (bus_changes.py; owner 2026-10-30: the
           # 2 -> 1 bus transitions; merged into data/ground_truth/bus_changes.csv below and classified there);
           # --stop-when-idle: stop once no bus has reported for 30 min and no route is about to start (service_gate.py);
-          # --hold-file / --hold-max: past the 70 min while the chain watcher says no other run logs yet, at most 90 min
+          # --hold-file / --hold-max: past the 70 min while the chain watcher says no other run runs yet, at most 90 min
           python tools/truth_logger.py --duration 4200 --seed "$RUNNER_TEMP/seed.csv" --out "$RUNNER_TEMP/run.csv" \
             --status-file "$RUNNER_TEMP/logger.json" --raw-out "$RUNNER_TEMP/raw/raw-polls.jsonl" \
             --pred-out "$RUNNER_TEMP/run_pred.csv" --pred-log "$RUNNER_TEMP/pred/pred-updates.jsonl" \
