@@ -201,6 +201,25 @@ Saturday, and Monday did not need it.**
 - `monitor.py holes --days 7`: 3 holes between two logging runs, Wed 5:26 AM (91 s) and Fri 5:26 AM (89 s), both before
   the fix, and Monday's noon gap (item 5); 11 hand-overs next to an idle run (20 to 51 s, no bus running).
 
+**7. DC-027's open per-line rows, with the new days.**
+- South at Logan Center (8589) and Regents Express at Regents Park Apartments (8578), DC-027 item 4 (detector gap):
+  unchanged. South 0 rows at Logan Center Fri, Sat and Sun (22 in 40 service days, while 53rd Street Express and Midway
+  Metra logged 27 and 32 there on Friday); Regents Express 2 rows at its namesake stop in all (no service Friday, Monday
+  evening still to come). The closest-approach rule waits for the owner and a week's replay: **open**.
+- North's evenings (DC-027 item 5): did not recur (109 / 109 / 108 arrivals, at most 5 min of listed service without a
+  North bus before midnight). Accepted, closed.
+- Friend Center/Metra's evening loop under another label (DC-024, DC-027 item 3): again Friday, this time under the Red
+  Line/Arts Block label (4328, 3:10 to 8:50 PM) while the Friend Center/Metra-labeled 4313 drove Apostolic/Drexel's loop
+  (item 3); Monday's evening still to come. The refiling rule waits for the owner: **open**.
+- Passio's late times (DC-026 item 7) and the four dark Connector stops (DC-025 item 3): unchanged. Late, all lines:
+  Mon Nov 9 to Fri Nov 13 20.6 / 19.7 / 20.0 / 18.4 / 20.6% (before Oct 27 4.8%); the dark stops had a time on 1, 10, 1,
+  0 and 2 of 141 to 166 arrivals a weekday, 0 of 70 Monday to 2 PM. Passio's side, **open** (tell Passio).
+- Friend Center/Metra's 6:44 AM first arrival (DC-027 recheck, Fri Nov 13) and Midway Metra's early mornings (DC-027
+  item 9): Monday on time (5:02 and 5:40 AM; Midway Metra on the Mondays Nov 2 and 9: 5:39 and 7:29); Friday's was the
+  operator's (no bus of either line in the feed before then). Accepted.
+- DC-025's archive retry on a 5xx: no 5xx in the three archive runs since (Nov 13, 14, 15), still untried in a real
+  run.
+
 ### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line (South and Regents Express lose a stop on every lap: open; North half its rows two evenings: accepted); a run GitHub never started stopped the data repo's chain 5 h (fixed in both chains); one run's polls not archived (accepted)
 Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
 repositories with every issue found written down per bus line (item 3 is the table, one row per line). The flagged-lines
