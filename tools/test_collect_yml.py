@@ -162,6 +162,30 @@ def the_logging_check_counts_the_loggers_minutes_not_the_uploads_after_it():
     assert "logger: 50 min" in out and "logging stopped after 50 of 70 min" in out, out
     out = check_run(None)                               # no status file (a crash): the wall clock, as before
     assert "logger: 91 min, no status" in out and "wrote no status file" in out, out
+    # DC-028: a logger held past its 70 min (the next run was still queued) is reported, as a notice, not a warning
+    out = check_run({**base, "ended": t0 + 88 * 60, "polls": 528, "held_s": 18 * 60,
+                     "hold_why": "no other collect run is logging yet (the next run may still be queued)"})
+    assert "logger: 88 min" in out and "; held 18 min past the 70 (no other collect run" in out, out
+    assert "::notice title=Logger held past 70 min::18 min" in out and "::warning" not in out, out
+    out = check_run({**base, "ended": t0 + 70 * 60, "held_s": 20, "hold_why": "x"})     # under a minute: not mentioned
+    assert "held" not in out and "::notice" not in out, out
+
+
+@test
+def the_hold_is_wired_between_the_watcher_and_the_logger():
+    # DC-028 / collect_chain.py rule 7: the watcher decides the hold from 65 min on and writes it to the state file the
+    # logger reads; the step and job limits leave room for a 90-min hold
+    import re
+    yml = (ROOT / ".github" / "workflows" / "collect.yml").read_text(encoding="utf-8")
+    watch, log = step(yml, "Start the self-chain watcher"), step(yml, "Log arrivals")
+    assert "--hold-after 3900" in watch and '--state "$RUNNER_TEMP/chain.json"' in watch, watch
+    assert '--hold-file "$RUNNER_TEMP/chain.json" --hold-max 5400' in log and "--duration 4200" in log, log
+    head = yml[yml.index("- name: Log arrivals"):]
+    step_min = int(re.search(r"timeout-minutes: (\d+)", head[:head.index("run: |")]).group(1))   # the step's own limit
+    job_min = int(re.search(r"timeout-minutes: \$\{\{ inputs.mode == 'sleep' && 355 \|\| (\d+) \}\}", yml).group(1))
+    assert step_min * 60 >= 4200 + 5400 + 60 and job_min >= step_min + 15, (step_min, job_min)
+    import collect_chain as C
+    assert C.Hold(None, 0, 0).until >= 4200 + 5400, "the watcher must decide the hold for as long as the logger may hold"
 
 
 def main():
