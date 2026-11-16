@@ -153,6 +153,35 @@ and the operator's side); nothing flagged Regents Express (fixed: a line that lo
   `test_health.py` and `test_db_audit.py` fail on the old code; replayed on every day from Oct 12 to Nov 16 the new rule
   raises only this Friday. Both lines of Friday are known notes of the audit now.
 
+**5. Mon Nov 16, 12:01 to 12:47 PM: nothing logged for 46 min while 10 buses ran (fixed by the lead: a run now holds
+while the run it started is queued).**
+- What: run `43912046701` (job 10:51 AM) dispatched its successor `43919278638` at 11:31:33 AM, 40 min in, as always.
+  GitHub created that run's job only at 12:46:51 PM: queued 75.3 min. Of the 460 dispatched collect runs since Oct 28,
+  this is the only one queued over 1 min (the backstops' longer waits are parks behind their slot, not GitHub's
+  queue). GitHub's status page had an incident that morning ("Actions workflow start times"), resolved 10:26 AM; the
+  data repo's 9:13 AM sync run was queued 54 min inside it (item 1). The watcher followed the new run for its 10 min
+  (`confirming`, item 7 of DC-027), saw it queued, not failed, and ended `done:dispatched ... (not seen starting yet)`,
+  as designed; the old run's logger stopped at its 70 min (12:01 PM), and no cron backstop fired in the window. The
+  queued run then logged 12:47 to 1:57 PM. `monitor.py holes`: `Mon 11-16 12:01:23 - 12:47:15 (45 min) runs`;
+  `status` gap 12:02 to 12:47; issue #1 "No arrival on any route 12:10 PM to 12:30 PM".
+- Impact: 53rd Street Express, Apostolic/Drexel, the Connector, Friend Center/Metra and Red Line/Arts Block ran; the
+  weekdays Oct 19 to Nov 13 logged 91 to 135 arrivals in those 45 min, so about 120 visits have no row, and their
+  Passio predictions none. Not recoverable (no local collector ran).
+- Fix (the lead, rule 7 of `collect_chain.py`, "hold"): `13b91e8a` (`truth_logger.py --hold-file / --hold-max`: keep
+  polling past `--duration` while the watcher holds), `fe33e0c4` (the watcher holds its logger while the run it started
+  is queued and not logging; `GhApi.logging_started`, checked on the live API), `9442f057` (simulation with successors
+  GitHub queues 30 to 75 min: worst gap 45.8 min without the hold, 0.0 min with it, never more than 2 runs), `d521bc26`
+  (`collect.yml`: `--hold-after 3900`, `--hold-max 5400` = up to 90 min past the 70; logging step 165 min, job 185 min;
+  the summary says `held N min past the 70 (why)`), `78b9eaa0` (no 1-s wake-ups after the logger ended; a test of the
+  real watch loop), `4a14d554` (`monitor.py status` warns about a run GitHub has kept queued over 10 min), `a54aeb3c`
+  (a run still logging past its 70 min is a warning naming it, not "no run started"); docs/DATA.md `5dc0c779`,
+  monitoring.md `6d12b4de` (with a fix-table row for "held N min past the 70"). test_chain 30/30, test_truth 61/61,
+  test_collect_yml 4/4, test_monitor 13/13, `collector_selftest.py` ok. The audit lists the gap as a known note
+  (`5187a40e`).
+- Accepted (residual): an idle run that wakes a collect run which GitHub then queues cannot log itself, so that
+  hand-over (about 2 a day, mostly the morning start) still has the gap; with 1 queued run in 460 that is about once in
+  230 days.
+
 ### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line (South and Regents Express lose a stop on every lap: open; North half its rows two evenings: accepted); a run GitHub never started stopped the data repo's chain 5 h (fixed in both chains); one run's polls not archived (accepted)
 Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
 repositories with every issue found written down per bus line (item 3 is the table, one row per line). The flagged-lines
