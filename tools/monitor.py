@@ -333,6 +333,13 @@ def still_logging(runs, now, slack=120):
                  and r["log_window"][1] >= now - slack), None)
 
 
+def held_runs(runs, slack=120):
+    """[(run, seconds past its 70 min)] for runs whose 'Log arrivals' step (r["log_window"]) ran longer than RUN_S +
+    slack: they held (collect_chain.py rule 7) because no other run was running, which means GitHub kept the next run
+    queued or a dispatch failed (DC-028). The data is whole; status prints them so a checkup sees the near miss."""
+    return [(r, (w[1] - w[0]) - RUN_S) for r in runs if (w := r.get("log_window")) and w[1] - w[0] > RUN_S + slack]
+
+
 def first_merge_due(runs, now):
     """When buses started again after an idle pause and the current stretch of collect runs has not merged yet: the
     time its first merge is due (its first run's start + RUN_S + 15 min), else None. Each run merges its rows only at
@@ -509,6 +516,10 @@ def status(ctx, a):
                   f"collecting {frac_c:.0%}, idle with no bus {max(0.0, frac - frac_c):.0%})")
             for g0, g1 in gaps[-5:]:
                 print(f"  gap {ts(g0)[11:16]} - {ts(g1)[11:16]} ({age(g1 - g0)})")
+            for r, past in held_runs(runs)[:5]:                      # near misses: GitHub queued the next run
+                w = r["log_window"]
+                print(f"held      run {r['id']} logged {ts(w[0])[11:16]} - {ts(w[1])[11:16]}, {age(past)} past its 70 min "
+                      "(no other run was running: GitHub queued the next one or a dispatch failed; data whole, DC-028)")
             if now - start > 2 * 3600 and frac < 0.95:
                 issues.append((1, f"coverage {frac:.0%} < 95%", "check failures/gaps above; consider python tools/monitor.py local"))
     vehicles = None

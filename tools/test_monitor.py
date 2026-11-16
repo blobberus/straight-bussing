@@ -393,6 +393,10 @@ def test_a_run_github_keeps_queued_is_reported():
     done = dict(mk(10, 200 * 60, "in_progress"), log_window=(now - 199 * 60, now - 125 * 60))   # merging, not logging
     assert m.still_logging([runs[0], done, hold], now)["id"] == 9
     assert m.still_logging([runs[0], done], now) is None and m.still_logging([dict(hold, status="completed")], now) is None
+    # status lists runs that held (logging step longer than 70 min + 2): run 9 held 59 min so far, run 10 74 min
+    got = [(r["id"], int(s)) for r, s in m.held_runs([runs[0], done, hold, dict(mk(11, 99 * 60, "completed"),
+                                                     log_window=(now - 98 * 60, now - 28 * 60 + 90))])]
+    assert got == [(10, 4 * 60), (9, 59 * 60)], got                  # run 11: 71.5 min, within the slack
 
 
 TESTS = [v for k, v in dict(globals()).items() if k.startswith("test_")]
