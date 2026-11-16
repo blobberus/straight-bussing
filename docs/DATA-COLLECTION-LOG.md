@@ -45,7 +45,7 @@ with the Sundays Oct 18, 25, Nov 1 and 8, and Mon Nov 16 (to 2 PM) with the Mond
 line too. Stop lists come from the timetable in use (`708be9d370e2`, rebuilt with `build_gtfs.py --zip`); Nov 16's raw
 polls from the run artifacts (the archive builds them tomorrow). Scripts and downloads stayed off the repo (job folder).
 
-**1. Collector: healthy, except one 45-minute gap on Monday (item 5).**
+**1. Collector: healthy, except one 46-minute gap on Monday (item 5).**
 - Runs: all 88 finished collect and idle runs from Fri 12:02 PM to Mon 1:57 PM succeeded (66 started by the chain or an
   idle run, 22 by the cron backstop). 71 logged (62 the full 70 min, 9 stopped early with no bus running), 8 were idle
   runs, 7 backstops became the idle watch and 2 stood down next to a collect run that had just started (item 6). The 71
@@ -61,7 +61,8 @@ polls from the run artifacts (the archive builds them tomorrow). Scripts and dow
   (collecting 77%, idle with no bus 20%), the one gap Mon 12:02 to 12:47 PM.
 - `collector-health` issue #1: reopened Sat 5:26 AM for "South logged 26 arrivals on Fri Nov 13 (usually about 173)"
   (item 4), closed itself Mon 5:27 AM; reopened Mon 1:57 PM for "No arrival on any route 12:10 PM to 12:30 PM" (item 5),
-  open now; it closes itself once Nov 16 is more than 2 days old (about Thu Nov 19). The data repo's watchdog issue stayed closed.
+  open now; it closes itself once Nov 16 is more than 2 days old (about Thu Nov 19). The data repo's watchdog issue
+  stayed closed.
 - Archive: Nov 13 and 14 archived by the schedule (Sat 10:44 AM, Sun 11:23 AM); Nov 15's cron had not fired by Mon 2:08
   PM (9.5 h late), dispatched by hand (item 8). Weather context daily (Fri, Sat, Sun). Timetable `708be9d370e2` unchanged
   (last used Mon 1:57 PM; the feed is valid Oct 31 to Dec 1). Site: every deploy succeeded (the last Mon 1:36 PM).
@@ -252,6 +253,12 @@ check and the audit). The audit is clean (item 2), Nov 13 to 15 archived (item 8
 (item 9). Open: item 10. Recheck next time: the first runs on the hold code (a `held N min` summary only when GitHub
 queues a successor), issue #1 closing itself (about Nov 19), Monday's evening lines (Regents Express, Friend
 Center/Metra's labels), DC-025's archive retry in a real run, bus 4314's stops on South.
+
+**Recheck Mon Nov 16, 2:50 PM.** The first collect run on the hold code, `43953508138` (dispatched by the chain 2:48:05
+PM, its job running at once), passed the pre-flight self-test on main's code (`a54aeb3c` and before), started its
+watcher and is logging in the renamed step ("Log arrivals (70 min, longer while no other run logs ..."); the 2:16 PM
+backstop waits behind its slot (`pending`, a park in the concurrency group, not GitHub's queue). Its end and the
+`collector-ok` tag on the new code are for the next checkup. `monitor.py status` HEALTHY (9 buses reporting).
 
 ### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line (South and Regents Express lose a stop on every lap: open; North half its rows two evenings: accepted); a run GitHub never started stopped the data repo's chain 5 h (fixed in both chains); one run's polls not archived (accepted)
 Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
