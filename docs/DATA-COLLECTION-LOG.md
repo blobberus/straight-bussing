@@ -228,6 +228,11 @@ was dispatched by hand per the fix table (`43946662624`, 2:09 PM: 14,413 / 12,17
 version; every older day `already archived`). Each day: `raw-polls`, `pred-updates`, `eta`, `gtfs` (timetable
 `708be9d370e2`), `alerts`, `bus-changes`. The audit counts 37 archived days, none missing.
 
+**9. Off-GitHub backup refreshed (it was due Nov 20 to 27; done now for the new days).** `python tools/backup.py`, Mon
+3:55 PM: the data branch's files plus 24 new archive release assets (Nov 12 to 15, 24.7 MB; 174 were already there),
+211 files, 409 MB in the backup folder, done in 26 s; `python tools/backup.py --check` ok. The one before was Nov 13
+(187 files, 379 MB). Next due about Nov 23 to 30.
+
 ### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line (South and Regents Express lose a stop on every lap: open; North half its rows two evenings: accepted); a run GitHub never started stopped the data repo's chain 5 h (fixed in both chains); one run's polls not archived (accepted)
 Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
 repositories with every issue found written down per bus line (item 3 is the table, one row per line). The flagged-lines
