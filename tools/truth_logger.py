@@ -60,7 +60,7 @@ HOLD_STALE_S = 180          # = collect_chain.HOLD_STALE_S: a hold not renewed t
 
 def hold_why(path, now, stale_s=HOLD_STALE_S):
     """Why the logger keeps going past --duration, from the chain watcher's state file (collect_chain.py watch
-    --hold-after, rule 7: no other collect run is logging yet, DC-028), else None: no file, unreadable, released,
+    --hold-after, rule 7: no other collect run is running yet, DC-028), else None: no file, unreadable, released,
     or not renewed for stale_s (the watcher died: stop at the planned end as before)."""
     try:
         s = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -519,7 +519,7 @@ def main():
     ap.add_argument("--live-file", help="every minute: what this run saw (service_gate.Activity) as JSON, for the "
                                         "chain watcher's collect-or-idle choice")
     ap.add_argument("--hold-file", help="the chain watcher's state file: keep logging past --duration while it holds "
-                                        "(no other collect run logging yet; collect_chain.py rule 7, DC-028)")
+                                        "(no other collect run running yet; collect_chain.py rule 7, DC-028)")
     ap.add_argument("--hold-max", type=float, default=0, help="at most this many seconds past --duration (0 = no hold)")
     a = ap.parse_args()
     a.interval = max(5.0, a.interval)

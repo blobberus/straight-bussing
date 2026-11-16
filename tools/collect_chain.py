@@ -27,13 +27,16 @@ so a 70-min run overlaps its successor by ~30 min and never more than 2 runs exi
      after them, which left 49 to 148 s without a logger at seven morning starts since Oct 28 (DC-027 item 9).
   6. Kill switches: repo variable COLLECT_CHAIN=off (runs that start afterwards never dispatch), or
      disable the workflow in the Actions tab (checked before every dispatch; the keepalive step respects it).
-  7. Hold (`watch --hold-after`, DC-028): from 65 min on the watcher asks every minute whether another collect run's
-     'Log arrivals' step has been running for HOLD_MARGIN_S; if not (the run it started is still queued, a dispatch
-     failed, or the API answers errors: when unsure, collect), it sets "hold" in its state file, and the logger
-     (truth_logger.py --hold-file) keeps polling past its 70 min while the hold is set, at most --hold-max (90 min: a
-     dispatch as late as 85 min in, then 75 min in GitHub's queue).
-     On 2026-11-16 GitHub kept a dispatched run queued 75 min and nothing logged 12:02 to 12:47 PM. The hold never
-     dispatches anything and lets go as soon as another run logs, so rules 1 to 3 are unchanged.
+  7. Hold (`watch --hold-after`, DC-028): from 65 min on the watcher asks every minute whether another collect.yml run's
+     job has been running for HOLD_MARGIN_S; if none has (the run it started is still queued, a dispatch failed, or
+     the API answers errors: when unsure, collect), it sets "hold" in its state file, and the logger (truth_logger.py
+     --hold-file) keeps polling past its 70 min while the hold is set, at most --hold-max (90 min: a dispatch as late
+     as 85 min in, then 75 min in GitHub's queue).
+     On 2026-11-16 GitHub kept a dispatched run queued 75 min and nothing logged 12:02 to 12:47 PM. Any other RUNNING
+     run releases the hold, not only one that logs: a collect run logs within seconds of its start, and an idle run
+     (a cron backstop that found no bus) waits for this older run to end before it starts a collect run (rule 3), so
+     holding next to it would deadlock the two until the idle run gave up (the week simulation found it). The hold
+     never dispatches anything, so rules 1 to 3 are unchanged.
 `wait` keeps the job alive while the watcher still has a duty (state 'sleeping' or 'leader'), then prints the
 outcome and a ::warning:: if the chain did not continue. Stdlib + the gh CLI (GH_TOKEN). Tests: test_chain.py.
 
@@ -64,8 +67,7 @@ CONFIRM_S = 600           # after a dispatch, look this long for the new run in 
 NEVER_RAN = {"startup_failure", "failure"}    # a new run that ended so within minutes never ran its job
 LOCKSTEP_S = 300          # a backstop stands down next to a collect run whose job started this recently (DC-027)
 COLLECT_TITLE = "Collect ground truth"        # collect.yml's run-name for mode collect (the chain, idle runs, by hand)
-LOG_STEP = "Log arrivals"                     # collect.yml's logging step name starts so (monitor.py holes reads it too)
-HOLD_MARGIN_S = 60        # another run's logging step must have run this long before a holding logger lets go (DC-028)
+HOLD_MARGIN_S = 60        # another run's job must have run this long before a holding logger lets go (DC-028)
 HOLD_STALE_S = 180        # truth_logger.py ignores a hold that was not renewed this long (the watcher died)
 
 
@@ -124,14 +126,15 @@ def collect_twin(api, me, now, within=LOCKSTEP_S):
     return None
 
 
-def other_logger(api, me, now, margin=HOLD_MARGIN_S):
-    """Another in-progress collect.yml run (not me) whose LOG_STEP has been running for at least `margin` s ->
-    (run id, seconds), else None. Raises on an API error (the caller then holds: when unsure, collect)."""
+def other_running(api, me, now, margin=HOLD_MARGIN_S):
+    """Another in-progress collect.yml run (not me) whose job has been running for at least `margin` s -> (run id,
+    seconds), else None: it carries the chain (a collect run logs; an idle run starts one once this run ends). A run
+    GitHub keeps queued has no started job. Raises on an API error (the caller then holds: when unsure, collect)."""
     for r in api.list_runs():
         rid = int(r.get("databaseId") or 0)
         if rid == me or r.get("status") != "in_progress":
             continue
-        t = _epoch(api.logging_started(rid))
+        t = _epoch(api.job_started(rid))
         if t is not None and now - t >= margin:
             return rid, now - t
     return None
@@ -139,7 +142,7 @@ def other_logger(api, me, now, margin=HOLD_MARGIN_S):
 
 class Hold:
     """Rule 7: should this run's logger keep going past its planned end? step(now), every `every` s from t0 + after
-    until t0 + until: hold = no other collect run's logging step has run HOLD_MARGIN_S yet, or the API failed.
+    until t0 + until: hold = no other collect.yml run's job has run HOLD_MARGIN_S yet, or the API failed.
     `t` = when it was last decided (the logger ignores a hold older than HOLD_STALE_S)."""
 
     def __init__(self, api, me, t0, after=3900, until=10200, every=60):
@@ -154,14 +157,14 @@ class Hold:
             return
         self.next_at = now + self.every
         try:
-            other = other_logger(self.api, self.me, now)
+            other = other_running(self.api, self.me, now)
         except Exception as ex:
             self.hold, self.why = True, f"GitHub API error, holding to be safe: {str(ex)[:160]}"
         else:
             if other:
-                self.hold, self.why = False, f"run {other[0]} has been logging for {other[1] / 60:.0f} min"
+                self.hold, self.why = False, f"run {other[0]} has been running for {other[1] / 60:.0f} min"
             else:
-                self.hold, self.why = True, "no other collect run is logging yet (the next run may still be queued)"
+                self.hold, self.why = True, "no other collect run is running yet (the next run may still be queued)"
         self.t = now
 
 
@@ -411,13 +414,6 @@ class GhApi:
                        '[.jobs[] | select(.status == "in_progress" or .status == "completed") | .started_at] | min // ""')
         return out.strip() or None
 
-    def logging_started(self, run_id):
-        """When the run's LOG_STEP started, while it is still running; else None (not logging: setup, idle, merge)."""
-        out = self._gh("api", f"repos/{self.repo}/actions/runs/{run_id}/jobs", "--jq",
-                       f'[.jobs[].steps[]? | select((.name | startswith("{LOG_STEP}")) and .status == "in_progress")'
-                       ' | .started_at] | min // ""')
-        return out.strip() or None
-
     def dispatch(self, slot, mode="collect"):
         self._gh("workflow", "run", WORKFLOW, "-R", self.repo, "--ref", self.ref, "-f", f"slot={slot}",
                  "-f", f"mode={mode}")
@@ -630,7 +626,7 @@ def main(argv=None):
     w.add_argument("--logger-status", help="the logger's --status-file (exists once it exited): hand over at once")
     w.add_argument("--service", default=str(G.SERVICE))
     w.add_argument("--hold-after", type=float, help="rule 7: from this many seconds after start, decide every --every s "
-                   "whether the logger must keep going (no other collect run logging); written to --state")
+                   "whether the logger must keep going (no other collect.yml run running); written to --state")
     w.add_argument("--hold-until", type=float, default=10200, help="stop deciding the hold this many seconds after start")
     t = sub.add_parser("wait", help="end of job: wait while the watcher still has a duty, then report")
     t.add_argument("--state", required=True)

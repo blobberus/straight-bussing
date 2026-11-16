@@ -330,7 +330,7 @@ def wait_reports_and_returns():
 
 # ------------------------------------------------------------------ rule 7: hold the logger (DC-028)
 class LogApi:
-    """Runs with an optional logging start (the 'Log arrivals' step running since then); fail = API errors."""
+    """Runs with an optional job start ('job': when GitHub started the run's job); fail = API errors."""
 
     def __init__(self, runs, fail=0):
         self.runs, self.fail = runs, fail
@@ -341,8 +341,8 @@ class LogApi:
             raise RuntimeError("HTTP 502")
         return [dict(r) for r in self.runs]
 
-    def logging_started(self, rid):
-        return next((r.get("log") for r in self.runs if r["databaseId"] == rid), None)
+    def job_started(self, rid):
+        return next((r.get("job") for r in self.runs if r["databaseId"] == rid), None)
 
 
 @test
@@ -358,16 +358,22 @@ def hold_rules():
     assert h.hold and h.t == T + 3900 and "queued" in h.why, h.why
     h.step(T + 3930)
     assert h.t == T + 3900                                           # once a minute
-    queued.update(status="in_progress")                              # its job started; setup, not logging yet
+    queued.update(status="in_progress")                              # GitHub lists it in progress, no job yet
     h.step(T + 3960)
     assert h.hold
-    queued["log"] = iso(T + 3970)
+    queued["job"] = iso(T + 3970)
     h.step(T + 4020)
-    assert h.hold                                                    # logging 50 s: not yet HOLD_MARGIN_S
+    assert h.hold                                                    # its job ran 50 s: not yet HOLD_MARGIN_S
     h.step(T + 4080)
-    assert not h.hold and "run 8 has been logging" in h.why, h.why
-    # an API error holds (when unsure, collect); a completed or my own logging never counts
-    api = LogApi([dict(me, log=iso(T)), dict(run(6, "completed", T - 600), log=iso(T - 600))], fail=1)
+    assert not h.hold and "run 8 has been running" in h.why, h.why
+    # an idle run (a cron backstop that found no bus) releases it too: it waits for this older run to end before it
+    # starts a collect run (rule 3), so holding next to it would deadlock the two (the week simulation found it)
+    idle = dict(run(9, "in_progress", T + 1800), job=iso(T + 1810), displayTitle="Collector idle: no buses running")
+    h = C.Hold(LogApi([me, idle]), 7, T, after=3900, until=10200)
+    h.step(T + 3900)
+    assert not h.hold and "run 9" in h.why, h.why
+    # an API error holds (when unsure, collect); a completed run or my own job never counts
+    api = LogApi([dict(me, job=iso(T)), dict(run(6, "completed", T - 600), job=iso(T - 600))], fail=1)
     h = C.Hold(api, 7, T, after=3900, until=10200)
     h.step(T + 3900)
     assert h.hold and "API error" in h.why
@@ -405,7 +411,7 @@ def the_state_file_carries_the_hold_for_the_logger():
 @test
 def watch_command_holds_while_the_next_run_is_queued_then_ends_with_the_logger():
     """The real `watch` loop (simulated clock, fake GitHub): it dispatches at 40 min, GitHub keeps the new run queued until
-    80 min (DC-028), so the state file holds from 65 min on; once the new run has logged a minute the hold lets go, the
+    80 min (DC-028), so the state file holds from 65 min on; once the new run's job has run a minute the hold lets go, the
     logger ends, and the watcher exits without spinning."""
     T0 = 1_800_000_000.0
     d = Path(tempfile.mkdtemp(prefix="sb-watch-"))
@@ -448,10 +454,6 @@ def watch_command_holds_while_the_next_run_is_queued_then_ends_with_the_logger()
             r = next(x for x in self.runs if x["databaseId"] == rid)
             return iso(r["log"] - 20) if r["status"] == "in_progress" else None
 
-        def logging_started(self, rid):
-            r = next(x for x in self.runs if x["databaseId"] == rid)
-            return iso(r["log"]) if r["status"] == "in_progress" and r["log"] <= Clock.now else None
-
         def dispatch(self, slot, mode="collect"):
             self.runs.append({"databaseId": 8, "status": "queued", "createdAt": iso(Clock.now), "log": None})
 
@@ -471,8 +473,8 @@ def watch_command_holds_while_the_next_run_is_queued_then_ends_with_the_logger()
     on = [t for t, hold in seen if hold is True]
     assert on and 3900 <= min(on) <= 3990 and max(on) < 4820 + 3 * 60, (on[:3], on[-3:])
     ended = json.loads(ls.read_text(encoding="utf-8"))["ended"] - T0
-    assert 4820 + C.HOLD_MARGIN_S <= ended <= 4820 + C.HOLD_MARGIN_S + 120, ended     # held 10+ min past the 70
-    assert s["state"] == "done:dispatched" and s["hold"] is False and "run 8 has been logging" in s["hold_why"], s
+    assert 4800 + C.HOLD_MARGIN_S <= ended <= 4800 + C.HOLD_MARGIN_S + 120, ended     # held 10+ min past the 70
+    assert s["state"] == "done:dispatched" and s["hold"] is False and "run 8 has been running" in s["hold_why"], s
     assert "hold on: no other collect run" in out and "hold off: run 8" in out, out
     assert Clock.now - T0 <= ended + 60 and Clock.sleeps < 400, (Clock.now - T0, Clock.sleeps)   # no 1-s spin
 
@@ -517,11 +519,6 @@ class Sim:
             def job_started(self, rid):
                 r = next(x for x in sim.runs if x["id"] == rid)
                 return iso(r["start"]) if r["start"] is not None and r["status"] == "in_progress" else None
-
-            def logging_started(self, rid):
-                r = next(x for x in sim.runs if x["id"] == rid)
-                logging = r["status"] == "in_progress" and r.get("log0") is not None and r["log0"] <= sim.t < r["log1"]
-                return iso(r["log0"]) if logging else None
 
             def dispatch(self, slot, mode="collect"):
                 me["dispatches"] += 1
@@ -643,7 +640,7 @@ def simulation_stress_crashes_manual_dispatches_stale_api():
 @test
 def simulation_a_queued_successor_is_bridged_by_the_hold():
     """DC-028: GitHub kept a dispatched run queued 75 min. Without the hold such a delay leaves a gap of up to 45 min
-    (the old run stops at its 70); with it the old run logs on until the new one logs: still <= 2 runs, no extra
+    (the old run stops at its 70); with it the old run logs on until the new one runs: still <= 2 runs, no extra
     dispatches, gap-free."""
     hours = 72
     worst_old = worst_new = 0
