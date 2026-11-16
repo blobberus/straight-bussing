@@ -95,6 +95,40 @@ polls from the run artifacts (the archive builds them tomorrow). Scripts and dow
   (Passio's id 38738 = South Loop Shuttle, whose bus came at 6:15 PM; it says nothing about South or Regents Express).
   gtfs_versions: one timetable since Nov 1.
 
+**3. Every line, Fri Nov 13 to Mon Nov 16 (DC-027 item 3's form).** Per line: arrivals against the same weekday's median
+(four weeks; Monday to 2 PM), the stops logged against the timetable's stop list, the minutes of listed service before
+midnight with no bus of the line in the feed (5-min bins with a fresh report under the line's label; Monday to noon),
+Passio's times ("late" = the bus came more than 2 min earlier than the time shown 5 min ahead; all lines 4.8% before Oct
+27 6 PM, 20.6% on Fri Nov 13), and buses driving another line than their label (DC-024's test: 10-min bins, under 30% of
+the moving reports on the labeled line, 85% on one other; Fri 7 episodes, 8.5 bus-hours, the most of any day so far:
+Nov 6 had 7.8 by the same script; Sat and Sun 0; Mon to noon 2, 1.2 bus-hours). Saturday and Sunday run 5 and 4 lines.
+
+| Line (route id) | What is wrong (Fri Nov 13 to Mon Nov 16) | Since | Numbers | Status |
+|---|---|---|---|---|
+| 53rd Street Express (4346) | data complete; Passio's times late; Monday's first bus late | Oct 27 6 PM (late) | Fri 429 (median 447), Mon 263 to 2 PM (306: Monday's gap, item 5), 16 of 16 stops; late 54% / 53% (before 0.8%); no bus 60 of 745 min Fri (last arrival 6:23 PM, listed to 7:25), Mon first arrival 7:23 AM (Mondays 6:54 to 7:05) | Passio's side (open); end of service accepted |
+| Apostolic (5702) | data complete | | Fri 250 (275), Mon 238 (222), 10 of 10; first arrival 5:11 / 5:30 AM (Mon no bus 5:00 to 5:25); Mon 4322, labeled Apostolic, drove the Connector's line 11 AM to noon (relabeled after 59 min) | fine |
+| Apostolic/Drexel (6126) | Friday evening its loop driven by Friend Center/Metra's bus under that label | Oct 23 (DC-024) | Fri 472 (570), 12 of 12; 4313, labeled Friend Center/Metra, drove Apostolic/Drexel's loop 6:50 to 8:20 PM and 9:50 PM to midnight (41 visits filed under Friend Center/Metra at the shared stops); Mon 144 (142) | open (wrong label: the owner's call, DC-024) |
+| Central (1078) | Passio's times late; fewer buses than usual Friday and Sunday; no bus after 9:55 PM Saturday | Oct 27 6 PM (late) | Fri 142 (202), 90 of 430 min with no Central bus; Sat 271 (313), last arrival 9:53 PM (listed to 11:14 PM); Sun 217 (324), 1 bus (median 2); 14 of 14; late 59% / 57% / 58% (before 7.7%) | Passio's side (open); accepted (the feed / the operator's service) |
+| Downtown Campus Connector (5704) | four downtown stops without a time; Passio's times late; Friday a bus of its label on South's loop | Oct 27 6:30 PM (stops), Oct 27 6 PM (late) | Fri 595 (526), Mon 270 (258), 14 of 14; Gleacher Center, River East, Randolph & Michigan, Michigan & Roosevelt: a time on 2 of 155 Fri, 0 of 70 Mon; late 28% / 26% (before 2.2%); 4324 under its label drove South 4:10 to 9:50 PM Fri (item 4) | Passio's side (open: tell Passio) |
+| Drexel (5701) | nothing wrong | | Fri 163 (150), Mon 197 (204), 7 of 7; first arrival 5:09 / 4:59 AM; Passio time 69% / 67% (66 to 96% day to day since Oct 26) | fine |
+| East (1077) | Passio's times late; one bus Sunday | Oct 27 6 PM (late) | Fri 151 (138), Sat 318 (288), Sun 204 (208; 1 bus, median 2), 13 of 13; late 49% / 47% / 37% (before 3.5%) | Passio's side (open) |
+| Friend Center/Metra (5700) | Friday: no bus of the line until 6:44 AM; its evening loop driven by a bus labeled Red Line/Arts Block | Oct 23 (wrong labels, DC-024) | Fri 319 (368), 12 of 12; first arrival 6:44 AM (Fridays 4:50 to 5:03; 95 min with no bus of the line); 4328, labeled Red Line/Arts Block, drove its loop 3:10 to 8:50 PM (kept the label; 5 visits filed under Red Line), while its own bus 4313 drove Apostolic/Drexel's; Mon 194 (211), first arrival 5:02 AM (on time again) | open (wrong labels: the owner's call); the late Friday start accepted (the feed / the operator's service) |
+| Midway Metra (5703) | Friday: no bus until 6:39 AM; fewer buses than listed; Passio's times late Friday | Oct 27 6 PM (late); every weekday (buses) | Fri 405 (446), 160 of 580 min with no bus of the line, first arrival 6:39 AM (Fridays 5:33 to 5:50); Mon 262 to 2 PM (220), first arrival 5:40 AM (on time), 70 of 375 min with none; 14 of 14; late 22% Fri (before 1.6%), 0% Mon | accepted (the feed / the operator's service); Passio's side |
+| North (1075) | data complete again | | Fri 109 (106), Sat 109 (136; 1 bus, median 2), Sun 108 (110), 7 of 7; 0 / 5 / 0 min of listed service before midnight with no North bus (DC-027 item 5: 95 and 195 on Nov 11 and 12) | fine (DC-027 item 5 did not recur) |
+| Red Line/Arts Block (5699) | data complete; a fifth of the rows from the GPS sweep; Passio's times late the other way; Friday a bus of its label on Friend Center/Metra's loop | DC-003 (sweep) | Fri 552 (582), Mon 243 to 2 PM (278: the gap), 11 of 11; `gps` 117 Fri; the bus came more than 2 min later than shown 5 min ahead 62% Fri, 78% Mon (flag `large_late_miss`); 4328 under its label on Friend Center/Metra 3:10 to 8:50 PM Fri | Passio's side; accepted |
+| Regents Express (5715) | no bus at all on Friday evening; no check flagged it (fixed); its namesake stop never logged | Nov 13 (no bus); Oct 8 (stop, DC-027 item 4) | Fri 0 (37), 0 of 7 stops; no bus under its label and none driving its loop 5:20 to 9 PM (220 of 220 min); no operator alert for it; Mon's service not yet at 2 PM | accepted (the operator's service or the feed); the check fixed (item 4); stop **open** (DC-027 item 4) |
+| South (1076) | Friday: no bus of the line until 10:15 PM, its loop driven under the Connector's label; Logan Center never logged; Saturday's bus 4314 named by Passio at few stops | Nov 13 (label); since logging began (Logan); Nov 1 (4314) | Fri 26 (173; item 4), Sat 199 (198), Sun 186 (198), 13 of 16 stops each day: Logan Center 0 rows Fri to Sun (22 rows in 40 days), Stony Island Parking Lot and 59th St & Metra listed but not driven; Sat 129 of 199 rows from the GPS sweep (Passio named the stop for only 17; Saturdays 4 `gps` rows), as on Oct 31 / Nov 1 with the same bus (Checkups 2026-11-02); Sun 4315 normal | Friday accepted (wrong label: the owner's call, DC-024); Logan Center **open** (DC-027 item 4); 4314: watch |
+| South Loop Shuttle (5716) | started 15 min late Friday, as the operator said | Nov 13 | Fri 31 (27), Sat 29 (32), 5 of 5; Fri bus 4326 from 6:15 PM (the operator's 2:50 PM alert: "delayed start ... 6:15 p.m."), 4327 from 9 PM; Sat 65 of 360 min with no bus | fine |
+
+High flags rechecked (`flag_lines.py --check` ok, 137 active flags): every flagged line's data was complete from Fri to
+Mon except where the table says (South and Regents Express Friday, Friend Center/Metra and Midway Metra Friday morning,
+Central Saturday night), and no pattern changed since DC-027: the prediction flags (`large_early_miss`,
+`stops_without_predictions`, `first_stop_next_trip_times`, `other_trip_times`, `large_late_miss`) read the same numbers
+as above; `service_end_early` (53rd 6:23 PM Fri), `after_hours` and Apostolic's 4322 (`feed_drop_mid_route`) hold; the
+collection flags `stops_rarely_logged` (South's Logan Center, Regents Express's Regents Park Apartments) and
+`listed_stops_not_driven` (South) unchanged (0 rows again). The display flags need E32's browser replay, not rechecked
+here.
+
 ### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line (South and Regents Express lose a stop on every lap: open; North half its rows two evenings: accepted); a run GitHub never started stopped the data repo's chain 5 h (fixed in both chains); one run's polls not archived (accepted)
 Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
 repositories with every issue found written down per bus line (item 3 is the table, one row per line). The flagged-lines
