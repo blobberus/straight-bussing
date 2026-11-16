@@ -328,6 +328,80 @@ def wait_reports_and_returns():
     assert "::warning" in buf.getvalue()
 
 
+# ------------------------------------------------------------------ rule 7: hold the logger (DC-028)
+class LogApi:
+    """Runs with an optional logging start (the 'Log arrivals' step running since then); fail = API errors."""
+
+    def __init__(self, runs, fail=0):
+        self.runs, self.fail = runs, fail
+
+    def list_runs(self):
+        if self.fail:
+            self.fail -= 1
+            raise RuntimeError("HTTP 502")
+        return [dict(r) for r in self.runs]
+
+    def logging_started(self, rid):
+        return next((r.get("log") for r in self.runs if r["databaseId"] == rid), None)
+
+
+@test
+def hold_rules():
+    T = 1_800_000_000
+    me = run(7, "in_progress", T)
+    queued = run(8, "queued", T + 2400)                              # dispatched at 40 min, GitHub has not started it
+    api = LogApi([me, queued])
+    h = C.Hold(api, 7, T, after=3900, until=10200)
+    h.step(T + 3000)
+    assert h.t is None and not h.hold                                # nothing decided before 65 min
+    h.step(T + 3900)
+    assert h.hold and h.t == T + 3900 and "queued" in h.why, h.why
+    h.step(T + 3930)
+    assert h.t == T + 3900                                           # once a minute
+    queued.update(status="in_progress")                              # its job started; setup, not logging yet
+    h.step(T + 3960)
+    assert h.hold
+    queued["log"] = iso(T + 3970)
+    h.step(T + 4020)
+    assert h.hold                                                    # logging 50 s: not yet HOLD_MARGIN_S
+    h.step(T + 4080)
+    assert not h.hold and "run 8 has been logging" in h.why, h.why
+    # an API error holds (when unsure, collect); a completed or my own logging never counts
+    api = LogApi([dict(me, log=iso(T)), dict(run(6, "completed", T - 600), log=iso(T - 600))], fail=1)
+    h = C.Hold(api, 7, T, after=3900, until=10200)
+    h.step(T + 3900)
+    assert h.hold and "API error" in h.why
+    h.step(T + 3960)
+    assert h.hold and "no other collect run" in h.why
+    h.step(T + 10200)
+    assert h.over(T + 10200) and h.t == T + 3960                      # deciding stops at --hold-until
+
+
+@test
+def the_state_file_carries_the_hold_for_the_logger():
+    import truth_logger as TL
+    T = time.time()
+    d = Path(tempfile.mkdtemp(prefix="sb-hold-"))
+    p = d / "chain.json"
+    w = C.Watcher(FakeApi([run(7, "in_progress", T)]), 7, "a", T)
+    h = C.Hold(LogApi([run(7, "in_progress", T)]), 7, T - 3900, after=3900)
+    C.save(str(p), w)
+    assert "hold" not in json.loads(p.read_text()) and TL.hold_why(str(p), T) is None
+    h.step(T)
+    C.save(str(p), w, h)
+    s = json.loads(p.read_text())
+    assert s["hold"] is True and s["state"] == "sleeping" and s["hold_t"] == int(T)
+    assert "no other collect run" in TL.hold_why(str(p), T + 60)
+    assert TL.hold_why(str(p), T + C.HOLD_STALE_S + 5) is None       # not renewed: the watcher died
+    assert TL.HOLD_STALE_S == C.HOLD_STALE_S
+    h.hold = False
+    C.save(str(p), w, h)
+    assert TL.hold_why(str(p), T) is None
+    assert TL.hold_why(str(d / "missing.json"), T) is None
+    (d / "bad.json").write_text("{", encoding="utf-8")
+    assert TL.hold_why(str(d / "bad.json"), T) is None
+
+
 # ------------------------------------------------------------------ simulation of GitHub Actions
 class Sim:
     """10-second ticks. Runs: pending (parked by its slot's concurrency group) -> queued -> in_progress ->

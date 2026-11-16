@@ -27,6 +27,13 @@ so a 70-min run overlaps its successor by ~30 min and never more than 2 runs exi
      after them, which left 49 to 148 s without a logger at seven morning starts since Oct 28 (DC-027 item 9).
   6. Kill switches: repo variable COLLECT_CHAIN=off (runs that start afterwards never dispatch), or
      disable the workflow in the Actions tab (checked before every dispatch; the keepalive step respects it).
+  7. Hold (`watch --hold-after`, DC-028): from 65 min on the watcher asks every minute whether another collect run's
+     'Log arrivals' step has been running for HOLD_MARGIN_S; if not (the run it started is still queued, a dispatch
+     failed, or the API answers errors: when unsure, collect), it sets "hold" in its state file, and the logger
+     (truth_logger.py --hold-file) keeps polling past its 70 min while the hold is set, at most --hold-max (90 min: a
+     dispatch as late as 85 min in, then 75 min in GitHub's queue).
+     On 2026-11-16 GitHub kept a dispatched run queued 75 min and nothing logged 12:02 to 12:47 PM. The hold never
+     dispatches anything and lets go as soon as another run logs, so rules 1 to 3 are unchanged.
 `wait` keeps the job alive while the watcher still has a duty (state 'sleeping' or 'leader'), then prints the
 outcome and a ::warning:: if the chain did not continue. Stdlib + the gh CLI (GH_TOKEN). Tests: test_chain.py.
 
@@ -57,6 +64,9 @@ CONFIRM_S = 600           # after a dispatch, look this long for the new run in 
 NEVER_RAN = {"startup_failure", "failure"}    # a new run that ended so within minutes never ran its job
 LOCKSTEP_S = 300          # a backstop stands down next to a collect run whose job started this recently (DC-027)
 COLLECT_TITLE = "Collect ground truth"        # collect.yml's run-name for mode collect (the chain, idle runs, by hand)
+LOG_STEP = "Log arrivals"                     # collect.yml's logging step name starts so (monitor.py holes reads it too)
+HOLD_MARGIN_S = 60        # another run's logging step must have run this long before a holding logger lets go (DC-028)
+HOLD_STALE_S = 180        # truth_logger.py ignores a hold that was not renewed this long (the watcher died)
 
 
 def retry_in(failures, every):
@@ -112,6 +122,47 @@ def collect_twin(api, me, now, within=LOCKSTEP_S):
     except Exception:
         return None
     return None
+
+
+def other_logger(api, me, now, margin=HOLD_MARGIN_S):
+    """Another in-progress collect.yml run (not me) whose LOG_STEP has been running for at least `margin` s ->
+    (run id, seconds), else None. Raises on an API error (the caller then holds: when unsure, collect)."""
+    for r in api.list_runs():
+        rid = int(r.get("databaseId") or 0)
+        if rid == me or r.get("status") != "in_progress":
+            continue
+        t = _epoch(api.logging_started(rid))
+        if t is not None and now - t >= margin:
+            return rid, now - t
+    return None
+
+
+class Hold:
+    """Rule 7: should this run's logger keep going past its planned end? step(now), every `every` s from t0 + after
+    until t0 + until: hold = no other collect run's logging step has run HOLD_MARGIN_S yet, or the API failed.
+    `t` = when it was last decided (the logger ignores a hold older than HOLD_STALE_S)."""
+
+    def __init__(self, api, me, t0, after=3900, until=10200, every=60):
+        self.api, self.me, self.t0, self.after, self.until, self.every = api, me, t0, after, until, every
+        self.hold, self.why, self.t, self.next_at = False, "not checked yet", None, t0 + after
+
+    def over(self, now):
+        return now >= self.t0 + self.until
+
+    def step(self, now):
+        if now < self.next_at or self.over(now):
+            return
+        self.next_at = now + self.every
+        try:
+            other = other_logger(self.api, self.me, now)
+        except Exception as ex:
+            self.hold, self.why = True, f"GitHub API error, holding to be safe: {str(ex)[:160]}"
+        else:
+            if other:
+                self.hold, self.why = False, f"run {other[0]} has been logging for {other[1] / 60:.0f} min"
+            else:
+                self.hold, self.why = True, "no other collect run is logging yet (the next run may still be queued)"
+        self.t = now
 
 
 class _Confirm:
@@ -360,6 +411,13 @@ class GhApi:
                        '[.jobs[] | select(.status == "in_progress" or .status == "completed") | .started_at] | min // ""')
         return out.strip() or None
 
+    def logging_started(self, run_id):
+        """When the run's LOG_STEP started, while it is still running; else None (not logging: setup, idle, merge)."""
+        out = self._gh("api", f"repos/{self.repo}/actions/runs/{run_id}/jobs", "--jq",
+                       f'[.jobs[].steps[]? | select((.name | startswith("{LOG_STEP}")) and .status == "in_progress")'
+                       ' | .started_at] | min // ""')
+        return out.strip() or None
+
     def dispatch(self, slot, mode="collect"):
         self._gh("workflow", "run", WORKFLOW, "-R", self.repo, "--ref", self.ref, "-f", f"slot={slot}",
                  "-f", f"mode={mode}")
@@ -369,11 +427,14 @@ def stamp():
     return datetime.now(timezone.utc).strftime("%H:%M:%SZ")
 
 
-def save(path, w):
+def save(path, w, hold=None):
+    """The state file 'wait' reads; with a Hold also hold / hold_why / hold_t for truth_logger.py --hold-file."""
     if path:
+        s = {"state": w.state, "why": w.why, "deadline": w.deadline, "pid": os.getpid(), "updated": int(time.time())}
+        if hold is not None and hold.t is not None:
+            s.update(hold=hold.hold, hold_why=hold.why, hold_t=int(hold.t))
         tmp = Path(str(path) + ".tmp")
-        tmp.write_text(json.dumps({"state": w.state, "why": w.why, "deadline": w.deadline, "pid": os.getpid(),
-                                   "updated": int(time.time())}), encoding="utf-8")
+        tmp.write_text(json.dumps(s), encoding="utf-8")
         os.replace(tmp, path)
 
 
@@ -427,23 +488,36 @@ def cmd_watch(a):
     choose = early = None
     if a.live:
         choose, early = live_choice(a.live, lambda: G.load_json(a.service), G.route_names(), done_path=a.logger_status)
-    w = Watcher(GhApi(a.repo, a.ref), me, a.slot, time.time(), a.after, a.until, a.every, chain_enabled(),
-                a.dry_run, choose, early)
-    last = None
+    api, t0 = GhApi(a.repo, a.ref), time.time()
+    w = Watcher(api, me, a.slot, t0, a.after, a.until, a.every, chain_enabled(), a.dry_run, choose, early)
+    # rule 7: decided every minute from --hold-after on, until the logger has exited (its --status-file exists)
+    h = Hold(api, me, t0, a.hold_after, a.hold_until, a.every) if a.hold_after is not None else None
+    ended = lambda: bool(a.logger_status) and Path(a.logger_status).exists()
+    last, last_t, last_h = None, None, None
     try:
         while True:
-            w.step(time.time())
-            if (w.state, w.why) != last:
-                last = (w.state, w.why)
-                save(a.state, w)
-                print(f"{stamp()} chain {w.state}: {w.why}", flush=True)
-            if w.done:
+            now = time.time()
+            w.step(now)
+            if h is not None and not ended():
+                h.step(now)
+            if (w.state, w.why) != last or (h is not None and h.t != last_t):
+                if (w.state, w.why) != last:
+                    print(f"{stamp()} chain {w.state}: {w.why}", flush=True)
+                if h is not None and h.t is not None and h.t != last_t and (last_t is None or h.hold != last_h):
+                    print(f"{stamp()} hold {'on' if h.hold else 'off'}: {h.why}", flush=True)
+                last, last_t, last_h = (w.state, w.why), (h.t if h is not None else None), (h.hold if h else None)
+                save(a.state, w, h)
+            if w.done and (h is None or h.over(now) or ended()):
                 return 0
-            wake = min(w.next_at, w.deadline, time.time() + 30 if early else w.next_at)
-            time.sleep(max(1.0, wake - time.time()))
+            wake = [time.time() + 30] if early or h is not None else []
+            wake += [w.deadline, w.next_at] if not w.done else []
+            wake += [h.next_at] if h is not None else []
+            time.sleep(max(1.0, min(wake) - time.time()))
     except BaseException as ex:
         w.state, w.why = "done:crash", repr(ex)[:300]
-        save(a.state, w)
+        if h is not None:                       # a crashed watcher holds nobody: the logger stops at its own end
+            h.hold, h.why = False, "the watcher crashed"
+        save(a.state, w, h)
         print(f"{stamp()} chain crashed: {ex!r}", flush=True)
         raise
 
@@ -555,6 +629,9 @@ def main(argv=None):
     w.add_argument("--live", help="the logger's --live-file: the next run is collect or idle by service_gate")
     w.add_argument("--logger-status", help="the logger's --status-file (exists once it exited): hand over at once")
     w.add_argument("--service", default=str(G.SERVICE))
+    w.add_argument("--hold-after", type=float, help="rule 7: from this many seconds after start, decide every --every s "
+                   "whether the logger must keep going (no other collect run logging); written to --state")
+    w.add_argument("--hold-until", type=float, default=10200, help="stop deciding the hold this many seconds after start")
     t = sub.add_parser("wait", help="end of job: wait while the watcher still has a duty, then report")
     t.add_argument("--state", required=True)
     t.add_argument("--poll", type=float, default=15)
