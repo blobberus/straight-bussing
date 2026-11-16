@@ -387,6 +387,12 @@ def test_a_run_github_keeps_queued_is_reported():
     got = m.stuck_queued(runs, now)
     assert [(r["id"], int(s)) for r, s in got] == [(3, 31 * 60)], got
     assert m.stuck_queued(runs, now, limit=40 * 60) == []
+    # the run before it holds past its 70 min (collect_chain.py rule 7): its logging step still runs, so an old newest
+    # start is not 'no run started' (DOWN) but a warning
+    hold = dict(mk(9, 130 * 60, "in_progress"), log_window=(now - 129 * 60, now))
+    done = dict(mk(10, 200 * 60, "in_progress"), log_window=(now - 199 * 60, now - 125 * 60))   # merging, not logging
+    assert m.still_logging([runs[0], done, hold], now)["id"] == 9
+    assert m.still_logging([runs[0], done], now) is None and m.still_logging([dict(hold, status="completed")], now) is None
 
 
 TESTS = [v for k, v in dict(globals()).items() if k.startswith("test_")]

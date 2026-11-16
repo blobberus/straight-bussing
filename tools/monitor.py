@@ -325,6 +325,14 @@ def last_start(runs, now, window_of):
     return last
 
 
+def still_logging(runs, now, slack=120):
+    """An in-progress run whose 'Log arrivals' step is running right now (r["log_window"] as last_start() set it: end =
+    now while it runs), else None. A run that holds past its 70 min (collect_chain.py rule 7, DC-028) while GitHub keeps
+    the next run queued is still collecting, so an old newest start then is a warning, not DOWN."""
+    return next((r for r in runs if r.get("status") == "in_progress" and r.get("log_window")
+                 and r["log_window"][1] >= now - slack), None)
+
+
 def first_merge_due(runs, now):
     """When buses started again after an idle pause and the current stretch of collect runs has not merged yet: the
     time its first merge is due (its first run's start + RUN_S + 15 min), else None. Each run merges its rows only at
@@ -470,6 +478,11 @@ def status(ctx, a):
                 since = epoch(idle_now.get("run_started_at") or idle_now["created_at"])
                 print(f"idle      no bus running: an idle run has been watching the feed since {ts(since)[11:16]} "
                       f"(it starts a collect run when buses report or a scheduled start is 45 min away)")
+            elif now - last > 50 * 60 and (held := still_logging(runs[:4], now)) is not None:
+                issues.append((1, f"no run started for {age(now - last)}, but run {held['id']} is still logging (held past "
+                                  "its 70 min while the next run waits in GitHub's queue, DC-028)",
+                               "nothing while it logs (at most 90 min past its 70); see the queued-run line; "
+                               + DISPATCH + " only if no run is queued"))
             elif now - last > 2 * 3600:
                 issues.append((2, f"no run started for {age(now - last)}", DISPATCH + "; if it keeps happening, take over locally"))
             elif now - last > 50 * 60:
