@@ -1294,6 +1294,68 @@ def the_status_file_reports_outages_and_polls_with_buses():
     assert s["max_fail_s"] >= 0 and s["fail_spans"] == [], s          # one failed poll: not a 2-min stretch
 
 
+@test
+def the_logger_holds_past_its_end_while_the_chain_watcher_says_so():
+    """DC-028 (collect_chain.py rule 7): on 2026-11-16 GitHub kept the next run queued 75 min and nothing logged 12:02
+    to 12:47 PM. With --hold-file the logger keeps polling past --duration while the watcher's state file holds (and
+    was renewed within HOLD_STALE_S), at most --hold-max; released, stale or missing = stop at the planned end."""
+    import subprocess
+    d = Path(tempfile.mkdtemp(prefix="sb-hold-"))
+    child = d / "child.py"
+    child.write_text("\n".join([
+        "import json, sys",
+        f"sys.path.insert(0, {str(Path(__file__).resolve().parent)!r})",
+        "import truth_logger as TL",
+        "class Clock:                                   # simulated time: no real waiting",
+        "    now = 1_800_000_000.0",
+        "    @classmethod",
+        "    def time(cls): return cls.now",
+        "    @classmethod",
+        "    def sleep(cls, s): cls.now += s",
+        "TL.time = Clock",
+        "def fake(name, timeout=15):",
+        "    raise TimeoutError('offline')",
+        "orig, state = TL.poll, {'n': 0, 'release_at': None, 'hold': None}",
+        "def poll(*a, **k):",
+        "    state['n'] += 1",
+        "    if state['release_at'] == state['n']:",
+        "        json.dump({'hold': False, 'hold_t': Clock.now}, open(state['hold'], 'w'))",
+        "    return orig(*a, **{**k, 'get': fake})",
+        "TL.poll = poll",
+        f"D = {str(d)!r}",
+        "def go(name, hold, hold_t, release_at=None, hold_max='600'):",
+        "    h = D + '/' + name + '-chain.json'",
+        "    if hold is not None:",
+        "        json.dump({'state': 'done:dispatched', 'hold': hold, 'hold_why': 'next run queued', 'hold_t': hold_t},",
+        "                  open(h, 'w'))",
+        "    state.update(n=0, release_at=release_at, hold=h)",
+        "    t0 = Clock.now",
+        "    sys.argv = ['truth_logger.py', '--duration', '60', '--interval', '10', '--out', D + '/' + name + '.csv',",
+        "                '--status-file', D + '/' + name + '.json', '--hold-file', h, '--hold-max', hold_max]",
+        "    TL.main()",
+        "    s = json.load(open(D + '/' + name + '.json'))",
+        "    print(name, round(Clock.now - t0), s['polls'], s['held_s'], s['hold_why'])",
+        "go('none', None, 0)",
+        "go('released', True, 1e12, release_at=9)",
+        "go('stale', True, Clock.now)",
+        "go('capped', True, 1e12, hold_max='120')",
+        "go('off', False, 1e12)",
+        ""]), encoding="utf-8")
+    r = subprocess.run([sys.executable, str(child)], cwd=str(Path(__file__).resolve().parent.parent),
+                       capture_output=True, text=True, timeout=60)
+    got = {ln.split()[0]: ln.split(None, 4)[1:] for ln in r.stdout.splitlines() if ln.split()[:1] and
+           ln.split()[0] in ("none", "released", "stale", "capped", "off")}
+    assert len(got) == 5, (r.stdout[-1500:], r.stderr[-1500:])
+    ran = {k: int(v[0]) for k, v in got.items()}
+    held = {k: int(v[2]) for k, v in got.items()}
+    assert ran["none"] <= 60 and held["none"] == 0 and got["none"][3] == "None", got["none"]   # no file: planned end
+    assert ran["off"] <= 60 and held["off"] == 0, got["off"]                                    # released before the end
+    assert 80 <= ran["released"] <= 90 and held["released"] > 0, got["released"]   # 9th poll releases: 9 x 10 s
+    assert got["released"][3] == "next run queued", got["released"]
+    assert 170 <= ran["stale"] <= 190, got["stale"]                  # not renewed for HOLD_STALE_S: let go
+    assert 170 <= ran["capped"] <= 180, got["capped"]                # 60 s + --hold-max 120 s at most
+
+
 def main():
     fails = 0
     for fn in TESTS:

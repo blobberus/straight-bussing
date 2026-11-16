@@ -12,6 +12,7 @@ per true bus arrival at a stop (schema in arrivals_lib.COLUMNS, docs in docs/DAT
   python tools/truth_logger.py ... --pred-log p.jsonl --pred-seed old.jsonl   # keep / reload prediction updates
   python tools/truth_logger.py ... --alerts-out run_alerts.csv     # Passio's service alerts, one row per version
   python tools/truth_logger.py ... --stop-when-idle --live-file l.json   # stop once no bus runs (service_gate.py)
+  python tools/truth_logger.py ... --hold-file chain.json --hold-max 3000  # past --duration while no other run logs
 A failed fetch, bad JSON or a malformed feed entry only skips that feed or entry for one poll; it is
 counted (status line, final 'done:' line, --status-file) and the run keeps going. Service alerts are polled
 in their own thread (AlertLog) with their own counters, so they can never delay or stop the arrival loop.
@@ -52,6 +53,22 @@ def fetch(name, timeout=15):
     req = urllib.request.Request(BASE + name + ".json", headers={"User-Agent": UA, "Accept-Encoding": "gzip"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return decode_body(r.read(), r.headers.get("Content-Encoding"))
+
+
+HOLD_STALE_S = 180          # = collect_chain.HOLD_STALE_S: a hold not renewed this long means the watcher died
+
+
+def hold_why(path, now, stale_s=HOLD_STALE_S):
+    """Why the logger keeps going past --duration, from the chain watcher's state file (collect_chain.py watch
+    --hold-after, rule 7: no other collect run is logging yet, DC-028), else None: no file, unreadable, released,
+    or not renewed for stale_s (the watcher died: stop at the planned end as before)."""
+    try:
+        s = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(s, dict) or s.get("hold") is not True or now - float(s.get("hold_t") or 0) > stale_s:
+            return None
+    except (OSError, ValueError, TypeError):
+        return None
+    return str(s.get("hold_why") or "holding")
 
 
 class Errors:
@@ -501,6 +518,9 @@ def main():
                          "to start); the run's successor is then an idle run (collect_chain.py sleep)")
     ap.add_argument("--live-file", help="every minute: what this run saw (service_gate.Activity) as JSON, for the "
                                         "chain watcher's collect-or-idle choice")
+    ap.add_argument("--hold-file", help="the chain watcher's state file: keep logging past --duration while it holds "
+                                        "(no other collect run logging yet; collect_chain.py rule 7, DC-028)")
+    ap.add_argument("--hold-max", type=float, default=0, help="at most this many seconds past --duration (0 = no hold)")
     a = ap.parse_args()
     a.interval = max(5.0, a.interval)
     st = L.Static()
@@ -555,6 +575,7 @@ def main():
     started, polls, summary = time.time(), 0, {}
     bus_polls, fail_since, fail_spans, max_fail = 0, None, [], 0.0   # health.py: outages and "buses but no rows"
     act, idle_stop, gate_at, pcount = None, None, started + 60, None
+    held_since, held_why = None, None            # past --duration because no other run logs yet (--hold-file)
     if a.stop_when_idle or a.live_file:          # an unreadable schedule or a gate bug only costs the early stop
         try:
             import service_gate as G
@@ -607,8 +628,19 @@ def main():
                     bad += f" alerts={alerts.in_feed}" + (f" alert_fails={alerts.fetch_errors + alerts.errors}"
                                                           if alerts.fetch_errors + alerts.errors else "")
                 print(f"{datetime.now():%H:%M:%S} polls={polls} rows={w.n} {feed_txt}{bad}".rstrip(), flush=True)
-            if a.once or (end and time.time() + a.interval > end):
+            if a.once:
                 break
+            if end and time.time() + a.interval > end:
+                why = (hold_why(a.hold_file, time.time())
+                       if a.hold_file and a.hold_max > 0 and time.time() + a.interval <= end + a.hold_max else None)
+                if why is None:
+                    if held_since is not None:
+                        print(f"{datetime.now():%H:%M:%S} hold over after {(time.time() - held_since) / 60:.0f} min",
+                              flush=True)
+                    break
+                if held_since is None:
+                    held_since, held_why = time.time(), why
+                    print(f"{datetime.now():%H:%M:%S} logging past the planned end: {why}", flush=True)
             time.sleep(max(0.5, a.interval - (time.time() - t0)))
     except KeyboardInterrupt:
         pass
@@ -640,7 +672,9 @@ def main():
                      "last_bus": act.last_bus if act else None,
                      "bus_changes": changes.n if changes is not None else None,
                      "bus_polls": bus_polls, "max_fail_s": int(max_fail), "fail_spans": fail_spans,
-                     "schema_errors": err.schema, "schema_first": err.schema_first, **(al or {})}),
+                     "schema_errors": err.schema, "schema_first": err.schema_first,
+                     "held_s": int(time.time() - held_since) if held_since is not None else 0, "hold_why": held_why,
+                     **(al or {})}),
                     encoding="utf-8")
             except OSError as ex:
                 print(f"could not write {a.status_file}: {ex}", file=sys.stderr)
@@ -652,7 +686,9 @@ def main():
     print(f"done: {w.n} rows appended to {a.out}; polls={polls} errors={err.proc} fetch_errors={err.fetch}"
           + (f"; {w.np} prediction rows to {a.pred_out}" if a.pred_out else "") + al_txt
           + (f"; {changes.n} bus count changes to {a.changes_out}" if changes is not None else "")
-          + (f"; stopped early (idle): {idle_stop}" if idle_stop else ""))
+          + (f"; stopped early (idle): {idle_stop}" if idle_stop else "")
+          + (f"; held {(time.time() - held_since) / 60:.0f} min past the planned end ({held_why})"
+             if held_since is not None else ""))
 
 
 if __name__ == "__main__":
