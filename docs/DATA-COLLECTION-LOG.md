@@ -182,6 +182,25 @@ while the run it started is queued).**
   hand-over (about 2 a day, mostly the morning start) still has the gap; with 1 queued run in 460 that is about once in
   230 days.
 
+**6. The morning starts since the lockstep fix (`6ba7aea1`, DC-027 item 9a): no hole; the stand-down acted twice on
+Saturday, and Monday did not need it.**
+- Sat Nov 14, 4:18 AM: the 4:04 AM backstop (`43583480665`), parked behind the night's idle run, started at 4:18, next
+  to the collect run that idle run had started at 4:16 (`43584438007`), and stood down: `mode none: Friend Center/Metra
+  is scheduled to start at Sat 5:00 AM ...; but collect run 43584438007 started 112 s ago and carries the chain`. Sat
+  3:18 PM the same next to `43641884602` (111 s). Before the fix either would have logged side by side with that run
+  and left a 1.5-min hole 70 min later; `holes` shows none (only hand-overs next to idle runs, 20 to 51 s).
+- Sun Nov 15: the 3:09 AM backstop found no bus and became the idle watch (the older idle run stood down as follower);
+  at 4:16 AM it started one collect run. No second run, nothing to stand down.
+- Mon Nov 16 (the first real Monday): the night's idle run woke a collect run at 3:22 AM for one bus (`43839113454`; no
+  bus for the next 30 min, stopped 3:55 AM); the 3:25 AM backstop found no bus and became the idle watch; at 4:16:05 AM
+  it started the morning's collect run (`43847293812`, its job seen running 4:17:42). GitHub fired no other backstop
+  before 5:58 AM, so no lockstep start arose and the rule had nothing to do; no hole at the start (the hand-over under 20
+  s). First buses in the feed: 4317 (labeled Central) 4:29 AM, Friend Center/Metra 4:36, Drexel 4:48, Apostolic 5:25;
+  first arrivals Drexel 4:59, Friend Center/Metra 5:02, Apostolic 5:30, Midway Metra 5:40 (on time again, unlike Fri
+  6:39), Red Line/Arts Block 6:19, the Connector 6:30, 53rd Street Express 7:23.
+- `monitor.py holes --days 7`: 3 holes between two logging runs, Wed 5:26 AM (91 s) and Fri 5:26 AM (89 s), both before
+  the fix, and Monday's noon gap (item 5); 11 hand-overs next to an idle run (20 to 51 s, no bus running).
+
 ### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line (South and Regents Express lose a stop on every lap: open; North half its rows two evenings: accepted); a run GitHub never started stopped the data repo's chain 5 h (fixed in both chains); one run's polls not archived (accepted)
 Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
 repositories with every issue found written down per bus line (item 3 is the table, one row per line). The flagged-lines
