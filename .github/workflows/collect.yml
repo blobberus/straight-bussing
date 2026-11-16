@@ -104,7 +104,8 @@ jobs:
           COLLECT_CHAIN: ${{ vars.COLLECT_CHAIN }}
           MODE: ${{ inputs.mode || 'auto' }}
         run: |
-          # an auto run (cron backstop, manual) that found no bus has the 95-min job limit: it hands over at 75 min
+          # an auto run (cron backstop, manual) that found no bus has a collect run's job limit (185 min since DC-028, not an
+          # idle run's 355): it hands over at 75 min to a full idle run
           LIMITS=""; [ "$MODE" = "sleep" ] || LIMITS="--until 4500 --hard 5100"
           python3 tools/collect_chain.py sleep --slot "$SLOT" $LIMITS
       - name: The idle run failed, so a collect run takes over (it idles again by itself if no bus runs)

@@ -522,7 +522,7 @@ service alerts, and it starts a collect run as soon as a bus reports, an alert c
 goes overnight is still recorded) or a scheduled start is 45 min away; after 5 h 40 min it hands over to the next
 idle run (GitHub's job limit is 6 h). The chain rules and bounds above apply to idle runs too (at most 2 runs, one
 dispatch per run). The cron backstop and manual runs use `mode: auto`: they decide at start and, when no bus runs, wait as a
-short idle run themselves (75 min, their job limit is 95), then hand over to a full one. A logger that ends early for any other reason (a crash) now also hands over
+short idle run themselves (75 min; their job limit is a collect run's, 185 min since DC-028), then hand over to a full one. A logger that ends early for any other reason (a crash) now also hands over
 at once (to a collect run) instead of at minute 40. Force collecting: `gh workflow run collect.yml -f slot=a -f
 mode=collect` (it stops by itself after 30 min without a bus). Replayed over the raw polls of Oct 10 to 16: buses
 reported for 118 of 168 h; the rule collects 130 h (77%), idles 38 h (weekday nights 2 to 4 h, weekends 10 to 13 h),

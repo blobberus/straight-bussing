@@ -554,7 +554,7 @@ def cmd_gate(a):
     """First step of every run: prints and writes mode=collect|sleep|none to $GITHUB_OUTPUT. An explicit mode
     (set by the run that started this one) is kept. auto (cron backstop, manual runs, runs started by a collector
     of before 2026-10-18): probe + schedule; idle = this run becomes a short idle run itself (collect.yml passes
-    --until 4500: its job limit is 95 min), so it carries the chain on whether or not an older run still has to;
+    --until 4500: it has a collect run's job limit, 185 min since DC-028), so it carries the chain on whether or not an older run still has to;
     a newer run makes it a follower and it ends. 'none' with COLLECT_CHAIN=off, or when it would collect next to a
     collect run that started less than LOCKSTEP_S ago (collect_twin: that run carries the chain; rule 5)."""
     def emit(mode, why):
