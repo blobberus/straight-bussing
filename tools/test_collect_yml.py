@@ -231,7 +231,8 @@ def older_fallback_tools_get_no_hold_options():
 def the_tag_moves_even_when_github_refuses_a_workflow_change():
     # DC-028: from Nov 16 GitHub refused the run's token to move collector-ok from 714d7f7b to a commit whose
     # collect.yml differs ("refusing to allow a GitHub App to create or update workflow ... without workflows
-    # permission"), so the fallback code froze. A pre-receive hook plays GitHub here.
+    # permission"), so the fallback code froze. A pre-receive hook plays GitHub here. It is stricter than GitHub, which
+    # refused only pushes that had to send collect.yml (main had moved past the run's commit; DC-028 recheck 5:57 PM).
     yml = (ROOT / ".github" / "workflows" / "collect.yml").read_text(encoding="utf-8")
     script = step(yml, "Mark main's collector code as good")
     bash = shutil.which("bash") or r"C:\Program Files\Git\bin\bash.exe"

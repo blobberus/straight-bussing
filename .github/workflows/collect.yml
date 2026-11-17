@@ -360,9 +360,10 @@ jobs:
             echo "collector-ok: ${cur:-none} -> $head"; exit 0
           fi
           cat "$RUNNER_TEMP/tag.err"
-          # GitHub refuses this run's token a push that moves a ref across a change of .github/workflows (no 'workflows'
-          # permission; DC-028: the tag stuck at 714d7f7b from Nov 16). The fallback only needs tools/: tag a commit with
-          # main's files but the old tag's .github/, on top of the old tag, so the move changes no workflow file.
+          # GitHub refuses this run's token a push that has to send a workflow file (no 'workflows' permission). This
+          # shallow checkout sends its whole tree once main has moved past this run's commit (DC-028: the tag stuck at
+          # 714d7f7b on Nov 16). The fallback only needs tools/: tag a commit with main's files but the old tag's
+          # .github/, on top of the old tag, so the push carries no workflow file.
           [ -n "$cur" ] && git fetch -q --no-tags --depth 1 origin "+refs/tags/collector-ok:refs/tags/collector-ok" || {
             echo "::warning title=collector-ok not moved::$(head -c 300 "$RUNNER_TEMP/tag.err" | tr '\n' ' ')"; exit 1; }
           if [ "$(git rev-parse HEAD:tools)" = "$(git rev-parse collector-ok:tools)" ]; then

@@ -297,6 +297,17 @@ backstop waits behind its slot (`pending`, a park in the concurrency group, not 
   a warning with the manual command if GitHub still refuses; test with a bare remote whose pre-receive hook refuses
   such moves). test_collect_yml 6/6. Recheck: the first healthy run on `14854d0d` or later (about 5:50 PM) should log
   `collector-ok: 714d7f7b... -> <new commit> (main ...'s files, the old tag's .github/)`.
+- Recheck 5:57 PM: the tag moved. Run `43972198722` (code `7bef8ef6`) ended 5:50 PM with `collector-ok: 714d7f7b...
+  -> 7bef8ef6...`, a plain push of main's own commit; the fallback now has the hold code (`git show
+  collector-ok:tools/collect_chain.py` has `other_running`). This corrects the cause above. GitHub did not refuse
+  every move across a collect.yml change, only those made after main had moved past the run's commit: the 3:59 PM
+  run on `4db57387` (main moved at 2:48 PM) and the 5:10 PM run on `3c6bc0b0` (main moved at 4:11 PM) were refused.
+  It accepted the 5:50 PM move (main unchanged since 4:13 PM) and the Nov 13 move to `8ab394d0` (main unchanged
+  until 10:45 AM). The likely reason: the run's checkout is shallow, so once main has moved on, the push has to send
+  the run's whole tree, collect.yml included, and the run's token may not send a workflow file. If main still points
+  at the run's commit, nothing is sent. So the check is not new; today's 36 pushes kept main moving. The workaround
+  commit (`14854d0d`) was not needed this time and has not yet run on GitHub. It is for the next day when main keeps
+  moving after a change to the workflow.
 
 ### DC-027 Checkup 2026-11-13: healthy; bus line issues recorded line by line (South and Regents Express lose a stop on every lap: open; North half its rows two evenings: accepted); a run GitHub never started stopped the data repo's chain 5 h (fixed in both chains); one run's polls not archived (accepted)
 Owner (2026-11-13): "Run a data collection check recording bus line issues." This entry is the checkup of both
