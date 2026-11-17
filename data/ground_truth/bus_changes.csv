@@ -1152,4 +1152,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5704,Downtown Campus Connector,1794888366,2026-11-16 22:06:06,drop,4,3,12647,132963,Gleacher Center,1794888366,874028,12642;12645;12646,6,4,0,,,1,
 1076,South,1794888448,2026-11-16 22:07:28,drop,2,1,4326,8630,Levi Hall (W),1794888448,540691,4322,2,2,0,,,1,
 5704,Downtown Campus Connector,1794888744,2026-11-16 22:12:24,drop,3,2,12646,132968,Roosevelt Station,1794888744,874028,12642;12645,6,4,0,,,1,
-5704,Downtown Campus Connector,1794890139,2026-11-16 22:35:39,drop,2,1,12642,155005,S Lake Park Ave & E Hyde Park Blvd,1794890139,874028,12645,6,4,1,,,,
+5704,Downtown Campus Connector,1794890139,2026-11-16 22:35:39,drop,2,1,12642,155005,S Lake Park Ave & E Hyde Park Blvd,1794890139,874028,12645,6,4,1,,,1,
