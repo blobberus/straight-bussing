@@ -105,6 +105,43 @@ def rows_outside_the_replayed_days_are_never_touched():
     assert s["predictions_removed"] == 0 and len(rows(gt / "predictions.csv")) == 2, s
 
 
+@test
+def only_source_adds_that_kind_of_row_and_changes_nothing_else():
+    """--only-source approach (DC-030 backfill): the replay's approach rows of visits nothing logged come in with their
+    predictions rows; an approach row of a visit already logged does not (nor its predictions rows), the replay's
+    other rows (a pass row the live file lacks, a re-timed transition) are ignored, no predictions row is removed or
+    replaced, and a second run changes nothing."""
+    d, r = tmp(), tmp()
+    gt = d / "data" / "ground_truth"
+    lap1, lap2 = T0, T0 + 1800
+    write(gt / "arrivals.csv", COLUMNS, [arrival(lap1), arrival(lap2, trip="t2")])
+    live = [pred(lap2, 1200, lap1 + 40, lap2 - 1250, trip="t2"), pred(lap1, 300, lap1 + 5, lap1 - 330)]
+    write(gt / "predictions.csv", PRED_COLUMNS, live)
+    before = (gt / "arrivals.csv").read_bytes(), (gt / "predictions.csv").read_bytes()
+    write(r / "arrivals-2026-10-16.csv", COLUMNS, [
+        arrival(lap1 + 3), arrival(lap2 + 60, stop="S2", trip="t2", source="pass"),
+        arrival(lap1 + 600, stop="S9", source="approach"),                 # a visit nothing logged: comes in
+        arrival(lap2 + 600, source="approach", trip="t2")])                # lap 2 at S1 logged 10 min off: stays out
+    write(r / "predictions-2026-10-16.csv", PRED_COLUMNS, [
+        pred(lap1 + 600, 300, lap1 + 610, lap1 + 270, stop="S9"), pred(lap1 + 600, 600, lap1 + 640, lap1 - 30, stop="S9"),
+        pred(lap2 + 600, 1200, lap2 + 610, lap2 - 630, trip="t2"),          # the logged visit's: never comes in
+        pred(lap1 + 3, 300, lap1 + 9, lap1 - 327)])                        # a re-timed rule row's: ignored
+    s = A.apply(d, r, ["2026-10-16"], dry_run=True, out=io.StringIO(), only_source="approach")
+    assert ((gt / "arrivals.csv").read_bytes(), (gt / "predictions.csv").read_bytes()) == before, "dry run"
+    s = A.apply(d, r, ["2026-10-16"], out=io.StringIO(), only_source="approach")
+    assert s == {"arrivals_added": 1, "arrivals_replaced": 0, "arrivals_skipped_logged": 1, "predictions_added": 2,
+                 "predictions_replaced": 0}, s
+    a = rows(gt / "arrivals.csv")
+    assert [(x["stop_id"], x["source"]) for x in a] == [("S1", "transition"), ("S1", "transition"), ("S9", "approach")], a
+    p = rows(gt / "predictions.csv")
+    assert [(x["stop_id"], x["lead_target_s"]) for x in p] == [("S1", "1200"), ("S1", "300"), ("S9", "300"), ("S9", "600")], p
+    assert (gt / "predictions.csv").read_bytes().startswith(before[1]), "existing lines untouched"
+    after = (gt / "arrivals.csv").read_bytes(), (gt / "predictions.csv").read_bytes()
+    s = A.apply(d, r, ["2026-10-16"], out=io.StringIO(), only_source="approach")
+    assert s["arrivals_added"] == 0 and s["predictions_added"] == 0, s
+    assert ((gt / "arrivals.csv").read_bytes(), (gt / "predictions.csv").read_bytes()) == after, "idempotent"
+
+
 def main():
     fails = 0
     for fn in TESTS:
