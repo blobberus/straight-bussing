@@ -13,7 +13,9 @@ of one trip and index 0 of the next), and no loop on this network is shorter tha
 same-trip revisits start at ~16 min), so a bus can't be at one stop twice within DUP_S. The kept row is
 the one with more filled fields (a run that just started has no previous stop or Passio prediction yet), except
 that a GPS-sweep row (source 'gps', DC-003) never replaces nor beats a row of the other rules: it is only a fallback for
-a visit no rule logged (overlapping runs can each see a different part of one visit). Existing
+a visit no rule logged (overlapping runs can each see a different part of one visit), and a closest-approach row
+(source 'approach', DC-030) never replaces nor beats any other row, a GPS row included: it only fills a visit nothing
+else logged. Existing
 lines are never re-serialised, so git diffs stay small. Idempotent: merging the same file twice
 changes nothing. Stdlib only.
 """
@@ -49,9 +51,17 @@ def filled(r):
 I_SOURCE = COLUMNS.index("source")
 
 
+SOURCE_RANK = {"approach": 0, "gps": 1}     # every other source: 2
+
+
+def source_rank(r):
+    return SOURCE_RANK.get(r[I_SOURCE], 2)
+
+
 def rank(r):
-    """Which of two duplicates stays: any rule's row over a GPS-sweep row (DC-003), then the richer one."""
-    return (r[I_SOURCE] != "gps", filled(r))
+    """Which of two duplicates stays: any rule's row over a GPS-sweep row (DC-003), any other row over a
+    closest-approach row (DC-030), then the richer one."""
+    return (source_rank(r), filled(r))
 
 
 def read_lines(p):
@@ -99,7 +109,7 @@ def merge(into, add, rotate_mb=0.0):
         elif hit[1] >= 0 and rank(r) > rank(parse(lines[hit[1]])[0]):
             lines[hit[1]] = ln
             stats["replaced"] += 1
-        elif hit[1] < 0 and r[I_SOURCE] != "gps" and parse(new[-hit[1] - 1][1])[0][I_SOURCE] == "gps":
+        elif hit[1] < 0 and source_rank(r) > source_rank(parse(new[-hit[1] - 1][1])[0]):
             new[-hit[1] - 1] = (new[-hit[1] - 1][0], ln)    # the run logged the visit by GPS first, then by a rule
             stats["dup"] += 1
         else:

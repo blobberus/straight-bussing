@@ -987,7 +987,8 @@ TEXT = {   # measure: (metric, agent_action, extra evidence files)
         "share of the stop visits the GPS track drove past (within 40 m, the route's direction, its listed hours) "
         "with no arrival row of that bus at that stop within 10 min",
         "visit counts and headways at the scope's stops are undercounted: never read a missing row there as a skipped "
-        "stop; every miss is in missed_visits.csv.gz (a detector change to log them is a replay, the owner's call)",
+        "stop; every miss is in missed_visits.csv.gz (the closest-approach rule of 2026-11-18, DC-030, does not log "
+        "these: it fills only stops Passio named that the buses pass 40 to 120 m off)",
         "stop_coverage.csv; missed_visits.csv.gz"),
     "row_time_off_gps": (
         "share of the logged stop visits whose row is more than 2 min from the GPS track's pass of the stop",
@@ -1027,8 +1028,9 @@ TEXT = {   # measure: (metric, agent_action, extra evidence files)
         "share of the line's stops (its route order) that its buses come within 120 m of but that get under a quarter "
         "of the line's median rows per stop (the collector's 40 m radius misses the stop as the buses drive it)",
         "the scope's stops have almost no ground truth although the buses serve them: never score or train them as "
-        "if visits were rare (the rows are missing, not the service); a detector that keeps the closest approach to a "
-        "named stop within 120 m would log them (a replay, the owner's call)",
+        "if visits were rare (the rows are missing, not the service); since 2026-11-18 the closest-approach rule logs "
+        "the visits Passio named (source approach, DC-030: South's Logan Center, Regents Express's Regents Park "
+        "Apartments), so the flag should fade on newer days; older days have those rows only where DC-030 backfilled them",
         "stop_coverage.csv"),
     "listed_stops_not_driven": (
         "share of the line's stops (its route order) that its buses do not come within 120 m of on most days and that "

@@ -159,8 +159,9 @@ stops outside its 40 m radius, buses under the wrong label, and what Passio's fe
   missing, not the service). Never drop flagged rows from the **test** rows: riders were there.
 - **Checkups** (`monitoring.md`, `docs/DATA-COLLECTION-LOG.md`): a line-day under its median is expected on a flagged
   line and hour (Friend Center/Metra weekends, Midway Metra late mornings, the handover evenings); a new line in a
-  flag, or a high flag whose number moves a lot, is worth a DC entry. `stops_rarely_logged` is a detector gap (DC-027):
-  a detector change to log those stops is a replay, the owner's call.
+  flag, or a high flag whose number moves a lot, is worth a DC entry. `stops_rarely_logged` was a detector gap (DC-027):
+  since 2026-11-18 the closest-approach rule logs those visits (source `approach`, DC-030), so the flag should fade on
+  newer days; a stop still flagged on days after that is a new finding.
 - **App agents**: nothing here changes what the app shows; a flag is evidence, the owner decides.
 
 ## Refresh

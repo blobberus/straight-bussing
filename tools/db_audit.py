@@ -50,7 +50,7 @@ REPO = "blobberus/straight-bussing"
 csv.field_size_limit(10 ** 7)
 
 FIRST_EPOCH = 1791435600               # 2026-10-08 00:00 Chicago: nothing can be older
-SOURCES = {"transition", "proximity", "pass", "gps"}
+SOURCES = {"transition", "proximity", "pass", "gps", "approach"}   # approach: since 2026-11-18 (DC-030)
 LAT, LON = (41.6, 42.1), (-87.95, -87.45)
 RANGES = {"dist_prev_m": (0, 30000), "segment_s": (0, 3600), "speed_mps": (0, 30), "dwell_s": (0, 3600),
           "passio_pred_lead_s": (120, 3 * 3600)}

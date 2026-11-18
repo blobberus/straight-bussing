@@ -6,7 +6,8 @@ Rules: docs/DATA.md "Detection". Tests: tools/test_truth.py.
 import math
 from collections import defaultdict, deque
 
-from arrivals_lib import (DEPART_SPEED, FROZEN_S, GPS_HIST, GPS_HOLD_S, GPS_SKIP, GPS_WRONG_ROUTE, HIST, MAX_GAP,
+from arrivals_lib import (APPROACH_HIST, APPROACH_HOLD_S, APPROACH_LINE_M, APPROACH_MOVE_M, APPROACH_TIE_M, DEPART_SPEED,
+                          FROZEN_S, GPS_HIST, GPS_HOLD_S, GPS_SKIP, GPS_WRONG_ROUTE, HIST, MAX_GAP,
                           MAX_LINK_S, MAX_SKIP, MAX_SPEED, MIN_PRED_AGE, NEAR_M, PASS_MIN_MOVE_M, PRED_LEADS, PREV_VISIT_GAP_S,
                           RADIUS_M, SAME_VISIT_S, SHOW_GRACE_S, SHOWN_PAST_S, STATE_TTL, STOP_SPEED, WRONG_MIN_OFF,
                           WRONG_MIN_RUN, WRONG_MIN_SPAN_S, hav_m)
@@ -30,6 +31,10 @@ class Tracker:
         self.logged = defaultdict(lambda: deque(maxlen=8))     # (veh, stop_id) -> epochs of every row logged there
         self.rule_log = defaultdict(lambda: deque(maxlen=40))  # veh -> (epoch, route, idx) of its recent rows (any source)
         self._at_stop = None                                   # stop_id -> [(route, idx)], built on first use
+        self.approached = defaultdict(lambda: deque(maxlen=8)) # (veh, stop_id) -> epochs of its 'approach' rows (DC-030)
+        self.approach_visits = {}                              # (veh, stop_id) -> (epoch, trip, idx) of the latest one
+        self.approach_cand = []                                # approach rows held APPROACH_HOLD_S: [(decided at, event)]
+        self._lines = {}                                       # route -> its drawn shape lines, for _line_d
         self.wrong_route = GPS_WRONG_ROUTE                     # the sweep may follow another route than Passio's
 
     # ---- Passio predictions (tripUpdates) ----
@@ -205,11 +210,18 @@ class Tracker:
     # ---- resume from CSV tail ----
     def seed(self, rows, now):
         """Resume from the shared CSV's tail. GPS-sweep rows (DC-003) only feed the sweep's duplicate check: the
-        Passio-driven rules start from their own rows, so the sweep never changes what they log."""
+        Passio-driven rules start from their own rows, so the sweep never changes what they log. 'approach' rows
+        (DC-030) feed only the approach rule's own checks: they never change another rule's or the sweep's rows."""
         for r in rows:
             try:
                 ep, idx = int(r["epoch"]), int(r["stop_index"])
                 if now - ep > STATE_TTL:
+                    continue
+                if r.get("source") == "approach":    # DC-030: additive, like GPS rows (only its own checks)
+                    vk = (self._veh(r["vehicle_id"]), r["stop_id"])
+                    self.approached[vk].append(ep)
+                    if ep > self.approach_visits.get(vk, (0,))[0]:
+                        self.approach_visits[vk] = (ep, r["trip_id"], idx)
                     continue
                 self.rule_log[self._veh(r["vehicle_id"])].append((ep, r["route_id"], idx))
                 if r.get("source") == "gps":
@@ -234,7 +246,8 @@ class Tracker:
         if s is None:
             s = self.v[key] = {"route": route, "done": set(), "prev": None, "last_t": t, "last_vt": None,
                                "pend": None, "pnext": None, "hist": deque(maxlen=HIST), "defer": None,
-                               "handed": False, "pn_pass": None, "skipped": set(), "floor": None, "vnamed": None}
+                               "handed": False, "pn_pass": None, "skipped": set(), "floor": None, "vnamed": None,
+                               "named": None}
         return s
 
     def _resolve(self, s, order, rep):
@@ -426,13 +439,14 @@ class Tracker:
             return
         when = self._approach(s, a, fallback)
         if when is None and d > NEAR_M:
+            self._closest_row(s, key, route, idx, lat, lon, vt, out)   # it drove past while Passio named it (DC-030)
             # Passio moved on while the bus was still far from the stop (or long past it, unseen): no time to
             # log, but a GPS pass still can (Red Line: Passio often switches 150+ m before the stop)
             s["skipped"].add(idx)
             return
         self._arrive(s, key, route, idx, when, "transition", out)
 
-    def _handoff(self, s, key, lat, lon, sp, vt, out):
+    def _handoff(self, s, key, lat, lon, sp, vt, out, sid_now=None):
         """The vehicle now reports another trip id. If it is near the stop the old trip was heading
         to, that was the old trip's final arrival (loop terminal = last route index)."""
         if s["handed"] or s["pnext"] is None or (s["last_vt"] is not None and vt <= s["last_vt"]):
@@ -442,9 +456,153 @@ class Tracker:
         idx = len(order) - 1 if s["pnext"] == 0 and order[0] == order[-1] else s["pnext"]
         a = self.st.stops[order[idx]]
         if hav_m(lat, lon, a["lat"], a["lon"]) > NEAR_M:
+            # far from it now; it may have driven past it while Passio named it (DC-030: Regents Express keeps
+            # naming Regents Park Apartments until its trip id changes 1.4 km on). Not if the new trip names the
+            # same stop: Passio renamed the trip on the way there, and the new trip's own reports time it.
+            if sid_now != order[idx]:
+                self._closest_row(s, key, s["route"], idx, lat, lon, vt, out, named=s["pnext"])
             return
         s["hist"].append((lat, lon, vt, sp))
         self._arrive(s, key, s["route"], idx, self._approach(s, a, None), "transition", out)
+
+    def _note_named(self, s, veh, route, idx, lat, lon, sp, vt):
+        """Remember the reports while Passio names stop index idx for this trip (with their distance to it, and the
+        rules' link target and the bus's last arrival then), for _closest_row; a new named stop starts afresh."""
+        rec = s["named"]
+        if rec is None or rec["idx"] != idx:
+            rec = s["named"] = {"idx": idx, "reps": deque(maxlen=APPROACH_HIST)}
+        a = self._stop_of(route, idx)
+        la = self.last_arr.get(veh)
+        rec["reps"].append((lat, lon, vt, sp, hav_m(lat, lon, a["lat"], a["lon"]), s["prev"], la[1] if la else None))
+
+    def _closest_row(self, s, key, route, idx, lat, lon, vt, out, named=None):
+        """DC-030 'approach' row. Passio named stop idx while the bus drove past it, then moved on (or changed the
+        trip id) only once the bus was more than NEAR_M away, so no rule could time it: South passes Logan Center
+        55 to 81 m from Passio's stop point, Regents Express passes or stops 74 to 90 m from Regents Park Apartments,
+        and Passio switches 300 m to 1.4 km later, long after those reports left `hist`. Time = the bus's closest
+        report while Passio named the stop (the earliest one of that dip within APPROACH_TIE_M of the closest), if
+        it was within NEAR_M (the window a transition already accepts), the distance fell and then rose by
+        APPROACH_MOVE_M (it drove past: never a bus that stood off the stop all along), it moved the route's
+        direction there, it was on the route's drawn line (within APPROACH_LINE_M: never a parallel street or a lot
+        off the route; South's line runs 56 m from Logan Center's point), it got into and out of that dip at a
+        plausible speed (MAX_SPEED: not a GPS jump), within MAX_LINK_S, and no row of this bus
+        logged that stop within SAME_VISIT_S (nor does a GPS-sweep visit wait for it). Dwell = how long it stood
+        still at that closest point (0 = drove by).
+        Purely additive, like the GPS sweep: the row is held APPROACH_HOLD_S and dropped if any other row of that
+        visit appears (_approach_flush), and it changes none of the rules' state (done stops, the next stop's link,
+        the bus's last arrival and visits, the sweep's checks), so every other row comes out exactly as without it;
+        merge_arrivals ranks it below every other source for the same visit. Its own link is the rules' link target
+        at that report; its Passio times know its own earlier approach visits. -> True if a row is held."""
+        rec = s["named"]
+        named = idx if named is None else named
+        if rec is None or rec["idx"] != named or idx in s["done"] or not rec["reps"]:
+            return False
+        reps = list(rec["reps"])
+        ds = [x[4] for x in reps]
+        dmin = min(ds)
+        if dmin > NEAR_M:
+            return False
+        k = ds.index(dmin)
+        i0 = k
+        while i0 > 0 and ds[i0 - 1] <= dmin + APPROACH_TIE_M:
+            i0 -= 1
+        a = self._stop_of(route, idx)
+        d_now = hav_m(lat, lon, a["lat"], a["lon"])
+        if i0 == 0 or max(ds[:i0]) < dmin + APPROACH_MOVE_M or max(ds[k + 1:] + [d_now]) < dmin + APPROACH_MOVE_M:
+            return False                             # never closed in (stood or started there), or never left
+        when = reps[i0][2]
+        if not 0 <= vt - when <= MAX_LINK_S:
+            return False
+        b = reps[i0 - 1]
+        c = reps[k + 1] if k + 1 < len(reps) else (lat, lon, vt)
+        for (la0, lo0, t0), (la1, lo1, t1) in ((b[:3], reps[i0][:3]), (reps[k][:3], c[:3])):
+            if t1 <= t0 or hav_m(la0, lo0, la1, lo1) / (t1 - t0) > MAX_SPEED:
+                return False                         # a GPS jump into or out of the dip (Apostolic Lot, Nov 16)
+        kx = 111320.0 * math.cos(math.radians(a["lat"]))
+        mv = ((c[1] - b[1]) * kx, (c[0] - b[0]) * 111320.0)
+        hd = self._heading(route, idx)
+        if hd is not None and hd[0] * mv[0] + hd[1] * mv[1] <= 0:
+            return False                             # went by the other way (the far side's stop)
+        ld = self._line_d(route, reps[i0][0], reps[i0][1])
+        if ld is None or ld > APPROACH_LINE_M:
+            return False                             # off its route's line: another street, a lot (or no line drawn)
+        veh, sid = self._veh(key[0]), self.st.route_stops[route][idx]
+        vk = (veh, sid)
+        if self._logged_near(veh, sid, when) or any(abs(x - when) <= SAME_VISIT_S for x in self.approached.get(vk, ())):
+            return False
+        g = self.gps.get(veh)
+        if g and any(c2["sid"] == sid and abs(c2["epoch"] - when) <= SAME_VISIT_S for c2 in g["cand"]):
+            return False                             # the GPS sweep saw it enter the stop's circle: its visit
+        sv = av = None                               # stood still at the closest point? (as _depart, there)
+        for x, dx in list(zip(reps[i0:], ds[i0:])) + [((lat, lon, vt, None), d_now)]:
+            if dx <= dmin + APPROACH_TIE_M and x[3] is not None and x[3] < STOP_SPEED:
+                sv, av = x[2], None
+            elif sv is not None and av is None:
+                av = x[2]
+            if dx > dmin + APPROACH_TIE_M:
+                break
+        dwell = 0
+        if sv is not None:
+            dep = (sv + av) / 2 if av is not None and av - sv <= MAX_GAP else sv
+            dw = int(round(dep - when))
+            dwell = max(0, dw) if dw < 1800 else None
+        pv, la_ep = reps[i0][5], reps[i0][6]
+        prev = pv if (pv and pv["idx"] < idx and 0 < when - pv["epoch"] <= MAX_LINK_S
+                      and not (la_ep and la_ep > pv["epoch"])) else None
+        rs = self.st.route_stops[route]
+        loop_stop = rs.count(sid) > 1
+        loop_last = loop_stop and idx == len(rs) - 1 - rs[::-1].index(sid)
+        saved, mine = self.visits.get(vk), self.approach_visits.get(vk)
+        if mine is not None and (saved is None or mine[0] > saved[0]):
+            self.visits[vk] = mine                   # for its own Passio times only (DC-011's previous visit)
+        try:
+            pred = self.pred_for(key[1], sid, when, veh=key[0], idx=idx, loop_stop=loop_stop, loop_last=loop_last)
+            preds = self.preds_at(key[1], sid, when, veh=key[0], idx=idx, loop_stop=loop_stop, loop_last=loop_last)
+        finally:
+            if saved is None:
+                self.visits.pop(vk, None)
+            else:
+                self.visits[vk] = saved
+        when = int(when)
+        self.approached[vk].append(when)
+        if when > self.approach_visits.get(vk, (0,))[0]:
+            self.approach_visits[vk] = (when, key[1], idx)
+        self.approach_cand.append((vt, {"epoch": when, "route": route, "trip": key[1], "veh": key[0], "idx": idx,
+                                        "source": "approach", "prev": prev, "dwell": dwell, "pred": pred, "preds": preds}))
+        return True
+
+    def _line_d(self, route, lat, lon):
+        """Metres from (lat, lon) to the route's drawn shape (Static.shapes), None if it has none."""
+        lines = self._lines.get(route)
+        if lines is None:
+            lines = self._lines[route] = [ln for ln in (getattr(self.st, "shapes", None) or {}).get(route) or ()
+                                          if len(ln) > 1]
+        kx = 111320.0 * math.cos(math.radians(lat))
+        best = None
+        for ln in lines:
+            for (a0, o0), (a1, o1) in zip(ln, ln[1:]):
+                ax, ay = (o0 - lon) * kx, (a0 - lat) * 111320.0
+                dx, dy = (o1 - o0) * kx, (a1 - a0) * 111320.0
+                L2 = dx * dx + dy * dy
+                t = 0.0 if L2 == 0 else max(0.0, min(1.0, -(ax * dx + ay * dy) / L2))
+                d = math.hypot(ax + t * dx, ay + t * dy)
+                best = d if best is None or d < best else best
+        return best
+
+    def _approach_flush(self, now, final=False):
+        """Held 'approach' rows old enough (APPROACH_HOLD_S since the switch) -> rows, unless a rule or the sweep
+        logged that bus at that stop within SAME_VISIT_S meanwhile. At shutdown (final) the younger ones are dropped,
+        as the sweep's are: the overlapping next run sees those visits whole."""
+        out, keep = [], []
+        for made, e in self.approach_cand:
+            if now - made < APPROACH_HOLD_S:
+                if not final:
+                    keep.append((made, e))
+                continue
+            if not self._logged_near(self._veh(e["veh"]), self.st.route_stops[e["route"]][e["idx"]], e["epoch"]):
+                out.append(e)
+        self.approach_cand = keep
+        return out
 
     def _check_defer(self, s, key, route, lat, lon, sp, vt, out, force=False):
         d = s["defer"]
@@ -480,7 +638,7 @@ class Tracker:
         for _, k2 in older:                          # trip id changed (normally at the terminal)
             s2 = self.v[k2]
             self._check_defer(s2, k2, s2["route"], lat, lon, None, vt, out, force=True)
-            self._handoff(s2, k2, lat, lon, rep["speed"], vt, out)
+            self._handoff(s2, k2, lat, lon, rep["speed"], vt, out, rep.get("stop_id"))
             self._depart(s2, lat, lon, rep["speed"], vt, out)
         if (not new and older and self.v[older[-1][1]]["last_t"] > s["last_t"]
                 and s["last_vt"] is not None and vt - s["last_vt"] > MAX_GAP):
@@ -488,7 +646,7 @@ class Tracker:
             # its next stop, approach reports, done stops and prev link belong to an earlier stretch of
             # driving. Start it afresh, like a new state. (A flap of a poll or two keeps the state.)
             s.update(prev=None, pnext=None, defer=None, done=set(), handed=False, pn_pass=None, skipped=set(),
-                     floor=None)
+                     floor=None, named=None)
             s["hist"].clear()
         if (new or not s["hist"]) and older:         # keep the approach history across the trip change
             s["hist"].extend(x for x in self.v[older[-1][1]]["hist"] if x[2] < vt)
@@ -521,7 +679,11 @@ class Tracker:
                 if fb is None and s["pn_pass"] is not None and s["pn_pass"][0] == pn and vt - s["pn_pass"][1] <= MAX_LINK_S:
                     fb = s["pn_pass"][1]                 # it drove past pn earlier; Passio switched late
                 if lap:
-                    self._arrive(s, key, route, pn, self._approach(s, self._stop_of(route, pn), fb), "transition", out)
+                    a = self._stop_of(route, pn)
+                    when = self._approach(s, a, fb)
+                    if when is None and hav_m(lat, lon, a["lat"], a["lon"]) > NEAR_M:
+                        self._closest_row(s, key, route, pn, lat, lon, vt, out)     # DC-030
+                    self._arrive(s, key, route, pn, when, "transition", out)
                 else:
                     self._transition(s, key, route, pn, fb, lat, lon, sp, vt, out)
             if lap:                                  # same trip id starts another lap
@@ -549,6 +711,7 @@ class Tracker:
                 s["skipped"].update(range(s["floor"], nxt))
             s["floor"] = None
             s["pnext"] = nxt
+            self._note_named(s, key[0], route, nxt, lat, lon, sp, vt)
         self._passes(s, key, route, out)
         s["last_vt"] = vt
         self._sweep(rep, vt, lat, lon, sp)
@@ -868,5 +1031,9 @@ class Tracker:
                     del self.bus_keys[k[0]]
         for k in [k for k, t in self.visits.items() if t[0] < now - 2 * STATE_TTL]:
             del self.visits[k]
+        for k in [k for k, t in self.approach_visits.items() if t[0] < now - 2 * STATE_TTL]:
+            del self.approach_visits[k]
+            self.approached.pop(k, None)
         out += self._sweep_flush(now, final)
+        out += self._approach_flush(now, final)
         return out

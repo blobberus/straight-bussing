@@ -1356,6 +1356,203 @@ def the_logger_holds_past_its_end_while_the_chain_watcher_says_so():
     assert 170 <= ran["capped"] <= 180, got["capped"]                # 60 s + --hold-max 120 s at most
 
 
+# ---- DC-030 'approach' rows: a stop Passio named while the bus drove past it 40 to 120 m off ----
+def approach_static(off=85.0, n=10):
+    """line_static with its drawn line along the stops (shapes), and S2's stop point `off` metres north of the street
+    the line follows (South's line runs 56 m from Logan Center's point)."""
+    st = line_static(n)
+    st.shapes = {"L": [[(LAT, LON0 + STEP * i) for i in range(n)]]}
+    st.stops["S2"] = dict(st.stops["S2"], lat=LAT + off / 111320)
+    return st
+
+
+def street_reps(points, t0, north=0.0, trip="T1", route="L", veh="V1"):
+    """Reports 10 s apart at (east metres from S0, stop_id Passio names, speed), `north` metres north of the street."""
+    return [rep_m(e, north, sid, t0 + 10 * k, sp, trip=trip, veh=veh, route=route) for k, (e, sid, sp) in enumerate(points)]
+
+
+def late_switch(k_switch=12, to="S5", n=16):
+    """Eastbound at 8 m/s from 250 m east of S0; Passio names S2 until report k_switch (700 m past S2), then `to`."""
+    return [(250 + 80 * k, "S2" if k < k_switch else to, 8) for k in range(n)]
+
+
+@test
+def a_stop_passed_85_m_off_with_a_late_switch_gets_one_approach_row():
+    """DC-030 (South at Logan Center, Regents Express at Regents Park Apartments): the bus drives its line past S2,
+    whose stop point is 85 m off the street, while Passio names it, and Passio names S5 only when the bus is 700 m on,
+    long after the close reports left `hist`. Before: no row for S2 (S3 to S5, on the street, get 'pass' rows). Now one
+    'approach' row, held APPROACH_HOLD_S, at the closest report (k = 3: 85 m), dwell 0."""
+    st = approach_static()
+    reps = street_reps(late_switch(), T0)
+    assert reps[3]["vt"] - T0 == 30 and 12 - 3 > L.HIST
+    assert not [e for e in run(Tracker(st), reps) if e["idx"] == 2], "held: not out before APPROACH_HOLD_S"
+    ev = [e for e in sweep_run(Tracker(st), reps) if e["idx"] == 2 or e["source"] == "approach"]
+    assert [(e["idx"], e["source"]) for e in ev] == [(2, "approach")], [(e["idx"], e["source"], e["epoch"] - T0) for e in ev]
+    e = ev[0]
+    assert e["epoch"] == reps[3]["vt"] and e["dwell"] == 0 and e["trip"] == "T1", (e["epoch"] - T0, e["dwell"])
+    row = dict(zip(L.COLUMNS, L.fmt_row(st, e)))
+    assert row["source"] == "approach" and row["stop_id"] == "S2" and row["dwell_s"] == 0, row
+
+
+@test
+def a_stop_passed_off_the_point_then_a_trip_change_far_on_gets_an_approach_row():
+    """DC-030, Regents Express: Passio keeps naming the stop until the bus's trip id changes 1.4 km on (no stop_id
+    switch at all). The old trip's handoff logs it at the closest report, under the old trip id, and only once."""
+    st = approach_static()
+    reps = street_reps([(250 + 80 * k, "S2", 8) for k in range(14)], T0)
+    reps += street_reps([(250 + 80 * k, "S6", 8) for k in range(14, 18)], T0 + 140, trip="T2")
+    ev = [e for e in sweep_run(Tracker(st), reps) if e["idx"] == 2 or e["source"] == "approach"]
+    assert [(e["idx"], e["source"], e["trip"]) for e in ev] == [(2, "approach", "T1")], ev
+    assert ev[0]["epoch"] == reps[3]["vt"], ev[0]["epoch"] - T0
+
+
+@test
+def a_bus_parked_off_a_named_stop_gets_no_approach_row():
+    """A bus standing on its line 85 m from S2's point (a layover) the whole time Passio names S2, then driving away:
+    its distance never fell, so it did not drive past the stop. No row (the same with GPS jitter)."""
+    st = approach_static()
+    rnd = random.Random(5)
+    pts = [(2 * B_EAST + rnd.uniform(-3, 3), "S2", 0) for _ in range(30)]
+    pts += [(2 * B_EAST + 80 * j, "S2" if j < 12 else "S6", 8) for j in range(1, 15)]
+    reps = [rep_m(e, rnd.uniform(-3, 3), sid, T0 + 10 * k, sp, route="L") for k, (e, sid, sp) in enumerate(pts)]
+    ev = sweep_run(Tracker(st), reps)
+    assert not [e for e in ev if e["idx"] == 2 or e["source"] == "approach"], [(e["idx"], e["source"]) for e in ev]
+
+
+@test
+def a_fast_pass_on_a_parallel_street_gets_no_approach_row():
+    """Midway Metra at 59th St & Kimbark (Nov 10 to 16): on some laps the bus drives a street 60 m off its line past
+    the stop at 10 m/s. The stop is on the line; the bus is not: no row."""
+    st = approach_static(off=0.0)
+    assert sweep_run(Tracker(st), street_reps(late_switch(), T0, north=65.0)) == []
+
+
+@test
+def a_stop_another_row_already_timed_gets_no_approach_row():
+    """The visit is already logged (here: a row of this bus at S2 under its previous trip id, 90 s earlier, from the
+    CSV a restarted run reads; or, in a second case, an approach row of it from the CSV): nothing is added."""
+    st = approach_static()
+    reps = street_reps(late_switch(), T0)
+    for src in ("proximity", "approach"):
+        tr = Tracker(st)
+        tr.seed([{"epoch": str(T0 - 90), "vehicle_id": "V1", "trip_id": "T0", "route_id": "L", "stop_id": "S2",
+                  "stop_index": "2", "dwell_s": "0", "source": src}], T0)
+        ev = [e for e in sweep_run(tr, reps) if e["idx"] == 2 or e["source"] == "approach"]
+        assert ev == [], (src, [(e["idx"], e["source"], e["epoch"] - T0) for e in ev])
+
+
+@test
+def a_held_approach_row_gives_way_to_a_rule_that_times_the_visit_later():
+    """Nov 10, Apostolic/Drexel at 57th Street & Drexel (NB): after the late switch a rule still logged the visit (here:
+    Passio names S2 again and the bus comes back and stands at S2's point, a 'proximity' row). The held approach row
+    is then dropped (another row of that bus at that stop within SAME_VISIT_S): one row for the visit, the rule's."""
+    st = approach_static()
+    reps = street_reps(late_switch(), T0)
+    back = [(1450 - 80 * j, 0, "S2", 8) for j in range(1, 13)] + [(2 * B_EAST, 40, "S2", 4)]
+    back += [(2 * B_EAST, 85, "S2", 0)] * 3
+    reps += [rep_m(e, n, sid, T0 + 160 + 10 * j, sp, route="L") for j, (e, n, sid, sp) in enumerate(back)]
+    ev = [e for e in sweep_run(Tracker(st), reps) if e["idx"] == 2 or e["source"] == "approach"]
+    assert [(e["idx"], e["source"]) for e in ev] == [(2, "proximity")], [(e["idx"], e["source"], e["epoch"] - T0) for e in ev]
+
+
+@test
+def a_single_gps_jump_near_a_named_stop_gets_no_approach_row():
+    """Apostolic at Apostolic Lot (Nov 16): one report 104 m from the stop between reports 450 m away 9 s apart: a
+    GPS jump (50 m/s), not a drive past. No row."""
+    st = approach_static()
+    pts = [(-1000 + 40 * k, "S2" if k < 18 else "S5", 4) for k in range(20)]       # far west of S2, eastbound
+    pts[8] = (2 * B_EAST, "S2", 4)                                                  # one report under S2's point
+    ev = sweep_run(Tracker(st), street_reps(pts, T0))
+    assert not [e for e in ev if e["source"] == "approach"], [(e["idx"], e["source"], e["epoch"] - T0) for e in ev]
+
+
+@test
+def a_switch_while_the_close_report_is_still_kept_stays_a_transition_row():
+    """The rule only fills what no rule timed: Passio switches to S3 two reports after the bus passed S2 85 m off,
+    while the close report is still in `hist`. The transition rule times it (closest report within NEAR_M), exactly
+    as before: source 'transition', the same epoch, and no approach row."""
+    st = approach_static()
+    pts = [(250 + 80 * k, "S2" if k < 6 else "S3", 8) for k in range(7)]
+    ev = sweep_run(Tracker(st), street_reps(pts, T0))
+    assert [(e["idx"], e["source"], e["epoch"] - T0) for e in ev] == [(2, "transition", 30)], \
+        [(e["idx"], e["source"], e["epoch"] - T0) for e in ev]
+
+
+@test
+def a_bus_that_stops_off_the_stop_point_is_timed_when_it_got_there_with_its_dwell():
+    """Regents Express stops 74 to 90 m from Passio's point: the arrival is the first report at the spot where it
+    stood (not the closest of its standing reports, which GPS jitter picks at random), and dwell_s says how long it
+    stood (as at a stop: to the midpoint of its last standing report and the next)."""
+    st = approach_static(off=80.0)
+    rnd = random.Random(11)
+    pts = [(250 + 80 * k, "S2", 8) for k in range(3)]                      # 250, 330, 410
+    pts += [(2 * B_EAST - 10 + rnd.uniform(-2, 2), "S2", 0) for _ in range(4)]   # stands 30 s, 80 m from S2's point
+    pts += [(2 * B_EAST + 70 + 80 * j, "S2" if j < 10 else "S6", 8) for j in range(13)]
+    reps = street_reps(pts, T0)
+    ev = [e for e in sweep_run(Tracker(st), reps) if e["idx"] == 2 or e["source"] == "approach"]
+    assert [(e["idx"], e["source"]) for e in ev] == [(2, "approach")], [(e["idx"], e["source"]) for e in ev]
+    assert ev[0]["epoch"] == reps[3]["vt"], ev[0]["epoch"] - T0
+    assert abs(ev[0]["dwell"] - 35) <= 1, ev[0]["dwell"]                 # last stand T0+60, next report T0+70
+
+
+@test
+def driving_past_a_named_stop_the_other_way_gets_no_approach_row():
+    """A westbound drive past S2 (85 m off) on the eastbound route L: the far side's stop, not a visit."""
+    st = approach_static()
+    pts = [(2 * B_EAST + 400 - 80 * k, "S2" if k < 16 else "S4", 8) for k in range(18)]
+    assert not [e for e in sweep_run(Tracker(st), street_reps(pts, T0)) if e["idx"] == 2 or e["source"] == "approach"]
+
+
+@test
+def approach_rows_only_add_every_other_row_stays_the_same():
+    """DC-030 is purely additive: the bus stops at S1, drives past S2 85 m from its point (Passio names S2 until the
+    bus is 600 m on), then past S3 and S4. With the rule: S2's 'approach' row and every other row exactly as without
+    the rule (sources, times, links, dwells); S3 still links to S1, not to the side row."""
+    st = approach_static()
+    pts = [(B_EAST - 160, "S1", 8), (B_EAST - 80, "S1", 8), (B_EAST, "S1", 0), (B_EAST, "S1", 0)]
+    pts += [(B_EAST + 80 * j, "S2" if j < 12 else "S5", 8) for j in range(1, 15)]
+    reps = street_reps(pts, T0)
+
+    def rows(tr):
+        return [(e["idx"], e["source"], e["epoch"], (e["prev"] or {}).get("idx"), e["dwell"]) for e in sweep_run(tr, reps)]
+    off = Tracker(st)
+    off._closest_row = lambda *a, **k: False
+    base, new = rows(off), rows(Tracker(st))
+    assert [r for r in new if r[1] != "approach"] == base, (base, new)
+    side = [r for r in new if r[1] == "approach"]
+    assert [(r[0], r[3]) for r in side] == [(2, 1)], side                          # linked to S1
+    s3 = next(r for r in new if r[0] == 3)
+    assert s3[1] == "pass" and s3[3] == 1, s3
+
+
+@test
+def approach_rows_never_replace_another_row_and_seed_only_their_own_checks():
+    """Merging: any other row of the same visit (a rule's or the GPS sweep's) stays over an 'approach' row, in the
+    shared file and inside one run's file; seeding an approach row blocks only a second approach row of that visit."""
+    import csv as _csv
+    import merge_arrivals as MA
+    st = line_static()
+    row = lambda ep, src, trip="T1": L.row_text(L.fmt_row(st, {"epoch": ep, "route": "L", "trip": trip, "veh": "V1",
+                                                               "idx": 2, "source": src, "prev": None, "dwell": 0,
+                                                               "pred": None}))
+    d = Path(tempfile.mkdtemp(prefix="sb-truth-"))
+    for first, then in (("approach", "transition"), ("approach", "gps"), ("transition", "approach"), ("gps", "approach")):
+        into, add = d / f"{first}-{then}.csv", d / f"{first}-{then}-add.csv"
+        into.write_text(MA.HEADER + row(T0, first), encoding="utf-8", newline="")
+        add.write_text(MA.HEADER + row(T0 + 30, then), encoding="utf-8", newline="")
+        MA.merge(into, add)
+        srcs = [ln.split(",")[-1].strip() for ln in into.read_text(encoding="utf-8").splitlines()[1:]]
+        assert srcs == [then if first == "approach" else first], (first, then, srcs)
+        one, into2 = d / f"{first}-{then}-one.csv", d / f"{first}-{then}-into.csv"
+        one.write_text(MA.HEADER + row(T0, first) + row(T0 + 30, then), encoding="utf-8", newline="")
+        MA.merge(into2, one)
+        srcs = [ln.split(",")[-1].strip() for ln in into2.read_text(encoding="utf-8").splitlines()[1:]]
+        assert srcs == [then if first == "approach" else first], ("one file", first, then, srcs)
+    tr = Tracker(st)
+    tr.seed([dict(zip(L.COLUMNS, next(_csv.reader([row(T0, "approach")]))))], T0 + 60)
+    assert not tr.v and not tr.logged and not tr.rule_log and tr.approached[("V1", "S2")], "only the approach rule's checks"
+
+
 def main():
     fails = 0
     for fn in TESTS:

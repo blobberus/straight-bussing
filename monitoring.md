@@ -84,7 +84,10 @@ on any other PC use that clone's folder (see **Run the stopgap on another PC**).
    timetable the collector used (`python tools/build_gtfs.py --zip <the data branch's gtfs/gtfs-<version>.zip> --out
    <dir> --patterns <dir>/route_patterns.json`): the committed `web/data` can be older than the timetable (on Nov 13,
    2026 it lacked the two stops added on Oct 26). The audit's line rule flags only a line under half its median, so
-   compare each line yourself, and recheck the open per-line rows of the last checkup.
+   compare each line yourself, and recheck the open per-line rows of the last checkup. Rows of every `source` count as
+   logged, `approach` too (since 2026-11-18, DC-030: South's Logan Center, Regents Express's Regents Park Apartments
+   get theirs that way, written 10 min after Passio moves on; a day of those two stops with none while the line ran
+   is worth a look).
 3. DEGRADED / DOWN: for each `[warn]` / `[DOWN]` line, apply the matching row of the fix table.
 4. If it is DOWN and not fixed within ~10 min, **take over locally** (below), and tell the owner.
 5. Run `status` again.

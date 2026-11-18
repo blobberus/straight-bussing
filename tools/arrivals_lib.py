@@ -70,6 +70,16 @@ GPS_WRONG_ROUTE = False  # the override is OFF: on Oct 10-16 no episode was corr
                          # route the track suggested), and pass-through drives fit too; detection is kept and tested
 PASS_MIN_MOVE_M = 15.0   # a 'pass' needs the bus to move at least this far between two reports (GPS jitter of a
                          # standing bus never counts as driving past a stop)
+APPROACH_HIST = 180      # DC-030 'approach' rows: reports kept while Passio names one stop (30 min at 10 s; Regents
+                         # Express names Regents Park Apartments about 15 min a lap)
+APPROACH_MOVE_M = PASS_MIN_MOVE_M   # ... the distance to it must fall and then rise by at least this (driving past it,
+                         # not a bus that stood there all along or started there)
+APPROACH_TIE_M = 10.0    # ... time = the earliest report of the dip nearly as close as the closest (as _approach does
+                         # inside RADIUS_M: a bus that stops off the stop point arrived when it got there)
+APPROACH_LINE_M = 40.0   # ... and the bus was on its route's drawn line then (web/data/shapes.json; the app's buses ride
+                         # it within 40 m too, web/js/map/track.js ON_M): never a parallel street or a lot off the route
+APPROACH_HOLD_S = GPS_HOLD_S   # ... held this long: a rule's or the sweep's row of that visit (a later switch, a pass)
+                         # makes it unnecessary
 
 try:
     from zoneinfo import ZoneInfo

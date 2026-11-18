@@ -96,8 +96,12 @@ What was wrong, and what changed on October 13:
   (measured all day since 2026-11-13: `data/labeled/collection/wrong_label_episodes.csv`, about 1.6% of the bus time;
   the data repo's `findings/collection/` copy is refreshed every Monday). Their rows keep Passio's label, as Passio's
   own predictions do, and are not refiled (decided 2026-11-17, DC-029): leave an episode's rows out of the labeled
-  line's training data and score them apart. Also missing: stops the buses pass 50 to 120 m away (outside the 40 m radius: South's Logan Center, Regents Park Apartments;
-  `data/labeled/collection/stop_coverage.csv`, `closest_m`).
+  line's training data and score them apart.
+- **Stops the buses pass 50 to 120 m from the stop's map point** (outside the 40 m radius: South's Logan Center,
+  Regents Express at Regents Park Apartments) are logged since November 18 when the feed named them as the bus's next
+  stop (source `approach`, DC-030; a week's replay: South at Logan Center 70 of about 86 laps instead of 2, Regents
+  Express at Regents Park Apartments 20 of about 30 instead of 0). Before that day they are missing unless DC-030's
+  backfill added them (`data/labeled/collection/stop_coverage.csv`, `closest_m`).
 
 ## `arrivals.csv`: the 25 columns
 
@@ -206,7 +210,7 @@ than a minute *earlier* than shown only 3% of the time. Weekends were easier tha
 
 | Column | What it means | Example |
 |---|---|---|
-| `source` | How the arrival was detected. **`transition`**: the feed's "next stop" for this bus moved past this stop; the time is when the bus actually passed it (69% of rows so far). **`proximity`**: the bus was seen standing within 40 m of the stop (31%). **`pass`** (new, from October 13, about 5 PM): the feed never named this stop, but the bus's GPS track went past it within 40 m in the route's direction; the time is its closest approach. The replay suggests about 7% of weekday rows and 17% of weekend rows will be `pass`. **`gps`** (from October 17, and October 10 on after the backfill): the feed's "next stop" for this bus was wrong (frozen, ahead, behind), and the GPS track alone shows the bus reached the stop in the route's order; no Passio prediction, previous stop or dwell; `trip_id` blank when the feed had been frozen. All four are real arrivals. | `transition` |
+| `source` | How the arrival was detected. **`transition`**: the feed's "next stop" for this bus moved past this stop; the time is when the bus actually passed it (69% of rows so far). **`proximity`**: the bus was seen standing within 40 m of the stop (31%). **`pass`** (new, from October 13, about 5 PM): the feed never named this stop, but the bus's GPS track went past it within 40 m in the route's direction; the time is its closest approach. The replay suggests about 7% of weekday rows and 17% of weekend rows will be `pass`. **`gps`** (from October 17, and October 10 on after the backfill): the feed's "next stop" for this bus was wrong (frozen, ahead, behind), and the GPS track alone shows the bus reached the stop in the route's order; no Passio prediction, previous stop or dwell; `trip_id` blank when the feed had been frozen. **`approach`** (from November 18, DC-030): the feed named this stop as the bus's next stop while the bus drove past it on its own line 40 to 120 m from the stop's map point (South's Logan Center, Regents Express at Regents Park Apartments), and moved on only when the bus was far past; the time is the bus's closest report then, `dwell_s` how long it stood there, with the Passio time and previous stop as on a `transition` row (a week's replay: 134 rows, about 0.6%). All five are real arrivals. | `transition` |
 
 ## `predictions.csv`: what Passio showed 1 to 30 minutes ahead
 

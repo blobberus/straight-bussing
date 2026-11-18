@@ -36,8 +36,10 @@ stopped here (0 = drove through, blank = unknown) · `passio_pred_epoch` Passio'
 bus + trip + stop (at a loop terminal: the one with the matching stop_sequence) made >= 120 s before the
 arrival, `passio_pred_lead_s` = epoch - when it was made · `source`
 `transition` | `proximity` | `pass` (since 2026-10-13) | `gps` (since 2026-10-17, DC-003; `trip_id` may be blank,
-no prev / dwell / Passio prediction). Rows are appended when the bus leaves the stop (a `gps` row 10 min after the
-visit), so files are only roughly sorted.
+no prev / dwell / Passio prediction) | `approach` (since 2026-11-18, DC-030: a stop Passio named that the bus drove
+past 40 to 120 m off, at its closest report; prev, dwell and Passio prediction like a `transition` row). Rows are
+appended when the bus leaves the stop (a `gps` row 10 min after the visit, an `approach` row 10 min after Passio moved
+on), so files are only roughly sorted.
 
 ## predictions.csv (added 2026-10-12; one row = one arrival x one target lead)
 The arrivals file keeps its 25 columns; this file sits next to it. Join on `vehicle_id` + `stop_id` + `epoch`
@@ -316,11 +318,29 @@ gives a 95% bootstrap interval **over days** (RouteKnower 6.5: days are the unit
   rows for the rules' state, and a merge keeps any rule's row of the same visit (`merge_arrivals.rank`). Replay
   Oct 10-16: +1,826 rows, the share of the stop visits buses drove past with a row 84-88% -> 91-95% (Red Line
   55-75% -> 96-97%), every other row identical; about 99% of 196 sampled rows confirmed on the raw polls.
+- **approach** (since 2026-11-18, DC-030, `Tracker._closest_row`): a stop Passio named while the bus drove past it 40
+  to 120 m from Passio's stop point, when Passio moved on (or changed the trip id) only after the bus was over 120 m
+  away and its close reports had left the 8 kept for a transition, so no rule above could time it. South's line runs
+  56 m from Logan Center's point (South logged 22 rows there in 40 service days), Regents Express passes or stops 79
+  to 103 m from Regents Park Apartments' (2 rows), and Passio switches 300 m to 1.4 km later. Time = the bus's
+  closest report while Passio named the stop (the earliest one within 10 m of the closest, `APPROACH_TIE_M`), if it
+  was within 120 m (`NEAR_M`, the window a transition already accepts), the distance fell and then rose by 15 m
+  (`APPROACH_MOVE_M`: it drove past, not a bus standing off the stop all along), it moved the route's direction there,
+  it was on its route's drawn line (within 40 m of `web/data/shapes.json`, `APPROACH_LINE_M`, as the app's buses: never
+  a parallel street or a lot off the route), and it got into and out of that dip at a plausible speed (not a GPS
+  jump). Dwell = how long it stood still at that closest point; prev and Passio's times as a transition row's. Held
+  10 min (`APPROACH_HOLD_S`) and written only if no other row of that bus at that stop appears within 15 min. Purely
+  additive: it changes none of the rules' or the sweep's state, seeding feeds only its own duplicate check, and a merge
+  keeps any other row of the same visit, a `gps` row included (`merge_arrivals.SOURCE_RANK`). Replay Nov 10 to 16: +134
+  rows (South at Logan Center 68, about 80% of its laps; Regents Express at Regents Park Apartments 20, about 65%; the
+  Connector's River East 17; 29 at 16 other stops), +583 predictions rows, every other arrival and predictions row
+  identical. The rule needs no list of stops.
 - **Not caught yet:** a bus Passio files under another route keeps only the rows on Passio's route. The sweep can
   detect it (`GPS_WRONG_ROUTE`, off: no episode was corroborated so far; DC-003 in docs/DATA-COLLECTION-LOG.md).
 - Time = when the track crosses the stop, interpolated between reports with the reported speed; else the
   earliest closest report inside 40 m; else closest within 120 m; else (transitions only) the midpoint of
-  the last two reports, if they are <= 60 s apart and the stop lies between them. No row if the bus was
+  the last two reports, if they are <= 60 s apart and the stop lies between them (`approach`: its own rule above). No
+  row if the bus was
   already at the stop in every remembered report (logger start, layovers): we never saw it arrive; and no
   row if `stop_id` moved on while the bus was nowhere near the stop (it switched late, or over a stop the
   bus does not serve).
@@ -401,7 +421,9 @@ python tools/test_replay.py                                           # hermetic
   [--dry-run]` (tests: `tools/test_apply_replay.py`). arrivals.csv: the replayed rows merged in with merge_arrivals (no
   live row is ever removed). predictions.csv: a live row is removed only when today's previous-visit rule (DC-011) says
   it was about the bus's previous visit AND the replay has no such row; then the replayed rows are merged in with
-  merge_predictions. A live row the replay could not rebuild stays. Idempotent. Then rebuild that day's forecast table
+  merge_predictions. A live row the replay could not rebuild stays. Idempotent. `--only-source approach` is add-only
+  (DC-030's backfill): just the replay's rows of that source where arrivals.csv has no row of the bus at the stop within
+  15 min, and their predictions rows; nothing removed or replaced. Then rebuild that day's forecast table
   (`build_eta_dataset.py`, release asset `eta-<day>.csv.gz` with `--clobber`, its `data/eta/summary.csv` rows with
   `archive_day.py --merge-summary`).
 

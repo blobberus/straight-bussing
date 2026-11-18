@@ -38,6 +38,138 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 
 ## Errors
 
+### DC-030 South's Logan Center and Regents Express's Regents Park Apartments logged: the closest-approach rule (source `approach`, fixed); a week's replay adds 134 rows and changes no other row
+
+Owner (2026-11-17): "resolve all issues and things addressed to me on my behalf". The lead decided DC-027 item 4 on
+the owner's behalf: ship the closest-approach rule, window `NEAR_M` (120 m, the transition rule's), as a new `source`
+value `approach` so the rows can be counted, sliced or dropped, after a week's replay that adds rows and changes none.
+Times are Chicago (CST). Scripts and replay files stayed off the repo (job folder).
+
+**1. The rule (`Tracker._closest_row`, `tools/arrival_detector.py`; constants `APPROACH_*` in `tools/arrivals_lib.py`).**
+While Passio names a stop as a bus's next stop, the bus's reports are kept with their distance to it (up to 30 min,
+`APPROACH_HIST`). When Passio moves on (a forward switch, a new lap, or a new trip id) while the bus is more than
+120 m away and no rule could time the stop (the transition rule found no report within 120 m among the 8 it keeps),
+the stop gets an `approach` row at the bus's closest report, the earliest one within 10 m of the closest
+(`APPROACH_TIE_M`; a bus that stops off the stop point arrived when it got there), if all of these hold:
+- that report was within 120 m (`NEAR_M`);
+- the distance fell and then rose by 15 m (`APPROACH_MOVE_M`): it drove past, never a bus that stood off the stop all
+  along or started there;
+- the bus moved the route's direction there (not the far side's stop);
+- the bus was on its route's drawn line, within 40 m of `web/data/shapes.json` (`APPROACH_LINE_M`, the app's own
+  "on its line", `web/js/map/track.js` `ON_M`): never a parallel street or a lot off the route (item 3);
+- it got into and out of that dip at no more than `MAX_SPEED` (30 m/s): not a GPS jump (item 3);
+- no row of that bus at that stop within 15 min, and no GPS-sweep visit of it waiting.
+Dwell = how long it stood still at that closest point (0 = drove by); `prev_*` = the link the rules had at that report;
+Passio's times are looked up as for a transition row (the previous-visit rule of DC-011 also knows the bus's earlier
+`approach` visits). The row is held 10 min (`APPROACH_HOLD_S` = `GPS_HOLD_S`) and dropped if any other row of that bus
+at that stop appears within 15 min. A trip change where the new trip names the same stop (Passio renamed it on the
+way there) is left to the new trip's own reports. No list of stops.
+
+It is purely additive, like the GPS sweep: it changes none of the rules' state (stops done, the next stop's link, the
+bus's last arrival and visits) nor the sweep's checks; a run seeded from the CSV reads `approach` rows only for the
+rule's own duplicate check; `merge_arrivals` ranks `approach` below every other source (`SOURCE_RANK`: approach 0,
+gps 1, the rules 2), so any other row of the same visit stays, in the shared file and inside one run's file.
+
+**2. Replay Nov 10 to 16 (`tools/replay_day.py`, the same artifacts and seed for both codes; base = origin/main
+`9edbb643`, new = this change).** Arrival rows: every base row identical in every field, none removed, only
+`approach` rows added; every added row is at a stop of its bus's labeled line's route order (`route_stops`).
+
+| Day | base rows | new rows | identical | changed | removed | added (`approach`) | predictions rows added (all for added arrivals) |
+|---|---|---|---|---|---|---|---|
+| Tue Nov 10 | 3,897 | 3,917 | 3,897 | 0 | 0 | 20 | 80 |
+| Wed Nov 11 | 4,255 | 4,281 | 4,255 | 0 | 0 | 26 | 136 |
+| Thu Nov 12 | 4,362 | 4,390 | 4,362 | 0 | 0 | 28 | 101 |
+| Fri Nov 13 | 3,650 | 3,662 | 3,650 | 0 | 0 | 12 | 39 |
+| Sat Nov 14 | 926 | 939 | 926 | 0 | 0 | 13 | 51 |
+| Sun Nov 15 | 715 | 728 | 715 | 0 | 0 | 13 | 75 |
+| Mon Nov 16 | 3,963 | 3,985 | 3,963 | 0 | 0 | 22 | 101 |
+| week | 21,768 | 21,902 | 21,768 | 0 | 0 | 134 (0.6%) | 583 (0 removed, 0 changed) |
+
+The two stops (rows per day, base -> new; the stop before and after for the number of laps):
+- South at Logan Center (8589): 0 -> 7, 0 -> 14, 2 -> 13, 0 -> 2 (Friday's South evening ran under the Connector's
+  label, DC-028), 0 -> 7 (Saturday's bus 4314, which Passio names at few stops), 0 -> 13, 0 -> 14: 2 -> 70 in the week,
+  against 84 rows at Cottage & 61st before it and 88 at South Campus Residence Hall after it (about 80% of the laps).
+- Regents Express at Regents Park Apartments (8578): 0 -> 6, 6, 5, 0 (no service Friday, DC-028), 0, 0, 3: 0 -> 20,
+  against 29 at the stop before and 32 after (about 65%; the laps without a row were not checked one by one).
+
+All additions by line and stop, with the bus's distance from Passio's stop point and its speed at the closest report
+(from the raw polls), and the bus's distance from its drawn line:
+
+| Line | Stop | added | distance m | speed m/s | off its line m |
+|---|---|---|---|---|---|
+| South | Logan Center | 68 | 53.5 to 78.4 | 0.0 to 8.5 (median 5.1; 4 stood 5 to 35 s) | 0 to 5.5 (the stop point is 56 m off the line) |
+| Regents Express | Regents Park Apartments | 20 | 79.4 to 102.6 | 0.0 to 8.6 (11 stood 4 to 56 s) | 3 to 18 |
+| Downtown Campus Connector | UCHICAGO Medicine - River East | 17 | 55.3 to 114.1 | 0.0 to 8.4 (7 stood 5 to 50 s) | 0.5 to 39.2 |
+| East | Regents Park Apartments | 4 | 71.5 to 80.1 | 0.1 to 6.3 (3 stood 14 to 26 s) | 17 to 33 |
+| Downtown Campus Connector | E Randolph St & S Michigan Ave, S (Upper) Wacker Dr & W Adams St, N (Upper) Wacker Dr & W Madison St | 3, 3, 1 | 49.8 to 88.4 | 0.1 to 6.3 (4 stood 15 to 38 s) | 3.5 to 39.7 |
+| Midway Metra | Press Building | 3 | 110.1 to 117.1 | 3.7 to 4.3, then stood 18 to 48 s | 3 to 19 |
+| Apostolic/Drexel | 57th Street & Drexel (NB) 2, Apostolic Lot 2, Goldblatt Pavilion, Comer Children's Hospital, 58th Street & Drexel, Wyler Pavilion 1 each | 8 | 44.7 to 117.5 | 0.6 to 6.4 | 1.0 to 38.4 |
+| East | Hyde Park Places Apts | 2 | 115.7 to 116.9 | 7.6 to 8.8 | 20 to 29 |
+| Apostolic, Drexel, Red Line/Arts Block, South Loop Shuttle | one stop each (two for Apostolic) | 5 | 10.9 to 113.4 | 0.1 to 10.7 | 2.1 to 37.0 |
+
+By distance: 1 within 40 m (no other rule had it), 49 at 40 to 60 m, 50 at 60 to 80, 22 at 80 to 100, 12 at 100 to
+120. 121 of the 134 have a previous-stop link, 106 a Passio time; none has a blank trip id.
+
+**3. What changed from DC-027's proposal, and why.**
+- **Additive, not a `transition` row through the rules' state.** The first version (the prototype's way: `_arrive`,
+  the stop marked done, the next stop linked to it) changed rows on the replay: Nov 10 15 rows, Nov 11 3. Twelve were
+  the next stop's link moving to the new row (53rd Street Express's Logan Center now from Goldblatt Pavilion), the
+  rest re-timed or re-sourced: two `pass` rows became `gps`, two `transition` rows became the new row 1 and 18 s
+  earlier, and the Connector's River East row of Nov 11 10:30 AM came from another run (4 s earlier, dwell blank).
+  Causes, traced on the run files: a seeded new row of the lap before marked the stop done for the next lap (the
+  Connector keeps one trip id for every lap; on run `43054029611` the base logs River East and the first version did
+  not), the next stop's link and the bus's last arrival moved, and the merge kept the richer copy. DC-027's prototype
+  (6 rows re-timed by up to 8 s, 5 `gps` rows became `transition`) is consistent with the same mechanisms plus the
+  merge rank (a `transition`-labeled row beats the sweep's row of the same visit); it was not rerun. With the
+  additive rule: 0 changed.
+- **On its line (40 m from the drawn route).** The additive rule without it added 231 rows in the week; 91 were 40 m
+  or more off their line: Midway Metra at 59th St & Kimbark / Lab School 18 (57 to 67 m off at 3.7 to 11.3 m/s, never
+  stopping: a street the line does not stop on; the line logs that stop within 40 m on 118 of its 133 visits),
+  Goldblatt Pavilion 46 on five lines (46 to 73 m off: Apostolic/Drexel's 18 stood 42 to 934 s, layovers off the route
+  at the loop's end; 53rd Street Express's 9 drove by at 3 to 10 m/s), the Connector at N (Upper) Wacker Dr & W
+  Madison St 8 and River East 2 (43 to 83 m off), Friend Center/Metra and Apostolic at Wyler Pavilion 3 (91 to 98 m
+  off), and 14 at 10 other stops. A speed limit (the lead's example) could not separate them: South drives past Logan
+  Center at up to 8.5 m/s, Midway Metra's parallel street passes start at 3.7 m/s; the distance from the line does
+  (South 0 to 5.5 m, Midway Metra 57 to 67 m). 3 more gave way to a later rule row of the visit (the hold, below).
+- **GPS jumps.** 3 rows, all Apostolic at Apostolic Lot (Nov 11 9:26 AM, Nov 16 6:43 and 7:12 AM): one report about
+  100 m from the stop between reports 450 m away 9 s apart. Dropped.
+- **Held 10 min.** Nov 10 5:14 PM, Apostolic/Drexel at 57th Street & Drexel (NB): the same run logged the visit as a
+  `transition` 1 s after the new row's time; the arrivals merge kept the transition, but the new row's Passio rows
+  (earlier arrival, so "fresher" for `merge_predictions`) replaced the transition's 5. Now such a row is dropped.
+- Left as is: the 12 rows at 100 to 120 m are the least certain (the window the lead set): Midway Metra at Press
+  Building stood 18 to 48 s 110 to 117 m from the stop point on three evening laps; East at Hyde Park Places and the
+  South Loop Shuttle drove by at 7.6 to 10.7 m/s on their line. Slice them by `source` and distance if needed.
+- Left as is: if one run logs a visit only as `approach` and an overlapping run by a rule, `merge_arrivals` keeps the
+  rule's row, and `merge_predictions` keeps the fresher copy of each Passio row as it does between any two runs (the
+  same Passio updates, the arrival time some seconds apart). Not seen in the week's replay after the line test.
+
+**4. Every reader of `source` and of the row schema.** Changed: `tools/db_audit.py` (`SOURCES`: an unknown source was
+an error), `tools/merge_arrivals.py` (the rank), the advice texts of `stops_missed` and `stops_rarely_logged` in
+`tools/collection_flags.py` and `data/labeled/collection/README.md` (this rule fills only the stops Passio named that
+buses pass 40 to 120 m off). Unchanged and fine: `truth_logger.py` (`schema_errors` counts feed shape, not rows),
+`check_merge.py` (counts and columns), `collector_selftest.py`, `merge_predictions.py`, `health.py` and
+`collection_flags.py` (only `gps` and `pass` are special), `build_eta_dataset.py` / `model_core.py` (no source
+filter), `replay_day.py`, the E19 to E31 scripts (they skip `gps` only), `truth_stats.py` / `rk_data_audit.py`
+(counts). The data repo (fresh clone): `scripts/sync.py` copies every row whatever its source, `viewer.js` shows rows
+without reading it, `algorithm-test/` reads the forecast tables and predictions, `findings/` runs this repo's scripts:
+nothing to change there. `tools/apply_replay.py` gains `--only-source` (item 6).
+
+**5. Tests.** `tools/test_truth.py` 73 (61 before): a stop passed 85 m off with a late switch (one row at the closest
+report), the same with a trip change 1.4 km on, a bus parked off the stop (none), a parallel street (none), a visit
+already logged or already an `approach` row in the CSV (none), a later rule row of the visit (the held row dropped),
+a switch while the close report is kept (the transition row, unchanged), a bus stopping 80 m off (time and dwell), the
+far side's direction (none), a GPS jump (none), the whole lap with and without the rule (every other row identical),
+the merge ranks and the seed. `test_merge` 13, `test_replay` 6, `test_db_audit` 11, `test_apply_replay` 4,
+`test_collection_flags` 17, `collector_selftest.py` ok.
+
+**6. Backfill (add-only).** `tools/apply_replay.py --only-source approach` adds the replay's `approach` rows where
+arrivals.csv has no row of that bus at that stop within 15 min, and their predictions rows; it removes and replaces
+nothing (`*_replaced` must be 0, `check_merge.py` guards the push). Pending: after the first live runs (item 7).
+
+**7. Live.** Pending.
+
+**Status.** fixed (this commit); backfill and the first live runs: item 6 and 7.
+
 ### DC-029 Checkup 2026-11-17: healthy, no gap since Monday noon; DC-028's fixes held (no run needed the hold, the fallback tag follows main); the Collector tests workflow red since Nov 16 (a test hook Linux ignored: fixed); South's Tuesday evening driven under Apostolic/Drexel's label (accepted); an East alert filed under North's id (Passio's side)
 Owner (2026-11-17): "Run a data collection [check] and resolve all issues". This entry is the checkup of both
 repositories from Mon Nov 16 2 PM (DC-028) to Tue Nov 17 11:40 PM, and the first full day on DC-028's fixes. Times are
@@ -592,7 +724,7 @@ South 38.0% and Regents Express 19.4% against 7.9 / 8.8%. And what it found clea
 98.8%).
 
 **4. South and Regents Express lose one stop on every lap, since logging began (open: a detector gap; the fix is the
-owner's call).**
+owner's call; fixed 2026-11-18 by the closest-approach rule, DC-030).**
 - What: South's Logan Center (8589) has 22 rows in 36 service days, while the stop before it (Cottage & 61st, 141863)
   has 461 and the one after (South Campus Residence Hall, 8623) 457: about 440 South visits to Logan Center have no row.
   Regents Express's namesake stop, Regents Park Apartments (8578), has 2 rows in 26 service days (both Oct 9), Shoreland
