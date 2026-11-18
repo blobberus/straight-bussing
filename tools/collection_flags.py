@@ -999,8 +999,9 @@ TEXT = {   # measure: (metric, agent_action, extra evidence files)
         "bins with under 30% of the moving reports on the label's line and 85% or more on one other, 30 min or "
         "more)",
         "the episodes' rows (wrong_label_episodes.csv) are visits of the line driven filed under this line: leave them "
-        "out of this line's training labels and score them apart (refiling them by GPS is a replay, the owner's call, "
-        "DC-024); E30's wrong_line_label is the part inside transition windows",
+        "out of this line's training labels and score them apart (they are not refiled: arrivals.csv keeps Passio's "
+        "label, as predictions.csv does; decided 2026-11-17, DC-029, after DC-024); E30's wrong_line_label is the "
+        "part inside transition windows",
         "wrong_label_episodes.csv"),
     "service_under_other_label": (
         "bus time this line's route was driven by a bus labeled with another line (the same test), as a share of the "

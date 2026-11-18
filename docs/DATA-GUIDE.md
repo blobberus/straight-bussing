@@ -93,8 +93,10 @@ What was wrong, and what changed on October 13:
   since October 17 from the GPS track alone (source `gps`): the Red Line went from 55-75% of the stops it drove
   past to 96-97%, all lines from 84-88% to 91-95%. Past days from October 10 are redone from the archived GPS.
 - **Still missing:** buses that Passio lists under the wrong route keep only the stops on the route Passio says
-  (measured all day since 2026-11-13: `data/labeled/collection/wrong_label_episodes.csv`, about 1.6% of the bus time),
-  and stops the buses pass 50 to 120 m away (outside the 40 m radius: South's Logan Center, Regents Park Apartments;
+  (measured all day since 2026-11-13: `data/labeled/collection/wrong_label_episodes.csv`, about 1.6% of the bus time;
+  the data repo's `findings/collection/` copy is refreshed every Monday). Their rows keep Passio's label, as Passio's
+  own predictions do, and are not refiled (decided 2026-11-17, DC-029): leave an episode's rows out of the labeled
+  line's training data and score them apart. Also missing: stops the buses pass 50 to 120 m away (outside the 40 m radius: South's Logan Center, Regents Park Apartments;
   `data/labeled/collection/stop_coverage.csv`, `closest_m`).
 
 ## `arrivals.csv`: the 25 columns
