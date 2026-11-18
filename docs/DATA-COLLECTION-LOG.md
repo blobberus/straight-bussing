@@ -13,6 +13,7 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 ## Checkups
 | When (Chicago) | Verdict | Coverage | Data | Notes |
 |---|---|---|---|---|
+| 2026-11-17 23:40 | healthy; no gap since Monday's noon gap (DC-028); the Collector tests workflow red since Mon 4:13 PM (DC-029, fixed) | 100% of the 24 h to Tue 11:37 PM (collecting 89%, idle with no bus 11%); all 48 finished runs since Mon 2:07 PM succeeded, every chain hand-off on its first try, every dispatched run's job started within 5 s, so no run had to hold | arrivals: 3,963 on Mon Nov 16 (about 120 lost in the noon gap), 4,193 on Tue Nov 17 by 11:20 PM (the most of any Tuesday by then; South 27); whole-database audit 0 errors, 0 warnings (125,087 arrivals, 530,371 prediction rows, public copy in step); Passio time on 82% / 83% of non-`gps` arrivals; timetable 708be9d370e2 unchanged (valid to Dec 1); archive complete through Nov 16; weather daily; data repo synced every 25 min (at most 38 min apart) | DC-029: DC-028's fixes held (no run queued, no hold; tag collector-ok = main 9edbb643, its workaround still untried on GitHub); the tag test's hook was ignored on Linux, so Collector tests failed and skipped its later suites (fixed `3a92a6b9`); South's Tuesday evening under Apostolic/Drexel's label (bus 4322, accepted); an East alert filed under North's id (Passio's side); Logan Center and Regents Park Apartments unchanged (DC-030); the high flags' lines complete except South Tuesday; backup not due |
 | 2026-11-16 14:05 | healthy, except one 46-min gap Mon 12:01 to 12:47 PM (DC-028; fixed the same day) | 97% of the 24 h to Mon 2:05 PM (collecting 77%, idle with no bus 20%); all 88 finished runs since Fri 12:02 PM succeeded, every chain hand-off on its first try; no morning hole since the lockstep fix (two stand-downs Sat) | arrivals: 3,644 on Fri Nov 13 (South 26, Regents Express 0), 926 on Sat Nov 14, 715 on Sun Nov 15, 1,811 on Mon Nov 16 by 1:55 PM (about 120 lost in the gap); whole-database audit 0 errors, 0 warnings once explained (118,733 arrivals, 503,861 prediction rows, public copy in step); Passio time on 81% / 77% / 80% / 82% of non-`gps` arrivals; timetable 708be9d370e2 unchanged; archive complete through Nov 15 (Nov 15 dispatched by hand); weather daily; data repo synced every 25 min except Mon 9:13 to 10:26 AM (GitHub's queue) | DC-028: GitHub kept the chain's next run queued 75 min (the only one of 460 over 1 min): a run now holds its logger while the run it started is queued (the lead, item 5); Friday's South evening under the Connector's label and no Regents Express bus, which no check flagged (a line that logs nothing now is, item 4); one row per line (item 3); Logan Center / Regents Park Apartments, the wrong labels and Passio's times still open; backup refreshed (211 files, 409 MB) |
 | 2026-11-13 03:30 | healthy; bus line issues recorded per line (DC-027) | 100% since Nov 12 02:56 (collecting 85%, idle with no bus 15%); all 54 finished runs since Wed 12:32 PM succeeded, every chain hand-off on its first try, no hole between runs; an idle run since 2:05 AM Fri, collecting from 4:15 AM | arrivals: 4,286 on Wed Nov 11 and 4,362 on Thu Nov 12 (the most of any Wednesday / Thursday; Nov 12 the most of any day); whole-database audit 0 errors (111,637 arrivals, 476,007 prediction rows, public copy in step); Passio time on 86% / 84% of non-`gps` arrivals; timetable 708be9d370e2 unchanged; archive complete through Nov 11; weather daily; data repo synced every 25 min except Wed 2:36 to 7:48 PM | DC-027: one row per line (item 3); South's Logan Center and Regents Express's Regents Park Apartments get no row on almost every lap since logging began (about 440 and 145 visits; a rule proposed and tried on a replay, the owner's call); North half its rows both evenings (no North bus 9 PM to midnight Thu); Friend Center/Metra's evening loop under an Apostolic/Drexel label again (12 of 15 weekdays); a dispatched run GitHub never started stopped the data repo's sync chain 5 h 12 min (fixed in both chains); one run's polls not archived (11 min, GitHub's artifact service); Passio's late times and missing downtown times unchanged; backup refreshed (187 files, 379 MB) |
 | 2026-11-11 03:45 | healthy; the public data repo's per-day files had the wrong columns since Oct 29 (fixed) | 100% since Nov 10 03:19 (collecting 84%, idle with no bus 16%); all 34 finished runs since Tue 12:32 AM succeeded, every chain hand-off on its first try, no hole between runs; an idle run since 1:29 AM Wed, collecting from 4:15 AM | arrivals: 3,897 on Tue Nov 10 (Tuesdays 3,704 to 4,151; no Apostolic bus in the feed until 6:15 AM; Goldblatt Pavilion bypassed 9 AM to about 4 PM for repaving, per the operator's alert); first whole-database audit (new `tools/db_audit.py`): 102,989 arrivals Oct 8 to Nov 10 and 437,521 prediction rows, 0 errors (0 duplicates, 0 time fields off, 0 predictions without their arrival), 4 old line-days flagged; Passio time on 82% of non-`gps` arrivals; ~103,000 rows; timetable 708be9d370e2 unchanged; archive complete through Nov 9 (the schedule, 12:13 PM Tue); weather daily; Pages deploys succeed again; data repo synced every 25 min; flagged lines check: 0 flags yet | DC-026: the data repo's `scripts/sync.py` read `archive/predictions-*.csv` as arrivals since Oct 29 (all 363 per-day files had the 15 prediction columns, 4,297 rows too many), fixed there (`36126a1`, with a test before every rebuild); health's archive check now also wants the alerts / bus-changes files (`b4e2b58c`); the four Downtown Campus Connector downtown stops still without Passio times; since Oct 27 6 PM Passio's times run late on Central, 53rd Street Express, East and the Connector (5 min ahead, the bus more than 2 min earlier than shown: all lines 4.9% -> 21.3%; E31); wrong-line labels Nov 10: 1 episode, 1.2 bus-hours; issue #1 stayed closed; backup verified (Nov 6, due Nov 13 to 20) |
@@ -36,6 +37,177 @@ Impact says which rows are wrong or missing and whether old rows can be repaired
 | 2026-10-14 17:33 | healthy | 100% of 33.9 h of actual logging time (job start to end), no gaps, 145/145 runs since Oct 11 succeeded | arrivals: 3,469 (Oct 12), 3,640 (Oct 13), 2,473 (Oct 14 so far); predictions.csv 46,386 rows since Oct 12 12:20; no duplicate rows; archive complete through Oct 13 | `monitor.py status` said DEGRADED: DC-004, DC-005 (both false or harmless); the data check found DC-006 to DC-011 |
 
 ## Errors
+
+### DC-029 Checkup 2026-11-17: healthy, no gap since Monday noon; DC-028's fixes held (no run needed the hold, the fallback tag follows main); the Collector tests workflow red since Nov 16 (a test hook Linux ignored: fixed); South's Tuesday evening driven under Apostolic/Drexel's label (accepted); an East alert filed under North's id (Passio's side)
+Owner (2026-11-17): "Run a data collection [check] and resolve all issues". This entry is the checkup of both
+repositories from Mon Nov 16 2 PM (DC-028) to Tue Nov 17 11:40 PM, and the first full day on DC-028's fixes. Times are
+Chicago (CST). Mon Nov 16 (whole day now; DC-028 stopped at 2 PM) is compared with the Mondays Oct 19, 26, Nov 2 and 9,
+Tue Nov 17 (to 11:20 PM, the newest merged rows) with the Tuesdays Oct 20, 27, Nov 3 and 10 to 11:20 PM, per line too.
+Stop lists come from the timetable in use (`708be9d370e2`, rebuilt with `build_gtfs.py --zip`); Nov 16's raw polls from
+the archive, Nov 17's from the 30 finished runs' artifacts (the archive builds the day tomorrow). Scripts and downloads
+stayed off the repo (job folder).
+
+**1. Collector: healthy, no gap.**
+- Runs: all 48 finished collect runs from Mon 2:07 PM to Tue 11:27 PM succeeded (39 started by the chain or an idle run,
+  9 by the cron backstop). 47 logged (45 the full 70 min, 2 stopped early with no bus running: Mon 11:35 PM to 12:32 AM
+  and Tue 12:16 to 12:48 AM), 1 was an idle run (Tue 12:47 to 3:20 AM). The 47 logging runs had 0 processing errors, 1
+  failed feed read (Mon 11:04 PM run `44021522709`, 1 of 420), 0 failed alert polls, no rejected push and `health run:
+  all clear` each; the pre-flight self-test passed in all 48 on main's code. Every chain hand-off went through on its
+  first dispatch (none that GitHub ended without a job), 9 runs stood down as followers of a backstop, none needed the
+  stand-down of DC-027 item 9a. Two runs are logging now (the 10:56 PM chain run and the 10:40 PM backstop, job 11:27
+  PM).
+- Gate: collecting to Tue 12:48 AM (last arrival 12:00 AM, East), idle 12:47 to 3:18 AM, then collecting again because
+  one bus reported at 3:18 AM (12645, labeled the Connector; the 3:18 AM run logged 70 min and 0 rows; Monday the same at
+  3:22 AM, DC-028 item 6); first arrivals Tue Friend Center/Metra 4:37 AM, Drexel 4:59, Apostolic 5:12. `monitor.py
+  status` HEALTHY at 11:37 PM, coverage 100% of the 24 h since Mon 11:36 PM (collecting 89%, idle with no bus 11%), 6
+  buses reporting. `monitor.py holes --days 3`: no gap between two logging runs after Monday's noon gap (DC-028 item 5);
+  one hand-over next to an idle run, Tue 12:47 AM (55 s, no bus running).
+- `collector-health` issue #1: open for Monday's gap only, closes itself once Nov 16 is more than 2 days old (about Thu
+  Nov 19 5:27 AM). Its text now says "12:10 PM to 12:40 PM" (at 1:57 PM Monday it said 12:30: the 12:30 slot was not yet
+  80 min old, the merge lag the check allows). Wednesday's check should add Tuesday's South (item 5): `health.py data
+  --now <Wed 6 AM> --dry-run` on the data at 11:26 PM says "South logged 27 arrivals on Tue Nov 17 (usually about 172)".
+  The data repo's watchdog issue stayed closed.
+- Data repo: 80 sync runs Mon 2:11 PM to Tue 11:36 PM, 79 succeeded, 1 running, none cancelled, at most 38 min between
+  two starts. The weekly findings ran Mon 7:01 PM (cron 11:41 AM, 7 h 20 min late, as the archive's cron): the data
+  repo's flag registry now reads 143 active flags, 41 high (newest check Nov 16); the live repo's copy stays at Nov 13
+  (137). The secret `COLLECT_DISPATCH_TOKEN` is unset (the lead's decision, item 10).
+- Timetable `708be9d370e2` unchanged (last used Tue 11:26 PM; Passio's feed is valid Oct 31 to Dec 1, recheck it next
+  time). Weather context daily (Mon 3:05 PM, Tue 1:53 PM). Site: every deploy succeeded.
+- Flagged lines: `python tools/flag_lines.py --check` ok (137 flags, 0 problems); the high flags' lines in item 4.
+
+**2. DC-028's fixes over a full day: all held; none had to act.**
+- The hold (rule 7 of `collect_chain.py`): 44 of the 47 logging runs reached their 65-min check and each found another
+  collect run running (`hold off: run N has been running for 24 to 35 min`; the 2:07 PM run started on the code before
+  the hold, the two that stopped early never reached 65 min). No run held: no `held N min` summary, no `Logger held past
+  70 min` notice, no `held` line in `status`. GitHub gave every dispatched run its job within 3 to 5 s (39 of 39). The 9
+  backstops waited 4 to 68 min, each starting 2 to 4 s after the run of its slot ended: a park in the concurrency group,
+  not GitHub's queue, so `monitor.py`'s queued-run warning had nothing to say. The hold's first real test is the next
+  time GitHub queues a run.
+- The tag `collector-ok`: Monday afternoon GitHub refused three moves, all by runs on code from before the workaround
+  `14854d0d` (the 3:59 PM run on `4db57387` and the 5:10 PM run on `3c6bc0b0`, as DC-028's recheck says, and the 4:30
+  PM backstop on `3c6bc0b0`); the 5:50 PM run moved it `714d7f7b -> 7bef8ef6` (DC-028's recheck), the 7:42 PM run
+  (`43988301782`, the first on `9edbb643`) `7bef8ef6 -> 9edbb643`, and the 39 collect runs that ended since logged
+  `collector-ok is already 9edbb643...`. Main did not move from Mon 6 PM to Tue 11:46 PM, so the workaround path (a
+  commit with main's files and the old tag's `.github/`) has still not run on GitHub; tag = main `9edbb643` at 11:40
+  PM (`git ls-remote`). Main moved at 11:46 PM (the lead's commits, then `3a92a6b9`): the next runs show whether
+  GitHub refuses those moves and the workaround works.
+- The watchdog counts only running runs: the data repo's 11:17 PM sync logged `2 collecting run(s), 0 idle, 1 queued or
+  waiting` (the parked backstop counted as waiting, not collecting) and `all clear`.
+- The zero-line rule (a line that usually logs 20 or more and logged none): no line logged none on Monday or Tuesday
+  (the fewest, South 27 on Tuesday), so it raised nothing; the finished Monday raised only the gap.
+
+**3. Database: the whole-database audit is clean.** `python tools/db_audit.py --mirror <data repo clone>` (data branch at
+Tue 11:26 PM, public copy synced 10:51 PM): **0 errors, 0 warnings**, 11 known notes (DC-028's included); 125,087
+arrivals over 41 service days (Oct 8 to Nov 17) and 530,371 prediction rows, 38 archived days; the public copy's 437
+files hold 125,011 rows (the 76 newer rows came with the 11:26 PM merge, after its sync). 0 duplicates, 0 rows missing
+ids, 0 time fields off.
+- Mon Nov 16: 3,963 arrivals (Mondays 4,070 / 3,925 / 3,931 / 3,949; about 120 lost in the noon gap), 13 lines, 92
+  stations, 20 buses, `gps` rows 253, Passio time on 82% of non-`gps` arrivals (Mondays 83 to 93%). Archive: 108,111
+  prediction updates, 70,891 position reports, 55 bus drops (40 lasting), 2 alert versions.
+- Tue Nov 17 to 11:20 PM: 4,193 (Tuesdays to then 3,621 / 4,059 / 4,066 / 3,812: the most of any Tuesday, although
+  South logged about 119 fewer than usual, item 5; Central about 121 more, item 4), 13 lines, 92 stations, 21 buses,
+  `gps` rows 321, Passio time on 83%.
+- alerts.csv: Mon 2:58 PM "All evening NightRide routes will be running every 30 minutes for the entire evening" (no
+  route named); Tue 4:05 PM "The North route will be running every 30 minutes, for the duration of this evening's
+  service" (no route named); Tue 4:10 PM "East route will run every 30 minutes until 6:15 pm" (filed under North's id,
+  item 6). gtfs_versions: one timetable since Nov 1.
+
+**4. Every line, Mon Nov 16 (whole day) and Tue Nov 17 (to 11:20 PM)** (DC-027 item 3's form). Per line: arrivals against
+the same weekday's median (four weeks), the stops logged against the timetable's stop list, the listed service before
+midnight with no bus of the line in the feed (5-min bins with a fresh report under the line's label), Passio's times
+("late" = the bus came more than 2 min earlier than the time shown 5 min ahead; all lines Mon 18.9%, Tue 22.0%, 4.8%
+before Oct 27 6 PM), and buses driving another line than their label (DC-024's test: Mon 3 episodes, 1.7 bus-hours; Tue
+5 episodes, 4.0 bus-hours, 3.5 of them 4322 on South). Monday's gap (12:01 to 12:47 PM) shows as missing service on
+every line that ran then. South Loop Shuttle runs Fridays and Saturdays only.
+
+| Line (route id) | What is wrong (Mon Nov 16 and Tue Nov 17) | Since | Numbers | Status |
+|---|---|---|---|---|
+| 53rd Street Express (4346) | data complete; Passio's times late; the last bus an hour before the listed end | Oct 27 6 PM (late) | Mon 400 (median 433: the gap), Tue 444 (424), 16 of 16 stops; late 54% / 52% (before 0.8%); first arrival Mon 7:23 AM (DC-028), Tue 6:55; last 6:19 / 6:20 PM, listed to 7:25 (flag `service_end_early`) | Passio's side (open); end of service accepted |
+| Apostolic (5702) | data complete | | Mon 238 (222), Tue 274 (245), 10 of 10; first arrival 5:30 / 5:12 AM (Mon no bus 5:00 to 5:25), last 9:59 / 10:32 AM | fine |
+| Apostolic/Drexel (6126) | Tuesday its label on the bus that drove South's loop; Monday 40 min of its loop driven by a bus labeled Red Line/Arts Block | Oct 23 (DC-024) | Mon 626 (683: the gap), Tue 640 (591), 12 of 12; Tue 19 rows from 4322 (labeled Apostolic/Drexel from 10:32 AM; 8 of them while it drove South's loop: item 5); Mon 4313, labeled Red Line/Arts Block, drove its loop 8:40 to 9:20 PM (kept the label, no row filed) | wrong labels: kept under Passio's label (the lead, `1d837ced`) |
+| Central (1078) | Passio's times late; Tuesday two Central buses all evening (more rows than usual) | Oct 27 6 PM (late) | Mon 203 (197), Tue 297 (176): 4320 and 4324 both on Central's line 4 to 11:20 PM, 28 to 56 arrivals an hour against 11 to 28, no operator alert; 14 of 14; late 70% / 57% (before 7.7%) | Passio's side (open); the extra bus accepted (the operator's service) |
+| Downtown Campus Connector (5704) | four downtown stops without a time; Passio's times late; no bus after 10:30 PM | Oct 27 6:30 PM (stops), Oct 27 6 PM (late) | Mon 518 (548: the gap), Tue 569 (488), 14 of 14; Gleacher Center, River East, Randolph & Michigan, Michigan & Roosevelt: a time on 0 of 145 Mon, 7 of 159 Tue; late 30% / 35% (before 2.2%); last arrival 10:20 / 10:22 PM, listed to 12:25 AM (flag `service_end_early`); Mon 12648 (labeled Red Line/Arts Block, 11:20 to 11:50 AM) and Tue 4317 (53rd Street Express, 11:10 to 11:40 AM) drove its line, relabeled after 40 and 33 min | Passio's side (open: `docs/PASSIO-FEED-ISSUES.md`); end of service accepted |
+| Drexel (5701) | nothing wrong | | Mon 197 (204), Tue 196 (192), 7 of 7; first arrival 4:59 AM both; Passio time 67% / 97% | fine |
+| East (1077) | Passio's times late; Tuesday's operator alert filed under North; no East bus 8:55 to 9:50 PM Tuesday | Oct 27 6 PM (late) | Mon 186 (182), Tue 222 (195), 13 of 13; Tue 4319, and 4326 from 6:28 PM (after its 53rd Street Express service); late 52% / 49% (before 3.5%); the 4:10 PM alert (item 6) | Passio's side (open); the gap accepted |
+| Friend Center/Metra (5700) | data complete; its evening loop under its own label both days | | Mon 359 (343), Tue 363 (321), 12 of 12; first arrival 5:02 / 4:37 AM; no wrong-label episode on its loop (DC-027 item 3's pattern did not recur) | fine |
+| Midway Metra (5703) | no bus in the last 80 min of the morning service; Passio's times late | every weekday (buses); Oct 27 6 PM (late) | Mon 406 (406), Tue 479 (430), 14 of 14; first arrival 5:40 / 5:43 AM; no bus of the line 10:35 / 10:30 to 11:55 AM (listed to 11:55) and Mon 3:30 to 3:50 PM; late 16% / 26% (before 1.6%) | accepted (the operator's service); Passio's side |
+| North (1075) | Passio's time on about half its rows | Oct 27 (90 to 100% before) | Mon 100 (105), Tue 90 (95; 1 bus, as the operator's 4:05 PM alert said), 7 of 7; Passio time on 53% / 46% of non-`gps` rows (Oct 19 to 26: 81 to 100%; flag `no_passio_time`); Tue's East alert shows on North's route page (item 6) | Passio's side (open) |
+| Red Line/Arts Block (5699) | data complete; 212 of Tuesday's 546 rows from the GPS sweep | DC-003 (sweep) | Mon 525 (525), Tue 546 (596), 11 of 11; `gps` 78 / 212 (median 134 / 170: Passio named the stop for 270 of Tuesday's rows, median 392); Tue no bus 7:10 to 7:25 PM and 8:55 to 9:15 PM, last arrival 8:40 PM (listed to 9:15) | accepted |
+| Regents Express (5715) | its namesake stop never logged | Oct 8 (DC-027 item 4) | Mon 43 (40), Tue 46 (36), 6 of 7 stops: Regents Park Apartments 0 rows both days (14 and 17 rows there by East buses); bus 4326 Mon, 12644 Tue | stop **open** (the closest-approach rule, DC-030) |
+| South (1076) | Tuesday: no bus of the line most of the evening, its loop driven under Apostolic/Drexel's label; Logan Center not logged; two listed stops not driven | Nov 17 (label); since logging began (Logan) | Mon 162 (141), 13 of 16 stops (buses 4322 and 4326); Tue 27 (146; item 5), 14 of 16; Logan Center 0 rows Mon, 1 Tue (12644), while 53rd Street Express and Midway Metra logged 24 and 31 there Mon, 27 and 36 Tue; Stony Island Parking Lot and 59th St & Metra listed, not driven | Tuesday accepted (Passio's label; rows kept under it, the lead); Logan Center **open** (DC-030) |
+
+High flags rechecked (`flag_lines.py --check` ok, 137 active flags): every flagged line's data was complete on Monday
+and Tuesday except where the table says (South Tuesday evening, Monday's noon gap). The prediction flags read the same
+numbers as above (late times on 53rd Street Express, Central, East, the Connector; the dark Connector stops; North's
+missing times); `service_end_early` held on 53rd Street Express and the Connector; `stops_rarely_logged` (Logan Center,
+Regents Park Apartments) and `listed_stops_not_driven` (South) unchanged. The display flags need E32's browser replay,
+not rechecked here.
+
+**5. Tue Nov 17: South's evening under Apostolic/Drexel's label (accepted: Passio's label).**
+- What: South logged 27 arrivals by 11:20 PM (Tuesdays to then 68 / 167 / 164 / 127), all by bus 12644 between 9:05
+  and 10:17 PM; its listed service is 4 PM to 4:25 AM.
+- Why (raw polls): no bus carried South's label 4 to 9:15 PM and 10:20 PM to midnight (5-min bins). Bus 4322, Monday's
+  South bus (137 of Monday's 162 South rows) and Tuesday morning's Drexel bus (99 rows), carried the Apostolic/Drexel
+  label from 10:32 AM and drove South's loop 4:00 to 7:20 PM, 8:00 to 9:20 PM and 10:30 to 11:20 PM (94 to 100% of its
+  moving reports on South's line in each 10 minutes); Passio never relabeled it. Bus 12644, Regents Express's bus that
+  evening, took South's label at 9:17 PM, after Regents Express's service, until it stopped reporting about 10:20 PM: its
+  27 rows are Tuesday's South rows. The collector files a visit under the bus's label, so 4322's South laps gave 8 rows
+  under Apostolic/Drexel (stops both lines share) and none at South's own stops. No operator alert named South.
+- Impact: about 119 South visits short of a usual Tuesday, and their Passio predictions; 4322's visits are in the polls.
+  Like Fri Nov 13 (4324 under the Connector's label, DC-028 item 4): the second South evening under another line's
+  label in three weekdays. The wrong-label rows stay under Passio's label (decided for the owner, `1d837ced`). The
+  health check should name it on Wednesday morning (item 1).
+
+**6. Tue Nov 17, 4:10 PM: an alert about East filed under North's id (Passio's side).**
+- What: the alert "East Route: East route will run every 30 minutes until 6:15 pm, after which the route will return to
+  15 minute intervals" named route id 38734, Passio's own id for North (DC-009; `route_names` North in alerts.csv). The
+  app ties an alert to the routes it names (`core/arrivals.js alertRouteIds`, `ui/views/route.js`), so this one showed on
+  North's route page and in the Alerts list, not on East's route page. Nov 4's "North and East Route" alert named North
+  only, too; the other 7 alerts since Oct 14 that name a route name the one their text is about (Nov 13's "South route
+  ... 6:15 p.m." under South Loop Shuttle matched South Loop Shuttle's bus, DC-028 item 2).
+- Impact: none on the collected rows (alerts.csv keeps the alert verbatim). For riders: an East rider saw it only in
+  the Alerts list. Matching alerts by their text would be a display decision, not a collection fix. Passio's side.
+
+**7. The Collector tests workflow was red since Mon 4:13 PM (fixed).**
+- What: `collector-tests.yml` failed on the pushes `14854d0d`, `9edbb643` and `8b87af22`: in `test_collect_yml.py`,
+  `the_tag_moves_even_when_github_refuses_a_workflow_change` (DC-028's workaround test) found the tag moved plainly,
+  without the refusal it expects. The pre-receive hook that plays GitHub was written without the executable bit; Git for
+  Windows runs such a hook (so the test passed on this PC, 6/6), Git on Linux ignores it.
+- Impact: no rows (the collect runs' self-test does not include this suite, it passed in all 48 runs), but the
+  workflow's later steps were skipped on those pushes (the archive, replay, monitor, daylight-saving, audit, timetable
+  and flag suites), and the red mark is the alarm for a broken collector change.
+- Fix (`3a92a6b9`): the test makes the hook executable. test_collect_yml 6/6 here; the other suites of the workflow pass
+  here (selftest, test_eta 21/21, test_replay 6/6, test_monitor 13/13, test_dst 6/6, test_db_audit 11/11,
+  test_timetable 7/7, test_flag_lines 16/16, test_collection_flags 17/17, test_service_seen ok). On GitHub, Collector
+  tests `44247495036` on `3a92a6b9` is green with every step run: the hook now refuses on Linux too, and the workaround
+  moved the tag there as it does here.
+
+**8. DC-028's open rows, with the new days.**
+- South at Logan Center (8589) and Regents Express at Regents Park Apartments (8578), DC-027 item 4: unchanged (Logan
+  Center 0 / 1 rows, Regents Park Apartments 0 / 0); the closest-approach rule is DC-030.
+- Monday's evening lines (DC-028's recheck list): Regents Express ran (43, bus 4326, 5:27 to 9:01 PM); Friend
+  Center/Metra's evening loop under its own label Monday and Tuesday.
+- Passio's late times (DC-026 item 7) and the four dark Connector stops (DC-025 item 3): unchanged (item 4), written up
+  for Passio in `docs/PASSIO-FEED-ISSUES.md` (the lead).
+- Bus 4314 on South (DC-028, watch): not on South Monday or Tuesday (it drove the Connector).
+- DC-025's archive retry on a 5xx: no 5xx in the Nov 16 archive run, still untried in a real run.
+
+**9. Archives: Nov 16 on `data-archive-2026-11`, all six file kinds.** By the schedule Tue 1:20 PM (`44157539704`, 8 h
+40 min after its 4:41 AM cron): 108,111 prediction updates, 70,891 position reports, 220,128 table rows, 55 bus drops
+(40 lasting), 2 alert versions, timetable `708be9d370e2`; every older day `already archived`. Nov 17's cron fires Wed
+4:41 AM and runs 6 to 10 h late: dispatch it by hand (`gh workflow run archive.yml`) if it has not run by about 3 PM Wed.
+The audit counts 38 archived days, none missing. Backup not due (last Nov 16, 409 MB; next about Nov 23 to 30).
+
+**10. Owner items (decided by the lead on the owner's behalf, 2026-11-17)**
+(the lead fills this in)
+
+**Status.** Collector healthy over the 34 h checked, no gap after Monday's (DC-028 item 5), and DC-028's fixes held
+without having to act (item 2: no run queued, no hold, the tag on main). Found and fixed: the Collector tests workflow
+red since Monday afternoon (item 7, `3a92a6b9`). Accepted: South's Tuesday evening under Apostolic/Drexel's label (item
+5), Central's extra bus (item 4). Passio's side: the East alert under North's id (item 6), the late times, the dark
+Connector stops and North's missing times (item 4). Open: Logan Center and Regents Park Apartments (DC-030). Recheck next
+time: the first `collector-ok` moves after main moved (the workaround on GitHub), Nov 17's archive, issue #1 closing
+(about Nov 19), the timetable's Dec 1 end.
 
 ### DC-028 Checkup 2026-11-16: a 46-minute gap Monday noon (GitHub kept the chain's next run queued 75 min: fixed, a run now holds); South's and Regents Express's Friday evening under another label or missing (accepted; a line that logs nothing is now flagged); the lockstep fix held
 Owner (2026-11-16): "Run a collector check and make changes as needed to fix any errors." This entry is the checkup of
