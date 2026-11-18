@@ -248,7 +248,9 @@ def the_tag_moves_even_when_github_refuses_a_workflow_change():
         origin, work, temp = d / "origin.git", d / "work", d / "temp"
         git(d, "init", "-q", "--bare", str(origin))
         if refuse:
-            (origin / "hooks" / "pre-receive").write_text(hook, encoding="utf-8", newline="\n")
+            pre = origin / "hooks" / "pre-receive"
+            pre.write_text(hook, encoding="utf-8", newline="\n")
+            pre.chmod(0o755)        # git on Linux ignores a hook that is not executable (Windows runs it anyway; DC-029)
         work.mkdir()
         temp.mkdir()
         git(work, "init", "-q")
@@ -284,7 +286,7 @@ def the_tag_moves_even_when_github_refuses_a_workflow_change():
         assert r.returncode == 0, (refuse, r.stdout, r.stderr)
         assert tag(origin, "tools/x.py") == "v2", (refuse, r.stdout, r.stderr)     # the fallback gets main's tools
         if refuse:
-            assert "refusing" in r.stdout and tag(origin, ".github/workflows/collect.yml") == "wf1", r.stdout
+            assert "refusing" in r.stdout and tag(origin, ".github/workflows/collect.yml") == "wf1", (r.stdout, r.stderr)
             assert "the old tag's .github/" in r.stdout and "::warning" not in r.stdout, r.stdout
             again = run_step(work, temp)                                     # the next run: nothing to move
             assert again.returncode == 0 and "already has main's tools/" in again.stdout, again.stdout
