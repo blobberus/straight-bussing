@@ -1,6 +1,6 @@
 # Issues seen in the public UChicago shuttle feed (for UChicago Transportation and Passio)
 
-Prepared 2026-11-17 from Straight Bussing's ground-truth collection (docs/DATA-COLLECTION-LOG.md, entries DC-024 to
+Prepared 2026-11-17 (updated Nov 18) from Straight Bussing's ground-truth collection (docs/DATA-COLLECTION-LOG.md, entries DC-024 to
 DC-029). Straight Bussing is an unofficial tracker, used with UChicago Transportation's permission. It reads Passio's
 public GTFS-realtime feed (`passio3.com/chicago/passioTransit/gtfs/realtime/`) and has logged every bus arrival since
 October 2026. The arrival times come from the buses' own GPS. The data is public at
@@ -71,12 +71,18 @@ Times are Chicago time.
 - **What:** some buses report one route id for 30 minutes or more while driving another line's loop. For example:
   - Fri Nov 13, 3:10 to 8:50 PM: bus 4328, labeled Red Line/Arts Block, drove Friend Center/Metra's loop.
   - The same evening, South's loop was driven under the Downtown Campus Connector's label until 10:15 PM.
+  - Tue Nov 17, 4:00 to 11:20 PM: bus 4322, labeled Apostolic/Drexel, drove South's loop. No bus carried South's
+    label until 9:17 PM, so South riders saw no bus most of the evening (27 South arrivals logged by 11:20 PM, against 68
+    to 167 on the four Tuesdays before).
 - **Size:** 0.5 to 7.3 bus-hours a weekday (Oct 23 to Nov 12), about 1.6% of all bus time. Every episode is listed
   in `findings/collection/wrong_label_episodes.csv` in the data repository.
 - **Riders:** the bus appears on the wrong line, so riders waiting for the line actually driven do not see it coming.
 
 ## 5. Smaller points
 
+- **An alert about East was filed under North's route id:** Tue Nov 17, 4:10 PM, "East Route: East route will run
+  every 30 minutes until 6:15 pm ..." named route id 38734, which is North. Apps that show an alert on the routes
+  it names showed it on North, not on East. The Nov 4 alert about "North and East" named North only.
 - **Two stops listed in South's timetable that its buses do not drive past:**
   - Stony Island Parking Lot (8624)
   - 59th St & Metra (8658)
