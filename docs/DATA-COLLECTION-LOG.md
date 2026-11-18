@@ -162,13 +162,36 @@ far side's direction (none), a GPS jump (none), the whole lap with and without t
 the merge ranks and the seed. `test_merge` 13, `test_replay` 6, `test_db_audit` 11, `test_apply_replay` 4,
 `test_collection_flags` 17, `collector_selftest.py` ok.
 
-**6. Backfill (add-only).** `tools/apply_replay.py --only-source approach` adds the replay's `approach` rows where
-arrivals.csv has no row of that bus at that stop within 15 min, and their predictions rows; it removes and replaces
-nothing (`*_replaced` must be 0, `check_merge.py` guards the push). Pending: after the first live runs (item 7).
+**6. Backfill (add-only), Wed Nov 18 5:55 AM: data branch `5cdefd10`.** Every day whose run artifacts are still kept
+(raw polls since Oct 10, 90 days) was replayed with this code (`tools/replay_day.py`, Oct 10 to Nov 17, 39 days) and
+only its `approach` rows went in: `python tools/apply_replay.py --data-dir <data checkout> --replay-dir <replays>
+--day 2026-10-10 ... 2026-11-17 --only-source approach`. Result: `arrivals_added=722 arrivals_replaced=0
+predictions_added=3417 predictions_replaced=0 arrivals_skipped_logged=0` (no live row of the bus at the stop within
+15 min of any of them); `check_merge.py verify`: ok, no rows lost; the commit only adds lines (722 + 3,417, 0
+removed). By stop: South at Logan Center 380 (39 days; 22 rows there before in 40 service days), Regents Express at
+Regents Park Apartments 114, the Connector at River East 51, East at Hyde Park Places 30 (the 100 to 130 m band, item
+3), Midway Metra at Press Building 15, 132 at other stops; all with a trip id, 665 with a
+previous-stop link, 611 with a Passio time (Oct 10 and 11 had no prediction log). The time's report can be up to
+10 m farther than the closest (`APPROACH_TIE_M`): 6 rows are 121 to 126 m from the stop point. Oct 8 and 9 have no
+polls left, so their visits stay missing. `db_audit.py` before and after: 0 errors (125,188 -> 125,910 arrivals,
+530,670 -> 534,087 predictions rows); new note: arrivals.csv now has a block of 722 older rows at its end (sort by
+epoch, as for the Oct 16 replay). Side effects: the next collector merge re-classifies 3 of the 1,249 `bus_changes`
+rows (computed on the dry run: a drop's bus back on its route 23 to 27 min later instead of 31 to 33, `lasting` 1 ->
+0), and the public data repo's per-day files of those days gain the rows at its next sync. Not done: the forecast
+tables of those days (`eta-<day>.csv.gz` and their `data/eta/summary.csv` rows) still have the old labels; rebuild
+them per docs/DATA.md "Replaying a day" if a model needs the new visits there.
 
-**7. Live.** Pending.
+**7. Live.** Main reached `72231765` / `975ae8fc` at 12:14 AM Wed Nov 18. The first run on it (`44253452893`, 12:43
+AM) passed the pre-flight self-test on main's code and idled (no bus). The first logging runs: `44276456804` (3:29 AM,
+main `35716213`: self-test ok, no bus for 30 min, 0 rows) and `44283689247` (4:15 to 5:25 AM: self-test ok on main's
+code, `logger: 70 min, 420 polls, 31 rows, 0 errors, 0 failed fetches`, merge `added=31 replaced=0`, predictions
+`added=88 replaced=0`, `check_merge: ok, no rows lost`, pushed `165bb5b..01bfe5f`, `run healthy (fit for the
+collector-ok tag): True`, so `schema_errors` 0 and `health run: all clear`; collector-ok already at `35716213`). No
+`approach` row yet in those morning rows (few buses, none of the two stops' lines: South runs about 4 PM to midnight,
+Regents Express about 5:30 to 10 PM); the evening's rows at Logan Center (8589) and Regents Park Apartments (8578) are
+to be checked after 10:30 PM.
 
-**Status.** fixed (this commit); backfill and the first live runs: item 6 and 7.
+**Status.** fixed (`72231765`, `975ae8fc`); backfilled Oct 10 to Nov 17 (item 6); live since Nov 18 (item 7; the two stops' first evening still to check).
 
 ### DC-029 Checkup 2026-11-17: healthy, no gap since Monday noon; DC-028's fixes held (no run needed the hold, the fallback tag follows main); the Collector tests workflow red since Nov 16 (a test hook Linux ignored: fixed); South's Tuesday evening driven under Apostolic/Drexel's label (accepted); an East alert filed under North's id (Passio's side)
 Owner (2026-11-17): "Run a data collection [check] and resolve all issues". This entry is the checkup of both

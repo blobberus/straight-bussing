@@ -100,8 +100,9 @@ What was wrong, and what changed on October 13:
 - **Stops the buses pass 50 to 120 m from the stop's map point** (outside the 40 m radius: South's Logan Center,
   Regents Express at Regents Park Apartments) are logged since November 18 when the feed named them as the bus's next
   stop (source `approach`, DC-030; a week's replay: South at Logan Center 70 of about 86 laps instead of 2, Regents
-  Express at Regents Park Apartments 20 of about 30 instead of 0). Before that day they are missing unless DC-030's
-  backfill added them (`data/labeled/collection/stop_coverage.csv`, `closest_m`).
+  Express at Regents Park Apartments 20 of about 30 instead of 0). Days from October 10 on were backfilled from the
+  kept GPS on November 18 (722 rows: South at Logan Center 380, Regents Park Apartments 114); October 8 and 9 stay
+  without them (`data/labeled/collection/stop_coverage.csv`, `closest_m`).
 
 ## `arrivals.csv`: the 25 columns
 
