@@ -330,8 +330,38 @@ not rechecked here.
 4:41 AM and runs 6 to 10 h late: dispatch it by hand (`gh workflow run archive.yml`) if it has not run by about 3 PM Wed.
 The audit counts 38 archived days, none missing. Backup not due (last Nov 16, 409 MB; next about Nov 23 to 30).
 
-**10. Owner items (decided by the lead on the owner's behalf, 2026-11-17)**
-(the lead fills this in)
+**10. Owner items (decided by the lead on the owner's behalf, 2026-11-17; the owner: "resolve all issues and things
+addressed to me on my behalf").**
+- **The closest-approach rule** (DC-027 item 4): shipped, with the window of the transition rule it extends (120 m)
+  and its own source value `approach`, after a week's replay that only added rows. See DC-030.
+- **Rows of buses under another line's label** (DC-024; item 5 and DC-028 item 4): **not refiled** (`1d837ced`).
+  `arrivals.csv` keeps the route Passio reported, the label its predictions carry too, so Passio stays scored on what
+  riders saw. `wrong_label_episodes.csv` marks the spans: the copy in the data repo's `findings/collection/` is
+  refreshed every Monday. Leave an episode's rows out of the labeled line's training data. Recovering the driven line's
+  visits would mean logging under a route the feed did not report, from a 30-min GPS test. It is not worth that for
+  about 1.6% of the bus time. Status: decided, closed.
+- **Telling Passio** (DC-025 item 3, DC-026 item 7, items 5 and 6): `docs/PASSIO-FEED-ISSUES.md` (`210cd51a`,
+  updated with item 5's Tuesday and item 6's alert) has the numbers and a short cover note. It covers:
+  - the four dark Connector stops;
+  - the late times on four lines;
+  - the first stops' trip ids;
+  - the wrong labels;
+  - the listed stops not driven;
+  - the alert under the wrong id.
+
+  Sending it is the owner's: nobody here can send mail, and the contact who gave the permission is the owner's. The
+  app keeps showing alerts on the routes they name, not matched by their text: it was off twice in 5 weeks, and
+  matching text would put the wrong alert on a line. Status: open until the owner sends it.
+- **The secret `COLLECT_DISPATCH_TOKEN`**: **not set** (`8b87af22`). The data repo's watchdog found the collector
+  stopped once since Nov 1 (Nov 5, issue #1 there: the cause DC-023 fixed with dispatch retries), and its issue already
+  tells the owner. A personal token would sit in a repository secret for that. Status: decided, closed.
+- **Leftovers:** 60 worktrees were removed: none had unsaved work, and their commits are on main or the data branch.
+  So were 8 left-over agent folders and their stale records. The rest stay:
+  - the `colab` worktree, whose notebook differs from main's;
+  - two old replay folders, until DC-030's backfill is done;
+  - the remote CI-only branches `route-search`, `fade-buses`, `heading-fix` and `display-rules`. Their work is on main.
+    Deleting them was not permitted from here: `git push origin --delete route-search fade-buses heading-fix
+    display-rules`.
 
 **Status.** Collector healthy over the 34 h checked, no gap after Monday's (DC-028 item 5), and DC-028's fixes held
 without having to act (item 2: no run queued, no hold, the tag on main). Found and fixed: the Collector tests workflow
