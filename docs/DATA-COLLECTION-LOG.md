@@ -191,7 +191,15 @@ collector-ok tag): True`, so `schema_errors` 0 and `health run: all clear`; coll
 Regents Express about 5:30 to 10 PM); the evening's rows at Logan Center (8589) and Regents Park Apartments (8578) are
 to be checked after 10:30 PM.
 
-**Status.** fixed (`72231765`, `975ae8fc`); backfilled Oct 10 to Nov 17 (item 6); live since Nov 18 (item 7; the two stops' first evening still to check).
+**8. First evening, Wed Nov 18 (rows merged to 10:27 PM).** 17 live `approach` rows: South at Logan Center 8 (13 rows
+each at the stops before and after it: 8 of about 13 laps, 62%; the week's replay 80%, its days 44% to all laps; South
+runs to midnight), Regents Express at Regents Park Apartments 5 (of 7 laps, 71%; replay 65%), Regents Express at E 56th
+St & S Hyde Park Blvd 2, the Connector at River East 1, Apostolic at Apostolic Lot 1; 15 with a Passio time, 12 with a
+previous stop. No other row changed: of the 125,911 lines at the backfill commit `5cdefd10` all but one are unchanged,
+and that one (Drexel at 58th Street & Drexel, 5:25 AM) only took `dwell_s` 0 for blank from an overlapping run's copy,
+source unchanged; `db_audit.py` 0 errors (130,133 arrivals, 552,550 predictions rows).
+
+**Status.** fixed (`72231765`, `975ae8fc`); backfilled Oct 10 to Nov 17 (item 6); live since Nov 18 (items 7 and 8).
 
 ### DC-029 Checkup 2026-11-17: healthy, no gap since Monday noon; DC-028's fixes held (no run needed the hold, the fallback tag follows main); the Collector tests workflow red since Nov 16 (a test hook Linux ignored: fixed); South's Tuesday evening driven under Apostolic/Drexel's label (accepted); an East alert filed under North's id (Passio's side)
 Owner (2026-11-17): "Run a data collection [check] and resolve all issues". This entry is the checkup of both
