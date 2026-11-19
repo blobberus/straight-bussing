@@ -1353,4 +1353,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5704,Downtown Campus Connector,1795060984,2026-11-18 22:03:04,drop,3,2,12645,151792,N (Upper) Wacker Dr & W Madison St,1795060984,874028,12646;12649,6,4,0,,,1,
 5704,Downtown Campus Connector,1795060986,2026-11-18 22:03:06,drop,3,2,12642,8612,Goldblatt Pavilion,1795060986,874028,12646;12649,6,4,0,,,1,
 5704,Downtown Campus Connector,1795060998,2026-11-18 22:03:18,drop,2,1,12646,155006,E Randolph St & S Michigan Ave,1795060998,874028,12649,6,4,0,,,1,
-6126,Apostolic/Drexel,1795068420,2026-11-19 00:07:00,drop,2,1,4324,225833,Kimbark Garage,1795068420,676406,4327,3,0,0,,,,
+6126,Apostolic/Drexel,1795068420,2026-11-19 00:07:00,drop,2,1,4324,225833,Kimbark Garage,1795068420,676406,4327,3,0,0,,,1,
