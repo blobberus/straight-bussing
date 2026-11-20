@@ -26,6 +26,7 @@ const PRECACHE = [
   'js/support.js',
   'js/core/arrivals.js',
   'js/core/busnum.js',
+  'js/core/busmenu.js',
   'js/core/coverage.js',
   'js/core/custom.js',
   'js/core/demo.js',
