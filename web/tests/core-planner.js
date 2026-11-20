@@ -49,6 +49,20 @@ test("loop route wraps (L3 -> L0 -> L1) with headway estimate", () => {
   ok(r.walkOnly.m > 1500 && Math.abs(r.walkOnly.min - r.walkOnly.m / 80) < 0.02);
 });
 
+test("Passio filler is no live time: no live wait from it, no live alighting time from it (2026-11-20)", () => {
+  const f = (s, t) => ({ stop_id: s, arrival: { time: t }, filler: true });
+  const fill = { trip: { trip_id: "f", route_id: "LOOP" }, vehicle: { id: "fv", label: "f" },
+    stop_time_update: [{ stop_id: "L2", arrival: { time: T + 300 } }, f("L3", T + 302), f("L0", T + 304), f("L1", T + 306)] };
+  const r = plan({ from: near_("L3"), to: near_("L1"), now: T, data: data({ trips: [fill] }) });
+  const [b] = busLegs(r.options[0]);
+  eq(b.waitLive, false, "the filler time at L3 is not a live wait");
+  const real = { ...fill, stop_time_update: [{ stop_id: "L3", arrival: { time: T + 300 } }, f("L0", T + 302), f("L1", T + 304)] };
+  const r2 = plan({ from: near_("L3"), to: near_("L1"), now: T, data: data({ trips: [real] }) });
+  const [b2] = busLegs(r2.options[0]);
+  eq([b2.waitLive, b2.boardT], [true, T + 300], "the head is a live wait");
+  ok(b2.source !== "live" && b2.alightT > T + 304 + 60, "the alighting time is not the filler +4 s: " + (b2.alightT - T));
+});
+
 test("headway wait capped at 30 min and divided by buses running", () => {
   const two = plan({ from: near_("L3"), to: near_("L1"), now: T, data: data({ buses: [bus("LOOP"), bus("LOOP")] }) });
   const one = plan({ from: near_("L3"), to: near_("L1"), now: T, data: data() });

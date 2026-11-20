@@ -98,6 +98,7 @@ function makeCtx({ data, predict, walkMins, timetable, t0 }) {
     const rid = tu && tu.trip && tu.trip.route_id != null ? String(tu.trip.route_id) : null;
     if (!rid) continue;
     for (const u of tu.stop_time_update || []) {
+      if (u && u.filler) continue;   // Passio's filler (previous stop + 2 s, core/eta.js markFiller) is no live time
       const t = Number((u && u.arrival && u.arrival.time) || (u && u.departure && u.departure.time) || 0);
       if (!t) continue;
       const k = rid + "|" + u.stop_id;
@@ -124,11 +125,11 @@ function makeCtx({ data, predict, walkMins, timetable, t0 }) {
     if (seq.loop && n > 1) m += hav(stops[seq.ids[n - 1]], stops[seq.ids[0]]);
     return Math.max(5, (seq.loop ? m : 2 * m) / BUS_M_MIN);
   };
-  /** Earliest time of `tu` at stopId strictly after `after`. */
+  /** Earliest time of `tu` at stopId strictly after `after` (filler is no time). */
   const tripAt = (tu, stopId, after) => {
     let best = null;
     for (const u of tu.stop_time_update || []) {
-      if (String(u.stop_id) !== stopId) continue;
+      if (!u || u.filler || String(u.stop_id) !== stopId) continue;
       const t = Number((u.arrival && u.arrival.time) || (u.departure && u.departure.time) || 0);
       if (t > after && (best === null || t < best)) best = t;
     }
