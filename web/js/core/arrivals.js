@@ -14,15 +14,16 @@ export const OLD_AFTER_S = 300;
 /**
  * Upcoming live arrivals at a stop, sorted by time ascending.
  * Includes arrivals up to 30 s in the past (bus at the stop). A trip that lists the stop twice
- * (loop start/end) yields both times.
+ * (loop start/end) yields both times. Passio's filler entries (u.filler, core/eta.js markFiller: the previous listed
+ * stop's time + 2 s, not a forecast; 2026-11-20) are left out unless opts.filler is true.
  * @param {{trips:Array}} state  state slice with GTFS-rt trip updates
  * @param {string} stopId
- * @param {{routeId?:string|null, hidden?:string[], nowS?:number}} [opts]
- *   routeId: only this route (hidden list is ignored then); hidden: route ids to exclude.
+ * @param {{routeId?:string|null, hidden?:string[], nowS?:number, filler?:boolean}} [opts]
+ *   routeId: only this route (hidden list is ignored then); hidden: route ids to exclude; filler: keep filler entries.
  * @returns {Array<{rid:string, t:number, bus:string|null, tripId:string|null, vehicleId:string|null}>}
  *   tripId alone is not unique: Passio gives several vehicles the same trip id (use tripId + vehicleId).
  */
-export function arrivalsFor({ trips } = {}, stopId, { routeId = null, hidden = [], nowS } = {}) {
+export function arrivalsFor({ trips } = {}, stopId, { routeId = null, hidden = [], nowS, filler = false } = {}) {
   const t0 = typeof nowS === "number" ? nowS : currentS();
   const hid = new Set((hidden || []).map(String));
   const want = String(stopId);
@@ -32,7 +33,7 @@ export function arrivalsFor({ trips } = {}, stopId, { routeId = null, hidden = [
     if (!rid) continue;
     if (routeId != null ? rid !== String(routeId) : hid.has(rid)) continue;
     for (const u of tu.stop_time_update || []) {
-      if (!u || String(u.stop_id) !== want) continue;
+      if (!u || String(u.stop_id) !== want || (u.filler && filler !== true)) continue;
       const t = Number((u.arrival && u.arrival.time) || (u.departure && u.departure.time) || 0);
       if (t && isFinite(t) && t > t0 - 30) {
         out.push({ rid, t, bus: tu.vehicle && tu.vehicle.label != null ? String(tu.vehicle.label) : null,

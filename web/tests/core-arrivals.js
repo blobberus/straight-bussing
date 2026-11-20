@@ -22,6 +22,14 @@ test("arrivalsFor sorts ascending and keeps recent past (> now-30)", () => {
   eq(r[0].bus, null, "missing label -> null");
   eq(r[0].tripId, "t3");
 });
+test("arrivalsFor leaves out Passio's filler entries (core/eta.js markFiller) unless opts.filler", () => {
+  const tu = { trip: { trip_id: "f1", route_id: "R1" }, vehicle: { id: "v9", label: "9" },
+    stop_time_update: [{ stop_id: "A", arrival: { time: T + 600 } }, { stop_id: "S", arrival: { time: T + 602 }, filler: true }, { stop_id: "B", arrival: { time: T + 900 } }] };
+  eq(arrivalsFor({ trips: [tu] }, "S", { nowS: T }), [], "a filler time is not a forecast");
+  eq(arrivalsFor({ trips: [tu] }, "S", { nowS: T, filler: true }).map((a) => a.t - T), [602], "opts.filler keeps it");
+  eq(arrivalsFor({ trips: [tu] }, "A", { nowS: T }).map((a) => a.t - T), [600], "the head of the run stays live");
+  eq(arrivalsFor({ trips: [tu] }, "S", { nowS: T, filler: "yes" }), [], "only true keeps it");
+});
 test("arrivalsFor excludes hidden routes", () => {
   const r = arrivalsFor({ trips }, "S", { nowS: T, hidden: ["R1"] });
   eq(r.map((a) => a.rid), ["R2"]);
