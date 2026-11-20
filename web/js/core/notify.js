@@ -7,7 +7,8 @@
  * Stops away = how many route stops the bus still has to reach before your station: 0 = your
  * station is the bus's next stop, 1 = one stop before yours, 2 = two stops before. The bus's next
  * stop is the vehicle's live stop_id, else the first upcoming stop in its trip update. Minutes come
- * only from the live trip update at your station (never invented); every text says "est.".
+ * only from the live trip update at your station (never invented, never Passio's filler: the previous
+ * stop's time + 2 s, core/eta.js markFiller, 2026-11-20); every text says "est.".
  *
  * Trip alerts (2026-10-13, owner: in step with the map's "get off in X stops"): while a started trip is on,
  * tripAlerts reads the SAME tripProgress result as the Current trip card and the map (core/tripprogress.js
@@ -73,10 +74,11 @@ function nextFromTrip(tu, now) {
   return best ? best.id : null;
 }
 
-/** Live predicted arrival at stopId for this trip (earliest upcoming), or null. */
+/** Live predicted arrival at stopId for this trip (earliest upcoming; filler is no prediction), or null. */
 function etaAt(tu, stopId, now) {
   let best = null;
   for (const u of tu?.stop_time_update || []) {
+    if (u && u.filler) continue;
     const t = timeOf(u);
     if (t && t > now - 30 && String(u.stop_id) === stopId && (best === null || t < best)) best = t;
   }

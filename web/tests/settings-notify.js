@@ -18,6 +18,14 @@ test("notify: stops away on a one-way route and a loop, nearest first, live eta 
   eq(routeOrder(["a", "b", "a"]), { order: ["a", "b"], loop: true });
 });
 
+test("notify: a filler time at your station is no live eta (2026-11-20)", () => {
+  const s = st();
+  const trips = s.trips.map((t) => ({ ...t, stop_time_update: (t.stop_time_update || []).map((u) => (u.stop_id === "S3" ? { ...u, filler: true } : u)) }));
+  const r = stopsAway({ ...s, trips }, "S3", null, NOW);
+  eq(r.map((x) => [x.rid, x.stopsAway]), [["R2", 0], ["R1", 2]], "stops away unchanged");
+  ok(r.every((x) => x.etaS == null), "no minutes from filler");
+});
+
 test("notify: bus past the stop on a one-way route is skipped; loops wrap", () => {
   eq(stopsAway(moveBus(st(), 0, { stop_id: "S2" }), "S1", "R1", NOW), []);
   const loop = stopsAway(moveBus(st(), 1, { stop_id: "S4" }), "S2", "R2", NOW);
