@@ -1787,12 +1787,14 @@ sb-v2-97).
     "Now"); ", location from 2 min ago" when the report is older than 60 s (STALE_BUS_S, the route page's). A
     transitioning bus (core/seen.js): TRANSITION_TEXT and no times. One aria-label sentence ("Bus 2, heading to Levi
     Hall, in 4 minutes, live").
-  - "Next stops": `busTimes(state, bus, now, ride)` for one lap from the next stop (loops wrap), on the route's rail
-    (.v-tl); each row is a 44 px stop button (`stop:open`) with its time and kind ("est." under an estimate), the first
-    marked "Next" with the filled dot; a loop adds "Loop: continues to <first stop>". Footer: "Times are live
-    predictions. Bus positions are approximate." or the stale note, plus "est. = estimated from where the bus is and
-    the timetable's travel times." when an estimate shows. Until core/eta.js lands, a stand-in in core/busmenu.js with
-    busTimes' signature gives this bus's own live times only (no est.).
+  - "Next stops": core/eta.js `busTimes(state, bus, now)` for one lap from the next stop (loops wrap; Passio filler never
+    a live time; estimates from core/eta.js defaultRide on data/segments.json), on the route's rail (.v-tl); each row
+    is a 44 px stop button (`stop:open`) with its time in the station times' words (core/eta.js `timeWords`: "4 min",
+    "~5 min" + "est." under it, past EST_MAX_MIN "3 stops away" + "Not live"), the first marked "Next" with the filled
+    dot; a loop adds "Loop: continues to <first stop>". A next stop estimated past EST_MAX_MIN gives the status card no
+    minutes. Footer: "Times are live predictions. Bus positions are approximate.", or with an estimate on screen
+    ETA_NOTES.live + ETA_NOTES.est ("Unmarked times are live predictions. ..." / "est. = estimated from where the bus
+    is and the timetable's travel times."), or the stale note.
   - "Line schedule": `lineHours` = today's hours in the route page's words ("Today 4:00 PM to 4:29 AM", "Friday service"
     after midnight, "(reduced schedule)" / "(schedule change)" / "(extra service)") + "Scheduled now" / "Not scheduled
     now" (words in label colors, never the live green); "No published schedule for this line." without data.

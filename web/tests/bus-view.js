@@ -30,7 +30,7 @@ test("bus view: header = the line's name, its badge and the bus; collapsed it al
   ok(meta.querySelector(".chip") && txt(meta.querySelector(".chip")) === "R1", "the route badge (color chip)");
   eq(txt(meta.querySelector(".hm-bus")), "Bus 101");
   eq(txt(meta.querySelector(".bm-hmeta")), "5 min", "collapsed: the next stop's time");
-  eq(meta.querySelector(".hm").getAttribute("aria-label"), "Red Line, Bus 101, Library in 5 minutes");
+  eq(meta.querySelector(".hm").getAttribute("aria-label"), "Red Line, Bus 101, Library in 5 min");
   ok(!dom(busMetaHTML(s, { detent: "half" }, NOW)).querySelector(".bm-hmeta"), "open: the card below says it");
   eq(busSubtitle(s, { detent: "peek" }, NOW), "Heading to Library");
   eq(busSubtitle(s, { detent: "full" }, NOW), "", "no second line while open");
@@ -44,7 +44,7 @@ test("bus view: the status card says where the bus heads, its live time and labe
   eq(txt(card.querySelector(".bm-stop")), "Library");
   eq(txt(card.querySelector(".bm-eta")), "5 min");
   ok(/Live/.test(txt(card.querySelector(".bm-src"))), "the live label (words, not color alone)");
-  eq(card.getAttribute("aria-label"), "Bus 101, heading to Library, in 5 minutes, live");
+  eq(card.getAttribute("aria-label"), "Bus 101, heading to Library, in 5 min, live");
 }));
 
 test("bus view: Next stops = one lap of stop buttons with times; the first is marked Next; est. under estimated times", fresh(() => {
@@ -58,9 +58,9 @@ test("bus view: Next stops = one lap of stop buttons with times; the first is ma
   ok(rows[0].querySelector(".bm-nexttag") && !rows[1].querySelector(".bm-nexttag"), "Next on the first row only");
   ok(rows[0].closest(".v-tlstop").classList.contains("has-bus"), "the filled dot: where the bus heads");
   eq(txt(rows[1].querySelector(".v-tleta")), "~9 minest.", "estimate: ~ and est.");
-  eq(rows[1].getAttribute("aria-label"), "Hospital, in about 9 minutes, estimated");
-  eq(rows[0].getAttribute("aria-label"), "Library, next, in 5 minutes, live");
-  ok(/est\. = estimated/.test(txt(d.querySelector(".v-foot"))), "the est. footer when an estimate shows");
+  eq(rows[1].getAttribute("aria-label"), "Hospital, in about 9 min, estimated");
+  eq(rows[0].getAttribute("aria-label"), "Library, next, in 5 min, live");
+  ok(/est\. = estimated/.test(txt(d.querySelector(".v-foot"))) && /^Unmarked times are live/.test(txt(d.querySelector(".v-foot"))), "the est. footer when an estimate shows");
   const live = dom(renderBus(state(), NOW));
   ok(!/est\. = /.test(txt(live.querySelector(".v-foot"))), "no est. footer with live times only");
   eq(txt(live.querySelector(".v-foot")), BUS_MENU.live);

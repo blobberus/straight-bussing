@@ -21,8 +21,8 @@ import { esc, safeColor } from "../../core/esc.js";
 import { nowS, ago } from "../../core/time.js";
 import { staleLevel, staleNote } from "../../core/arrivals.js";
 import { TRANSITION_TEXT } from "../../core/seen.js";
-import { BUS_MENU, ETA_WORDS, busMenuModel, heldBus, timeText, statusSay, reportInfo, busByKey } from "../../core/busmenu.js";
-import { predict } from "../../core/predict.js";
+import { BUS_MENU, busMenuModel, heldBus, timeText, statusSay, reportInfo, busByKey } from "../../core/busmenu.js";
+import { ETA_WORDS } from "../../core/eta.js";
 import { routeChip, liveLabel, emptyState, skeleton } from "../components.js";
 import { svg } from "../icons.js";
 import { busReportLink } from "../feedback.js";
@@ -31,14 +31,11 @@ import { APP_VERSION } from "./about.js";
 let mem = null;                       // core/busmenu.js heldBus memory: a bus missing from a poll keeps its menu 45 s
 let memo = { s: null, t: 0, m: null };   // one model per store state and second (title, header and content share it)
 
-/** Scheduled riding minutes between two stops of a route (core/predict.js on data/segments.json), for est. times. */
-const rideFn = (rid, now) => (a, b) => { const r = predict.rideMinutes(rid, a, b, now); return r && r.min != null ? r.min : null; };
-
 /**
  * The bus menu's model for this state (cached per state object and second).
  * @param {object} state
  * @param {number} now
- * @param {{times?:Function}} [o] tests: a busTimes stand-in (not cached)
+ * @param {{times?:Function}} [o] tests: a busTimes replacement (not cached)
  * @returns {object} core/busmenu.js busMenuModel plus level (staleLevel of the feed)
  */
 export function busModel(state, now = nowS(), o = {}) {
@@ -46,8 +43,7 @@ export function busModel(state, now = nowS(), o = {}) {
   const h = heldBus(mem, state, state.busMenu, now);
   mem = h.mem;
   const level = state.liveLoaded ? staleLevel(state, now) : "";
-  const rid = String(h.bus?.trip?.route_id ?? state.routeId ?? "");
-  const m = { ...busMenuModel(state, h, now, { ride: rideFn(rid, now), staleFeed: !!level, times: o.times }), level, last: h.mem.bus };
+  const m = { ...busMenuModel(state, h, now, { times: o.times }), level, last: h.mem.bus };   // est. times: core/eta.js defaultRide
   if (!m.name && m.last && m.status !== "ok") m.name = busByKeyName(state, m.last);
   memo = o.times ? { s: null, t: 0, m: null } : { s: state, t: now, m };
   return m;
@@ -142,7 +138,7 @@ function wholeHTML(m) {
  * Render the bus menu.
  * @param {object} state store state (busMenu = the bus key, routeId = its line)
  * @param {number} [now] unix seconds
- * @param {{report?:{url?:string, entries?:object}, times?:Function}} [o] tests: a report form, a busTimes stand-in
+ * @param {{report?:{url?:string, entries?:object}, times?:Function}} [o] tests: a report form, a busTimes replacement
  * @returns {string}
  */
 export function renderBus(state, now = nowS(), o = {}) {
@@ -159,7 +155,7 @@ export function renderBus(state, now = nowS(), o = {}) {
   if (m.status === "ok") {
     h += stopsHTML(m, now);
     const foot = m.level ? staleNote(m.level, BUS_MENU.stale) : BUS_MENU.live;
-    h += `<p class="v-foot">${esc(foot)}${m.anyEst ? `<br>${esc(BUS_MENU.estFoot)}` : ""}</p>`;
+    h += `<p class="v-foot">${esc(m.anyEst && !m.level ? BUS_MENU.liveMixed : foot)}${m.anyEst ? `<br>${esc(BUS_MENU.estFoot)}` : ""}</p>`;
   }
   h += scheduleHTML(m) + wholeHTML(m);
   return h + reportHTML(m, now, o.report) + "</div>";
