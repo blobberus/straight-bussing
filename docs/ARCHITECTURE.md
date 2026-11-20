@@ -1110,7 +1110,8 @@ Owner steps, columns and privacy rules: **`docs/USAGE-STATS.md`**.
 - Map (map/layers.js createBusLayer): a white disc with the number at the top right of the bus badge, updated in place
   (no rebuild, the motion of map/track.js continues); name/aria-label "Bus 2, <route name>"; the picked bus gets the
   `is-picked` ring. main.js passes `selected` with drawBuses (BUS_KEYS has busId).
-- A bus tap opens its route with that bus picked (main.js onBusTap -> openRoute + store.busId); in the route page
+- A bus tap opens its route with that bus picked (main.js onBusTap -> openRoute + store.busId; since 2026-11-20 a bus tap
+  opens the bus menu and its "See the whole route" does this, see "Bus menu (2026-11-20)"); in the route page
   "Where the buses are" rows are buttons (`route:bus`, again = unpick, 44 px, aria-pressed). Picked: "Showing Bus 2's
   times" + "Show the next bus at each stop" (`route:allbuses`); every station's time is that bus's own (busArrival), none
   where it has no prediction; pills / rail markers say "Bus 2". main.js clears busId when the route page closes or the
@@ -1763,3 +1764,54 @@ sb-v2-97).
     rows + probes), route-hourly.js (collapsed by default, aria, Now / Next on today only, after midnight, no-service tab,
     holiday and extra-service notes, 320 px at 200%), e2e-hourly.js (the real app: open, Weekend, Back, collapsed
     again), data-state.js (store.freq), Kit HeadwayTests (the same cases, golden rows + probes). sw `sb-v2-149`.
+
+## Bus menu (2026-11-20, owner: "There should be an ability for the user to click a particular bus on the map which will show its next stop, line, and schedule. In this menu, at the bottom should be report and feedback: this button should eventually link to a google form where I can collect feedback data but for now gray this button out and keep the feature functionality and how it should work within the github info.")
+- *Open:* a tap on a bus badge (main.js `onBusTap` > `openBus`) opens the bus menu, view `bus` (ui/views/bus.js, registered
+  with `detent: "half"` = the sheet keeps its state, and `replaceSelf`); before it opened the route page with that bus
+  picked, which is now the menu's "See the whole route". The map keeps its view (no camera move, owner 2026-10-09),
+  focuses the bus's line (core/visibility.js `mapFocus` for the `bus` view, like a route page) and rings the bus
+  (drawBuses `selected` = `core/busmenu.js menuBusKey`, else the route page's pick). A tap that names no vehicle id
+  still opens its route. "Where the buses are" on a route page keeps its own pick (unchanged).
+- *Which bus:* `navigate("bus", {routeId, bus})` (the router's params keep the bus key, so Back to a bus menu brings it
+  back) + `store.busMenu` (the key, core/busnum.js busKey; nav, not persisted). A main.js subscription runs
+  `menuSync(state, currentParams().bus)`: busMenu follows the params, is null off the menu, and a bus Passio moved to
+  another line re-navigates the menu to its new routeId (replaceSelf: Back unchanged; the map's focus follows).
+  Back: a bus menu opened from a bus menu takes its place, so Back returns where the rider was; a route page or a stop
+  opened from the menu stacks on it (Back = the same bus's menu); a bus menu opened from a route page stacks on it.
+- *Content, in order* (core/busmenu.js `busMenuModel` + `BUS_MENU` words, the iPhone app's BusDetailView ports both):
+  - Sheet header: the line's name (title), its badge + "Bus 2" (core/busnum.js busName: the map badge's number, one bus
+    on the line "Bus <fleet label>") on the right; collapsed, also "Heading to <stop>" under the title and the next
+    stop's time beside the bus, so a tap on a collapsed sheet answers at once.
+  - Status card: "Heading to" + the next stop (the vehicle's stop_id) + its time and kind: live "4 min" ("Now" under a
+    minute, "~" while the feed is late or failing) with the Live label (dot + words), or est. "~5 min" + "est." (never
+    "Now"); ", location from 2 min ago" when the report is older than 60 s (STALE_BUS_S, the route page's). A
+    transitioning bus (core/seen.js): TRANSITION_TEXT and no times. One aria-label sentence ("Bus 2, heading to Levi
+    Hall, in 4 minutes, live").
+  - "Next stops": `busTimes(state, bus, now, ride)` for one lap from the next stop (loops wrap), on the route's rail
+    (.v-tl); each row is a 44 px stop button (`stop:open`) with its time and kind ("est." under an estimate), the first
+    marked "Next" with the filled dot; a loop adds "Loop: continues to <first stop>". Footer: "Times are live
+    predictions. Bus positions are approximate." or the stale note, plus "est. = estimated from where the bus is and
+    the timetable's travel times." when an estimate shows. Until core/eta.js lands, a stand-in in core/busmenu.js with
+    busTimes' signature gives this bus's own live times only (no est.).
+  - "Line schedule": `lineHours` = today's hours in the route page's words ("Today 4:00 PM to 4:29 AM", "Friday service"
+    after midnight, "(reduced schedule)" / "(schedule change)" / "(extra service)") + "Scheduled now" / "Not scheduled
+    now" (words in label colors, never the live green); "No published schedule for this line." without data.
+  - "See the whole route" (`bus:route`): the route page with this bus picked (store.busId: its own time at each station,
+    main.js pickCheck as before) and the map framed on the line.
+  - At the very bottom "Report and feedback": grayed out until `BUS_REPORT_URL` (ui/feedback.js, next to FEEDBACK_URL)
+    is set: a real `<button aria-disabled="true">` (focusable and read: "Report and feedback, not available yet", no
+    action), gray words on the plain fill (css/bus.css; >= 4.5:1 in light and dark, no press effect), 44 px, with
+    "Coming soon: report a problem with this bus or send feedback." under it (aria-describedby). Once set: a link to the
+    Google Form in a new tab with ONLY the line name, bus number shown, next stop, Chicago time to the minute and app
+    version prefilled (`core/busmenu.js reportInfo` > `busReportLink`, `BUS_REPORT_ENTRIES` entry ids); never a
+    location, identity or device id. What it does now, how it should work and the owner's steps: docs/BUS-REPORT.md.
+- *A bus that goes:* missing from the feed, the menu keeps its last copy `PICK_HOLD_S` (45 s, the map badge's
+  MISSING_S; `heldBus`), then "This bus is no longer reporting" (empty state) with See the whole route (no pick), the
+  Line schedule and Report and feedback; more than a block off its route (store.away): "This bus is away from its
+  route" at once, as its badge goes at once.
+- Tests: bus.test.html (core-busmenu.js: model, hold, menuSync, hours, times, report details, words; bus-report.js:
+  the link builder; bus-view.js: the render, 44 px, the grayed button, the link with a form set, gone / away /
+  transitioning / stale, escaping, contrast light + dark), ui-shell-router.js (bus menu replaces bus menu; route page
+  and stop under a bus menu), e2e-busmenu.js in e2e.test.html (the real app: tap a bus > its menu > See the whole route
+  > Back = the same bus's menu > Back = the Routes list), e2e.js (a bus tap keeps the camera and the sheet collapsed),
+  data-state.js (store.busMenu). css/bus.css; sw see web/sw.js.
