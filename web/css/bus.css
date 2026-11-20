@@ -1,0 +1,45 @@
+/* The bus menu (ui/views/bus.js, owner 2026-11-20). Builds on .v-card, .v-tl (views.css) and the route page's .r-k /
+   .r-sched words (route.css). Values come from tokens.css only. */
+
+/* where the bus heads now: "Heading to" over the stop, the live label (or est.) under it, the time on the right */
+.bm-now { display: flex; align-items: center; gap: var(--s-3); min-height: var(--row-min); padding: var(--s-3) var(--inset-content); }
+.bm-nowtext { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bm-k { font: var(--t-row-detail); color: var(--label-2); }
+.bm-stop { font: var(--t-row-title); color: var(--label); overflow-wrap: break-word; }
+.bm-src { display: flex; align-items: center; flex-wrap: wrap; gap: 0 var(--s-1); font: var(--t-row-detail); color: var(--label-2); }
+.bm-src .dot-live, .bm-src .dot-off { margin: 0; }
+.bm-trans { font: var(--t-row-title); color: var(--label); }   /* "Transitioning to new line" (core/seen.js), no times */
+.bm-eta { flex: none; display: flex; flex-direction: column; align-items: flex-end; font: var(--t-eta-row); font-variant-numeric: tabular-nums; color: var(--label); white-space: nowrap; }
+.bm-eta.is-now { color: var(--live); }
+.bm-eta .bm-kind { font: var(--t-footnote); }
+/* "est." under a row's time (the route page's .v-tlwho place), label2 text, never a filled chip (10.10) */
+.bm-kind { color: var(--label-2); font-weight: var(--w-regular); }
+
+/* Next stops: the route's rail; the first stop (the filled dot) is where the bus heads now */
+.bm-h { margin-top: var(--s-6); }
+.bm-tl { margin-bottom: var(--s-2); }
+.bm-nexttag { align-self: flex-start; padding: 0 var(--s-2); border-radius: var(--r-tag); background: var(--fill); color: var(--label); font: var(--t-caption); line-height: 20px; }
+.bm-loop { margin: 0 0 var(--s-3) var(--inset-content); }
+
+/* Line schedule: today's hours and Scheduled now / Not scheduled now (words, never the live green) */
+.bm-sched { padding: var(--s-2) var(--inset-content); }
+.bm-hours { margin: var(--s-2) 0; font: var(--t-row-detail); color: var(--label); }
+.bm-hours.v-sec { color: var(--label-2); }
+
+.bm-whole { margin-top: var(--s-4); }
+
+/* Report and feedback, the very bottom. Until the form exists (ui/feedback.js BUS_REPORT_URL) it is grayed out: gray
+   words on the plain fill, no press effect, no pointer; still >= 4.5:1 so the words stay readable, and the line
+   under it says why. */
+.bm-report { margin: var(--s-8) 0 var(--s-2); }
+.bm-report .v-btn { margin: 0; }
+.bm-reportbtn .ic { width: var(--i-row); height: var(--i-row); }
+.bm-reportbtn[aria-disabled="true"] { opacity: 1; background: var(--fill); color: var(--label-2); cursor: not-allowed; }
+.bm-reportbtn[aria-disabled="true"]:active { background: var(--fill); transform: none; }
+.bm-reportnote { margin: var(--s-2) var(--inset-content) 0; font: var(--t-footnote); color: var(--label-2); text-align: center; }
+
+/* the collapsed header's time beside "Bus 2" */
+.bm-hmeta { font: var(--t-row-title); font-variant-numeric: tabular-nums; color: var(--label); }
+.bm-hmeta.is-now { color: var(--live); }
+
+@media (prefers-contrast: more) { .bm-reportbtn[aria-disabled="true"] { outline: 1px dashed var(--label-2); } }
