@@ -51,8 +51,13 @@ public struct StopTimeUpdate: Hashable, Sendable {
     public var stopSequence: Int?
     public var arrival: Double?
     public var departure: Double?
-    public init(stopId: String?, stopSequence: Int? = nil, arrival: Double? = nil, departure: Double? = nil) {
+    /// Passio filler, not a forecast (`StationTimes.markFiller`, web core/eta.js, 2026-11-20): this time is 0 to 3 s after
+    /// the previous listed stop's time in the same trip update. Screens that show a time skip it; "does this trip go on"
+    /// checks (Operating, Idle) still count it.
+    public var filler: Bool
+    public init(stopId: String?, stopSequence: Int? = nil, arrival: Double? = nil, departure: Double? = nil, filler: Bool = false) {
         self.stopId = stopId; self.stopSequence = stopSequence; self.arrival = arrival; self.departure = departure
+        self.filler = filler
     }
     /// `arrival.time || departure.time || 0` (JS truthiness: a zero arrival falls back to departure). A time past
     /// the year 5000 is junk, not a prediction: treated as missing (every minute count downstream stays an Int).
@@ -254,7 +259,8 @@ public enum FeedParser {
     }
     public static func tripUpdates(_ data: Data) throws -> Feed<TripUpdate> {
         let env = try JSONDecoder().decode(FeedEnvelope<TripEntity>.self, from: data)
-        return Feed(timestamp: env.timestamp, entities: env.entities.compactMap(\.value))
+        // Passio's filler times are marked here, in one place (web data/live.js parseTrips calls core/eta.js markFiller)
+        return Feed(timestamp: env.timestamp, entities: env.entities.compactMap(\.value).map(StationTimes.markFiller))
     }
     public static func alerts(_ data: Data) throws -> Feed<ServiceAlert> {
         let env = try JSONDecoder().decode(FeedEnvelope<AlertEntity>.self, from: data)
