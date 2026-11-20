@@ -32,6 +32,48 @@ export const WELCOME_LOG_KEY = "sb-welcome-log";
 
 /** The beta feedback form (owner 2026-10-13). */
 export const FEEDBACK_URL = "https://forms.gle/zK4hi2UfYsrXURR97";
+/**
+ * The bus menu's "Report and feedback" form (owner 2026-11-20: "this button should eventually link to a google form
+ * where I can collect feedback data but for now gray this button out"). Empty = the button is grayed out
+ * (aria-disabled) with "Coming soon". The owner's steps to turn it on: docs/BUS-REPORT.md. Set it to the form's
+ * long address ending in /viewform (https://docs.google.com/forms/d/e/<form id>/viewform), not a forms.gle short link:
+ * the details are added to it as prefill parameters. iOS: Kit SiteLinks.busReport (nil until set).
+ */
+export const BUS_REPORT_URL = "";
+/**
+ * The form's prefill entry ids ("entry.123456789", from the form's "Get pre-filled link"), one per detail. Only these
+ * five ever go into the link; an empty id leaves that detail out. Never a location, an identity or a device id.
+ */
+export const BUS_REPORT_ENTRIES = Object.freeze({ line: "", bus: "", stop: "", time: "", version: "" });
+/** The details the report link may carry, in order (core/busmenu.js reportInfo builds them). */
+export const BUS_REPORT_FIELDS = Object.freeze(["line", "bus", "stop", "time", "version"]);
+/** Longest value put in the link (a line or stop name is far shorter). */
+const REPORT_MAX = 120;
+
+/**
+ * The bus report form's link with ONLY the five details prefilled (line name, bus number shown, next stop, Chicago
+ * time rounded to the minute, app version); '' while no form is set (the button stays grayed out). Never throws.
+ * @param {{line?:string, bus?:string, stop?:string, time?:string, version?:string}} info core/busmenu.js reportInfo
+ * @param {{url?:string, entries?:Object<string,string>}} [o] defaults: BUS_REPORT_URL, BUS_REPORT_ENTRIES (tests pass
+ *   their own)
+ * @returns {string}
+ */
+export function busReportLink(info, { url = BUS_REPORT_URL, entries = BUS_REPORT_ENTRIES } = {}) {
+  const base = String(url || "").trim();
+  if (!/^https:\/\//i.test(base)) return "";   // empty, or not a form address: no link at all
+  let u;
+  try { u = new URL(base); } catch (e) { return ""; }
+  const ids = entries || {};
+  let any = false;
+  for (const f of BUS_REPORT_FIELDS) {
+    const id = String(ids[f] || "").trim(), v = String((info && info[f]) ?? "").replace(/\s+/g, " ").trim().slice(0, REPORT_MAX);
+    if (!/^entry\.\d+$/.test(id) || !v) continue;   // a field without its entry id (or without a value) is left out
+    u.searchParams.set(id, v);
+    any = true;
+  }
+  if (any) u.searchParams.set("usp", "pp_url");   // Google Forms: show the prefilled answers
+  return u.toString();
+}
 /** The ask, first on the map button's panel and in Settings > Beta feedback (owner 2026-11-02: "Emphasize how it would
  * be very helpful"). */
 export const FEEDBACK_LEAD = "Your feedback would be very helpful.";
