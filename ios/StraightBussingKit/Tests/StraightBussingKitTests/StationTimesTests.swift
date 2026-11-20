@@ -104,4 +104,21 @@ final class FillerConsumerTests: XCTestCase, PlannerFixture {
         let raw = [PlannerTests.trip("t1", "LOOP", [("L3", T + 300), ("L0", T + 302), ("L1", T + 304)])]
         XCTAssertEqual(Planner.plan(from: near_("L3"), to: near_("L1"), now: T, data: data(trips: raw)).options[0].busLegs[0].source, .live)
     }
+
+    /// "2 stops away" still fires (the bus position), without minutes from filler.
+    func testBusAlertsNoMinutesFromFiller() {
+        let S = StaticData(routes: ["LOOP": Route(id: "LOOP", long: "Loop")], stops: stops, routeStops: ["LOOP": routeStops["LOOP"]!])
+        var l = LiveState()
+        l.buses = [.on("LOOP", id: "b1", trip: "t1", ts: T, stopId: "L1")]
+        l.trips = StationTimes.markFiller([PlannerTests.trip("t1", "LOOP", [("L1", T + 60), ("L2", T + 62), ("L3", T + 64)])])
+        l.lastOk = T; l.feedTs = T
+        let away = Notify.stopsAway(staticData: S, live: l, stopId: "L3", now: T)
+        XCTAssertEqual(away.map(\.stopsAway), [2])
+        XCTAssertNil(away[0].etaS, "64 s is filler, not a forecast")
+        XCTAssertEqual(Notify.stopsAway(staticData: S, live: l, stopId: "L1", now: T)[0].etaS, T + 60, "the head stays")
+        var prefs = NotifyPrefs(); prefs.stopId = "L3"
+        let due = Notify.dueAlerts(prefs: prefs, staticData: S, live: l, hidden: [], fired: [], now: T)
+        XCTAssertEqual(due.alerts.map(\.kind), [.twoStops])
+        XCTAssertFalse(due.alerts[0].body.contains("min"), due.alerts[0].body)
+    }
 }

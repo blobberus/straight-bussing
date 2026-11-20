@@ -102,10 +102,11 @@ public enum Notify {
         return best?.id
     }
 
-    /// Live predicted arrival at stopId for this trip (earliest upcoming), or nil.
+    /// Live predicted arrival at stopId for this trip (earliest upcoming), or nil. Passio's filler times
+    /// (`StationTimes.markFiller`) are not forecasts: no alert minutes from them.
     static func etaAt(_ tu: TripUpdate?, _ stopId: String, _ now: Double) -> Double? {
         var best: Double? = nil
-        for u in tu?.stopTimeUpdates ?? [] where u.stopId == stopId {
+        for u in tu?.stopTimeUpdates ?? [] where u.stopId == stopId && !u.filler {
             let t = u.time
             if t != 0 && t > now - 30 && (best == nil || t < best!) { best = t }
         }
