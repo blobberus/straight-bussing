@@ -174,19 +174,51 @@ function vehicleTimes(trips, tu, vid, rid) {
   return { merged: true, stop_time_update: [...((tu && tu.stop_time_update) || []), ...own.flatMap((t) => t.stop_time_update || [])] };
 }
 
-/** Live ETAs of a trip update along stop ids, matched in order (null where none). */
-function etasAlong(tu, ids, from, now) {
-  const ups = ((tu && tu.stop_time_update) || []).map((u) => ({ id: String(u.stop_id), t: timeOf(u), seq: Number(u.stop_sequence) }))
-    .filter((u) => u.t && u.t > now - 30);
-  // one trip: its stop sequence; several trips merged (vehicleTimes): sequences restart per trip, so time order
-  if (!(tu && tu.merged) && ups.every((u) => isFinite(u.seq))) ups.sort((a, b) => a.seq - b.seq || a.t - b.t); else ups.sort((a, b) => a.t - b.t);
-  const out = ids.map(() => null);
-  let j = 0;
-  for (let k = Math.max(0, from); k < ids.length; k++) {
-    const m = ups.findIndex((u, q) => q >= j && u.id === ids[k]);
-    if (m >= 0) { out[k] = ups[m].t; j = m + 1; }
+/**
+ * A bus's live times along stop ids in travel order: the largest set of its entries that keeps both the stops' order and
+ * time order (a longest common subsequence of the ids and the entries sorted by time). So an entry out of travel order (a
+ * trip's first stop the bus already left, a stop of its next lap: Passio lists both) never pushes the others out, as
+ * taking the first match in turn did (2026-11-20: bus 4318's next-lap time at its very next stop dropped its six real
+ * times). Among equally large sets the one with the least total `cost` wins (core/eta.js: how far each time is from the
+ * timetable's ride), then the earliest entries (an early time errs on the safe side). Same rule as the iOS Kit
+ * TripFollow.matchTimes.
+ * @param {string[]} ids stop ids in travel order
+ * @param {Array<{id:string, t:number}>} ups live entries (any order; sorted by time here)
+ * @param {{from?:number, may?:(k:number, u:object)=>boolean, cost?:(k:number, u:object)=>number}} [opts]
+ *   from: the first index of ids that can get a time; may: may entry u time ids[k] (default: any with the same id);
+ *   cost: of entry u timing ids[k] (default 0)
+ * @returns {Array<number|null>} a time per ids entry, null where none
+ */
+export function matchTimes(ids, ups, { from = 0, may, cost } = {}) {
+  const n = ids.length, U = [...(ups || [])].sort((a, b) => a.t - b.t), m = U.length, out = ids.map(() => null), f = Math.max(0, from);
+  if (!m || f >= n) return out;
+  const fits = (k, q) => ids[k] === U[q].id && (typeof may !== "function" || may(k, U[q]));
+  const price = (k, q) => { const c = typeof cost === "function" ? Number(cost(k, U[q])) : 0; return isFinite(c) && c > 0 ? c : 0; };
+  // N[k*W+q], C[k*W+q]: most matches in ids[k..] and U[q..], and the least cost of such a set
+  const W = m + 1, N = new Array((n + 1) * W).fill(0), C = new Array((n + 1) * W).fill(0);
+  const better = (n1, c1, n2, c2) => n1 > n2 || (n1 === n2 && c1 < c2 - 1e-9);
+  const take = (k, q) => [1 + N[(k + 1) * W + q + 1], price(k, q) + C[(k + 1) * W + q + 1]];
+  for (let k = n - 1; k >= f; k--) for (let q = m - 1; q >= 0; q--) {
+    const a = (k + 1) * W + q, b = k * W + q + 1;
+    let bn = N[a], bc = C[a];
+    if (better(N[b], C[b], bn, bc)) { bn = N[b]; bc = C[b]; }
+    if (fits(k, q)) { const [tn, tc] = take(k, q); if (!better(bn, bc, tn, tc)) { bn = tn; bc = tc; } }
+    N[k * W + q] = bn; C[k * W + q] = bc;
+  }
+  for (let k = f, q = 0; k < n && q < m && N[k * W + q] > 0;) {
+    const here = k * W + q, a = (k + 1) * W + q;
+    if (fits(k, q)) { const [tn, tc] = take(k, q); if (!better(N[here], C[here], tn, tc)) { out[k] = U[q].t; k++; q++; continue; } }
+    if (!better(N[here], C[here], N[a], C[a])) k++;   // keep the earlier entry for a later stop
+    else q++;
   }
   return out;
+}
+
+/** Live ETAs of a trip update along stop ids (matchTimes; Passio's filler entries are not times; null where none). */
+function etasAlong(tu, ids, from, now) {
+  const ups = ((tu && tu.stop_time_update) || []).filter((u) => u && !u.filler).map((u) => ({ id: String(u.stop_id), t: timeOf(u) }))
+    .filter((u) => u.t && u.t > now - 30);
+  return matchTimes(ids, ups, { from });
 }
 
 /** Distance (m) from the user to a stop, or null. */
@@ -400,6 +432,24 @@ export function stopTimes(leg, now, ride) {
   };
   const live = S.map((s) => (s.state !== "passed" && num(s.eta) ? s.eta : null));
   const v = leg.vehicle;
+  const part = () => (num(v.frac) != null ? v.frac : 0.5);
+  // minutes from where the bus is now to stop k (null when it is not placed before k)
+  const fromBus = (k) => {
+    if (!v || num(v.idx) == null) return null;
+    if (v.idx >= 0 && v.idx <= k && v.idx < S.length) {
+      const r = mins(v.idx, k);
+      const lead = v.at ? 0 : v.idx > 0 ? mins(v.idx - 1, v.idx) : rideIds(v.prevId, S[0].id, 1);
+      return r == null || (lead == null && r === 0) ? null : (lead != null ? lead * (1 - part()) : 0) + r;   // its next stop needs the ride to it
+    }
+    if (v.idx < 0 && v.nextId != null) {
+      // still before the first listed stop (v.behind stops): from its next stop to the first one, then along the list
+      const toFirst = rideIds(v.nextId, S[0].id, Number(v.behind) || 1), along = mins(0, k);
+      const r = toFirst == null || along == null ? null : toFirst + along;
+      const lead = v.at ? 0 : rideIds(v.prevId, v.nextId, 1);
+      return r == null ? null : (lead != null ? lead * (1 - part()) : 0) + r;
+    }
+    return null;
+  };
   let floor = now;
   for (let k = 0; k < S.length; k++) {
     if (S[k].state === "passed") continue;
@@ -419,16 +469,13 @@ export function stopTimes(leg, now, ride) {
     } else if (m >= 0) {
       const r = mins(k, m);
       if (r != null) t = live[m] - r * 60;
-    } else if (v && num(v.idx) != null && v.idx >= 0 && v.idx <= k && v.idx < S.length) {
-      const r = mins(v.idx, k);
-      const lead = v.at ? 0 : v.idx > 0 ? mins(v.idx - 1, v.idx) : rideIds(v.prevId, S[0].id, 1);
-      if (r != null) t = now + (lead != null ? lead * (1 - (num(v.frac) != null ? v.frac : 0.5)) * 60 : 0) + r * 60;
-    } else if (v && num(v.idx) != null && v.idx < 0 && v.nextId != null) {
-      // still before the first listed stop (v.behind stops): from its next stop to the first one, then along the list
-      const toFirst = rideIds(v.nextId, S[0].id, Number(v.behind) || 1), along = mins(0, k);
-      const r = toFirst == null || along == null ? null : toFirst + along;
-      const lead = v.at ? 0 : rideIds(v.prevId, v.nextId, 1);
-      if (r != null) t = now + (lead != null ? lead * (1 - (num(v.frac) != null ? v.frac : 0.5)) * 60 : 0) + r * 60;
+      // the bus is placed before this stop (2026-11-20: with Passio's filler skipped the first live time is often many
+      // stops ahead, and counting back from it put the nearer stops at "now"): scaled between where the bus is now and
+      // that live time by the scheduled ride
+      const b = live[m] > now ? fromBus(k) : null, bm = b != null ? fromBus(m) : null;
+      if (b != null && bm != null && bm > 0) t = now + (live[m] - now) * Math.min(1, b / bm);
+    } else if (fromBus(k) != null) {
+      t = now + fromBus(k) * 60;
     } else if (!v && num(leg.boardEta) != null && !leg.boardLive && k >= (Number(leg.boardIdx) || 0)) {
       const r = mins(Number(leg.boardIdx) || 0, k);
       if (r != null) t = leg.boardEta + r * 60;

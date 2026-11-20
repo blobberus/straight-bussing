@@ -1,6 +1,6 @@
 // Tests for core/tripprogress.js (pure; fixtures in trip-fixtures.js).
 import { test, eq, ok, near } from "./lib.js";
-import { tripProgress, TRIP, stopTimes } from "../js/core/tripprogress.js";
+import { tripProgress, TRIP, stopTimes, matchTimes } from "../js/core/tripprogress.js";
 import { NOW, stops, routes, routeStops, baseState, bus, trip, journeyR, journeyXfer, scenes } from "./trip-fixtures.js";
 
 const scene = (id) => scenes().find((s) => s.id === id).state;
@@ -255,6 +255,45 @@ test("split predictions: the bus's next trip lends the later stops their live ti
   const b = busLeg(prog(st));
   eq(b.stops.map((s) => s.eta), [NOW + 90, NOW + 200, NOW + 300, NOW + 420, NOW + 520, NOW + 600, NOW + 720], "every stop has its live time");
   eq([b.boardLive, b.alightLive, b.alightEta], [true, true, NOW + 720], "the alighting time is live, not planned");
+});
+
+test("Passio filler is no live time on the trip timeline: that stop is left to stopTimes (2026-11-20)", () => {
+  const st = scene("walk"), tu = st.trips.find((t) => t.trip.trip_id === "tR1");
+  const a4 = tu.stop_time_update.find((u) => u.stop_id === "A4"), a5 = tu.stop_time_update.find((u) => u.stop_id === "A5");
+  a5.arrival = { time: a4.arrival.time + 2 }; a5.departure = { time: a4.arrival.time + 2 };
+  a5.filler = true;   // as data/live.js marks it (core/eta.js markFiller)
+  const b = busLeg(prog(st));
+  eq(b.stops.find((s) => s.id === "A5").eta, null, "no live time at A5");
+  eq(b.stops.find((s) => s.id === "A4").eta, a4.arrival.time, "the head keeps its live time");
+  eq([b.boardLive, b.alightLive], [true, true]);
+});
+
+test("stopTimes: before the first live time, with the bus placed, scaled between where it is now and that time (2026-11-20)", () => {
+  const ride = () => 1;   // 1 min a stop
+  const S = (etas) => etas.map((e, i) => ({ id: "abcd"[i], state: "upcoming", eta: e }));
+  const out = stopTimes({ stops: S([null, null, null, NOW + 600]), boardIdx: 0, alightIdx: 3, vehicle: { idx: 0, at: false, frac: 0.5, prevId: "z" } }, NOW, ride);
+  // from the bus: 0.5, 1.5, 2.5, 3.5 scheduled minutes; Passio says 10 min to d: each stop gets its share
+  eq(out.map((x) => Math.round(x.t - NOW)), [86, 257, 429, 600], "spread over the 10 min, not counted back from d (which put a, b at now)");
+  ok(out.slice(0, 3).every((x) => x.est && x.src === "schedule") && !out[3].est);
+  const early = stopTimes({ stops: S([null, null, NOW + 20]), boardIdx: 0, alightIdx: 2, vehicle: { idx: 0, at: true } }, NOW, ride);
+  eq(early.map((x) => x.t - NOW), [0, 10, 20], "a live time sooner than the schedule: scaled down, never before now");
+  const past = stopTimes({ stops: S([null, NOW - 10]), boardIdx: 0, alightIdx: 1, vehicle: { idx: 0, at: true } }, NOW, ride);
+  eq(past.map((x) => x.t), [NOW, NOW], "a live time just past: counted back and held at now");
+});
+
+test("matchTimes: the largest set in both stop and time order; ties keep the earliest times; filler is not a time", () => {
+  const u = (id, t) => ({ id, t });
+  eq(matchTimes(["a", "b", "c"], [u("b", 20), u("a", 10), u("c", 30)]), [10, 20, 30], "sorted by time");
+  // 2026-11-20 1 PM, bus 4318: its next lap's time at its very next stop (a) came last in time
+  eq(matchTimes(["a", "b", "c", "d"], [u("b", 9), u("c", 36), u("d", 46), u("a", 1835)]), [null, 9, 36, 46], "three in order beat the one");
+  eq(matchTimes(["a", "b", "c"], [u("c", 183), u("b", 457)]), [null, null, 183], "a tie: the earlier entry wins");
+  eq(matchTimes(["a", "b", "c"], [u("c", 183), u("b", 457)], { cost: (k, x) => (x.id === "c" ? 2 : 0.1) }), [null, 457, null], "a tie: the cheaper one wins");
+  eq(matchTimes(["a", "b", "c"], [u("b", 9), u("c", 30), u("a", 99)], { cost: () => 5 }), [null, 9, 30], "cost never beats a larger set");
+  eq(matchTimes(["a", "b", "a"], [u("a", 10), u("a", 50)]), [10, null, 50], "a stop listed twice");
+  eq(matchTimes(["a", "b"], [u("a", 10), u("b", 20)], { from: 1 }), [null, 20], "from");
+  eq(matchTimes(["a", "b", "c"], [u("b", 9), u("c", 30)], { may: (k) => k !== 2 }), [null, 9, null], "may: an entry kept off a stop");
+  eq(matchTimes([], [u("a", 1)]), []);
+  eq(matchTimes(["a"], []), [null]);
 });
 
 test("stopTimes: live where Passio has it, else scaled / added schedule ride, never back in time; passed = null", () => {
