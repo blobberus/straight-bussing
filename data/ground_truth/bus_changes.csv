@@ -1439,4 +1439,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5704,Downtown Campus Connector,1795148644,2026-11-19 22:24:04,drop,3,2,12649,8612,Goldblatt Pavilion,1795148644,874028,12642;12646,6,4,0,,,1,
 5704,Downtown Campus Connector,1795148655,2026-11-19 22:24:15,drop,2,1,12642,155006,E Randolph St & S Michigan Ave,1795148655,874028,12646,6,4,0,,,1,
 1076,South,1795148686,2026-11-19 22:24:46,drop,2,1,12643,8631,60th St. & Ellis (SE Corner),1795148686,501649,4328,2,2,0,,,1,
-6126,Apostolic/Drexel,1795154411,2026-11-20 00:00:11,drop,2,1,4319,8612,Goldblatt Pavilion,1795154411,676406,12647,3,0,0,,,,
+6126,Apostolic/Drexel,1795154411,2026-11-20 00:00:11,drop,2,1,4319,8612,Goldblatt Pavilion,1795154411,676406,12647,3,0,0,,,1,
