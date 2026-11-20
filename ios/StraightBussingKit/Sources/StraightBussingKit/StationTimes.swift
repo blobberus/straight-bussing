@@ -14,14 +14,14 @@ public enum StationTimes {
 
     /// Marks Passio's filler times (`StopTimeUpdate.filler`, web markFiller): walking the stop times in listed order, an
     /// entry whose time (arrival, else departure) is at least 0 and at most `fillerS` seconds after the previous listed
-    /// entry's time is filler. The first entry of a run (its head) stays a live time; an entry without a time is never
-    /// filler, and the one after it has no previous time to follow. Idempotent: the flags come from the times alone.
+    /// entry that has a time is filler. The first entry of a run (its head) stays a live time; an entry without a time
+    /// is never filler and does not break a run. Idempotent: the flags come from the times alone.
     public static func markFiller(_ tu: TripUpdate) -> TripUpdate {
         var out = tu
         var prev: Double? = nil
         for i in out.stopTimeUpdates.indices {
             let t = out.stopTimeUpdates[i].time
-            guard t != 0 else { out.stopTimeUpdates[i].filler = false; prev = nil; continue }
+            guard t != 0 else { out.stopTimeUpdates[i].filler = false; continue }
             let d = prev.map { t - $0 }
             out.stopTimeUpdates[i].filler = d.map { $0 >= 0 && $0 <= fillerS } ?? false
             prev = t

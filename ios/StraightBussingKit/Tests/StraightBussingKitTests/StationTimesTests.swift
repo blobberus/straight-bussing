@@ -22,9 +22,10 @@ final class StationTimesTests: XCTestCase {
                        [false, true, true, true, false, true, false, true])
         // departure-only times count the same (arrival, else departure)
         XCTAssertEqual(flags(ups([T + 60, T + 62, T + 300], departure: true)), [false, true, false])
-        // an entry without a time is never filler, and the one after it has no previous time to follow
-        XCTAssertEqual(flags(ups([T + 60, nil, T + 61, T + 63])), [false, false, false, true])
-        XCTAssertEqual(flags(ups([T + 60, 0, T + 61])), [false, false, false])
+        // an entry without a time is never filler and does not break a run (web markFiller)
+        XCTAssertEqual(flags(ups([T + 60, nil, T + 61, T + 63])), [false, false, true, true])
+        XCTAssertEqual(flags(ups([T + 60, 0, T + 61])), [false, false, true])
+        XCTAssertEqual(flags(ups([nil, T + 60, T + 300])), [false, false, false])
         // a zero arrival falls back to departure (StopTimeUpdate.time)
         let mixed = TripUpdate(trip: .init(tripId: "t", routeId: "R"), stopTimeUpdates: [
             StopTimeUpdate(stopId: "A", arrival: T + 100), StopTimeUpdate(stopId: "B", arrival: 0, departure: T + 102)])
