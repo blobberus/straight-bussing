@@ -208,3 +208,20 @@ test("bus view CSS: the grayed-out button, its note, est. and the Next tag stay 
   f.remove();
   eq(bad, []);
 }));
+
+test("bus view CSS: at 200% text on a 320 px phone the times go under the words and stop names are never cut", fresh(async () => {
+  const f = document.createElement("iframe");
+  f.style.cssText = "position:absolute;left:-2000px;width:320px;height:900px";
+  const s = state();
+  s.stops = { ...s.stops, S2: { ...s.stops.S2, name: "Max Palevsky Residential Commons (NE Corner)" } };
+  f.srcdoc = `<!doctype html><html data-text="ax" style="font-size:34px"><head>${["tokens", "components", "views", "route", "bus"].map((n) => `<link rel="stylesheet" href="../css/${n}.css">`).join("")}</head>`
+    + `<body style="background:var(--bg-sheet);margin:0"><div class="sheet-content" style="padding:0 16px">${renderBus(s, NOW)}</div></body></html>`;
+  await new Promise((r) => { f.onload = () => setTimeout(r, 80); document.body.appendChild(f); });
+  const doc = f.contentDocument, box = (sel) => doc.querySelector(sel).getBoundingClientRect();
+  ok(box(".bm-eta").top >= box(".bm-nowtext").bottom - 1, "the status time sits under the words");
+  const name = doc.querySelector(".bm-tl .v-prim");
+  ok(name.scrollHeight <= name.clientHeight + 1, "the row's stop name is not clamped");
+  ok(box(".bm-tl .v-tleta").top >= name.getBoundingClientRect().bottom - 1, "the row's time sits under its name");
+  ok(doc.documentElement.scrollWidth <= 321, "no sideways scroll: " + doc.documentElement.scrollWidth);
+  f.remove();
+}));

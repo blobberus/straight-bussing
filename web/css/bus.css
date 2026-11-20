@@ -42,4 +42,13 @@
 .bm-hmeta { font: var(--t-row-title); font-variant-numeric: tabular-nums; color: var(--label); }
 .bm-hmeta.is-now { color: var(--live); }
 
+/* accessibility sizes (html[data-text="ax"], spec 13.7): each time goes under its words and names are never cut */
+html[data-text="ax"] .bm-now { flex-wrap: wrap; row-gap: var(--s-1); }
+html[data-text="ax"] .bm-nowtext { flex-basis: 100%; }
+html[data-text="ax"] .bm-eta { align-items: flex-start; }
+html[data-text="ax"] .bm-tl .v-tlbtn { flex-wrap: wrap; row-gap: 0; }
+html[data-text="ax"] .bm-tl .v-tlbtn > .v-grow { flex-basis: 100%; }
+html[data-text="ax"] .bm-tl .v-prim { display: block; -webkit-line-clamp: unset; }
+html[data-text="ax"] .bm-tl .v-tleta { min-width: 0; text-align: left; }
+
 @media (prefers-contrast: more) { .bm-reportbtn[aria-disabled="true"] { outline: 1px dashed var(--label-2); } }
