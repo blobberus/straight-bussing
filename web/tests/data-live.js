@@ -288,6 +288,15 @@ test('live: parseTrips drops malformed prediction entries instead of throwing', 
   eq(parseAlerts({ entity: [null, {}, { alert: { header_text: 'x' } }] }), [{ header_text: 'x' }]);
 });
 
+// 2026-11-20 (owner: the same time at many stations of a route): Passio's filler entries are marked as they come in
+test('live: parseTrips marks Passio filler (previous stop + 2 s), the head of a run stays a live time', () => {
+  const T = 1800000000, u = (s, dt) => ({ stop_id: s, stop_sequence: 1, arrival: { time: String(T + dt), datetime: 'x' }, departure: { time: T + dt } });
+  const out = parseTrips({ entity: [{ trip_update: { trip: { trip_id: '681004', route_id: '4346' }, vehicle: { id: '4326' },
+    stop_time_update: [u('8596', 752), u('8811', 754), u('8628', 756), u('8630', 758), u('8612', 900), u('8589', 903), u('8631', 907)] } }] });
+  eq(out[0].stop_time_update.map((x) => !!x.filler), [false, true, true, true, false, true, false]);
+  eq(out[0].stop_time_update[1].arrival.time, T + 754, 'times still numbers');
+});
+
 test('live: a poll that cannot be read still marks the data as failed and loaded', async () => {
   const st = initial();
   const bad = stubFetch((url) => res(feedName(url) === 'tripUpdates' ? { entity: { notAnArray: true }, header: { timestamp: 'x' } } : feeds()[feedName(url)]));

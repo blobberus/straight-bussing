@@ -21,6 +21,7 @@ import { idleStep } from '../core/idle.js';
 import { goneStep, heldStep } from '../core/transition.js';
 import { TRANSITION_TIMES } from '../core/seen.js';
 import { numberStep } from '../core/busnum.js';
+import { markFiller } from '../core/eta.js';
 
 /** Passio feed base URL. */
 export const BASE = 'https://passio3.com/chicago/passioTransit/gtfs/realtime/';
@@ -49,13 +50,15 @@ export function parseBuses(j) {
 }
 
 /**
- * Normalize a tripUpdates feed into store.trips (times coerced to numbers).
+ * Normalize a tripUpdates feed into store.trips (times coerced to numbers). Passio's filler entries (the previous listed
+ * stop's time + 2 s, not a forecast; 2026-11-20) are marked u.filler = true here, the one place (core/eta.js markFiller):
+ * arrival lists, alerts, the planner and the trip timeline skip them; operating.js and idle.js still count them.
  * @param {any} j parsed feed
  * @returns {object[]}
  */
 export function parseTrips(j) {
   return (Array.isArray(j?.entity) ? j.entity : []).map((e) => e && e.trip_update).filter(Boolean)
-    .map((t) => ({ ...t, stop_time_update: (Array.isArray(t.stop_time_update) ? t.stop_time_update : [])
+    .map((t) => markFiller({ ...t, stop_time_update: (Array.isArray(t.stop_time_update) ? t.stop_time_update : [])
       .filter((u) => u && typeof u === 'object')   // one malformed entry must not drop the whole poll
       .map((u) => ({ ...u, arrival: timeObj(u.arrival), departure: timeObj(u.departure) })) }));
 }
