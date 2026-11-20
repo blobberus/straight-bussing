@@ -1,6 +1,6 @@
 // Tests for core/eta.js (station times, owner 2026-11-20). Real feed pattern in eta-fixtures.js.
 import { test, eq, ok, near } from "./lib.js";
-import { markFiller, busTimes, stationTimes, scheduledAt, timeWords, FILLER_S, ETA_WORDS, ETA_NOTES, _resetEta } from "../js/core/eta.js";
+import { markFiller, busTimes, stationTimes, scheduledAt, timeWords, awayWords, FILLER_S, ETA_WORDS, ETA_NOTES, EST_MAX_MIN, EST_RIDE_SCALE, EST_EARLY_S, _resetEta } from "../js/core/eta.js";
 import { clock } from "../js/core/time.js";
 import { T0, routeStops, stops, tripUpdates, vehicles, ride } from "./eta-fixtures.js";
 
@@ -35,20 +35,21 @@ test("markFiller on the real feed: 53rd Street Express trip 681004 is one head a
   eq(fl(prev), [false]);
 });
 
-test("busTimes: 53rd Street Express, one lap from the stop the bus heads to; live at the heads, est. between, never back in time", () => {
+test("busTimes: 53rd Street Express, one lap from the stop the bus heads to; the trip's first stop behind it is no anchor", () => {
   _resetEta();
   const S = real(), b = busOf(S, "4326"), out = busTimes(S, b, NOW, ride);
   eq(out.map((x) => x.stopId), ["8629", "138837", "8630", "8612", "8589", "8631", "8632", "161844", "8594", "8624", "8599", "8626", "8596", "8811", "8628", "8595"],
     "from Ellis Garage (its next stop) round the loop, each stop once");
   eq(out.map((x) => x.idx), [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3], "index in the route's stop order");
-  eq(out.filter((x) => x.kind === "live").map((x) => [x.stopId, x.t - T0]), [["8596", 752], ["8595", 1586]], "only the two heads are live");
+  // Harper Court's +12.5 min is listed at stop_sequence 1, the trip's first stop, which the bus (at sequence 5) has left
+  eq(out.filter((x) => x.kind === "live").map((x) => [x.stopId, x.t - T0]), [["8595", 1586]], "only its next trip's head is live");
+  eq(out.map((x) => x.away), [...Array(16).keys()], "away = stops before it");
   ok(out.every((x, k) => x.t >= NOW && (k === 0 || x.t >= out[k - 1].t)), "never before now or the stop before");
-  // the first live time is 12 stops ahead: the stops before it are scaled between the bus (now) and it, not all "now"
-  const mins = out.slice(0, 12).map((x) => Math.floor((x.t - NOW) / 60));
-  ok(new Set(mins).size >= 9, "the 12 stops before Harper Court get different minutes: " + mins);
+  // the first live time is 15 stops ahead: the stops before it are scaled between the bus (now) and it, not all "now"
+  const mins = out.slice(0, 15).map((x) => Math.floor((x.t - NOW) / 60));
+  ok(new Set(mins).size >= 12, "the 15 stops before Ellis & 53rd get different minutes: " + mins);
   ok(out[0].t - NOW < 60, "Ellis Garage (about 100 m ahead) in under a minute");
-  near((out[11].t - NOW) / (752 - 5), (0.4 + 15) / 19.4, 0.03, "Lake Park & 55th: scaled by the scheduled ride to Harper Court's live time");
-  ok(out[13].t > T0 + 752 && out[13].t < T0 + 1586, "between the two heads: scaled between them");
+  near((out[11].t - NOW) / (1586 - 5), (0.4 + 15) / 23.4, 0.03, "Lake Park & 55th: scaled by the scheduled ride to Ellis & 53rd's live time");
   eq(busTimes(S, b, NOW, ride), out, "same inputs: the same answer");
 });
 
@@ -58,7 +59,7 @@ test("busTimes: a time listed out of travel order is not used (Apostolic/Drexel 
   eq(out.map((x) => x.stopId), ["8611", "8614", "133007", "8612", "8613", "8615", "8616", "8617", "8609", "8630"]);
   eq(out.filter((x) => x.kind === "live").map((x) => [x.stopId, x.t - T0]), [["133007", 457]], "Kenwood & 63rd is live");
   const g = out.find((x) => x.stopId === "8612");
-  eq(g.kind, "est", "Goldblatt's +3 min (the trip's first stop, behind the bus) is not this lap's time");
+  eq(g.kind, "est", "Goldblatt's +3 min (stop_sequence 1, the trip's first stop; the bus is at 8) is not this lap's time");
   ok(g.t > T0 + 457, "after Kenwood & 63rd: " + (g.t - T0));
   near(g.t - T0, 457 + 463, 2, "Kenwood & 63rd's live time + the scheduled ride");
   ok(out.every((x, k) => k === 0 || x.t >= out[k - 1].t), "in order");
@@ -111,6 +112,28 @@ test("busTimes: estimates past the last live time stop once the route is not sch
   eq(out.find((x) => x.stopId === "133007").kind, "live", "the live time stays");
 });
 
+test("busTimes: a time at a stop the bus already passed is no anchor (AP/DX bus 4538, Nov 17 1:03 PM)", () => {
+  _resetEta();
+  // mid-trip at sequence 10 (Apostolic Lot): Passio still lists the trip's first stop, Goldblatt, at +7.0 min (the bus came
+  // at +16.6) and Kenwood & 63rd at +11.9 (it came at +10.3)
+  const T = NOW, u = (seq, id, dt) => ({ stop_sequence: seq, stop_id: id, arrival: { time: T + dt } });
+  const bus = { vehicle: { id: "4538", label: "1700" }, trip: { trip_id: "t", route_id: "6126" }, stop_id: "8614", current_stop_sequence: 10, position: {} };
+  const S = real({ buses: [bus], trips: [{ trip: { trip_id: "t", route_id: "6126" }, vehicle: { id: "4538", label: "1700" },
+    stop_time_update: [u(1, "8612", 420), u(11, "133007", 714)] }] });
+  const out = busTimes(S, bus, T, ride), by = Object.fromEntries(out.map((x) => [x.stopId, x]));
+  eq([by["133007"].kind, by["133007"].t - T], ["live", 714], "the real head is the anchor");
+  eq(by["8612"].kind, "est");
+  ok(by["8612"].t > T + 714, "Goldblatt after Kenwood & 63rd, not at +7 min");
+  eq(at(S, "8612", { routeId: "6126" }).map((x) => x.kind), ["est"], "the stop's live row at +7 is dropped too");
+  // without current_stop_sequence: the trip's first stop is behind while the bus is not heading there
+  _resetEta();
+  const S2 = { ...S, buses: [{ ...bus, current_stop_sequence: undefined }] };
+  eq(busTimes(S2, S2.buses[0], T, ride).find((x) => x.stopId === "8612").kind, "est");
+  _resetEta();
+  const S3 = { ...S, buses: [{ ...bus, stop_id: "8612", current_stop_sequence: 1 }] };
+  eq(busTimes(S3, S3.buses[0], T, ride)[0], { stopId: "8612", idx: 0, t: T + 420, kind: "live", away: 0 }, "heading to it: its time");
+});
+
 test("stationTimes: live rows, an est. row for each bus without one; a time out of travel order gives way", () => {
   _resetEta();
   const S = real();
@@ -121,7 +144,7 @@ test("stationTimes: live rows, an est. row for each bus without one; a time out 
   const w = at(S, "8613", { routeId: "6126" });
   eq(w.map((x) => x.kind), ["est", "est"], "Wyler had only filler times: two estimates");
   ok(w[0].t < w[1].t && w[0].vehicleId === "4317");
-  eq(at(S, "8596", { routeId: "4346" }).map((x) => [x.kind, x.t - T0]), [["live", 752]], "Harper Court: the live head, no extra est. row");
+  eq(at(S, "8596", { routeId: "4346" }).map((x) => x.kind), ["est"], "Harper Court: its time at the trip's first stop (passed) gives way to an estimate");
   eq(at(S, "8811", { routeId: "4346" }).map((x) => x.kind), ["est"], "53rd & Kenwood: filler before, an estimate now");
   eq(at(S, "8612", { hidden: ["6126"] }).map((x) => x.rid), ["4346"], "hidden routes left out");
   eq(at(S, "8612").map((x) => x.rid).sort(), ["4346", "6126", "6126"], "every route at the stop");
@@ -148,13 +171,13 @@ test("busTimes + stationTimes: the next trip's time at a stop just ahead is its 
   S.trips.shift();
   S.trips[0].stop_time_update = [{ stop_id: "c", arrival: { time: T + 240 } }];
   _resetEta();
-  eq(busTimes(S, S.buses[0], T, r1).find((x) => x.stopId === "c"), { stopId: "c", idx: 2, t: T + 240, kind: "live" });
+  eq(busTimes(S, S.buses[0], T, r1).find((x) => x.stopId === "c"), { stopId: "c", idx: 2, t: T + 240, kind: "live", away: 1 });
 });
 
 test("busTimes: the real 4318 pattern of 1 PM, a next-lap time at its very next stop does not hide its six real times", () => {
   _resetEta();
   const T = NOW, u = (seq, id, dt) => ({ stop_sequence: seq, stop_id: id, arrival: { time: T + dt } });
-  const S = real({ buses: [{ ...busOf(real(), "4318"), stop_id: "8613", trip: { trip_id: "501470", route_id: "6126" } }],
+  const S = real({ buses: [{ ...busOf(real(), "4318"), stop_id: "8613", current_stop_sequence: 2, trip: { trip_id: "501470", route_id: "6126" } }],
     trips: [{ trip: { trip_id: "501470", route_id: "6126" }, vehicle: { id: "4318", label: "1652" },
       stop_time_update: [u(3, "8615", 9), u(4, "8616", 36), u(5, "8617", 46), u(7, "8630", 148), u(8, "8611", 297), u(11, "133007", 601)] },
     { trip: { trip_id: "501471", route_id: "6126" }, vehicle: { id: "4318", label: "1652" }, stop_time_update: [u(2, "8613", 1835)] }].map(markFiller) });
@@ -186,17 +209,24 @@ test("scheduledAt: the next timetable time at the stop, null without a timetable
 });
 
 test("timeWords: live, est. and Scheduled words, the screen reader sentence and one place for the words", () => {
-  eq(ETA_WORDS, { est: "est.", sched: "Scheduled", estSay: "estimated", schedSay: "scheduled, not live" });
+  eq(ETA_WORDS, { est: "est.", sched: "Scheduled", estSay: "estimated", schedSay: "scheduled, not live", notLive: "Not live", notLiveSay: "not live" });
   ok(ETA_NOTES.est.startsWith("est. = ") && ETA_NOTES.sched.startsWith("Scheduled = "));
   ok(Object.values(ETA_NOTES).every((s) => !/[–—]|·.*·/.test(s)), "no dash characters, no stacked dots");
   const T = 1_800_000_000;
-  eq(timeWords({ t: T + 190, kind: "live" }, T), { text: "3 min", tag: "", say: "in 3 min", now: false });
-  eq(timeWords({ t: T + 20, kind: "live" }, T), { text: "Now", tag: "", say: "now", now: true });
-  eq(timeWords({ t: T + 190, kind: "live" }, T, true), { text: "~3 min", tag: "", say: "in about 3 min", now: false });
+  eq(timeWords({ t: T + 190, kind: "live" }, T), { text: "3 min", tag: "", say: "in 3 min", now: false, far: false });
+  eq(timeWords({ t: T + 20, kind: "live" }, T), { text: "Now", tag: "", say: "now", now: true, far: false });
+  eq(timeWords({ t: T + 190, kind: "live" }, T, true), { text: "~3 min", tag: "", say: "in about 3 min", now: false, far: false });
   eq(timeWords({ t: T + 310 }, T).text, "5 min", "no kind = live");
-  eq(timeWords({ t: T + 310, kind: "est" }, T), { text: "~5 min", tag: "est.", say: "in about 5 min, estimated", now: false });
+  eq(timeWords({ t: T + 1800, kind: "live" }, T).text, "30 min", "a live time far ahead stays a time");
+  eq(timeWords({ t: T + 310, kind: "est", away: 3 }, T), { text: "~5 min", tag: "est.", say: "in about 5 min, estimated", now: false, far: false });
   eq(timeWords({ t: T + 10, kind: "est" }, T).text, "~1 min", "an estimate never says Now");
-  eq(timeWords({ t: T + 3600, kind: "sched" }, T), { text: clock(T + 3600), tag: "Scheduled", say: `scheduled ${clock(T + 3600)}, not live`, now: false });
+  eq(timeWords({ t: T + EST_MAX_MIN * 60 + 59, kind: "est", away: 4 }, T).text, `~${EST_MAX_MIN} min`, "up to EST_MAX_MIN: minutes");
+  eq(timeWords({ t: T + EST_MAX_MIN * 60 + 60, kind: "est", away: 4 }, T), { text: "4 stops away", tag: "Not live", say: "4 stops away, not live", now: false, far: true },
+    "past it: stops away, not live");
+  eq(timeWords({ t: T + 1800, kind: "est" }, T), null, "past it without a stop count: nothing");
+  eq([awayWords(0), awayWords(1).text, awayWords(7).text], [{ text: "Heading here", say: "a bus is heading here" }, "1 stop away", "7 stops away"]);
+  eq([EST_MAX_MIN, EST_RIDE_SCALE, EST_EARLY_S], [10, 1, 0], "interim tuning (lead 2026-11-20) until E33's values");
+  eq(timeWords({ t: T + 3600, kind: "sched" }, T), { text: clock(T + 3600), tag: "Scheduled", say: `scheduled ${clock(T + 3600)}, not live`, now: false, far: false });
   eq(timeWords(null, T), null);
   eq(timeWords({ t: NaN }, T), null);
 });

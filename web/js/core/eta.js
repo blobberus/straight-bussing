@@ -34,8 +34,33 @@ import { minsUntil, clock } from "./time.js";
 /** An entry this many seconds (or less, and not earlier) after the previous listed entry of its trip update is filler. */
 export const FILLER_S = 3;
 
-/** The words of the three kinds (iOS Kit StationTimes.words; the same strings). */
-export const ETA_WORDS = Object.freeze({ est: "est.", sched: "Scheduled", estSay: "estimated", schedSay: "scheduled, not live" });
+/**
+ * Estimate tuning, in one place (RouteKnower E33: dc-filler fits them on predictions.csv so that the late rate is no worse
+ * than Passio's filler at every lead; until then the values below). iOS Kit StationTimes uses the same numbers.
+ * EST_MAX_MIN: the farthest ahead an est. time is shown in minutes; past it the station says how many stops away the
+ *   bus is, not live (2026-11-20: estimates 15 to 30 min ahead came late about 15% of the time, filler 1 to 8%).
+ * EST_RIDE_SCALE: the timetable's ride times between stops are multiplied by this.
+ * EST_EARLY_S: an estimate is moved this many seconds earlier (never before now or the stop before).
+ */
+export const EST_MAX_MIN = 10;
+export const EST_RIDE_SCALE = 1;
+export const EST_EARLY_S = 0;
+
+/** The words of the kinds (iOS Kit StationTimes.words; the same strings). notLive: past EST_MAX_MIN ("3 stops away"). */
+export const ETA_WORDS = Object.freeze({ est: "est.", sched: "Scheduled", estSay: "estimated", schedSay: "scheduled, not live",
+  notLive: "Not live", notLiveSay: "not live" });
+
+/**
+ * How far a bus is from a station, in stops: 0 = it is heading there ("Heading here"), "1 stop away", "3 stops away".
+ * @param {number} away stops the bus passes before it
+ * @returns {{text:string, say:string}}
+ */
+export function awayWords(away) {
+  const n = Math.max(0, Math.floor(Number(away) || 0));
+  if (n === 0) return { text: "Heading here", say: "a bus is heading here" };
+  const s = `${n} stop${n === 1 ? "" : "s"} away`;
+  return { text: s, say: s };
+}
 
 /** The route page's footer sentences, one per kind shown (plain words, DESIGN.md 1b). */
 export const ETA_NOTES = Object.freeze({
@@ -101,52 +126,66 @@ function rideOr(ride, rid, a, b) {
 
 let memo = new WeakMap();
 
+/** busTimes and the live entries it found behind the bus (stationTimes drops their arrival rows). */
+function busInfo(S, bus, now, ride) {
+  const r = typeof ride === "function" ? ride : defaultRide;
+  if (!bus || !bus.trip || bus.trip.route_id == null) return { out: [], behind: [] };
+  const m = memo.get(bus);
+  if (m && m.now === now && m.ride === r && m.trips === S.trips && m.rs === S.routeStops && m.stops === S.stops && m.svc === S.service && m.tr === S.transitioning) return m.info;
+  const info = computeBusTimes(S, bus, now, r);
+  memo.set(bus, { now, ride: r, trips: S.trips, rs: S.routeStops, stops: S.stops, svc: S.service, tr: S.transitioning, info });
+  return info;
+}
+
 /**
  * This bus's next stops in travel order from the stop it is heading to, one lap (a loop wraps; its repeated last stop
- * is dropped), each with a time: its own live Passio time where it has one (filler skipped; the largest set of its
- * times in both travel and time order, core/tripprogress.js matchTimes, so a time listed out of order is not used: a
- * trip's first stop the bus already left, its next lap), else an estimate (core/tripprogress.js stopTimes: scaled
- * between where the bus is now and its live times, else the ride from the last one). Times are never before now or the
- * stop before. Estimates past the end of the last live time are left out once the route is not scheduled at that time
- * (the bus leaves service). [] for a bus off its route's stop list or shown without its times (transitioning).
+ * is dropped), each with a time: its own live Passio time where it has one, else an estimate (core/tripprogress.js
+ * stopTimes: scaled between where the bus is now and its live times, else the ride from the last one; EST_RIDE_SCALE,
+ * EST_EARLY_S). A live time is never: filler; a stop of its current trip it already passed (a stop_sequence below the
+ * bus's current_stop_sequence: Passio keeps the trip's first stop with a time while the bus is mid-trip, and that time
+ * was no anchor, 2026-11-20, E33); a stop of its next trip before its current trip's loop end; out of order (the largest
+ * set in both travel and time order is kept, core/tripprogress.js matchTimes). Times are never before now or the stop
+ * before. Estimates past the end of the last live time are left out once the route is not scheduled at that time (the
+ * bus leaves service). [] for a bus off its route's stop list or shown without its times (transitioning).
  * @param {object} state store state (routeStops, stops, trips, service, transitioning)
  * @param {object} bus a vehicle of state.buses
  * @param {number} now unix seconds
  * @param {(rid:string, fromId:string, toId:string)=>number|null} [ride] riding minutes between two stops of a route;
  *   default defaultRide (data/segments.json)
- * @returns {Array<{stopId:string, idx:number, t:number, kind:'live'|'est'}>} idx = index in the route's stop order
+ * @returns {Array<{stopId:string, idx:number, t:number, kind:'live'|'est', away:number}>} idx = index in the route's stop
+ *   order; away = stops the bus passes before it (0 = its next stop)
  */
 export function busTimes(state, bus, now, ride) {
   try {
-    const S = state || {}, r = typeof ride === "function" ? ride : defaultRide;
-    if (!bus || !bus.trip || bus.trip.route_id == null) return [];
-    const m = memo.get(bus);
-    if (m && m.now === now && m.ride === r && m.trips === S.trips && m.rs === S.routeStops && m.stops === S.stops && m.svc === S.service && m.tr === S.transitioning) return m.out;
-    const out = computeBusTimes(S, bus, now, r);
-    memo.set(bus, { now, ride: r, trips: S.trips, rs: S.routeStops, stops: S.stops, svc: S.service, tr: S.transitioning, out });
-    return out;
+    return busInfo(state || {}, bus, now, ride).out;
   } catch (e) {
     return [];
   }
 }
 
-function computeBusTimes(S, bus, now, ride) {
-  const rid = String(bus.trip.route_id);
-  if (timesOff(S, bus)) return [];
+function computeBusTimes(S, bus, now, ride0) {
+  const none = { out: [], behind: [] }, rid = String(bus.trip.route_id);
+  if (timesOff(S, bus)) return none;
   const { order, loop } = routeOrder(S.routeStops && S.routeStops[rid]);
   const n = order.length;
-  if (!n) return [];
+  if (!n) return none;
+  const ride = (r, a, b) => { const x = ride0(r, a, b); return x == null || x === "" || !isFinite(Number(x)) ? null : Number(x) * EST_RIDE_SCALE; };
   const list = busUpdates(S.trips, bus, rid), tid = bus.trip.trip_id;
   const hasCur = list.some((tu) => tu.trip && same(tu.trip.trip_id, tid));
-  const ups = [];
+  const all = [];
   for (const tu of list) for (const u of tu.stop_time_update || []) {
     if (!u || u.filler || u.stop_id == null) continue;
-    const t = timeOf(u);
-    if (t && t > now - 30) ups.push({ id: String(u.stop_id), t, cur: !hasCur || !!(tu.trip && same(tu.trip.trip_id, tid)) });
+    const t = timeOf(u), own = !!(tu.trip && same(tu.trip.trip_id, tid));
+    if (t && t > now - 30) all.push({ id: String(u.stop_id), t, seq: Number(u.stop_sequence), own, cur: !hasCur || own });
   }
   let next = bus.stop_id != null && order.includes(String(bus.stop_id)) ? String(bus.stop_id) : null;
-  if (!next) { const up = ups.slice().sort((a, b) => a.t - b.t).find((u) => order.includes(u.id)); next = up ? up.id : null; }
-  if (!next) return [];
+  if (!next) { const up = all.slice().sort((a, b) => a.t - b.t).find((u) => order.includes(u.id)); next = up ? up.id : null; }
+  if (!next) return none;
+  // behind the bus on its current trip: a stop_sequence below its current one (without one: the trip's first stop while
+  // the bus is not heading there)
+  const s0 = Number(bus.current_stop_sequence), hasS0 = isFinite(s0) && s0 > 0;
+  const behindBus = (u) => u.own && isFinite(u.seq) && (hasS0 ? u.seq < s0 : u.seq === 1 && u.id !== next);
+  const behind = all.filter(behindBus), ups = all.filter((u) => !behindBus(u));
   const i0 = order.indexOf(next);
   const idxs = [];
   for (let s = 0; s < (loop ? n : n - i0); s++) idxs.push(loop ? (i0 + s) % n : i0 + s);
@@ -186,21 +225,23 @@ function computeBusTimes(S, bus, now, ride) {
     const x = times[k];
     if (!x || num(x.t) == null) continue;
     if (x.est && k > lastLive && isScheduledNow(S.service, rid, x.t) === false) break;   // the bus leaves service
-    out.push({ stopId: ids[k], idx: idxs[k], t: x.t, kind: x.est ? "est" : "live" });
+    const prev = out.length ? out[out.length - 1].t : now;
+    out.push({ stopId: ids[k], idx: idxs[k], t: x.est ? Math.max(now, prev, x.t - EST_EARLY_S) : x.t, kind: x.est ? "est" : "live", away: k });
   }
-  return out;
+  return { out, behind: behind.map((u) => ({ stopId: u.id, t: u.t })) };
 }
 
 /**
  * Times at a station, sorted by time: the real live rows (arrivalsFor, filler skipped) plus, for each operating bus of a
- * route serving it, its estimate there (busTimes) when that bus has no live row at the stop. A bus's live row that its
- * own travel order contradicts (earlier than busTimes puts it: Passio's time at a stop listed out of order) gives way to
- * busTimes's time; a later live row of the same bus (its next lap) stays.
+ * route serving it, its estimate there (busTimes, with `away`: stops before it) when that bus has no live row at the
+ * stop. A bus's live row at a stop it already passed (busTimes: behind its current_stop_sequence) is dropped; one its own
+ * travel order contradicts (earlier than busTimes puts it) gives way to busTimes's time; a later live row of the same bus
+ * (its next lap) stays.
  * @param {object} state store state
  * @param {string} stopId
  * @param {{routeId?:string|null, hidden?:string[], now?:number, ride?:Function}} [opts] routeId: only this route
  *   (hidden ignored then); hidden: route ids to leave out
- * @returns {Array<{rid:string, t:number, kind:'live'|'est', bus:string|null, vehicleId:string|null, tripId:string|null}>}
+ * @returns {Array<{rid:string, t:number, kind:'live'|'est', bus:string|null, vehicleId:string|null, tripId:string|null, away?:number}>}
  */
 export function stationTimes(state, stopId, { routeId = null, hidden = [], now, ride } = {}) {
   try {
@@ -215,14 +256,15 @@ export function stationTimes(state, stopId, { routeId = null, hidden = [], now, 
       const vid = b.vehicle && b.vehicle.id != null ? String(b.vehicle.id) : null, tid = b.trip.trip_id != null ? String(b.trip.trip_id) : null;
       const mine = live.filter((a) => a.rid === rid && (a.vehicleId != null ? a.vehicleId === vid : vid == null && a.tripId != null && a.tripId === tid));
       if (timesOff(S, b)) { mine.forEach((a) => drop.add(a)); continue; }
-      const bt = busTimes(S, b, t0, ride).find((x) => x.stopId === want);
+      const info = busInfo(S, b, t0, ride), bt = info.out.find((x) => x.stopId === want);
+      for (const a of mine) if (info.behind.some((e) => e.stopId === want && Math.abs(e.t - a.t) <= 1)) drop.add(a);   // a stop it passed
       if (!bt) continue;
       let kept = false;
       for (const a of mine) {
         if (a.t < bt.t - 1) drop.add(a);   // out of its own travel order
         else if (Math.abs(a.t - bt.t) <= 1) kept = true;
       }
-      if (!kept) extra.push({ rid, t: bt.t, kind: bt.kind, bus: b.vehicle && b.vehicle.label != null ? String(b.vehicle.label) : null, tripId: tid, vehicleId: vid });
+      if (!kept) extra.push({ rid, t: bt.t, kind: bt.kind, bus: b.vehicle && b.vehicle.label != null ? String(b.vehicle.label) : null, tripId: tid, vehicleId: vid, away: bt.away });
     }
     return live.filter((a) => !drop.has(a)).concat(extra)
       .sort((a, b) => a.t - b.t || (a.kind === b.kind ? 0 : a.kind === "live" ? -1 : 1) || (a.rid < b.rid ? -1 : a.rid > b.rid ? 1 : 0));
@@ -263,26 +305,33 @@ export function scheduledAt(state, rid, stopId, now) {
 /**
  * What a station time shows and says.
  *   live:  "3 min" / "Now" (stale feed: "~3 min"), no tag; said "in 3 min" / "now" / "in about 3 min"
- *   est:   "~5 min" (at least 1), tag "est."; said "in about 5 min, estimated"
+ *   est:   "~5 min" (at least 1), tag "est."; said "in about 5 min, estimated"; more than EST_MAX_MIN minutes ahead no
+ *          minutes at all: "3 stops away" (awayWords), tag "Not live"; said "3 stops away, not live" (far: true; null
+ *          without row.away)
  *   sched: "1:15 PM", tag "Scheduled"; said "scheduled 1:15 PM, not live"
- * @param {{t:number, kind?:'live'|'est'|'sched'}|null} row
+ * @param {{t:number, kind?:'live'|'est'|'sched', away?:number}|null} row
  * @param {number} now
  * @param {boolean} [stale] the feed is late, old or failing
- * @returns {{text:string, tag:string, say:string, now:boolean}|null}
+ * @returns {{text:string, tag:string, say:string, now:boolean, far:boolean}|null}
  */
 export function timeWords(row, now, stale) {
   if (!row || num(row.t) == null) return null;
   if (row.kind === "sched") {
     const c = clock(row.t);
-    return { text: c, tag: ETA_WORDS.sched, say: `${ETA_WORDS.sched.toLowerCase()} ${c}, not live`, now: false };
+    return { text: c, tag: ETA_WORDS.sched, say: `${ETA_WORDS.sched.toLowerCase()} ${c}, not live`, now: false, far: false };
   }
   const m = minsUntil(row.t, now);
   if (row.kind === "est") {
+    if (m > EST_MAX_MIN) {
+      if (num(row.away) == null) return null;
+      const w = awayWords(row.away);
+      return { text: w.text, tag: ETA_WORDS.notLive, say: `${w.say}, ${ETA_WORDS.notLiveSay}`, now: false, far: true };
+    }
     const e = Math.max(1, m);
-    return { text: `~${e} min`, tag: ETA_WORDS.est, say: `in about ${e} min, ${ETA_WORDS.estSay}`, now: false };
+    return { text: `~${e} min`, tag: ETA_WORDS.est, say: `in about ${e} min, ${ETA_WORDS.estSay}`, now: false, far: false };
   }
-  if (m < 1) return { text: "Now", tag: "", say: "now", now: true };
-  return { text: `${stale ? "~" : ""}${m} min`, tag: "", say: `in ${stale ? "about " : ""}${m} min`, now: false };
+  if (m < 1) return { text: "Now", tag: "", say: "now", now: true, far: false };
+  return { text: `${stale ? "~" : ""}${m} min`, tag: "", say: `in ${stale ? "about " : ""}${m} min`, now: false, far: false };
 }
 
 /** Tests: forget the memos. */

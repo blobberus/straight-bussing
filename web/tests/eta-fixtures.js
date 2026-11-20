@@ -2,7 +2,8 @@
 // 12:37 PM (feed timestamp T0), cut to three lines: 53rd Street Express (4346: trip 681004 = one head + 13 filler entries
 // at +2 s), Apostolic/Drexel (6126: two buses, filler runs between real times, a head listed out of travel order) and Red
 // Line/Arts Block (5699: no trip update at all; its bus is added here as it was seen later that hour, heading to Logan
-// Center for Arts). Times are T0 + seconds; stop data from web/data (route_stops, stops, segments).
+// Center for Arts). Times are T0 + seconds; current_stop_sequence as Passio sent it; stop data from web/data
+// (route_stops, stops, segments).
 import { createPredict } from "../js/core/predict.js";
 
 export const T0 = 1795199837;
@@ -56,10 +57,10 @@ export const tripUpdates = () => [
 ];
 /** The vehicles of the three lines (timestamps T0 + seconds). */
 export const vehicles = () => [
-  { trip: {"trip_id": "681004", "route_id": "4346"}, vehicle: {"id": "4326", "label": "134"}, stop_id: "8629", timestamp: T0 + 0, position: { latitude: 41.795507333, longitude: -87.601243 } },
-  { trip: {"trip_id": "675900", "route_id": "6126"}, vehicle: {"id": "4317", "label": "1651"}, stop_id: "8612", timestamp: T0 + -3, position: { latitude: 41.7876971, longitude: -87.6022988 } },
-  { trip: {"trip_id": "501469", "route_id": "6126"}, vehicle: {"id": "4318", "label": "1652"}, stop_id: "8611", timestamp: T0 + -4, position: { latitude: 41.7865916, longitude: -87.6012145 } },
-  { trip: {"trip_id": "504011", "route_id": "5699"}, vehicle: {"id": "4325", "label": "1659"}, stop_id: "67598", timestamp: T0 - 2, position: { latitude: 41.7864, longitude: -87.6053 } },
+  { trip: {"trip_id": "681004", "route_id": "4346"}, vehicle: {"id": "4326", "label": "134"}, current_stop_sequence: 5, stop_id: "8629", timestamp: T0 + 0, position: { latitude: 41.795507333, longitude: -87.601243 } },
+  { trip: {"trip_id": "675900", "route_id": "6126"}, vehicle: {"id": "4317", "label": "1651"}, current_stop_sequence: 13, stop_id: "8612", timestamp: T0 + -3, position: { latitude: 41.7876971, longitude: -87.6022988 } },
+  { trip: {"trip_id": "501469", "route_id": "6126"}, vehicle: {"id": "4318", "label": "1652"}, current_stop_sequence: 8, stop_id: "8611", timestamp: T0 + -4, position: { latitude: 41.7865916, longitude: -87.6012145 } },
+  { trip: {"trip_id": "504011", "route_id": "5699"}, vehicle: {"id": "4325", "label": "1659"}, current_stop_sequence: 1, stop_id: "67598", timestamp: T0 - 2, position: { latitude: 41.7864, longitude: -87.6053 } },
 ];
 /** Scheduled riding minutes between two stops of a route (core/predict.js on the segments above), or null. */
 const P = createPredict({ segments, routeStops });
