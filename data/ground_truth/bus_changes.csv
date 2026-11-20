@@ -1485,4 +1485,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5704,Downtown Campus Connector,1795204138,2026-11-20 13:48:58,add,4,5,4314,,,1795204438,874028,12642;12645;12646;12649,6,6,0,,,,0
 5704,Downtown Campus Connector,1795204154,2026-11-20 13:49:14,add,5,6,4313,,,1795204454,874028,12642;12645;12646;12649;4314,6,6,0,,,,0
 5699,Red Line/Arts Block,1795204433,2026-11-20 13:53:53,add,1,2,4315,,,1795204738,690473,4322,1,1,0,,,,0
-5699,Red Line/Arts Block,1795204971,2026-11-20 14:02:51,drop,2,1,4322,67599,Institute for Study of Ancient Cultures,1795204971,672389,4315,1,1,0,,,,
+5699,Red Line/Arts Block,1795204971,2026-11-20 14:02:51,drop,2,1,4322,67599,Institute for Study of Ancient Cultures,1795204971,672389,4315,1,1,0,,,1,
