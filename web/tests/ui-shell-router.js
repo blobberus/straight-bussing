@@ -19,6 +19,7 @@ function setup() {
   registerView("alerts", v("Alerts", { parent: "nearby", tab: "nearby", detent: "half" }));
   registerView("stop", v("Stop", { detent: "half" }));
   registerView("route", v("Route", { parent: "routes", tab: "routes", detent: "half", replaceSelf: true }));   // as ui/views/route.js
+  registerView("bus", v("Bus", { detent: "half", replaceSelf: true }));   // as ui/views/bus.js (the bus menu)
   registerView("customroute", v("Custom route", { parent: "myroutes", tab: "myroutes", detent: "half" }));
   registerView("about", v("About", { parent: "myroutes", detent: "full" }));
   registerView("directions", v("Dir", { detent: "full" }));
@@ -207,6 +208,40 @@ test("router: views without replaceSelf still stack on themselves (stop > stop)"
   eq(_stack().map((e) => e.view + ":" + (e.stopId || "")), ["nearby:", "stop:a"]);
   back();
   eq(t.store.get().stopId, "a");
+});
+
+test("router: a bus menu opened from a bus menu takes its place; Back returns where the rider was (owner 2026-11-20)", () => {
+  const t = setup();
+  navigate("routes");
+  navigate("bus", { routeId: "a", bus: "1" });
+  navigate("bus", { routeId: "b", bus: "2" });      // another line's bus
+  eq(_stack().map((e) => e.view), ["routes"], "the first bus menu is not under the second");
+  eq([t.store.get().routeId, currentParams().bus], ["b", "2"]);
+  navigate("bus", { routeId: "b", bus: "5" });      // another bus of the same line
+  eq(_stack().map((e) => e.view), ["routes"]);
+  eq(currentParams().bus, "5", "the params name the new bus");
+  ok(back());
+  eq(t.store.get().view, "routes");
+  eq(back(), false);
+});
+
+test("router: bus menu > See the whole route (or a stop) > Back = the same bus's menu, its bus in the params", () => {
+  const t = setup();
+  navigate("bus", { routeId: "a", bus: "7" });
+  navigate("route", { routeId: "a" });              // See the whole route
+  eq(_stack().map((e) => e.view + ":" + (e.routeId || "")), ["nearby:", "bus:a"], "a route page stacks on a bus menu");
+  ok(back());
+  eq([t.store.get().view, t.store.get().routeId, currentParams().bus], ["bus", "a", "7"], "the same bus menu");
+  navigate("stop", { stopId: "s1" });              // a Next stops row
+  ok(back());
+  eq([t.store.get().view, currentParams().bus], ["bus", "7"]);
+  ok(back());
+  eq(t.store.get().view, "nearby");
+  navigate("route", { routeId: "a" });
+  navigate("bus", { routeId: "a", bus: "7" });      // a bus tap on a route page
+  eq(_stack().map((e) => e.view), ["nearby", "route"], "a bus menu stacks on a route page");
+  ok(back());
+  eq(t.store.get().view, "route");
 });
 
 test("router: explicit detent param wins over the view default", () => {

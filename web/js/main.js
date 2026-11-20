@@ -15,11 +15,12 @@ import { DEMO } from "./core/demo.js";
 import { mapVisibility, lineTapOpens } from "./core/visibility.js";
 import { settleTimeView } from "./core/custom.js";
 import { busKey, selectedBus, pickCheck, numberMap } from "./core/busnum.js";
+import { menuBusKey, menuSync } from "./core/busmenu.js";
 import { createMap } from "./map/map.js";
 import { loadStatic } from "./data/static.js";
 import { startLive } from "./data/live.js";
 import { createSheet } from "./ui/sheet.js";
-import { initRouter, navigate, back, getView, activeTab, canGoBack, TABS, depth } from "./ui/router.js";
+import { initRouter, navigate, back, getView, activeTab, canGoBack, TABS, depth, currentParams } from "./ui/router.js";
 import { registerAction, bindActions, setHTMLKeepFocus } from "./ui/actions.js";
 import { initTheme, isDark, onChange as onThemeChange } from "./ui/theme.js";
 import { emptyState } from "./ui/components.js";
@@ -32,7 +33,7 @@ import { createCompass, mayAskCompass } from "./ui/compass.js";
 import { rememberInstall, installedNow } from "./core/install.js";
 
 /** Every view module; each calls registerView() at import time ("timepick" only registers its actions: Lines by Time is an overlay). */
-export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "alerts", "about", "pick", "directions", "myroutes", "settings", "timepick"]);
+export const VIEW_IDS = Object.freeze(["nearby", "stop", "routes", "route", "bus", "alerts", "about", "pick", "directions", "myroutes", "settings", "timepick"]);
 /** Views that may not be deployed yet: a failed import is a warning, not an error. */
 const OPTIONAL_VIEWS = new Set(["settings", "timepick"]);
 const RENDER_TICK_MS = 15000;
@@ -40,7 +41,7 @@ const MAP_METHODS = ["setTheme", "setBottomInset", "drawNetwork", "drawBuses", "
   "highlightStops", "drawPlan", "drawFavorites", "setTrip", "inView", "setLandmarks", "fitTo", "flyTo", "onStopTap", "onBusTap", "onLineTap", "onUserMove", "onMapTap"];
 const VIS_KEYS = ["hiddenRoutes", "routeFilter", "view", "routeId", "routeOrder", "journey", "activeCustom", "customRoutes"];
 const NET_KEYS = ["routes", "shapes", "routeStops", "stopRoutes", "stops", "theme", ...VIS_KEYS];
-const BUS_KEYS = ["buses", "away", "busNums", "transitioning", "feedTs", "routes", "busId", ...VIS_KEYS];
+const BUS_KEYS = ["buses", "away", "busNums", "transitioning", "feedTs", "routes", "busId", "busMenu", ...VIS_KEYS];
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -115,7 +116,7 @@ function syncMap(s, changed) {
   if (NET_KEYS.some(has)) mapCall("drawNetwork", { routes: s.routes, shapes: s.shapes, routeStops: s.routeStops,
     stopRoutes: s.stopRoutes, stops: s.stops, hidden, focus, order, dark: isDark() });
   if (BUS_KEYS.some(has)) mapCall("drawBuses", s.buses || [], { routes: s.routes, shapes: s.shapes, hidden, focus, nowS: nowS(),
-    selected: busKey(selectedBus(s)), away: (s.away || []).map(busKey), numbers: numberMap(s), transitioning: s.transitioning || [] });   // the bus picked on the route page is highlighted; away = more than a block off its route (core/offroute.js): removed at once
+    selected: menuBusKey(s) ?? busKey(selectedBus(s)), away: (s.away || []).map(busKey), numbers: numberMap(s), transitioning: s.transitioning || [] });   // the bus menu's bus or the bus picked on the route page is highlighted; away = more than a block off its route (core/offroute.js): removed at once
   if (has("view") || has("stopId") || has("stops")) {
     const st = s.view === "stop" && s.stopId && s.stops ? s.stops[s.stopId] : null;
     mapCall("setSelectedStop", st ? { id: s.stopId, lat: st.lat, lon: st.lon } : null);
@@ -484,6 +485,18 @@ function openRoute(rid, fit = true) {
   const pts = fit ? (s.shapes[rid] || []).flat() : [];
   if (pts.length) mapCall("fitTo", pts, { maxZoom: 16 });
 }
+/* A bus tap opens the bus menu (owner 2026-11-20: "click a particular bus on the map which will show its next stop, line,
+   and schedule"; ui/views/bus.js): its line in focus on the map, the map view kept, the bus ringed. The router keeps the
+   bus in the view's params (Back to a bus menu brings it back), store.busMenu follows them (core/busmenu.js menuSync).
+   A tap that names no bus (no vehicle id) opens its route, as before. */
+function openBus(x) {
+  const s = store.get();
+  const rid = x && typeof x === "object" ? x.rid || x.routeId || (x.trip && x.trip.route_id) : x;
+  const key = x && typeof x === "object" && x.id != null && x.id !== "" ? String(x.id) : null;
+  if (!rid || !s.routes[rid]) return;
+  if (key == null) return openRoute(rid, false);
+  if (navigate("bus", { routeId: String(rid), bus: key })) store.set({ busMenu: key });
+}
 
 /* ---------------- boot ---------------- */
 async function boot() {
@@ -525,12 +538,9 @@ async function boot() {
     if (def && typeof def.onStopTap === "function" && safe(() => def.onStopTap(String(id), ctx), false)) return;
     openStop(id);
   });
-  // a bus tap opens its route with THAT bus picked: the route page shows its own time at each station (owner 2026-10-30)
-  mapCall("onBusTap", (x) => {
-    const rid = x && typeof x === "object" ? x.rid || x.routeId || (x.trip && x.trip.route_id) : x;
-    openRoute(rid, false);
-    if (x && typeof x === "object" && x.id != null && store.get().view === "route") store.set({ busId: String(x.id) });
-  });
+  // a bus tap opens the bus menu (owner 2026-11-20); its See the whole route opens the route page with THAT bus picked,
+  // as a bus tap did since 2026-10-30 (the route page then shows its own time at each station)
+  mapCall("onBusTap", (x) => openBus(x));
   const lowerSheet = () => { if (!sheet.isPanel() && sheet.getDetent() !== "peek") sheet.setDetent("peek"); };
   mapCall("onMapTap", lowerSheet);   // tap outside the sheet: back to the map
   // a tap on a route line opens the line drawn on top, as choosing it in the Routes list does (owner 2026-10-27);
@@ -554,6 +564,9 @@ async function boot() {
   // (a bus left out of one or two polls keeps its pick, as the map keeps its badge); then back to the next bus at each stop
   let pickGone = 0;
   store.subscribe((s) => { const r = pickCheck(s, pickGone, nowS()); pickGone = r.goneSince; if (r.clear) store.set({ busId: null }); });
+  // the bus menu's bus follows the router (Back to a bus menu restores it; none off the menu); a bus Passio moved to
+  // another line takes the menu and the map's focus with it (core/busmenu.js menuSync)
+  store.subscribe((s) => { const r = menuSync(s, currentParams().bus); if (r && r.patch) store.set(r.patch); else if (r && r.nav) navigate("bus", r.nav); });
   // Schedule by hour opens collapsed on every visit: its Show all times / day tab is forgotten off its route page
   store.subscribe((s) => { if (s.freq && (s.view !== "route" || s.routeId !== s.freq.rid)) store.set({ freq: null }); });
   // Lines by Time: the moment the shown lines change (one deselected or added), the "Lines active at" name goes and the lines stay

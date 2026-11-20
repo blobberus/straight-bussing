@@ -792,7 +792,7 @@ test("lines by time: the clock over Locate in the lower-right group opens the me
 
 shellE2E(shellHelpers, "credit");
 
-test("tap outside the sheet: empty map collapses it to peek; stops and buses still open", async () => {
+test("tap outside the sheet: empty map collapses it to peek; stops and buses still open (a bus: its bus menu)", async () => {
   tab("nearby");
   await waitFor(() => title() === "Current trip", "Current trip");
   const sh = $("#sheet");
@@ -840,15 +840,16 @@ test("tap outside the sheet: empty map collapses it to peek; stops and buses sti
     const before = await settle();
     moves.length = 0;
     bus.dispatchEvent(new W.MouseEvent("click", { bubbles: true, cancelable: true }));
-    await waitFor(() => state().view === "route" || null, "a bus tap opens its route");
+    // owner 2026-11-20: a bus tap opens the bus menu (its next stop, line and schedule); its See the whole route opens
+    // the route page with that bus picked (tests/e2e-busmenu.js)
+    await waitFor(() => state().view === "bus" || null, "a bus tap opens the bus menu");
     eq(moves, [], "a bus tap moves no camera");
     eq(await after(), before, "a bus tap keeps the map view");
-    // owner 2026-10-30: the tapped bus is picked; the route page then shows its own times
-    await waitFor(() => state().busId != null || null, "the tapped bus is picked");
-    await waitFor(() => $("#content .r-busnote") || null, "Showing its times note");
+    await waitFor(() => state().busMenu != null || null, "the tapped bus is the menu's bus");
+    eq(det(), "peek", "a bus tap keeps the sheet collapsed: the header says where the bus heads");
     click($("#back"), "back");
-    await waitFor(() => state().view !== "route" || null, "back from the route");
-    eq(state().busId, null, "leaving the route page clears the picked bus");
+    await waitFor(() => state().view !== "bus" || null, "back from the bus menu");
+    eq(state().busMenu, null, "leaving the bus menu lets the bus go");
     tab("nearby");
     await waitFor(() => state().view === "nearby" || null, "back to Current trip");
   }

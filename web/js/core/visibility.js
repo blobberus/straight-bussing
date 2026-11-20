@@ -5,7 +5,7 @@
  *
  * Precedence: a journey ("only show relevant routes" from Directions / Routes to station) shows only
  * its routes; otherwise store.hiddenRoutes applies (applying a custom route rewrites hiddenRoutes, see
- * core/custom.js). Focus (others dimmed, not hidden) comes from the route detail view, then the
+ * core/custom.js). Focus (others dimmed, not hidden) comes from the route detail view (or the bus menu: its line), then the
  * journey, then the station filter, then the applied custom route's highlight list.
  * The map adds two rules of its own (owner 2026-11-04: "The buses on faded routes should also be faded. If on a
  * trip, only the lines on the particular trip should be displayed."): during a trip in progress it draws only the
@@ -54,7 +54,7 @@ export function activeCustomRoute(state) {
  */
 export function mapFocus(state) {
   if (!state) return null;
-  if (state.view === 'route' && state.routeId) return [String(state.routeId)];
+  if ((state.view === 'route' || state.view === 'bus') && state.routeId) return [String(state.routeId)];   // a route page, a bus menu (its line)
   if (state.journey && state.journey.rids && state.journey.rids.length) return null;   // already hidden down to these
   if (tripRoutes(state)) return null;   // a walk: no line at all (mapHidden), no highlight either
   const f = state.routeFilter && state.routeFilter.ids;
