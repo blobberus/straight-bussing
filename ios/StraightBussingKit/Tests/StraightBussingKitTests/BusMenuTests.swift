@@ -137,6 +137,7 @@ final class BusMenuTests: XCTestCase {
         let r = BusMenu.reportInfo(m, now: TS.utc("2026-11-20T19:15:31Z"), version: "2.0.0")   // 1:15:31 PM Chicago -> 13:16
         XCTAssertEqual(r, BusMenu.Report(line: "Red Line", bus: "Bus 101", stop: "Library", time: "2026-11-20 13:16", version: "2.0.0"))
         XCTAssertEqual(BusMenu.reportInfo(m, now: TS.utc("2026-07-04T17:00:00Z"), version: "2.0.0").time, "2026-07-04 12:00", "daylight time (CDT) too")
+        XCTAssertEqual(BusMenu.reportFields, ["line", "bus", "stop", "time", "version"])
     }
 
     func testWordsArePlain() {
@@ -152,5 +153,64 @@ final class BusMenuTests: XCTestCase {
         XCTAssertEqual(BusMenu.Words.goneTitle, "This bus is no longer reporting")
         XCTAssertEqual(BusMenu.Words.wholeRoute, "See the whole route")
         XCTAssertEqual([BusMenu.Words.scheduledNow, BusMenu.Words.notScheduledNow], ["Scheduled now", "Not scheduled now"])
+    }
+
+    // MARK: - the report link (web tests/bus-report.js)
+
+    let FORM = "https://docs.google.com/forms/d/e/1FAIpQLSdTEST/viewform"
+    let IDS = ["line": "entry.1001", "bus": "entry.1002", "stop": "entry.1003", "time": "entry.1004", "version": "entry.1005"]
+    let INFO = BusMenu.Report(line: "53rd Street Express", bus: "Bus 2", stop: "Levi Hall", time: "2026-11-20 13:16", version: "2.0.0")
+    func items(_ u: URL?) -> [(String, String)] {
+        (URLComponents(url: u!, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") }
+    }
+
+    func testReportLinkNoFormNoLink() {
+        XCTAssertNil(BusMenu.reportLink(INFO, url: nil, entries: IDS), "no form until the owner sets one")
+        XCTAssertNil(BusMenu.reportLink(INFO, url: "", entries: IDS))
+        XCTAssertNil(BusMenu.reportLink(INFO, url: "  ", entries: IDS), "blank")
+        XCTAssertNil(BusMenu.reportLink(INFO, url: "http://docs.google.com/forms/x", entries: IDS), "https only")
+        XCTAssertNil(BusMenu.reportLink(INFO, url: "javascript:alert(1)", entries: IDS), "never a script address")
+    }
+
+    func testReportLinkPrefillsExactlyTheFiveDetails() throws {
+        let u = try XCTUnwrap(BusMenu.reportLink(INFO, url: FORM, entries: IDS))
+        XCTAssertTrue(u.absoluteString.hasPrefix(FORM + "?"))
+        let q = items(u)
+        XCTAssertEqual(q.map(\.0), ["entry.1001", "entry.1002", "entry.1003", "entry.1004", "entry.1005", "usp"])
+        XCTAssertEqual(q.map(\.1), ["53rd Street Express", "Bus 2", "Levi Hall", "2026-11-20 13:16", "2.0.0", "pp_url"])
+        XCTAssertFalse(u.absoluteString.contains(" "), "spaces encoded")
+        // a "+" stays a plus sign (a form would read a bare "+" as a space)
+        let plus = try XCTUnwrap(BusMenu.reportLink(BusMenu.Report(line: "A+B", bus: "", stop: "", time: "", version: ""), url: FORM, entries: IDS))
+        XCTAssertTrue(plus.absoluteString.contains("A%2BB"), plus.absoluteString)
+    }
+
+    func testReportLinkNothingElseGoesIn() throws {
+        let ids = IDS.merging(["lat": "entry.9", "user": "entry.10"]) { a, _ in a }
+        let u = try XCTUnwrap(BusMenu.reportLink(INFO, url: FORM, entries: ids))
+        XCTAssertEqual(items(u).count, 6, "five details + usp")
+        XCTAssertFalse(u.absoluteString.contains("entry.9") || u.absoluteString.contains("entry.10"), "an id for anything else is never used")
+    }
+
+    func testReportLinkLeavesOutMissingIdsAndValues() throws {
+        var info = INFO
+        info.stop = ""
+        var ids = IDS
+        ids["version"] = ""
+        XCTAssertEqual(items(BusMenu.reportLink(info, url: FORM, entries: ids)).map(\.0), ["entry.1001", "entry.1002", "entry.1004", "usp"])
+        ids = IDS
+        ids["line"] = "line"
+        XCTAssertFalse(items(BusMenu.reportLink(INFO, url: FORM, entries: ids)).contains { $0.0 == "line" }, "an id that is not entry.<digits> is ignored")
+        XCTAssertEqual(BusMenu.reportLink(INFO, url: FORM, entries: [:])?.absoluteString, FORM, "no ids yet: the plain form")
+        XCTAssertEqual(BusMenu.reportLink(nil, url: FORM, entries: IDS)?.absoluteString, FORM, "no details: the plain form")
+    }
+
+    func testReportLinkValuesTrimmedOneLine120() throws {
+        var info = INFO
+        info.line = "  53rd\n  Street  " + String(repeating: "x", count: 300)
+        let u = try XCTUnwrap(BusMenu.reportLink(info, url: FORM + "?hl=en", entries: IDS))
+        let q = items(u)
+        XCTAssertEqual(q.first?.0, "hl"); XCTAssertEqual(q.first?.1, "en", "a form's own parameters are kept")
+        let v = try XCTUnwrap(q.first { $0.0 == "entry.1001" }?.1)
+        XCTAssertTrue(v.hasPrefix("53rd Street x") && v.count == 120 && !v.contains("\n"), String(v.prefix(30)))
     }
 }

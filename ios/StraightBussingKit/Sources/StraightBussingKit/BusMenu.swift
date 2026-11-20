@@ -11,8 +11,9 @@ import Foundation
 /// - Times: `StationTimes.busTimes` (this bus's next stops for one lap, live or est.), shown with `timeText`. A
 ///   transitioning bus (`Seen`) shows `Seen.transitionText` and no times, as on the route page.
 /// - Line schedule: today's hours in the route page's words (`lineHours`) + Scheduled now / Not scheduled now.
-/// - Report and feedback: grayed out until the owner sets a Google Form (docs/BUS-REPORT.md); `reportInfo` holds ONLY the
-///   line name, the bus number shown, its next stop, the Chicago time to the minute and the app version.
+/// - Report and feedback: grayed out until the owner sets a Google Form (App `SiteLinks.busReport`); then `reportLink`
+///   prefills ONLY the line name, the bus number shown, its next stop, the Chicago time to the minute and the app version
+///   (docs/BUS-REPORT.md). Never a location, an identity or a device id.
 public enum BusMenu {
     /// Every word of the bus menu (web BUS_MENU). iOS opens the form in Safari, not a new tab (`reportOn`, `reportSay`).
     public enum Words {
@@ -261,5 +262,39 @@ public enum BusMenu {
         }
         let line = m?.route.map { !$0.long.isEmpty ? $0.long : $0.short }.flatMap { $0.isEmpty ? nil : $0 } ?? m?.line ?? ""
         return Report(line: line, bus: m?.name ?? "", stop: m?.next?.name ?? "", time: time, version: version)
+    }
+
+    /// The details the report link may carry, in order (web BUS_REPORT_FIELDS).
+    public static let reportFields = ["line", "bus", "stop", "time", "version"]
+    /// Longest value put in the link.
+    static let reportMax = 120
+    /// What a link value keeps as it is (RFC 3986 unreserved); everything else is percent-encoded, "+" and spaces too.
+    static let unreserved = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
+
+    /// The bus report form's link with ONLY the five details prefilled (web busReportLink); nil while no form is set (the
+    /// button stays grayed out) or the address is not https. `entries`: the form's prefill ids ("entry.123456789") per
+    /// field of `reportFields`; a field without a valid id or without a value is left out; any other key is never used.
+    public static func reportLink(_ info: Report?, url: String?, entries: [String: String]) -> URL? {
+        let base = (url ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard base.lowercased().hasPrefix("https://"), var comps = URLComponents(string: base), comps.host?.isEmpty == false else { return nil }
+        var items = comps.percentEncodedQueryItems ?? []
+        func enc(_ s: String) -> String {
+            s.addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
+        }
+        func set(_ name: String, _ value: String) {
+            let item = URLQueryItem(name: name, value: enc(value))
+            if let i = items.firstIndex(where: { $0.name == name }) { items[i] = item } else { items.append(item) }
+        }
+        var any = false
+        for f in reportFields {
+            let id = (entries[f] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let v = String((info?[f] ?? "").split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").prefix(reportMax))
+            guard id.range(of: #"^entry\.\d+$"#, options: .regularExpression) != nil, !v.isEmpty else { continue }
+            set(id, v)
+            any = true
+        }
+        if any { set("usp", "pp_url") }
+        comps.percentEncodedQueryItems = items.isEmpty ? comps.percentEncodedQueryItems : items
+        return comps.url
     }
 }
