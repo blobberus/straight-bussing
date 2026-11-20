@@ -24,9 +24,11 @@ enum Tab: String, CaseIterable, Identifiable {
     }
 }
 
-/// Pages pushed on a tab inside the bottom sheet (the web's router views).
+/// Pages pushed on a tab inside the bottom sheet (the web's router views). `bus(rid, key)`: the bus menu of the bus with
+/// that key (`BusNumbers.key`) on that line (owner 2026-11-20, web ui/views/bus.js).
 enum SheetPage: Hashable {
     case route(String), stop(String), customRoute(String), editCustom(String?), about, directions, alerts, pick
+    case bus(String, String)
 }
 
 /// The sheet's two resting states (owner spec 2026-10-12: no midway stop): collapsed (grab bar + title line with its
@@ -313,6 +315,9 @@ final class AppModel {
     /// tapping a bus on the map or its row on the route page (again = unpick); cleared when that page closes or the map
     /// no longer draws the bus (it keeps a bus missing from one poll for 45 s, and the pick with it).
     var selectedBus: SelectedBus?
+    /// The bus menu's 45 s hold for a bus missing from a poll (Kit `BusMenu.held`; web bus.js `mem`): not observed, it
+    /// only carries the last copy of the bus between renders.
+    @ObservationIgnored var busMenuMemory: BusMenu.Memory?
     /// "Bus 1", "Bus 2" per route (route id -> bus key -> number), from the buses the map draws (Kit `BusNumbers`),
     /// written only when it changes.
     var busNumbers: [String: [String: Int]] = [:]
@@ -437,7 +442,7 @@ final class AppModel {
         case .directions, .about, .editCustom: detent = .full
         // pages that opened at the midway stop keep the rider's current state (owner 2026-10-12: two states only)
         case .route(let rid): fitRoute(rid)   // only choosing a route moves the map (web main.js openRoute)
-        case .stop, .customRoute, .alerts, .pick: break
+        case .stop, .customRoute, .alerts, .pick, .bus: break
         }
         syncMapFocus()
     }
@@ -448,6 +453,8 @@ final class AppModel {
     func showPage(_ p: SheetPage) {
         var stack = paths[tab] ?? []
         if case .route(_) = p, case .route(_)? = stack.last { stack.removeLast() }
+        // a bus menu opened from a bus menu takes its place too (web bus view replaceSelf): Back returns where the rider was
+        if case .bus = p, case .bus? = stack.last { stack.removeLast() }
         stack.append(p)
         paths[tab] = stack
     }
@@ -474,6 +481,7 @@ final class AppModel {
     func syncMapFocus() {
         var view = "nearby", rid: String? = nil
         if case .route(let r) = page { view = "route"; rid = r }
+        if case .bus(let r, _) = page { view = "route"; rid = r }   // the bus menu focuses the bus's line (web mapFocus "bus")
         if routeState.view != view { routeState.view = view }
         if routeState.routeId != rid { routeState.routeId = rid }
     }
@@ -488,6 +496,7 @@ final class AppModel {
         case .directions: return "Directions"
         case .alerts: return "Alerts"
         case .pick: return "Routes to station"
+        case .bus(let rid, let key): return busMenuTitle(rid: rid, key: key)
         case nil: return tab.title
         }
     }

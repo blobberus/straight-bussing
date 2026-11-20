@@ -237,6 +237,22 @@ struct SheetHeader: View {
                     .fixedSize()
                     .accessibilityLabel(model.nearbyMeta.isEmpty ? "" : "Next bus at the nearest stop: " + model.nearbyMeta)
             }
+        case .bus(let rid, let key):
+            // the bus menu (web busMetaHTML): the line's badge and "Bus 2"; collapsed, also where it heads next and when
+            let m = model.busMenuModel(rid: rid, key: key)
+            let t = model.detent == .peek && m.status == .ok ? m.next.map { BusMenu.timeText($0, now: model.now, staleFeed: model.isStale) } : nil
+            HStack(spacing: 6) {
+                RouteChip(route: m.route, rid: m.rid)
+                if !m.name.isEmpty { Text(m.name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text2) }
+                if let t, !t.text.isEmpty {
+                    Text(t.text).font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(t.now ? Palette.live : Palette.text2)
+                }
+            }
+            .fixedSize()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel([m.line, m.name, t.flatMap { $0.text.isEmpty ? nil : "\(m.next?.name ?? "") \($0.say)" } ?? ""]
+                .filter { !$0.isEmpty }.joined(separator: ", "))
+            .accessibilityIdentifier("busMeta")
         case nil where model.tab == .routes:
             Button { model.editingOrder.toggle() } label: {
                 Text(model.editingOrder ? "Done" : "Edit map order").font(.subheadline.weight(.semibold))
@@ -261,6 +277,7 @@ struct SheetContent: View {
         case .directions: DirectionsView()
         case .alerts: AlertsView()
         case .pick: PickView()
+        case .bus(let rid, let key): BusDetailView(rid: rid, key: key)
         case nil:
             switch model.tab {
             case .current: CurrentTripView()

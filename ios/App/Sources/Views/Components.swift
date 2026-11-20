@@ -259,6 +259,13 @@ enum SiteLinks {
     /// Beta feedback form (owner 2026-10-13, Google Forms): opened in Safari from Settings > Feedback; nothing is
     /// sent by the app, only the rider's own Submit there.
     static let feedback = URL(string: "https://forms.gle/zK4hi2UfYsrXURR97")!
+    /// The bus menu's "Report and feedback" form (owner 2026-11-20: "eventually link to a google form ... for now gray
+    /// this button out"; web ui/feedback.js BUS_REPORT_URL). nil = the button is grayed out with "Coming soon". To turn it
+    /// on (docs/BUS-REPORT.md): the form's long address ending in /viewform (not a forms.gle short link) and its five
+    /// prefill entry ids below; the privacy page, About and the App Privacy answers say what it sends first.
+    static let busReport: String? = nil
+    /// The form's prefill ids ("entry.123456789") for the only five details it may carry (Kit `BusMenu.reportFields`).
+    static let busReportEntries: [String: String] = ["line": "", "bus": "", "stop": "", "time": "", "version": ""]
 }
 
 /// Official service contact (shown in About and empty/error states). Where no bus reports and the operator's live
