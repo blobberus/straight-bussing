@@ -64,4 +64,22 @@ final class StationTimesTests: XCTestCase {
         XCTAssertEqual(dcc.count, 4)
         XCTAssertTrue(dcc.allSatisfy { !$0.stopTimeUpdates[0].filler && $0.stopTimeUpdates.dropFirst().allSatisfy(\.filler) })
     }
+
+    /// Arrivals skip filler (web core/arrivals.js arrivalsFor; `filler: true` keeps them). Levi Hall (8630) in the real
+    /// feed: Apostolic bus 1651 in 13 min is a forecast; the 53rd Street Express and the other Apostolic bus only carry
+    /// filler there.
+    func testArrivalsSkipFiller() throws {
+        let feed = try FeedParser.tripUpdates(TS.fixture("eta_tripUpdates"))
+        let now = feed.timestamp, trips = feed.entities
+        XCTAssertEqual(Arrivals.arrivalsFor(trips: trips, stopId: "8630", now: now).map { $0.t - now }, [778])
+        XCTAssertEqual(Arrivals.arrivalsFor(trips: trips, stopId: "8630", now: now, filler: true).map { $0.t - now }, [195, 758, 778])
+        XCTAssertEqual(Arrivals.arrivalsFor(trips: trips, stopId: "8811", routeId: "4346", now: now), [], "53rd Express: only filler at 8811")
+        XCTAssertEqual(Arrivals.arrivalsFor(trips: trips, stopId: "8596", routeId: "4346", now: now).map { $0.t - now }, [752], "the head stays")
+        let idx = Arrivals.index(trips: trips), all = Arrivals.index(trips: trips, filler: true)
+        for stop in ["8630", "8811", "8596", "8591", "8612"] {
+            XCTAssertEqual(Arrivals.arrivals(in: idx, stopId: stop, now: now), Arrivals.arrivalsFor(trips: trips, stopId: stop, now: now), stop)
+            XCTAssertEqual(Arrivals.arrivals(in: all, stopId: stop, now: now),
+                           Arrivals.arrivalsFor(trips: trips, stopId: stop, now: now, filler: true), stop)
+        }
+    }
 }

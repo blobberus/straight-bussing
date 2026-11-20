@@ -34,18 +34,19 @@ public enum Arrivals {
     public static let oldAfterS = 300.0
 
     /// Upcoming live arrivals at a stop, sorted by time. Includes arrivals up to 30 s in the past (bus at the
-    /// stop). A trip that lists the stop twice (loop start/end) yields both times.
+    /// stop). A trip that lists the stop twice (loop start/end) yields both times. Passio's filler times
+    /// (`StopTimeUpdate.filler`, 2026-11-20) are not forecasts and are skipped unless `filler` is true.
     /// - Parameters:
     ///   - routeId: only this route (`hidden` is ignored then)
     ///   - hidden: route ids to exclude
     public static func arrivalsFor(trips: [TripUpdate], stopId: String, routeId: String? = nil,
-                                   hidden: [String] = [], now: Double) -> [Arrival] {
+                                   hidden: [String] = [], now: Double, filler: Bool = false) -> [Arrival] {
         let hid = Set(hidden)
         var out: [Arrival] = []
         for tu in trips {
             guard let rid = tu.trip.routeId else { continue }
             if let routeId { if rid != routeId { continue } } else if hid.contains(rid) { continue }
-            for u in tu.stopTimeUpdates where u.stopId == stopId {
+            for u in tu.stopTimeUpdates where u.stopId == stopId && (filler || !u.filler) {
                 let t = u.time
                 if t != 0 && t > now - 30 {
                     out.append(Arrival(rid: rid, t: t, bus: tu.vehicle.label, tripId: tu.trip.tripId, vehicleId: tu.vehicle.id))
@@ -57,13 +58,13 @@ public enum Arrivals {
 
     static func arrivalOrder(_ a: Arrival, _ b: Arrival) -> Bool { a.t < b.t || (a.t == b.t && a.rid < b.rid) }
 
-    /// Every live arrival (time != 0) per stop id, sorted like `arrivalsFor`. Build it once per poll and read
-    /// it with `arrivals(in:stopId:routeId:hidden:now:)` instead of rescanning every trip for every stop.
-    public static func index(trips: [TripUpdate]) -> [String: [Arrival]] {
+    /// Every live arrival (time != 0, not filler unless `filler`) per stop id, sorted like `arrivalsFor`. Build it once
+    /// per poll and read it with `arrivals(in:stopId:routeId:hidden:now:)` instead of rescanning every trip for every stop.
+    public static func index(trips: [TripUpdate], filler: Bool = false) -> [String: [Arrival]] {
         var out: [String: [Arrival]] = [:]
         for tu in trips {
             guard let rid = tu.trip.routeId else { continue }
-            for u in tu.stopTimeUpdates {
+            for u in tu.stopTimeUpdates where filler || !u.filler {
                 guard let sid = u.stopId else { continue }
                 let t = u.time
                 if t != 0 { out[sid, default: []].append(Arrival(rid: rid, t: t, bus: tu.vehicle.label, tripId: tu.trip.tripId, vehicleId: tu.vehicle.id)) }
