@@ -4,7 +4,7 @@ import StraightBussingKit
 /// Launch arguments (used by CI to drive the simulator deterministically):
 ///   -demo                 simulated buses (DemoFeed), fixed location on campus, separate prefs storage. No demo
 ///                         label anywhere (screenshots look like real use); the Settings switch is what riders get
-///   -screen <name>        open a screen: current | trip | routes | route | myroutes | directions | stop |
+///   -screen <name>        open a screen: current | trip | routes | route | bus (a bus menu) | myroutes | directions | stop |
 ///                         settings | settingsdemo | liveactivity | about | alerts | pick | search | custom |
 ///                         editor | order | near ("Show my location": the map closer in) |
 ///                         tripstop (UI test: a stop opened during a started trip) |

@@ -41,6 +41,7 @@ for mode in light dark; do
   shot 04-directions   "$mode" 9  -screen directions
   shot 05-routes       "$mode" 8  -screen routes
   shot 06-route        "$mode" 9  -screen route
+  shot 44-bus          "$mode" 9  -screen bus
   shot 07-myroutes     "$mode" 8  -screen myroutes
   shot 08-stop         "$mode" 8  -screen stop
   shot 09-settings     "$mode" 8  -screen settings

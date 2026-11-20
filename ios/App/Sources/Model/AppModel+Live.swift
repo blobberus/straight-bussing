@@ -627,15 +627,21 @@ extension AppModel {
         }
     }
 
-    /// A bus tapped on the map opens its route WITHOUT moving the map (web main.js openRoute(rid, false)).
-    /// A bus tapped on the map opens its route with THAT bus picked: each station shows its own time (owner 2026-10-30,
-    /// web main.js onBusTap). Already on that route page: only the pick.
+    /// A bus tapped on the map opens its bus menu (owner 2026-11-20, web main.js openBus): its line, where it heads and
+    /// when, its next stops, the line's hours, See the whole route (the route page with this bus picked, what a bus tap
+    /// did before) and Report and feedback. The map does not move and the sheet keeps its state (owner 2026-10-12); a bus
+    /// menu opened from a bus menu takes its place (`showPage`). A bus the feed does not name (no id, no label, or
+    /// missing from the last poll while its badge stays) opens its route as before.
     func busTapped(_ rid: String, vehicleId: String? = nil) {
         lastAnnotationTap = Date().timeIntervalSince1970
         guard staticData.routes[rid] != nil else { return }
-        selectedBus = vehicleId.map { SelectedBus(rid: rid, vehicleId: $0) }
-        if page == .route(rid) { return }
-        showPage(.route(rid))   // the sheet keeps its state (owner 2026-10-12); on another route page it takes its place
+        guard let key = vehicleId, !key.isEmpty, BusMenu.bus(live, key: key) != nil else {
+            selectedBus = nil
+            if page != .route(rid) { showPage(.route(rid)); syncMapFocus() }
+            return
+        }
+        if page == .bus(rid, key) { return }
+        showPage(.bus(rid, key))
         syncMapFocus()
     }
 
@@ -765,6 +771,9 @@ extension AppModel {
             case "myroutes": select(.myroutes); apply(Custom.applyCustom(routeState, "demo-commute"))
             case "directions": _ = await openDirections(to: demoDestination)?.value
             case "stop": push(.stop(DemoConfig.stopForDetail))
+            case "bus":   // the bus menu of a bus on the route detail's line (CI gallery)
+                let b = buses.first { $0.trip.routeId == DemoConfig.routeForDetail } ?? buses.first
+                if let b, let rid = b.trip.routeId { busTapped(rid, vehicleId: BusNumbers.key(b)) }
             case "settings": showSettings = true
             case "feedback": showFeedback = true   // the map feedback button's sheet (with -feedback, CI gallery)
             case "liveactivity", "livestates", "livestatesend":   // livestates: every arrival state of the card (CI only)

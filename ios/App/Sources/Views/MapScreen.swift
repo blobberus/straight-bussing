@@ -143,7 +143,7 @@ struct MapScreen: View {
                 let isYou = youOnDrawnBus && b.id == youBus
                 let isFaded = faded.contains(b.id)
                 let marker = BusMarker(route: model.route(b.rid), bearing: b.bearing, stale: b.stale, youText: isYou ? you?.text : nil,
-                                       number: b.number, picked: model.selectedBus == SelectedBus(rid: b.rid, vehicleId: b.id), faded: isFaded,
+                                       number: b.number, picked: model.selectedBus == SelectedBus(rid: b.rid, vehicleId: b.id) || model.page == .bus(b.rid, b.id), faded: isFaded,
                                        transitioning: b.transitioning)
                 Annotation(b.label, coordinate: b.coord.cl, anchor: .center) {
                     if isFaded {
@@ -154,7 +154,7 @@ struct MapScreen: View {
                             marker.frame(minWidth: 44, minHeight: 44)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityHint(b.number != nil ? "Opens the route with this bus's times" : "Opens the route")
+                        .accessibilityHint("Opens this bus: where it heads, its next stops and the line's hours")
                     }
                 }
                 .annotationTitles(.hidden)

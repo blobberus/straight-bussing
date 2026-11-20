@@ -52,6 +52,7 @@ CAPTIONS = {
     "41-lines-by-time": "Lines by Time: date and time wheels, the lines the timetable has running then (UI test)",
     "42-feedback-button": "The feedback button under the locate button (accent tint, badge dot), until the rider gives feedback",
     "43-feedback-sheet": "The feedback sheet: the ask, Send feedback, the note that the button then disappears, I already gave feedback",
+    "44-bus": "The bus menu (a bus tapped on the map): where it heads and when, next stops with live or est. times, the line's hours, See the whole route, Report and feedback grayed out",
 }
 
 STORE_CAPTIONS = {
