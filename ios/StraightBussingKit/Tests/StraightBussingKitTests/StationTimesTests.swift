@@ -84,3 +84,24 @@ final class StationTimesTests: XCTestCase {
         }
     }
 }
+
+/// The planner and the bus alerts take no time from Passio's filler (web core/planner.js, core/notify.js), on the
+/// planner tests' network.
+final class FillerConsumerTests: XCTestCase, PlannerFixture {
+    /// Boarding at the head of a run is a live wait; the alighting stop's filler time is no live ride: the ride is estimated.
+    func testPlannerRidesNotFromFiller() {
+        let trips = StationTimes.markFiller([PlannerTests.trip("t1", "LOOP", [("L3", T + 300), ("L0", T + 302), ("L1", T + 304)])])
+        let r = Planner.plan(from: near_("L3"), to: near_("L1"), now: T, data: data(trips: trips))
+        let b = r.options[0].busLegs[0]
+        XCTAssertTrue(b.waitLive, "the head is a forecast")
+        XCTAssertEqual(b.boardT, T + 300)
+        XCTAssertEqual(b.source, .estimate, "no live ride from a filler time")
+        near(b.ride, (hav("L3", "L0") + hav("L0", "L1")) / 300, 0.01, "distance at 18 km/h, never 4 s")
+        // boarding where only filler is listed: no live wait (the headway estimate)
+        let fromL0 = Planner.plan(from: near_("L0"), to: near_("L2"), now: T, data: data(trips: trips))
+        XCTAssertFalse(fromL0.options[0].busLegs[0].waitLive)
+        // unmarked, the same times were taken as live (the bug)
+        let raw = [PlannerTests.trip("t1", "LOOP", [("L3", T + 300), ("L0", T + 302), ("L1", T + 304)])]
+        XCTAssertEqual(Planner.plan(from: near_("L3"), to: near_("L1"), now: T, data: data(trips: raw)).options[0].busLegs[0].source, .live)
+    }
+}

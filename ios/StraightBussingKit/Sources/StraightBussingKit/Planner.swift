@@ -107,7 +107,8 @@ public enum Planner {
             schedIdx = [:]
             for tu in data.trips {
                 guard let rid = tu.trip.routeId else { continue }
-                for u in tu.stopTimeUpdates {
+                // Passio's filler times are not forecasts (StationTimes.markFiller, 2026-11-20): no live wait from them
+                for u in tu.stopTimeUpdates where !u.filler {
                     let t = u.time
                     guard t != 0, let sid = u.stopId else { continue }
                     live[rid + "|" + sid, default: []].append((t, tu))
@@ -145,7 +146,7 @@ public enum Planner {
         /// Earliest time of `tu` at stopId strictly after `after`.
         func tripAt(_ tu: TripUpdate, _ stopId: String, _ after: Double) -> Double? {
             var best: Double? = nil
-            for u in tu.stopTimeUpdates where u.stopId == stopId {
+            for u in tu.stopTimeUpdates where u.stopId == stopId && !u.filler {
                 let t = u.time
                 if t > after && (best == nil || t < best!) { best = t }
             }
