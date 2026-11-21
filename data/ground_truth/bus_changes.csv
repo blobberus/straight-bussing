@@ -1529,3 +1529,4 @@ route_id,route_name,epoch,local_time,kind,buses_before,buses_after,vehicle_id,la
 5704,Downtown Campus Connector,1795233649,2026-11-20 22:00:49,drop,3,2,12645,140009,55th Street & University,1795233649,874028,12642;12649,6,4,0,,,1,
 5704,Downtown Campus Connector,1795233667,2026-11-20 22:01:07,drop,2,1,12649,132963,Gleacher Center,1795233667,874028,12642,6,4,0,,,1,
 1077,East,1795233817,2026-11-20 22:03:37,drop,2,1,4326,8633,Regenstein Library (N),1795233817,501695,4327,1,1,0,,,1,
+6126,Apostolic/Drexel,1795240770,2026-11-20 23:59:30,drop,2,1,12647,8612,Goldblatt Pavilion,1795240770,676406,4318,3,,,,,,
