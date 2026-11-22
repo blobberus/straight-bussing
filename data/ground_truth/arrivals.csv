@@ -139910,3 +139910,4 @@ epoch,ts_utc,local_time,dow,hour,minute_of_day,route_id,route_name,trip_id,vehic
 1795327224,2026-11-22T06:00:24Z,2026-11-22 00:00:24,6,0,0,1075,North,501611,4313,8579,Reynolds Club,South University Avenue,41.79134,-87.59802,7,8637,1138.1,1795326520,704,1.62,0,1795326567,711,transition
 1795327259,2026-11-22T06:00:59Z,2026-11-22 00:00:59,6,0,0,1075,North,501612,4313,8633,Regenstein Library (N),East 57th Street,41.79147,-87.59961,1,,,,,,0,,,transition
 1795329892,2026-11-22T06:44:52Z,2026-11-22 00:44:52,6,0,44,5716,South Loop Shuttle,501799,4538,9593,International House,South Dorchester Avenue,41.78786,-87.59148,4,,,,,,0,,,pass
+1795330022,2026-11-22T06:47:02Z,2026-11-22 00:47:02,6,0,47,5716,South Loop Shuttle,501799,4538,8579,Reynolds Club,South University Avenue,41.79134,-87.59802,5,9593,943.4,1795329892,130,7.26,816,,,pass
