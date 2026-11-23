@@ -140668,3 +140668,5 @@ epoch,ts_utc,local_time,dow,hour,minute_of_day,route_id,route_name,trip_id,vehic
 1795413612,2026-11-23T06:00:12Z,2026-11-23 00:00:12,0,0,0,1078,Central,,4538,8579,Reynolds Club,South University Avenue,41.79134,-87.59802,14,,,,,,,,,gps
 1795413650,2026-11-23T06:00:50Z,2026-11-23 00:00:50,0,0,0,1075,North,501612,4313,8633,Regenstein Library (N),East 57th Street,41.79147,-87.59961,1,8579,133.6,1795413300,350,0.38,0,1795413429,218,transition
 1795413651,2026-11-23T06:00:51Z,2026-11-23 00:00:51,0,0,0,1077,East,501706,4315,8633,Regenstein Library (N),East 57th Street,41.79147,-87.59961,1,,,,,,0,,,transition
+1795431175,2026-11-23T10:52:55Z,2026-11-23 04:52:55,0,4,292,5700,Friend Center/Metra,499490,4327,8612,Goldblatt Pavilion,5801 South Ellis Avenue,41.78774,-87.60361,0,,,,,,,,,proximity
+1795431536,2026-11-23T10:58:56Z,2026-11-23 04:58:56,0,4,298,5701,Drexel,501392,4318,8611,Drexel Garage,850 East 61st Street,41.78443,-87.60444,0,,,,,,50,,,proximity
